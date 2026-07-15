@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "es2020",        
+    "module": "nodenext",
+    "moduleResolution": "nodenext",      
+    "outDir": "./build",       
+    "rootDir": "./",           
+    "strict": true,           
+    "esModuleInterop": true,   
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,  
+    "types": ["node"]          
+  },
+  "include": [
+    "main.ts",                
+    "preload.ts"               
+  ],
+  "exclude": [
+    "node_modules",                    
+    ".next",
+    "out"
+  ]
+}

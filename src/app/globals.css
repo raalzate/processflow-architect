@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Paleta fría y gris-azulada para modo claro */
+    --background: 210 20% 98%;        /* Blanco-azulado muy suave */
+    --foreground: 220 15% 15%;        /* Gris-azul oscuro muy apagado */
+
+    --card: 210 20% 96%;
+    --card-foreground: 220 15% 15%;
+
+    --popover: 210 20% 98%;
+    --popover-foreground: 220 15% 15%;
+
+    --primary: 218 35% 62%;           /* Azul frío medio (antes era índigo cálido) */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 18% 92%;
+    --secondary-foreground: 220 12% 25%;
+
+    --muted: 210 20% 94%;
+    --muted-foreground: 220 10% 50%;
+
+    --accent: 200 30% 70%;            /* Azul-grisáceo frío */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 70% 62%;         /* Rojo menos saturado para que no rompa la armonía fría */
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 210 20% 88%;
+    --input: 210 20% 88%;
+    --ring: 218 35% 62%;
+
+    /* Gráficos también en tonos fríos y apagados */
+    --chart-1: 210 40% 60%;
+    --chart-2: 200 35% 55%;
+    --chart-3: 220 30% 50%;
+    --chart-4: 190 35% 65%;
+    --chart-5: 230 30% 45%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Modo oscuro muy gris-azulado, sin apenas calidez */
+    --background: 220 18% 10%;        /* Gris-azul muy oscuro */
+    --foreground: 210 15% 88%;        /* Gris-azul claro apagado */
+
+    --card: 220 18% 12%;
+    --card-foreground: 210 15% 88%;
+
+    --popover: 220 18% 12%;
+    --popover-foreground: 210 15% 88%;
+
+    --primary: 218 45% 68%;           /* Azul frío más vivo pero todavía elegante */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 16% 18%;
+    --secondary-foreground: 210 12% 75%;
+
+    --muted: 220 16% 20%;
+    --muted-foreground: 210 10% 60%;
+
+    --accent: 205 40% 65%;            /* Azul-gris frío como acento */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 220 16% 22%;
+    --input: 220 16% 22%;
+    --ring: 218 45% 68%;
+
+    /* Gráficos oscuros pero fríos */
+    --chart-1: 210 45% 65%;
+    --chart-2: 200 40% 60%;
+    --chart-3: 220 40% 55%;
+    --chart-4: 190 45% 70%;
+    --chart-5: 230 35% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

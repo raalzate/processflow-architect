@@ -1,0 +1,87 @@
+import { ipcMain, IpcMainInvokeEvent, clipboard } from 'electron';
+import { handleMdToPdf } from './services/pdf';
+import {
+  listLitertModels,
+  downloadLitertModel,
+  deleteLitertModel,
+  revealLitertModel,
+} from './services/litert-models';
+import {
+  setAiKey,
+  deleteAiKey,
+  aiKeyStatus,
+  remoteGenerate,
+  type RemoteProvider,
+  type RemoteGenerateArgs,
+} from './services/ai-remote';
+import { startMcpHttp, stopMcpHttp, mcpHttpStatus } from './services/mcp-http';
+import { getSystemInfo } from './services/system-info';
+import { playgroundListTools, playgroundCallTool } from './services/mcp-playground';
+
+/**
+ * IPC del proceso main. La IA local corre en el RENDERER (LiteRT-LM / WebGPU);
+ * aquí solo quedan: gestión de modelos .litertlm (descarga/estado/borrado),
+ * exportación a PDF y portapapeles.
+ */
+export function registerIpcHandlers() {
+  ipcMain.handle('convert-md-to-pdf', handleMdToPdf);
+
+  // --- Modelos LiteRT-LM (.litertlm): listado, descarga, borrado, revelar ---
+  ipcMain.handle('litert-models-list', async () => listLitertModels());
+  ipcMain.handle('litert-model-download', async (event: IpcMainInvokeEvent, id: string) =>
+    downloadLitertModel(id as any, (percent) =>
+      event.sender.send('litert-model-progress', { id, percent })
+    )
+  );
+  ipcMain.handle('litert-model-delete', async (_e, id: string) => deleteLitertModel(id));
+  ipcMain.handle('litert-model-reveal', async (_e, id: string) => revealLitertModel(id));
+
+  // --- IA remota (llaves cifradas + generación) ---
+  ipcMain.handle('ai-key-set', async (_e, provider: RemoteProvider, key: string) =>
+    setAiKey(provider, key)
+  );
+  ipcMain.handle('ai-key-delete', async (_e, provider: RemoteProvider) => deleteAiKey(provider));
+  ipcMain.handle('ai-key-status', async () => aiKeyStatus());
+  ipcMain.handle('ai-remote-generate', async (_e, args: RemoteGenerateArgs) => remoteGenerate(args));
+
+  // --- Servidor MCP embebido (HTTP, opt-in desde Ajustes) ---
+  ipcMain.handle('mcp-server-start', async (_e, port?: number) => startMcpHttp(port));
+  ipcMain.handle('mcp-server-stop', async () => stopMcpHttp());
+  ipcMain.handle('mcp-server-status', async () => mcpHttpStatus());
+
+  // --- Playground MCP (guía /mcp): ejecutar herramientas por transporte en memoria ---
+  ipcMain.handle('mcp-playground-list-tools', async () => playgroundListTools());
+  ipcMain.handle('mcp-playground-call', async (_e, name: string, args: unknown) =>
+    playgroundCallTool(name, args)
+  );
+
+  // --- Información del sistema (vista de Configuración) ---
+  ipcMain.handle('system-info', async () => getSystemInfo());
+
+  // --- Captura de una región de la página a PNG ---
+  // Rasteriza lo REALMENTE pintado (incluye el foreignObject de los nodos, que
+  // no se puede rasterizar de forma fiable en el renderer). El renderer encuadra
+  // el diagrama y oculta los overlays antes de pedir la captura.
+  ipcMain.handle(
+    'capture-canvas',
+    async (e: IpcMainInvokeEvent, rect: { x: number; y: number; width: number; height: number }) => {
+      const img = await e.sender.capturePage({
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      });
+      return img.toDataURL(); // data:image/png;base64,...
+    }
+  );
+
+  ipcMain.handle('copy-to-clipboard', async (_, text: string) => {
+    try {
+      clipboard.writeText(text);
+      return true;
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+      return false;
+    }
+  });
+}

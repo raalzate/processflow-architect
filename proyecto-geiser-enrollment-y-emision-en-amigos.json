@@ -1,0 +1,417 @@
+{
+  "nombre_proyecto": "Proyecto Geiser · Enrollment y Emisión en Amigos+",
+  "version": "1.0.0",
+  "fecha_analisis": "2026-07-03",
+  "big_picture": {
+    "descripcion": "Flujo necesario para lanzamiento 1ro de septiembre: creación de póliza, codificación médica, verificación LexisNexis, QC y factura.",
+    "hotspots": [],
+    "nodos": [],
+    "aristas": []
+  },
+  "agregados": [
+    {
+      "nombre_agregado": "Enrollment y Codificación Médica",
+      "entidad_raiz": "Proceso automático de emisión en Amigos+ (Bupa Ecuador).",
+      "descripcion": "Proceso automático de emisión en Amigos+ (Bupa Ecuador).",
+      "nodos": [
+        {
+          "id": "enr-inicio",
+          "nombre": "Venta recibida",
+          "tipo_elemento": "Evento de Inicio",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 120
+        },
+        {
+          "id": "enr-crear-poliza",
+          "nombre": "Recibe datos de venta y crea póliza en Amigos+",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Policy Status: AS-Approved by System.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": [
+            "API NOVA & Bupa"
+          ],
+          "x": 268,
+          "y": 120
+        },
+        {
+          "id": "enr-adjunta-onphase",
+          "nombre": "Adjunta documentos en Onphase",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Formulario de solicitud de seguro y certificado de emisión; indexación automática.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 220
+        },
+        {
+          "id": "enr-valida-patologias",
+          "nombre": "Sistema valida pólizas con patologías declaradas en Brabu",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 220
+        },
+        {
+          "id": "enr-gw-preexistencias",
+          "nombre": "¿Preexistencias declaradas?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 320
+        },
+        {
+          "id": "enr-codifica",
+          "nombre": "Codifica preexistencias en Amigos+ automáticamente",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Propuesta de codificación automática UW — Q4 2026.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 320
+        },
+        {
+          "id": "enr-aprueba-emision",
+          "nombre": "Aprueba emisión de póliza en Amigos+ automáticamente",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Policy Status: AU-Approved Underwriting.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 420
+        },
+        {
+          "id": "enr-lexisnexis",
+          "nombre": "Verificación de LexisNexis",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 420
+        },
+        {
+          "id": "enr-gw-alerta",
+          "nombre": "¿Hay una alerta?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 520
+        },
+        {
+          "id": "enr-gw-ofac",
+          "nombre": "¿Posible alerta OFAC?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 520
+        },
+        {
+          "id": "enr-fin-no-activa",
+          "nombre": "La póliza no se activa",
+          "tipo_elemento": "Evento de Fin",
+          "descripcion": "Pasa a investigación por Financial Crimes.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 620
+        },
+        {
+          "id": "enr-investiga-posterior",
+          "nombre": "Se investiga alerta posterior a la activación",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Escenarios: falsos positivos, PEPs, adverse news.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 620
+        },
+        {
+          "id": "enr-queue-qc",
+          "nombre": "Póliza entra en el queue de QC para revisión",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 720
+        },
+        {
+          "id": "enr-libera-qc",
+          "nombre": "Póliza se libera de QC automáticamente",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Policy Status: PP-Pending Payment, sin esperar release manual de QC (pendiente aprobación de QC).",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 720
+        },
+        {
+          "id": "enr-factura-sovos",
+          "nombre": "Genera factura fiscal en SOVOS",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 820
+        },
+        {
+          "id": "enr-fin",
+          "nombre": "Fin",
+          "tipo_elemento": "Evento de Fin",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 820
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "enr-inicio",
+          "destino": "enr-crear-poliza",
+          "descripcion": ""
+        },
+        {
+          "fuente": "enr-crear-poliza",
+          "destino": "enr-adjunta-onphase",
+          "descripcion": "AS-Approved by System"
+        },
+        {
+          "fuente": "enr-adjunta-onphase",
+          "destino": "enr-valida-patologias",
+          "descripcion": ""
+        },
+        {
+          "fuente": "enr-valida-patologias",
+          "destino": "enr-gw-preexistencias",
+          "descripcion": ""
+        },
+        {
+          "fuente": "enr-gw-preexistencias",
+          "destino": "enr-codifica",
+          "descripcion": "Sí"
+        },
+        {
+          "fuente": "enr-gw-preexistencias",
+          "destino": "enr-aprueba-emision",
+          "descripcion": "No"
+        },
+        {
+          "fuente": "enr-codifica",
+          "destino": "enr-aprueba-emision",
+          "descripcion": ""
+        },
+        {
+          "fuente": "enr-aprueba-emision",
+          "destino": "enr-lexisnexis",
+          "descripcion": "AU-Approved Underwriting"
+        },
+        {
+          "fuente": "enr-lexisnexis",
+          "destino": "enr-gw-alerta",
+          "descripcion": ""
+        },
+        {
+          "fuente": "enr-gw-alerta",
+          "destino": "enr-queue-qc",
+          "descripcion": "No"
+        },
+        {
+          "fuente": "enr-gw-alerta",
+          "destino": "enr-gw-ofac",
+          "descripcion": "Sí"
+        },
+        {
+          "fuente": "enr-gw-ofac",
+          "destino": "enr-fin-no-activa",
+          "descripcion": "Sí → investigación Financial Crimes"
+        },
+        {
+          "fuente": "enr-gw-ofac",
+          "destino": "enr-investiga-posterior",
+          "descripcion": "No → en paralelo"
+        },
+        {
+          "fuente": "enr-gw-ofac",
+          "destino": "enr-queue-qc",
+          "descripcion": "No → sigue emisión"
+        },
+        {
+          "fuente": "enr-queue-qc",
+          "destino": "enr-libera-qc",
+          "descripcion": ""
+        },
+        {
+          "fuente": "enr-libera-qc",
+          "destino": "enr-factura-sovos",
+          "descripcion": "PP-Pending Payment"
+        },
+        {
+          "fuente": "enr-factura-sovos",
+          "destino": "enr-fin",
+          "descripcion": ""
+        }
+      ],
+      "x": 60,
+      "y": 60,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Carril"
+    },
+    {
+      "nombre_agregado": "Financial Crimes",
+      "entidad_raiz": "Investigación de alertas de LexisNexis (24–48 h).",
+      "descripcion": "Investigación de alertas de LexisNexis (24–48 h).",
+      "nodos": [
+        {
+          "id": "fc-investiga",
+          "nombre": "Realiza investigación",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Plazo 24–48 h.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 120
+        },
+        {
+          "id": "fc-gw-falso-positivo",
+          "nombre": "¿Es un falso positivo?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 848,
+          "y": 120
+        },
+        {
+          "id": "fc-informa-no-activa",
+          "nombre": "Informa a Enrollment y al Banco que la póliza no puede ser activada",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 220
+        },
+        {
+          "id": "fc-cancela-certificado",
+          "nombre": "Se cancela certificado",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 848,
+          "y": 220
+        },
+        {
+          "id": "fc-gw-pago",
+          "nombre": "¿Se recibió el pago?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 320
+        },
+        {
+          "id": "fc-fin",
+          "nombre": "Fin (sin pago que reversar)",
+          "tipo_elemento": "Evento de Fin",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 848,
+          "y": 320
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "fc-investiga",
+          "destino": "fc-gw-falso-positivo",
+          "descripcion": "24–48 h"
+        },
+        {
+          "fuente": "fc-gw-falso-positivo",
+          "destino": "fc-informa-no-activa",
+          "descripcion": "No"
+        },
+        {
+          "fuente": "fc-informa-no-activa",
+          "destino": "fc-cancela-certificado",
+          "descripcion": ""
+        },
+        {
+          "fuente": "fc-cancela-certificado",
+          "destino": "fc-gw-pago",
+          "descripcion": ""
+        },
+        {
+          "fuente": "fc-gw-pago",
+          "destino": "fc-fin",
+          "descripcion": "No"
+        }
+      ],
+      "x": 640,
+      "y": 60,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Carril"
+    },
+    {
+      "nombre_agregado": "Banco",
+      "entidad_raiz": "Reverso de pagos al Cliente cuando la póliza no puede activarse.",
+      "descripcion": "Reverso de pagos al Cliente cuando la póliza no puede activarse.",
+      "nodos": [
+        {
+          "id": "bco-reversa-pago",
+          "nombre": "Reversa el pago al Cliente",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 600
+        },
+        {
+          "id": "bco-fin",
+          "nombre": "Fin (pago reversado)",
+          "tipo_elemento": "Evento de Fin",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 600
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "bco-reversa-pago",
+          "destino": "bco-fin",
+          "descripcion": ""
+        }
+      ],
+      "x": 60,
+      "y": 540,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Carril"
+    }
+  ],
+  "read_models": [],
+  "politicas_inter_agregados": [
+    {
+      "fuente": "enr-fin-no-activa",
+      "destino": "fc-investiga",
+      "descripcion": "A: investigación por Financial Crimes"
+    },
+    {
+      "fuente": "fc-gw-falso-positivo",
+      "destino": "enr-queue-qc",
+      "descripcion": "Sí → póliza pasa a QC"
+    },
+    {
+      "fuente": "fc-gw-pago",
+      "destino": "bco-reversa-pago",
+      "descripcion": "Sí"
+    }
+  ],
+  "responsables": [],
+  "notas": "",
+  "transcript": ""
+}

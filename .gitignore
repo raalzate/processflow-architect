@@ -1,0 +1,56 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+/dist
+/app_env
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# python (legacy studio, removed)
+__pycache__/
+*.pyc
+
+# Claude Code local state (no compartido)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local env files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+domain_analysis.json
+*.cache.json
+dist/
+
+# Workspace del servidor MCP (modelos de diagramas en curso)
+.processflow/

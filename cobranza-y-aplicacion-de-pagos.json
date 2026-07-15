@@ -1,0 +1,321 @@
+{
+  "nombre_proyecto": "Cobranza y Aplicación de Pagos",
+  "version": "1.0.0",
+  "fecha_analisis": "2026-07-03",
+  "big_picture": {
+    "descripcion": "Nova cobra la prima (débitos 24 h, tarjetas semanal); el pago se aplica automático en Amigos+; cancelación por falta de pago a 90 días con nota de crédito en SOVOS.",
+    "hotspots": [],
+    "nodos": [],
+    "aristas": []
+  },
+  "agregados": [
+    {
+      "nombre_agregado": "NOVA",
+      "entidad_raiz": "Broker/TPA: ejecuta el cobro contra el Banco y notifica a Bupa vía API.",
+      "descripcion": "Broker/TPA: ejecuta el cobro contra el Banco y notifica a Bupa vía API.",
+      "nodos": [
+        {
+          "id": "cob-inicio",
+          "nombre": "Corte de cobro (24 h débitos · semanal tarjetas)",
+          "tipo_elemento": "Evento Temporizador",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 120
+        },
+        {
+          "id": "cob-cobra",
+          "nombre": "Realiza cobro de prima en el producto seleccionado",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": [
+            "API NOVA & Banco"
+          ],
+          "x": 268,
+          "y": 120
+        },
+        {
+          "id": "cob-gw-cobro",
+          "nombre": "¿Se pudo realizar el cobro?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 220
+        },
+        {
+          "id": "cob-reintento",
+          "nombre": "Reintenta cobro en 24 h o siguiente fecha de corte",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 220
+        },
+        {
+          "id": "cob-gw-pago",
+          "nombre": "¿Se recibió el pago?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 320
+        },
+        {
+          "id": "cob-gw-90",
+          "nombre": "¿Han pasado 90 días?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 320
+        },
+        {
+          "id": "cob-envia-pago",
+          "nombre": "Envía información de pago de prima",
+          "tipo_elemento": "Tarea",
+          "descripcion": "En línea.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": [
+            "API NOVA & Bupa"
+          ],
+          "x": 84,
+          "y": 420
+        },
+        {
+          "id": "cob-cancela-cert",
+          "nombre": "Emite cancelación de certificado",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Cancelación por falta de pago.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 420
+        },
+        {
+          "id": "cob-notifica-nc",
+          "nombre": "Notifica a Bupa para generar nota de crédito",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": [
+            "API NOVA & Bupa"
+          ],
+          "x": 84,
+          "y": 520
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "cob-inicio",
+          "destino": "cob-cobra",
+          "descripcion": ""
+        },
+        {
+          "fuente": "cob-cobra",
+          "destino": "cob-gw-cobro",
+          "descripcion": ""
+        },
+        {
+          "fuente": "cob-gw-cobro",
+          "destino": "cob-envia-pago",
+          "descripcion": "Sí"
+        },
+        {
+          "fuente": "cob-gw-cobro",
+          "destino": "cob-reintento",
+          "descripcion": "No"
+        },
+        {
+          "fuente": "cob-reintento",
+          "destino": "cob-gw-pago",
+          "descripcion": ""
+        },
+        {
+          "fuente": "cob-gw-pago",
+          "destino": "cob-envia-pago",
+          "descripcion": "Sí"
+        },
+        {
+          "fuente": "cob-gw-pago",
+          "destino": "cob-gw-90",
+          "descripcion": "No"
+        },
+        {
+          "fuente": "cob-gw-90",
+          "destino": "cob-reintento",
+          "descripcion": "No → sigue reintentando"
+        },
+        {
+          "fuente": "cob-gw-90",
+          "destino": "cob-cancela-cert",
+          "descripcion": "Sí"
+        },
+        {
+          "fuente": "cob-cancela-cert",
+          "destino": "cob-notifica-nc",
+          "descripcion": ""
+        }
+      ],
+      "x": 60,
+      "y": 60,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Carril"
+    },
+    {
+      "nombre_agregado": "Enrollment Bupa",
+      "entidad_raiz": "Aplica pagos en Amigos+ y gestiona notas de crédito en SOVOS.",
+      "descripcion": "Aplica pagos en Amigos+ y gestiona notas de crédito en SOVOS.",
+      "nodos": [
+        {
+          "id": "enr-recibe-pago",
+          "nombre": "Recibe información de pago de prima",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Invoice en Amigos+ en estatus Open.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 120
+        },
+        {
+          "id": "enr-aplica-pago",
+          "nombre": "Aplica pago en invoices de Amigos+",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Automático: el invoice pasa de Open a FPM.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 848,
+          "y": 120
+        },
+        {
+          "id": "enr-activa",
+          "nombre": "Cambia estatus de póliza a Active",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 220
+        },
+        {
+          "id": "enr-fin-activa",
+          "nombre": "Póliza activa",
+          "tipo_elemento": "Evento de Fin",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 848,
+          "y": 220
+        },
+        {
+          "id": "enr-coloca-ca",
+          "nombre": "Si la póliza estaba en PP se coloca en estatus CA automáticamente",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 320
+        },
+        {
+          "id": "enr-gw-mensual",
+          "nombre": "¿Modo de pago mensual?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 848,
+          "y": 320
+        },
+        {
+          "id": "enr-nc-auto",
+          "nombre": "Genera nota de crédito en SOVOS automáticamente",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Desde E-billing Ecuador (módulo Accounting); no requiere recálculo de prima.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 420
+        },
+        {
+          "id": "enr-nc-manual",
+          "nombre": "Genera nota de crédito en SOVOS manualmente",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Pago anual: requiere recálculo de prima.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 848,
+          "y": 420
+        },
+        {
+          "id": "enr-fin-cancelada",
+          "nombre": "Póliza cancelada con nota de crédito",
+          "tipo_elemento": "Evento de Fin",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 520
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "enr-recibe-pago",
+          "destino": "enr-aplica-pago",
+          "descripcion": ""
+        },
+        {
+          "fuente": "enr-aplica-pago",
+          "destino": "enr-activa",
+          "descripcion": "invoice en FPM"
+        },
+        {
+          "fuente": "enr-activa",
+          "destino": "enr-fin-activa",
+          "descripcion": ""
+        },
+        {
+          "fuente": "enr-coloca-ca",
+          "destino": "enr-gw-mensual",
+          "descripcion": ""
+        },
+        {
+          "fuente": "enr-gw-mensual",
+          "destino": "enr-nc-auto",
+          "descripcion": "Sí"
+        },
+        {
+          "fuente": "enr-gw-mensual",
+          "destino": "enr-nc-manual",
+          "descripcion": "No (anual)"
+        },
+        {
+          "fuente": "enr-nc-auto",
+          "destino": "enr-fin-cancelada",
+          "descripcion": ""
+        },
+        {
+          "fuente": "enr-nc-manual",
+          "destino": "enr-fin-cancelada",
+          "descripcion": ""
+        }
+      ],
+      "x": 640,
+      "y": 60,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Carril"
+    }
+  ],
+  "read_models": [],
+  "politicas_inter_agregados": [
+    {
+      "fuente": "cob-envia-pago",
+      "destino": "enr-recibe-pago",
+      "descripcion": "en línea"
+    },
+    {
+      "fuente": "cob-notifica-nc",
+      "destino": "enr-coloca-ca",
+      "descripcion": ""
+    }
+  ],
+  "responsables": [],
+  "notas": "",
+  "transcript": ""
+}

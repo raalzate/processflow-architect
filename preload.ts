@@ -1,0 +1,73 @@
+// preload.ts — API expuesta al renderer. La IA local corre en el renderer
+// (LiteRT-LM / WebGPU); aquí solo: navegación, PDF, portapapeles y gestión de
+// modelos .litertlm (descarga/estado/borrado, servidos por litert-model://).
+import { contextBridge, ipcRenderer } from 'electron';
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  generatePdf: (markdown: string) => ipcRenderer.invoke('convert-md-to-pdf', markdown),
+  navigate: (callback: any) => ipcRenderer.on('navigate', callback),
+  onDesignerAction: (callback: (action: string) => void) => {
+    const listener = (_e: any, action: string) => callback(action);
+    ipcRenderer.on('designer-action', listener);
+    return () => ipcRenderer.removeListener('designer-action', listener);
+  },
+  copyToClipboard: (text: string): Promise<boolean> => ipcRenderer.invoke('copy-to-clipboard', text),
+  captureCanvas: (rect: { x: number; y: number; width: number; height: number }): Promise<string> =>
+    ipcRenderer.invoke('capture-canvas', rect),
+
+  // --- Modelos LiteRT-LM (.litertlm) ---
+  litertModelsList: (): Promise<{ totalRamGB: number; models: any[] }> =>
+    ipcRenderer.invoke('litert-models-list'),
+  litertModelDownload: (id: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('litert-model-download', id),
+  litertModelDelete: (id: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('litert-model-delete', id),
+  litertModelReveal: (id: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('litert-model-reveal', id),
+  onLitertModelProgress: (callback: (data: { id: string; percent: number }) => void) => {
+    const listener = (_e: any, data: any) => callback(data);
+    ipcRenderer.on('litert-model-progress', listener);
+    return () => ipcRenderer.removeListener('litert-model-progress', listener);
+  },
+
+  // --- Servidor MCP embebido (HTTP): activar/estado + diagramas entrantes ---
+  mcpServerStart: (port?: number): Promise<{ running: boolean; port: number; url: string; error?: string }> =>
+    ipcRenderer.invoke('mcp-server-start', port),
+  mcpServerStop: (): Promise<{ running: boolean; port: number; url: string }> =>
+    ipcRenderer.invoke('mcp-server-stop'),
+  mcpServerStatus: (): Promise<{ running: boolean; port: number; url: string }> =>
+    ipcRenderer.invoke('mcp-server-status'),
+  onMcpImportDiagram: (
+    callback: (data: {
+      name: string;
+      content: any;
+      view?: { notation?: string };
+      mermaid?: boolean;
+    }) => void
+  ) => {
+    const listener = (_e: any, data: any) => callback(data);
+    ipcRenderer.on('mcp-import-diagram', listener);
+    return () => ipcRenderer.removeListener('mcp-import-diagram', listener);
+  },
+
+  // --- Playground MCP (guía /mcp) ---
+  mcpPlaygroundListTools: (): Promise<any[]> => ipcRenderer.invoke('mcp-playground-list-tools'),
+  mcpPlaygroundCall: (name: string, args: unknown): Promise<any> =>
+    ipcRenderer.invoke('mcp-playground-call', name, args),
+
+  // --- Información del sistema (Configuración → Sistema) ---
+  systemInfo: (): Promise<any> => ipcRenderer.invoke('system-info'),
+
+  // --- IA remota (opcional): llaves cifradas en el main + generación de texto ---
+  setAiKey: (provider: string, key: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('ai-key-set', provider, key),
+  deleteAiKey: (provider: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('ai-key-delete', provider),
+  getAiKeyStatus: (): Promise<Record<string, boolean>> => ipcRenderer.invoke('ai-key-status'),
+  remoteGenerate: (args: {
+    provider: string;
+    model: string;
+    prompt: string;
+    system?: string;
+  }): Promise<string> => ipcRenderer.invoke('ai-remote-generate', args),
+});

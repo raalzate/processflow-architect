@@ -1,0 +1,531 @@
+{
+  "nombre_proyecto": "Proyecto Geiser · Big Picture del Dominio",
+  "version": "1.0.0",
+  "fecha_analisis": "2026-07-03",
+  "big_picture": {
+    "descripcion": "Seguro GMM masivo digital Bupa Ecuador + Banco Pichincha (Nova/EVA): venta, suscripción, enrollment, facturación y cobranza.",
+    "hotspots": [],
+    "nodos": [
+      {
+        "id": "actor-cliente",
+        "nombre": "Cliente / Asegurado",
+        "tipo_elemento": "Actor",
+        "descripcion": "Cliente del Banco Pichincha; accede por internet banking, asesor en agencia o campaña por email.",
+        "estado_comparativo": "nuevo",
+        "tags_tecnologia": null,
+        "x": 1220,
+        "y": 60
+      },
+      {
+        "id": "actor-uw",
+        "nombre": "Analista de Underwriting Bupa",
+        "tipo_elemento": "Actor",
+        "descripcion": "Asiste al Cliente cuando la declaración de salud queda incompleta.",
+        "estado_comparativo": "nuevo",
+        "tags_tecnologia": null,
+        "x": 1404,
+        "y": 60
+      },
+      {
+        "id": "actor-financial-crimes",
+        "nombre": "Financial Crimes",
+        "tipo_elemento": "Actor",
+        "descripcion": "Investiga alertas de LexisNexis (24–48 h); puede cancelar el certificado y reversar el pago.",
+        "estado_comparativo": "nuevo",
+        "tags_tecnologia": null,
+        "x": 1588,
+        "y": 60
+      },
+      {
+        "id": "sys-eva",
+        "nombre": "Plataforma EVA",
+        "tipo_elemento": "Sistema Externo",
+        "descripcion": "Portal de venta digital del Banco, gestionado por Nova (broker/TPA).",
+        "estado_comparativo": "nuevo",
+        "tags_tecnologia": null,
+        "x": 1220,
+        "y": 160
+      },
+      {
+        "id": "sys-amigos",
+        "nombre": "Amigos+",
+        "tipo_elemento": "Sistema Externo",
+        "descripcion": "Core de seguros de Bupa Ecuador: nuevo Insurance Business (no claims only).",
+        "estado_comparativo": "nuevo",
+        "tags_tecnologia": null,
+        "x": 1404,
+        "y": 160
+      }
+    ],
+    "aristas": [
+      {
+        "fuente": "actor-cliente",
+        "destino": "cmd-validar-datos",
+        "descripcion": "inicia compra en EVA"
+      },
+      {
+        "fuente": "actor-uw",
+        "destino": "pol-uw-asiste",
+        "descripcion": ""
+      },
+      {
+        "fuente": "actor-financial-crimes",
+        "destino": "cmd-screening-lexisnexis",
+        "descripcion": "investiga alertas 24–48 h"
+      },
+      {
+        "fuente": "sys-eva",
+        "destino": "cmd-validar-datos",
+        "descripcion": "canal de venta"
+      },
+      {
+        "fuente": "sys-amigos",
+        "destino": "cmd-crear-poliza",
+        "descripcion": "core de emisión"
+      }
+    ]
+  },
+  "agregados": [
+    {
+      "nombre_agregado": "Venta Digital",
+      "entidad_raiz": "Banco Pichincha & Nova · plataforma EVA: cotización, selección de plan, pago y firma OTP.",
+      "descripcion": "Banco Pichincha & Nova · plataforma EVA: cotización, selección de plan, pago y firma OTP.",
+      "nodos": [
+        {
+          "id": "cmd-validar-datos",
+          "nombre": "Validar Datos del Cliente",
+          "tipo_elemento": "Comando",
+          "descripcion": "Solo clientes del Banco pueden comprar; Nova valida contra el CRM del Banco.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 120
+        },
+        {
+          "id": "cmd-cotizar-plan",
+          "nombre": "Cotizar y Seleccionar Plan",
+          "tipo_elemento": "Comando",
+          "descripcion": "Planes Salud Integral 10K/25K/50K; deducible 5K y 10K; pago mensual o anual.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 120
+        },
+        {
+          "id": "regla-pago-banco",
+          "nombre": "Solo tarjeta/débito Banco Pichincha",
+          "tipo_elemento": "Regla de Negocio",
+          "descripcion": "No se admiten pagos de terceros ni medios de otros bancos.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 220
+        },
+        {
+          "id": "cmd-firmar-otp",
+          "nombre": "Firmar con Código OTP",
+          "tipo_elemento": "Comando",
+          "descripcion": "Firma electrónica sencilla custodiada en log de NOVA; 3 intentos y reenvío.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 220
+        },
+        {
+          "id": "evt-venta-realizada",
+          "nombre": "Venta Realizada",
+          "tipo_elemento": "Evento",
+          "descripcion": "NOVA genera solicitud, declaración de salud y certificado individual con firma.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 320
+        },
+        {
+          "id": "evt-certificado-emitido",
+          "nombre": "Certificado Enviado al Cliente",
+          "tipo_elemento": "Evento",
+          "descripcion": "El mismo día por email, con kit de bienvenida.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 320
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "cmd-validar-datos",
+          "destino": "cmd-cotizar-plan",
+          "descripcion": ""
+        },
+        {
+          "fuente": "cmd-cotizar-plan",
+          "destino": "cmd-firmar-otp",
+          "descripcion": "plan y pago elegidos"
+        },
+        {
+          "fuente": "regla-pago-banco",
+          "destino": "cmd-cotizar-plan",
+          "descripcion": "restringe método de pago"
+        },
+        {
+          "fuente": "cmd-firmar-otp",
+          "destino": "evt-venta-realizada",
+          "descripcion": ""
+        },
+        {
+          "fuente": "evt-venta-realizada",
+          "destino": "evt-certificado-emitido",
+          "descripcion": ""
+        }
+      ],
+      "x": 60,
+      "y": 60,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Contexto Delimitado"
+    },
+    {
+      "nombre_agregado": "Suscripción Médica",
+      "entidad_raiz": "Bupa Ecuador · declaración de salud vía BRABU embebido en EVA (solo enfermedades graves).",
+      "descripcion": "Bupa Ecuador · declaración de salud vía BRABU embebido en EVA (solo enfermedades graves).",
+      "nodos": [
+        {
+          "id": "cmd-declarar-salud",
+          "nombre": "Declarar Salud en BRABU",
+          "tipo_elemento": "Comando",
+          "descripcion": "Chatbot BRABU embebido en EVA; datos resguardados 72 h para reanudar compra.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 120
+        },
+        {
+          "id": "regla-enfermedades-graves",
+          "nombre": "Solo enfermedades graves (lista UW)",
+          "tipo_elemento": "Regla de Negocio",
+          "descripcion": "Underwriting simplificado: listado elaborado por UW en sistema Brabu.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 848,
+          "y": 120
+        },
+        {
+          "id": "evt-declaracion-completada",
+          "nombre": "Declaración de Salud Aceptada",
+          "tipo_elemento": "Evento",
+          "descripcion": "Cliente acepta el formulario preliminar; preexistencias quedan declaradas.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 220
+        },
+        {
+          "id": "pol-uw-asiste",
+          "nombre": "Si declaración incompleta → UW contacta al Cliente",
+          "tipo_elemento": "Política",
+          "descripcion": "EVA notifica a Underwriting Bupa; asistencia para completar en línea (72 h).",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 848,
+          "y": 220
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "regla-enfermedades-graves",
+          "destino": "cmd-declarar-salud",
+          "descripcion": ""
+        },
+        {
+          "fuente": "cmd-declarar-salud",
+          "destino": "evt-declaracion-completada",
+          "descripcion": ""
+        },
+        {
+          "fuente": "pol-uw-asiste",
+          "destino": "cmd-declarar-salud",
+          "descripcion": "reanuda con asistencia de UW"
+        }
+      ],
+      "x": 640,
+      "y": 60,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Contexto Delimitado"
+    },
+    {
+      "nombre_agregado": "Enrollment y Emisión",
+      "entidad_raiz": "Bupa Ecuador · creación de póliza en Amigos+, codificación de preexistencias, screening y QC.",
+      "descripcion": "Bupa Ecuador · creación de póliza en Amigos+, codificación de preexistencias, screening y QC.",
+      "nodos": [
+        {
+          "id": "cmd-crear-poliza",
+          "nombre": "Crear Póliza en Amigos+",
+          "tipo_elemento": "Comando",
+          "descripcion": "Automático vía API NOVA & Bupa; certificados como pólizas individuales con vigencia diaria propia.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 600
+        },
+        {
+          "id": "cmd-codificar-preexistencias",
+          "nombre": "Codificar Preexistencias",
+          "tipo_elemento": "Comando",
+          "descripcion": "Las patologías declaradas en BRABU se codifican automáticamente en Amigos+ (propuesta Q4 2026).",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 600
+        },
+        {
+          "id": "evt-poliza-aprobada-uw",
+          "nombre": "Póliza Aprobada por Underwriting",
+          "tipo_elemento": "Evento",
+          "descripcion": "Estatus AU-Approved Underwriting, automático tras codificar preexistencias.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 700
+        },
+        {
+          "id": "cmd-screening-lexisnexis",
+          "nombre": "Verificar en LexisNexis",
+          "tipo_elemento": "Comando",
+          "descripcion": "Screening de crímenes financieros: OFAC, PEPs, adverse news, falsos positivos.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 700
+        },
+        {
+          "id": "regla-solo-ofac",
+          "nombre": "Solo alerta OFAC detiene la emisión",
+          "tipo_elemento": "Regla de Negocio",
+          "descripcion": "Flujo simplificado LexisNexis; otras alertas se investigan tras la activación. Pendiente aprobación Legal y Cumplimiento.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 800
+        },
+        {
+          "id": "evt-poliza-pending-payment",
+          "nombre": "Póliza en Pending Payment",
+          "tipo_elemento": "Evento",
+          "descripcion": "Tras pasar LexisNexis y liberarse de QC automáticamente, sin esperar release manual. Pendiente aprobación de QC.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 800
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "cmd-crear-poliza",
+          "destino": "cmd-codificar-preexistencias",
+          "descripcion": ""
+        },
+        {
+          "fuente": "cmd-codificar-preexistencias",
+          "destino": "evt-poliza-aprobada-uw",
+          "descripcion": ""
+        },
+        {
+          "fuente": "evt-poliza-aprobada-uw",
+          "destino": "cmd-screening-lexisnexis",
+          "descripcion": ""
+        },
+        {
+          "fuente": "regla-solo-ofac",
+          "destino": "cmd-screening-lexisnexis",
+          "descripcion": ""
+        },
+        {
+          "fuente": "cmd-screening-lexisnexis",
+          "destino": "evt-poliza-pending-payment",
+          "descripcion": "sin alerta OFAC + QC automático"
+        }
+      ],
+      "x": 60,
+      "y": 540,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Contexto Delimitado"
+    },
+    {
+      "nombre_agregado": "Facturación",
+      "entidad_raiz": "Bupa Ecuador · invoices según modo de pago, factura fiscal en SOVOS y registro en SRI.",
+      "descripcion": "Bupa Ecuador · invoices según modo de pago, factura fiscal en SOVOS y registro en SRI.",
+      "nodos": [
+        {
+          "id": "cmd-generar-invoice",
+          "nombre": "Generar Invoice según Modo de Pago",
+          "tipo_elemento": "Comando",
+          "descripcion": "Invoices mensuales desagrupados en e-billing transfer (se elimina la anualización de prima).",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 600
+        },
+        {
+          "id": "evt-factura-sri",
+          "nombre": "Factura Fiscal Registrada en SRI",
+          "tipo_elemento": "Evento",
+          "descripcion": "Generada en SOVOS, registrada en el SRI y cargada al portal Mi Bupa.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 848,
+          "y": 600
+        },
+        {
+          "id": "vista-mi-bupa",
+          "nombre": "Facturas en Portal Mi Bupa",
+          "tipo_elemento": "Vista",
+          "descripcion": "El Cliente consulta sus facturas fiscales registradas.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 700
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "cmd-generar-invoice",
+          "destino": "evt-factura-sri",
+          "descripcion": "SOVOS"
+        },
+        {
+          "fuente": "evt-factura-sri",
+          "destino": "vista-mi-bupa",
+          "descripcion": ""
+        }
+      ],
+      "x": 640,
+      "y": 540,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Contexto Delimitado"
+    },
+    {
+      "nombre_agregado": "Cobranza",
+      "entidad_raiz": "Nova cobra (débitos 24h, tarjetas semanal); el pago se aplica automático en Amigos+ vía API.",
+      "descripcion": "Nova cobra (débitos 24h, tarjetas semanal); el pago se aplica automático en Amigos+ vía API.",
+      "nodos": [
+        {
+          "id": "cmd-cobrar-prima",
+          "nombre": "Cobrar Prima (Nova)",
+          "tipo_elemento": "Comando",
+          "descripcion": "Débitos bancarios cada 24 h; tarjetas de crédito semanal. Reintento en 24 h o siguiente corte.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 1080
+        },
+        {
+          "id": "evt-pago-aplicado",
+          "nombre": "Pago Aplicado en Amigos+",
+          "tipo_elemento": "Evento",
+          "descripcion": "Automático vía API con NOVA: invoice pasa de Open a FPM.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 1080
+        },
+        {
+          "id": "evt-poliza-activada",
+          "nombre": "Póliza Activada",
+          "tipo_elemento": "Evento",
+          "descripcion": "El estatus de la póliza cambia a Active al aplicarse el pago.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 1180
+        },
+        {
+          "id": "pol-cancelacion-90",
+          "nombre": "Sin pago a 90 días → Cancelar Póliza",
+          "tipo_elemento": "Política",
+          "descripcion": "Pending Payment pasa a CA automáticamente; nota de crédito automática (mensual) o manual (anual) en SOVOS.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 1180
+        },
+        {
+          "id": "evt-poliza-cancelada",
+          "nombre": "Póliza Cancelada por Falta de Pago",
+          "tipo_elemento": "Evento",
+          "descripcion": "NOVA emite cancelación de certificado y notifica a Bupa vía API.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 1280
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "cmd-cobrar-prima",
+          "destino": "evt-pago-aplicado",
+          "descripcion": "API NOVA & Bupa"
+        },
+        {
+          "fuente": "evt-pago-aplicado",
+          "destino": "evt-poliza-activada",
+          "descripcion": ""
+        },
+        {
+          "fuente": "pol-cancelacion-90",
+          "destino": "evt-poliza-cancelada",
+          "descripcion": ""
+        },
+        {
+          "fuente": "cmd-cobrar-prima",
+          "destino": "pol-cancelacion-90",
+          "descripcion": "si no se logra cobrar"
+        }
+      ],
+      "x": 60,
+      "y": 1020,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Contexto Delimitado"
+    }
+  ],
+  "read_models": [],
+  "politicas_inter_agregados": [
+    {
+      "fuente": "cmd-cotizar-plan",
+      "destino": "cmd-declarar-salud",
+      "descripcion": "producto exige declaración"
+    },
+    {
+      "fuente": "evt-declaracion-completada",
+      "destino": "evt-venta-realizada",
+      "descripcion": "habilita cierre de venta"
+    },
+    {
+      "fuente": "evt-venta-realizada",
+      "destino": "cmd-crear-poliza",
+      "descripcion": "API NOVA & Bupa (ventas diarias)"
+    },
+    {
+      "fuente": "evt-declaracion-completada",
+      "destino": "cmd-codificar-preexistencias",
+      "descripcion": "patologías declaradas en BRABU"
+    },
+    {
+      "fuente": "evt-poliza-pending-payment",
+      "destino": "cmd-generar-invoice",
+      "descripcion": ""
+    },
+    {
+      "fuente": "evt-poliza-pending-payment",
+      "destino": "cmd-cobrar-prima",
+      "descripcion": ""
+    }
+  ],
+  "responsables": [],
+  "notas": "",
+  "transcript": ""
+}

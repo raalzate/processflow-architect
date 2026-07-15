@@ -1,0 +1,13 @@
+{
+  "name": "processflow-mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Servidor MCP (stdio) para diseñar diagramas de Processflow Architect desde Claude Code / Codex.",
+  "bin": {
+    "processflow-mcp": "index.ts"
+  },
+  "scripts": {
+    "start": "tsx index.ts"
+  }
+}

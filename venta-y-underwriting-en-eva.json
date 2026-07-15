@@ -1,0 +1,280 @@
+{
+  "nombre_proyecto": "Venta y Underwriting en EVA",
+  "version": "1.0.0",
+  "fecha_analisis": "2026-07-03",
+  "big_picture": {
+    "descripcion": "Opción 1 (lanzamiento): venta digital en EVA con declaración de salud vía BRABU embebido y firma con OTP.",
+    "hotspots": [],
+    "nodos": [],
+    "aristas": []
+  },
+  "agregados": [
+    {
+      "nombre_agregado": "Cliente en EVA",
+      "entidad_raiz": "Cliente (o asesor del Banco) comprando en la plataforma EVA.",
+      "descripcion": "Cliente (o asesor del Banco) comprando en la plataforma EVA.",
+      "nodos": [
+        {
+          "id": "v-inicio",
+          "nombre": "Cliente accede a EVA",
+          "tipo_elemento": "Evento de Inicio",
+          "descripcion": "Por internet banking, asesor en agencia o campaña de email.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 120
+        },
+        {
+          "id": "v-valida",
+          "nombre": "Valida datos del Cliente contra el Banco",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Solo clientes del Banco; acepta tratamiento de datos y T&C.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": [
+            "API NOVA & Banco"
+          ],
+          "x": 268,
+          "y": 120
+        },
+        {
+          "id": "v-plan",
+          "nombre": "Selecciona producto, plan y método de pago",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Salud Integral 10K/25K/50K; mensual o anual; solo medios Banco Pichincha.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 220
+        },
+        {
+          "id": "v-brabu",
+          "nombre": "Declara salud en chatbot BRABU (embebido en EVA)",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Tiempo máximo de evaluación en Brabu: 10 min; la declaración se realiza por miembro.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 220
+        },
+        {
+          "id": "v-gw-completa",
+          "nombre": "¿Completó la declaración?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 320
+        },
+        {
+          "id": "v-gw-acepta",
+          "nombre": "¿Acepta la declaración de salud?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 320
+        },
+        {
+          "id": "v-otp",
+          "nombre": "Genera código OTP y lo envía al celular del titular",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Expira en 2 min; 3 intentos y luego re-envío. La clave es la firma electrónica (log en NOVA).",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 420
+        },
+        {
+          "id": "v-gw-otp",
+          "nombre": "¿Código correcto?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 420
+        },
+        {
+          "id": "v-emite",
+          "nombre": "NOVA genera solicitud, declaración y certificado con firma electrónica",
+          "tipo_elemento": "Tarea",
+          "descripcion": "El certificado incluye el listado de preexistencias declaradas.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": [
+            "Integración BRABU",
+            "API NOVA & Bupa"
+          ],
+          "x": 84,
+          "y": 520
+        },
+        {
+          "id": "v-kit",
+          "nombre": "Envía kit de bienvenida y certificado por email",
+          "tipo_elemento": "Tarea",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 520
+        },
+        {
+          "id": "v-fin",
+          "nombre": "Venta electrónica completada",
+          "tipo_elemento": "Evento de Fin",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 84,
+          "y": 620
+        },
+        {
+          "id": "v-fin-abandono",
+          "nombre": "EVA elimina el registro de compra",
+          "tipo_elemento": "Evento de Fin",
+          "descripcion": "72 h después sin completar.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 268,
+          "y": 620
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "v-inicio",
+          "destino": "v-valida",
+          "descripcion": ""
+        },
+        {
+          "fuente": "v-valida",
+          "destino": "v-plan",
+          "descripcion": ""
+        },
+        {
+          "fuente": "v-plan",
+          "destino": "v-brabu",
+          "descripcion": "el producto exige declarar enfermedad grave"
+        },
+        {
+          "fuente": "v-brabu",
+          "destino": "v-gw-completa",
+          "descripcion": ""
+        },
+        {
+          "fuente": "v-gw-completa",
+          "destino": "v-gw-acepta",
+          "descripcion": "Sí → formulario preliminar"
+        },
+        {
+          "fuente": "v-gw-acepta",
+          "destino": "v-otp",
+          "descripcion": "Sí"
+        },
+        {
+          "fuente": "v-gw-acepta",
+          "destino": "v-fin-abandono",
+          "descripcion": "No → no puede continuar"
+        },
+        {
+          "fuente": "v-otp",
+          "destino": "v-gw-otp",
+          "descripcion": ""
+        },
+        {
+          "fuente": "v-gw-otp",
+          "destino": "v-emite",
+          "descripcion": "Sí (firma electrónica)"
+        },
+        {
+          "fuente": "v-gw-otp",
+          "destino": "v-otp",
+          "descripcion": "No → 3 intentos y re-envío"
+        },
+        {
+          "fuente": "v-emite",
+          "destino": "v-kit",
+          "descripcion": ""
+        },
+        {
+          "fuente": "v-kit",
+          "destino": "v-fin",
+          "descripcion": ""
+        }
+      ],
+      "x": 60,
+      "y": 60,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Carril"
+    },
+    {
+      "nombre_agregado": "Underwriting Bupa",
+      "entidad_raiz": "Asiste declaraciones de salud incompletas.",
+      "descripcion": "Asiste declaraciones de salud incompletas.",
+      "nodos": [
+        {
+          "id": "uw-notifica",
+          "nombre": "EVA notifica a Underwriting Bupa la declaración incompleta",
+          "tipo_elemento": "Evento de Mensaje",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 120
+        },
+        {
+          "id": "uw-contacta",
+          "nombre": "Contacta al Cliente para brindar asistencia",
+          "tipo_elemento": "Tarea",
+          "descripcion": "Retoma la evaluación incompleta en Brabu web; datos resguardados 72 h en EVA para reanudar sin reiniciar.",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 848,
+          "y": 120
+        },
+        {
+          "id": "uw-gw-completo",
+          "nombre": "¿Cliente completó el formulario?",
+          "tipo_elemento": "Compuerta Exclusiva",
+          "estado_comparativo": "nuevo",
+          "tags_tecnologia": null,
+          "x": 664,
+          "y": 220
+        }
+      ],
+      "aristas": [
+        {
+          "fuente": "uw-notifica",
+          "destino": "uw-contacta",
+          "descripcion": ""
+        },
+        {
+          "fuente": "uw-contacta",
+          "destino": "uw-gw-completo",
+          "descripcion": ""
+        }
+      ],
+      "x": 640,
+      "y": 60,
+      "width": 500,
+      "height": 400,
+      "tipo_contenedor": "Carril"
+    }
+  ],
+  "read_models": [],
+  "politicas_inter_agregados": [
+    {
+      "fuente": "v-gw-completa",
+      "destino": "uw-notifica",
+      "descripcion": "No"
+    },
+    {
+      "fuente": "uw-gw-completo",
+      "destino": "v-gw-acepta",
+      "descripcion": "Sí → reanuda con enlace de EVA"
+    },
+    {
+      "fuente": "uw-gw-completo",
+      "destino": "v-fin-abandono",
+      "descripcion": "No (72 h después)"
+    }
+  ],
+  "responsables": [],
+  "notas": "",
+  "transcript": ""
+}
