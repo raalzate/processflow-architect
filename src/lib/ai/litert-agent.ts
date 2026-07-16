@@ -12,6 +12,7 @@
  */
 
 import { litertGenerate } from "./litert-engine";
+import { safeGraphToToon, TOON_LEGEND } from "./graph-toon";
 import {
   getDefinition,
   documentDefinitions,
@@ -94,8 +95,11 @@ function extractField(raw: string, field: "final" | "thought"): string | null {
 function buildContext(input: LitertAgentInput): string {
   let ctx = "";
   if (input.graphData) {
-    ctx += `\n\n### Modelo de dominio actual (SOLO LECTURA)\n${clamp(
-      JSON.stringify(input.graphData),
+    // TOON en vez de JSON: poda geometría/colores del lienzo y tabula los nodos
+    // y aristas para gastar menos tokens de contexto (ver graph-toon.ts). La
+    // leyenda va una sola vez para que el modelo sepa leer el formato tabular.
+    ctx += `\n\n### Modelo de dominio actual (SOLO LECTURA · formato TOON)\n${TOON_LEGEND}\n${clamp(
+      safeGraphToToon(input.graphData),
       8000
     )}`;
   }

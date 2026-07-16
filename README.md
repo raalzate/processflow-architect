@@ -1,28 +1,156 @@
-# Processflow Architect
+<div align="center">
 
-**App de escritorio para Event Storming Big Picture con IA 100 % local.**
-Modela dominios complejos de forma visual, genera artefactos de arquitectura con un
-agente de IA que corre **en tu máquina** (sin nube, sin enviar datos) y exporta a
-Mermaid, Markdown y PDF.
+```
+██████╗ ██████╗  ██████╗  ██████╗███████╗███████╗███████╗██╗      ██████╗ ██╗    ██╗
+██╔══██╗██╔══██╗██╔═══██╗██╔════╝██╔════╝██╔════╝██╔════╝██║     ██╔═══██╗██║    ██║
+██████╔╝██████╔╝██║   ██║██║     █████╗  ███████╗███████╗██║     ██║   ██║██║ █╗ ██║
+██╔═══╝ ██╔══██╗██║   ██║██║     ██╔══╝  ╚════██║╚════██║██║     ██║   ██║██║███╗██║
+██║     ██║  ██║╚██████╔╝╚██████╗███████╗███████║███████║███████╗╚██████╔╝╚███╔███╔╝
+╚═╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝╚══════╝╚══════╝╚══════╝╚══════╝ ╚═════╝  ╚══╝╚══╝
 
-- **Versión:** 0.1.0
-- **Autor:** Raúl A. Alzate · Cali, Colombia
-- **Repositorio:** https://github.com/raulalzate/ia-processflow-architect
-- **Plataformas:** macOS · Windows · Linux
+                          A  R  C  H  I  T  E  C  T
+```
+
+### El estudio de Event Storming con IA que corre **en tu máquina**
+
+**Modela dominios complejos y diseña arquitectura con un agente de IA — 100 % local, offline, sin enviar tus datos a la nube.**
+Event Storming · DDD · BPMN · C4 · UML · agente ReAct local · exporta a Mermaid / Markdown / PDF · offline-first
+
+<br/>
+
+![Electron](https://img.shields.io/badge/Electron-39-47848F?logo=electron&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![WebGPU](https://img.shields.io/badge/IA-LiteRT--LM%20·%20WebGPU-FF6F00)
+![Tests](https://img.shields.io/badge/tests-Vitest%20%2B%20cobertura-6E9F18?logo=vitest&logoColor=white)
+![Local first](https://img.shields.io/badge/offline-first-2ea44f)
+![License](https://img.shields.io/badge/licencia-propietaria-lightgrey)
+
+</div>
+
+<div align="center">
+
+![Lienzo de ProcessFlow Architect con el panel del agente de IA y un Big Picture de Event Storming](docs/screenshots/02-canvas.png)
+
+<sub>captura real · agente de IA local a la izquierda · Big Picture de Event Storming en el lienzo</sub>
+
+</div>
 
 ---
 
 ## Qué hace
 
-| Capacidad | Descripción |
-|-----------|-------------|
-| **Big Picture Event Storming** | Lienzo con eventos, comandos, agregados, políticas, read models y sistemas externos. |
-| **Vistas DDD** | Vistas por agregado (deterministas) + Big Picture estratégica, CQRS Data Flow y Read Model Graph. |
-| **Agente de IA local** | Chat tipo ReAct que razona sobre tu dominio y produce artefactos versionados y editables en un canvas. |
-| **Notaciones** | DDD / BPMN / C4 / UML por vista; la IA respeta la notación de cada vista. |
-| **Fusión de sesiones** | Combina varios workshops resolviendo conflictos (`/merger`). |
-| **Exportación** | Mermaid, Markdown estructurado y PDF (md-to-pdf + Puppeteer + Mermaid CLI). |
-| **Offline-first** | Toda la inferencia corre local con **LiteRT-LM sobre WebGPU**. Cero llamadas a la nube. |
+- **Event Storming Big Picture** — lienzo con eventos, comandos, agregados, políticas, read models y sistemas externos.
+- **Agente de IA local (ReAct)** — chatéale a tu dominio; genera artefactos versionados y editables en el lienzo: drivers, riesgos, propuesta técnica, roadmap, ADRs y diagramas.
+- **Cuatro notaciones** — DDD / BPMN / C4 / UML por vista; la IA respeta la notación de cada vista.
+- **Vistas DDD** — vistas por agregado (deterministas) + Big Picture estratégica, CQRS Data Flow y Read Model Graph. Hasta 50 vistas, inyectables al chat del agente.
+- **Puente MCP** — Claude Code / Codex diseñan diagramas desde tus documentos y los exportan directo al lienzo.
+- **Fusión de sesiones** — combina varios workshops y depura duplicados (`/merger`).
+- **Exportación** — Mermaid, Markdown estructurado y PDF.
+- **Offline-first** — toda la inferencia corre local con **LiteRT-LM sobre WebGPU**. Cero llamadas a la nube por defecto.
+
+---
+
+## Cómo funciona (30 segundos)
+
+```
+    ┌──────────────┐   arrastra .json / MCP    ┌──────────────────────────┐
+    │  Documentos  │ ────────────────────────▶ │   Lienzo (Event Storming) │
+    │  PDF · notas │                           │   DDD · BPMN · C4 · UML   │
+    └──────────────┘                           └────────────┬─────────────┘
+                                                            │  grafo → TOON
+                                                            ▼
+    ┌───────────────────────────┐   WebGPU    ┌──────────────────────────┐
+    │  Agente ReAct (renderer)  │ ◀────────── │   LiteRT-LM · Gemma local │
+    │  drivers · riesgos · ADRs │             │   (en tu máquina, offline)│
+    └────────────┬──────────────┘             └──────────────────────────┘
+                 │  artefactos versionados
+                 ▼
+    ┌───────────────────────────────────────────────────────────────────┐
+    │  Exporta → Mermaid · Markdown · PDF        (opcional: IA remota)    │
+    └───────────────────────────────────────────────────────────────────┘
+```
+
+La IA se ejecuta en el **renderer** porque LiteRT-LM necesita WebGPU (contexto seguro).
+El proceso **main** solo gestiona los modelos `.litertlm`, la exportación a PDF, el
+portapapeles y las llamadas a la nube **si** el usuario activa un proveedor remoto.
+
+---
+
+## Empieza en 60 segundos
+
+```bash
+git clone https://github.com/raulalzate/ia-processflow-architect
+cd ia-processflow-architect
+npm install            # postinstall reconstruye módulos nativos de Electron
+npm run electron-dev   # Next.js + Electron + tsc watch
+```
+
+1. Abre **Ajustes** y descarga un modelo Gemma (`.litertlm`) — una vez; luego funciona sin conexión.
+2. Crea un proyecto o **arrastra un `.json`** exportado por Claude Code vía MCP al lienzo.
+3. Pídele al **Agente de Arquitectura** que diseñe o analice: los artefactos aparecen en el lienzo.
+
+> **Requisitos:** Node.js 20+ · GPU con soporte **WebGPU** (obligatorio para la IA local) · macOS · Windows · Linux.
+
+---
+
+## Capturas
+
+| Bienvenida | Ajustes · IA local |
+|---|---|
+| ![Pantalla de bienvenida](docs/screenshots/01-home.png) | ![Ajustes: modelo, motor y servidor MCP](docs/screenshots/03-settings.png) |
+| **Guía MCP** | **Documentación in-app** |
+| ![Guía MCP para diseñar con Claude Code](docs/screenshots/04-mcp.png) | ![Documentación del diseñador](docs/screenshots/05-docs.png) |
+
+<div align="center">
+
+![Agrupador de nodos / fusión de sesiones](docs/screenshots/06-merger.png)
+
+<sub>Agrupador de nodos — depura duplicados del proyecto activo</sub>
+
+</div>
+
+---
+
+## Notaciones
+
+Cada vista declara su notación desde un registro (`src/lib/notations.ts`) y el agente la respeta.
+
+| Notación | Para qué | Elementos típicos |
+|----------|----------|-------------------|
+| **DDD / Event Storming** | Big Picture y diseño táctico | Evento · Comando · Agregado · Política · Read Model · Sistema Externo |
+| **BPMN** | Procesos de negocio | Pool · Tarea · Gateway · Subproceso (call activity vía `viewRef`) |
+| **C4** | Paisaje de sistemas | Persona · Sistema · Contenedor · Componente |
+| **UML (Secuencia)** | Interacción entre componentes | Línea de vida (contenedor) · Mensaje (arista, punteada = retorno) |
+
+---
+
+## Cuándo usarlo · cuándo no
+
+**Úsalo cuando:**
+- Facilitas Event Storming Big Picture y quieres pasar del post-it al modelo vivo.
+- Necesitas asistencia de IA **sin sacar los datos del dominio de tu máquina**.
+- Quieres que Claude Code diseñe diagramas desde tus documentos y los traiga al lienzo (MCP).
+
+**Quizá no lo necesites si:**
+- Solo buscas un editor de diagramas genérico sin modelo de dominio detrás.
+- No tienes GPU con WebGPU y no piensas activar un proveedor de IA remoto.
+
+---
+
+## Motor de IA · local por defecto, nube opt-in
+
+`ProviderId = "local" | "remote"`. El conmutador (`src/lib/ai/remote-settings.ts`) tiene tres modos:
+
+| Modo | Comportamiento |
+|------|----------------|
+| **`local`** (por defecto) | Todo corre local con LiteRT-LM · Gemma sobre WebGPU. |
+| **`hybrid`** | Tareas ligeras en local; las pesadas / estructuradas o de entrada grande van a la nube. |
+| **`remote`** | Todo a la nube (Gemini · OpenAI · Anthropic). |
+
+> **Seguridad de llaves:** se guardan **cifradas con `safeStorage`** en el proceso main
+> (`userData/ai-keys.json`). NUNCA llegan al renderer ni se loguean; las peticiones HTTP a los
+> proveedores se hacen SOLO en el main. No se añaden SDKs de nube: se usa `fetch` nativo.
 
 ---
 
@@ -31,48 +159,13 @@ Mermaid, Markdown y PDF.
 | Capa | Tecnología |
 |------|-----------|
 | Runtime de escritorio | Electron 39 |
-| Frontend | Next.js 15 (App Router) + React 18 + TypeScript 5 |
-| UI | shadcn/ui + Radix UI + Tailwind CSS + Lucide |
+| Frontend | Next.js 15 (App Router) · React 18 · TypeScript 5 |
+| UI | shadcn/ui · Radix UI · Tailwind CSS · Lucide |
 | Grafos | D3 · dagre · reactflow |
 | IA local | **LiteRT-LM (`@litert-lm/core`) sobre WebGPU**, en el renderer |
 | Exportación | md-to-pdf · Puppeteer · Mermaid CLI |
 | Pruebas | Vitest + cobertura v8 |
 | Empaquetado | electron-builder 26 |
-
-> La inferencia se ejecuta en el renderer porque LiteRT-LM necesita WebGPU
-> (contexto seguro). El proceso main solo gestiona los modelos `.litertlm`
-> (descarga/estado/borrado), la exportación a PDF y el portapapeles.
-
----
-
-## Requisitos
-
-- **Node.js 20+**
-- **GPU con soporte WebGPU** (obligatorio para la IA local)
-- Modelo `.litertlm` descargado desde la pantalla de **Settings** de la app
-
----
-
-## Desarrollo
-
-```bash
-npm install              # instala dependencias (postinstall reconstruye nativos)
-
-npm run electron-dev     # Next.js + Electron + tsc watch (entorno completo)
-npm run dev              # solo el frontend Next.js (sin Electron)
-
-npm run typecheck        # tsc renderer + electron, sin emitir
-npm test                 # pruebas unitarias (Vitest)
-npm run test:coverage    # pruebas + reporte de cobertura
-```
-
-## Build y empaquetado
-
-```bash
-npm run build                # Next.js + tsc electron → build/
-npm run electron-build:mac   # genera .dmg
-npm run electron-build:win   # genera instalador .exe
-```
 
 ---
 
@@ -84,32 +177,54 @@ processflow-architect/
 ├── preload.ts              ← puente seguro renderer↔main (window.electronAPI)
 ├── main/                   ← proceso main: ipc, ventana, logger, servicios
 │   └── services/           ← pdf, mermaid, gestión de modelos litert
-├── src/app/                ← rutas Next.js
-│   ├── home/               ← onboarding / carga de archivos
-│   ├── merger/             ← fusionador de sesiones
-│   └── settings/           ← configuración y descarga de modelos
+├── src/app/                ← rutas Next.js (home · settings · mcp · docs · merger)
 ├── src/components/         ← UI (graph · ai-panel · canvas · views · ui)
-├── src/context/            ← estado global (Graph · Agent · Views)
+├── src/context/            ← estado global (Graph · Agent · Views · Reference)
 ├── src/hooks/              ← hooks y handlers de UI
-└── src/lib/                ← lógica pura testeable (grafo, ia, artefactos, notaciones)
-    └── ai/                 ← router, proveedores, tasks y motor LiteRT
+└── src/lib/                ← lógica pura testeable (grafo · ia · artefactos · notaciones)
+    └── ai/                 ← router · proveedores · tasks · motor LiteRT · graph-toon
 ```
 
-Detalle de la arquitectura interna y el flujo de datos: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+---
+
+## Desarrollo y build
+
+```bash
+npm run electron-dev         # entorno completo (Next.js + Electron + tsc watch)
+npm run dev                  # solo el frontend Next.js
+
+npm run typecheck            # tsc renderer + electron, sin emitir
+npm test                     # pruebas unitarias (Vitest)
+npm run test:coverage        # pruebas + cobertura (mismo gate que CI)
+
+npm run build                # Next.js + tsc electron → build/
+npm run electron-build:mac   # genera .dmg
+npm run electron-build:win   # genera instalador .exe
+```
+
+---
+
+## Documentación
+
+**Empieza aquí**
+- → [Arquitectura interna y flujo de datos](docs/ARCHITECTURE.md)
+- → Documentación del diseñador · **in-app** (menú Ayuda → Documentación)
+
+**Profundiza**
+- → [Guía de releases y firma de código](docs/RELEASE.md)
+- → Guía MCP · **in-app** (menú Ayuda → Guía MCP)
 
 ---
 
 ## Integración continua
 
-- **`.github/workflows/ci.yml`** — typecheck + pruebas unitarias con cobertura en
-  cada push/PR a `main`.
-- **`.github/workflows/release-build.yml`** — empaqueta y publica releases con
-  electron-builder al crear un tag `v*`.
+- **`.github/workflows/ci.yml`** — typecheck + pruebas unitarias con cobertura en cada push/PR a `main`. No se mergea en rojo.
+- **`.github/workflows/release-build.yml`** — empaqueta instaladores mac/win/linux con electron-builder al crear un tag `v*` (o disparo manual).
 
 ---
 
 ## Licencia
 
 ```
-Copyright © 2025-2026 Raúl A. Alzate. Todos los derechos reservados.
+Copyright © 2025-2026 Raúl A. Alzate · Cali, Colombia. Todos los derechos reservados.
 ```

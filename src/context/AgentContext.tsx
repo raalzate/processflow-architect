@@ -19,6 +19,7 @@ import { useGraphContext } from "@/context/GraphContext";
 import { useViews } from "@/context/ViewsContext";
 import { useToast } from "@/hooks/use-toast";
 import { runLitertAgent } from "@/lib/ai/litert-agent";
+import { safeGraphToToon } from "@/lib/ai/graph-toon";
 import { extractDocumentText } from "@/lib/ai/document-extract";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
 import { getGenerationConfig } from "@/lib/ai-config";
@@ -77,10 +78,12 @@ function viewToContext(view: any): { kind: string; title: string; content: strin
   let content = "";
   if (view.kind === "graph") {
     try {
+      // TOON en vez de JSON: menos tokens y sin geometría del lienzo (graph-toon.ts).
+      // safe*: si el grafo viniera mal formado, degrada a JSON en vez de romper.
       content =
         `Notación / grupo de componentes: ${notation}.\n` +
-        "Grafo de la vista:\n" +
-        JSON.stringify(view.graph ?? {}, null, 2).slice(0, 8000);
+        "Grafo de la vista (formato TOON):\n" +
+        safeGraphToToon(view.graph ?? {}).slice(0, 8000);
     } catch {
       content = "";
     }
