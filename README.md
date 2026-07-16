@@ -30,9 +30,9 @@ Event Storming · DDD · BPMN · C4 · UML · agente ReAct local · exporta a Me
 
 <div align="center">
 
-![Lienzo de ProcessFlow Architect con el panel del agente de IA y un Big Picture de Event Storming](docs/screenshots/02-canvas.png)
+![Big Picture de Event Storming en el lienzo de ProcessFlow Architect](docs/screenshots/02-canvas.png)
 
-<sub>captura real · agente de IA local a la izquierda · Big Picture de Event Storming en el lienzo</sub>
+<sub>captura real · Big Picture de Event Storming — agregados en swimlanes, tipos de elemento por color</sub>
 
 </div>
 
