@@ -24,7 +24,7 @@ Event Storming · DDD · BPMN · C4 · UML · agente ReAct local · exporta a Me
 ![WebGPU](https://img.shields.io/badge/IA-LiteRT--LM%20·%20WebGPU-FF6F00)
 ![Tests](https://img.shields.io/badge/tests-Vitest%20%2B%20cobertura-6E9F18?logo=vitest&logoColor=white)
 ![Local first](https://img.shields.io/badge/offline-first-2ea44f)
-![License](https://img.shields.io/badge/licencia-propietaria-lightgrey)
+![License](https://img.shields.io/badge/licencia-Apache%202.0-blue)
 
 </div>
 
@@ -225,6 +225,4 @@ npm run electron-build:win   # genera instalador .exe
 
 ## Licencia
 
-```
-Copyright © 2025-2026 Raúl A. Alzate · Cali, Colombia. Todos los derechos reservados.
-```
+Apache 2.0 — see [LICENSE](LICENSE).
