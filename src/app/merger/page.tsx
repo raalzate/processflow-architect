@@ -269,7 +269,7 @@ export default function MergerPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-50">
+    <div className="flex flex-col h-screen bg-background">
       <header className="bg-card border-b shadow-sm w-full p-4 z-10 flex justify-between items-center">
         <div className="flex items-center gap-4">
           <div>

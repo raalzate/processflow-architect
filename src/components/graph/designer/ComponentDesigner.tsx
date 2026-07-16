@@ -2230,7 +2230,7 @@ export const ComponentDesigner: React.FC<{
             width={CANVAS_SIZE * zoom}
             height={CANVAS_SIZE * zoom}
             viewBox={`0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}`}
-            className="bg-white dark:bg-slate-950"
+            className="bg-white dark:bg-[hsl(222_16%_13%)]"
           >
             <defs>
               {/* Cuadrícula estilo lienzo de diseño (Figma/Miro): puntos finos por

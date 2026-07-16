@@ -245,10 +245,13 @@ const PaletteItem: React.FC<{
       onDragStart={(e) => onDragStart(e, item)}
       className={cn(
         "flex items-center space-x-2 p-2 border rounded-md shadow-sm cursor-grab active:cursor-grabbing transition-all",
-        color.bg,
+        // `bg` es `fill-*` (SVG del lienzo); en el chip HTML lo traducimos a `bg-*`
+        // para dar un fondo pastel SÓLIDO. Así el chip es legible en claro y oscuro
+        // (si fuera transparente heredaría el panel oscuro y el texto se perdería).
+        color.bg.replace("fill-", "bg-"),
         color.border,
-        // La paleta tiene fondo claro: los tipos con texto blanco (C4 canónico)
-        // usan su color alterno para seguir siendo legibles aquí.
+        // Texto oscuro de la notación sobre el pastel claro (los tipos C4 con texto
+        // blanco usan su color alterno `paletteText` para seguir legibles aquí).
         color.paletteText ?? color.text,
         isContainer && "border-dashed font-semibold"
       )}
@@ -304,16 +307,16 @@ export const Toolbox: React.FC<{
     setCollapsed((prev) => ({ ...prev, [label]: !prev[label] }));
 
   return (
-    <div className="flex-shrink-0 w-60 bg-gray-50 p-3 space-y-4 overflow-y-auto shadow-lg z-10 border-r">
+    <div className="flex-shrink-0 w-60 bg-background p-3 space-y-4 overflow-y-auto shadow-lg z-10 border-r">
       <div>
-        <h3 className="text-sm font-semibold text-gray-600 uppercase mb-2 px-1">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-2 px-1">
           Elementos
         </h3>
 
         {/* Selector de grupo de componentes / notación (DDD, BPMN, C4, UML) */}
         {onNotationChange && (
           <div className="mb-3 flex items-center gap-1.5 px-1">
-            <Layers className="h-4 w-4 shrink-0 text-gray-500" />
+            <Layers className="h-4 w-4 shrink-0 text-muted-foreground" />
             <Select value={notationId} onValueChange={(v) => onNotationChange(v as NotationId)}>
               <SelectTrigger className="h-8 flex-1 text-xs" title="Grupo de componentes de esta vista">
                 <SelectValue />
@@ -329,7 +332,7 @@ export const Toolbox: React.FC<{
           </div>
         )}
 
-        <p className="text-xs text-gray-500 mb-3 px-1">
+        <p className="text-xs text-muted-foreground mb-3 px-1">
           {active.description} Arrastra al lienzo; los contenedores (borde
           discontinuo) agrupan los nodos que coloques dentro.
         </p>
@@ -342,7 +345,7 @@ export const Toolbox: React.FC<{
                 <button
                   type="button"
                   onClick={() => toggle(group.label)}
-                  className="flex w-full items-center gap-1 px-1 py-1 text-xs font-bold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+                  className="flex w-full items-center gap-1 px-1 py-1 text-xs font-bold uppercase tracking-wide text-muted-foreground hover:text-foreground"
                 >
                   {isOpen ? (
                     <ChevronDown className="w-3.5 h-3.5 shrink-0" />
@@ -350,7 +353,7 @@ export const Toolbox: React.FC<{
                     <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                   )}
                   <span className="truncate">{group.label}</span>
-                  <span className="ml-auto text-[10px] font-medium text-gray-400">
+                  <span className="ml-auto text-[10px] font-medium text-muted-foreground/70">
                     {group.types.length}
                   </span>
                 </button>

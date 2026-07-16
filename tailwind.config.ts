@@ -20,6 +20,13 @@ export default {
     'bg-pink-500',
     'bg-purple-500',
     'bg-gray-400', // No olvides el color de fallback
+    // Fondos pastel de los chips de la paleta: se derivan en runtime de los
+    // colores de notación (`fill-*-{50,100}` → `bg-*-{50,100}`), así que no
+    // aparecen literales en el código y hay que safelistarlos por patrón.
+    {
+      pattern:
+        /^bg-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|stone)-(50|100)$/,
+    },
   ],
   theme: {
     extend: {

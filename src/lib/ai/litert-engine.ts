@@ -111,34 +111,60 @@ export async function getEngine(modelFile: string): Promise<any> {
 }
 
 /**
- * Genera una respuesta (streaming) para un turno de chat. `messages` debe traer
- * el system (si lo hay) como preface y el último mensaje de usuario como prompt.
- * Llama `onToken` por cada fragmento de texto.
+ * Conversación LiteRT reutilizable. El `system` se prefilla UNA sola vez (queda en
+ * el KV-cache de la conversación); cada `send` sólo agrega el nuevo turno de
+ * usuario y encadena su historia interna. Reutilizarla entre turnos (p.ej. el
+ * bucle ReAct del agente) evita re-procesar el system+contexto en cada turno —
+ * que es el mayor costo de prefill con el modelo local en WebGPU.
+ */
+export interface LitertConversation {
+  send(userText: string, onToken?: (chunk: string) => void): Promise<string>;
+}
+
+/**
+ * Crea una conversación reutilizable sobre el engine (singleton) del modelo. Pasa
+ * `system` para fijar la persona/contexto como preface una sola vez.
+ */
+export async function createLitertConversation(
+  modelFile: string,
+  system?: string
+): Promise<LitertConversation> {
+  const engine = await getEngine(modelFile);
+  const conversation = await engine.createConversation(
+    system ? { preface: { messages: [{ role: "system", content: system }] } } : undefined
+  );
+  return {
+    async send(userText, onToken) {
+      let full = "";
+      const stream = conversation.sendMessageStreaming(userText);
+      for await (const chunk of stream) {
+        for (const item of chunk?.content ?? []) {
+          if (item?.type === "text" && item.text) {
+            full += item.text;
+            onToken?.(item.text);
+          }
+        }
+      }
+      return full.trim();
+    },
+  };
+}
+
+/**
+ * Genera una respuesta (streaming) para un turno de chat SUELTO. `messages` debe
+ * traer el system (si lo hay) como preface y el último mensaje de usuario como
+ * prompt. Para varios turnos encadenados usa `createLitertConversation` y reutiliza
+ * la conversación (evita re-prefill del system en cada turno).
  */
 export async function litertGenerate(
   modelFile: string,
   messages: LitertMessage[],
   onToken?: (chunk: string) => void
 ): Promise<string> {
-  const engine = await getEngine(modelFile);
-
   const system = messages.find((m) => m.role === "system")?.content;
   const turns = messages.filter((m) => m.role !== "system");
   const lastUser = [...turns].reverse().find((m) => m.role === "user")?.content ?? "";
 
-  const conversation = await engine.createConversation(
-    system ? { preface: { messages: [{ role: "system", content: system }] } } : undefined
-  );
-
-  let full = "";
-  const stream = conversation.sendMessageStreaming(lastUser);
-  for await (const chunk of stream) {
-    for (const item of chunk?.content ?? []) {
-      if (item?.type === "text" && item.text) {
-        full += item.text;
-        onToken?.(item.text);
-      }
-    }
-  }
-  return full.trim();
+  const convo = await createLitertConversation(modelFile, system);
+  return convo.send(lastUser, onToken);
 }

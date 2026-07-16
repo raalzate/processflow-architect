@@ -265,6 +265,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       setMessages((prev) => [...prev, userMsg]);
       setBusy(true);
 
+      // Fuera del try para que el catch pueda convertir el placeholder en error.
+      const assistantId = uid();
       try {
         const history = messages.slice(-10).map((m) => ({ role: m.role, content: m.content }));
         const artifactContext = artifacts
@@ -275,6 +277,11 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           .map((v) => viewToContext(v))
           .filter((c) => c.content.trim());
         const contextArtifacts = [...artifactContext, ...viewContext];
+        // Notaciones de las vistas inyectadas → marco de razonamiento del agente
+        // (BPMN/C4/UML/DDD). Sin vistas inyectadas → el agente asume DDD.
+        const injectedNotations = Array.from(
+          new Set(injectedViews.map((v) => (v.notation ?? "ddd") as string))
+        );
 
         // Adjuntos → texto (PDF/imagen con OCR / texto) como contexto del agente.
         const documents: { name: string; text: string }[] = [];
@@ -283,6 +290,14 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           if (text.trim()) documents.push({ name: d.name, text });
         }
 
+        // Placeholder del assistant: se inserta vacío ANTES de generar para poder
+        // ir volcando el texto en vivo (streaming) a medida que el modelo escribe.
+        let streamed = "";
+        setMessages((prev) => [
+          ...prev,
+          { id: assistantId, role: "assistant", content: "", createdAt: nowIso() },
+        ]);
+
         // Agente ReAct LOCAL en el renderer (LiteRT-LM / WebGPU). Sin genkit/main.
         const data = await runLitertAgent({
           modelFile: getSelectedLitertModelFile(),
@@ -290,9 +305,18 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           history,
           graphData: graphData ?? undefined,
           views: views.map((v) => ({ name: v.name, kind: v.kind, notation: v.notation ?? "ddd" })),
+          notations: injectedNotations.length ? injectedNotations : undefined,
           contextArtifacts: contextArtifacts.length ? contextArtifacts : undefined,
           documents: documents.length ? documents : undefined,
           systemPrompt: getGenerationConfig().systemPrompt || undefined,
+          // Streaming: cada fragmento de la respuesta final se va escribiendo en el
+          // mensaje placeholder. Al terminar, se reemplaza por el resultado completo.
+          onReplyToken: (chunk) => {
+            streamed += chunk;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: streamed } : m))
+            );
+          },
         });
 
         // IA 100% local: los errores se muestran como mensaje en el chat, sin redirigir.
@@ -302,7 +326,6 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           !data.artifacts?.length &&
           /^ocurrió un problema al ejecutar el agente/i.test(data.reply ?? "");
 
-        const assistantId = uid();
         const newArtifacts: Artifact[] = (data.artifacts ?? []).map((a: AgentArtifact) => ({
           id: uid(),
           versionId: activeVersionId,
@@ -316,30 +339,41 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         }));
         if (newArtifacts.length) setArtifacts((prev) => [...prev, ...newArtifacts]);
 
-        const assistantMsg: ChatMessage = {
-          id: assistantId,
-          role: "assistant",
-          content: data.reply || "Listo.",
-          createdAt: nowIso(),
-          steps: data.steps,
-          producedArtifactIds: newArtifacts.map((a) => a.id),
-          error: replyIsError,
-        };
-        setMessages((prev) => [...prev, assistantMsg]);
+        // Finaliza el placeholder con el resultado completo (fuente de verdad:
+        // `data.reply` ya parseado; el texto streameado es solo el avance en vivo).
+        const finalContent = data.reply || streamed || "Listo.";
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content: finalContent,
+                  steps: data.steps,
+                  producedArtifactIds: newArtifacts.map((a) => a.id),
+                  error: replyIsError,
+                }
+              : m
+          )
+        );
         setContextArtifactIds([]);
         setAttachments([]);
       } catch (err: any) {
         const msg = err?.message || String(err) || "Ocurrió un error al ejecutar el agente.";
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uid(),
+        // Reusa el placeholder ya insertado (si existe) convirtiéndolo en error;
+        // si el fallo ocurrió antes de insertarlo, lo agrega. Evita mensajes dobles.
+        setMessages((prev) => {
+          const hasPlaceholder = prev.some((m) => m.id === assistantId);
+          const errorMsg: ChatMessage = {
+            id: assistantId,
             role: "assistant",
             content: msg,
             createdAt: nowIso(),
             error: true,
-          },
-        ]);
+          };
+          return hasPlaceholder
+            ? prev.map((m) => (m.id === assistantId ? errorMsg : m))
+            : [...prev, errorMsg];
+        });
         // Local: el error se muestra en el chat; no se redirige a Ajustes.
       } finally {
         setBusy(false);

@@ -44,34 +44,36 @@
   }
 
   .dark {
-    /* Modo oscuro muy gris-azulado, sin apenas calidez */
-    --background: 220 18% 10%;        /* Gris-azul muy oscuro */
-    --foreground: 210 15% 88%;        /* Gris-azul claro apagado */
+    /* Modo oscuro suave, slate azulado (no negro): más elegante y menos cansado. */
+    --background: 222 16% 17%;        /* Slate templado, ni negro ni plano */
+    --foreground: 210 16% 90%;        /* Gris-azul claro legible */
 
-    --card: 220 18% 12%;
-    --card-foreground: 210 15% 88%;
+    --card: 222 15% 20%;              /* Paneles ligeramente sobre el fondo */
+    --card-foreground: 210 16% 90%;
 
-    --popover: 220 18% 12%;
-    --popover-foreground: 210 15% 88%;
+    --popover: 222 15% 20%;
+    --popover-foreground: 210 16% 90%;
 
-    --primary: 218 45% 68%;           /* Azul frío más vivo pero todavía elegante */
-    --primary-foreground: 0 0% 100%;
+    --primary: 218 52% 68%;           /* Azul frío vivo pero elegante */
+    --primary-foreground: 222 20% 12%;
 
-    --secondary: 220 16% 18%;
-    --secondary-foreground: 210 12% 75%;
+    --secondary: 220 13% 26%;
+    --secondary-foreground: 210 14% 82%;
 
-    --muted: 220 16% 20%;
-    --muted-foreground: 210 10% 60%;
+    --muted: 220 13% 25%;
+    --muted-foreground: 215 12% 66%;
 
-    --accent: 205 40% 65%;            /* Azul-gris frío como acento */
-    --accent-foreground: 0 0% 100%;
+    /* accent = superficie de hover/focus de menús (convención shadcn): slate
+       sutil sobre el fondo, con texto claro, para que todo siga legible. */
+    --accent: 220 13% 28%;
+    --accent-foreground: 210 16% 92%;
 
     --destructive: 0 60% 50%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 16% 22%;
-    --input: 220 16% 22%;
-    --ring: 218 45% 68%;
+    --border: 220 12% 30%;
+    --input: 220 12% 30%;
+    --ring: 218 52% 68%;
 
     /* Gráficos oscuros pero fríos */
     --chart-1: 210 45% 65%;
