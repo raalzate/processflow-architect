@@ -53,23 +53,7 @@ Event Storming · DDD · BPMN · C4 · UML · agente ReAct local · exporta a Me
 
 ## Cómo funciona (30 segundos)
 
-```
-    ┌──────────────┐   arrastra .json / MCP    ┌──────────────────────────┐
-    │  Documentos  │ ────────────────────────▶ │   Lienzo (Event Storming) │
-    │  PDF · notas │                           │   DDD · BPMN · C4 · UML   │
-    └──────────────┘                           └────────────┬─────────────┘
-                                                            │  grafo → TOON
-                                                            ▼
-    ┌───────────────────────────┐   WebGPU    ┌──────────────────────────┐
-    │  Agente ReAct (renderer)  │ ◀────────── │   LiteRT-LM · Gemma local │
-    │  drivers · riesgos · ADRs │             │   (en tu máquina, offline)│
-    └────────────┬──────────────┘             └──────────────────────────┘
-                 │  artefactos versionados
-                 ▼
-    ┌───────────────────────────────────────────────────────────────────┐
-    │  Exporta → Mermaid · Markdown · PDF        (opcional: IA remota)    │
-    └───────────────────────────────────────────────────────────────────┘
-```
+![Cómo funciona](./docs/diag.png)
 
 La IA se ejecuta en el **renderer** porque LiteRT-LM necesita WebGPU (contexto seguro).
 El proceso **main** solo gestiona los modelos `.litertlm`, la exportación a PDF, el
@@ -80,8 +64,8 @@ portapapeles y las llamadas a la nube **si** el usuario activa un proveedor remo
 ## Empieza en 60 segundos
 
 ```bash
-git clone https://github.com/raulalzate/ia-processflow-architect
-cd ia-processflow-architect
+git clone https://github.com/ralzate-sofka/-processflow_architect
+cd -processflow_architect
 npm install            # postinstall reconstruye módulos nativos de Electron
 npm run electron-dev   # Next.js + Electron + tsc watch
 ```

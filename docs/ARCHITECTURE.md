@@ -79,6 +79,9 @@ componente / hook (useAi)
   orquestación Genkit estructurada en el proceso main, no la nube.
 - **`litert-engine.ts` / `litert-agent.ts`** — motor de inferencia (one-shot) y agente
   ReAct sobre el modelo local.
+- **`graph-toon.ts`** — comprime el grafo antes de inyectarlo como contexto: poda la
+  geometría/colores del lienzo y codifica en TOON (tablas CSV en vez de JSON repetido).
+  Ejemplo con salida real y métricas en [compresion-toon.md](compresion-toon.md).
 
 > **Para añadir una función de IA:** declara una nueva `AiTask` en `tasks.ts`. No se
 > tocan ni el router ni los proveedores ni los componentes. Ese desacople es el patrón.
