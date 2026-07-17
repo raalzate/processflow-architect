@@ -17,7 +17,7 @@ add_container { name: "Pagos", type: "Contexto Delimitado",
   description: "Confirma pagos con la pasarela; cancela pedidos sin pago a las 24 h." }
 add_node { id: "cmd-pagar-pedido", name: "Pagar Pedido", type: "Comando", container: "Pagos" }
 add_node { id: "evt-pago-confirmado", name: "Pago Confirmado", type: "Evento", container: "Pagos" }
-add_node { id: "pol-cancelacion-24", name: "Sin pago en 24 h → Cancelar Pedido", type: "Política", container: "Pagos" }
+add_node { id: "pol-cancelacion-24", name: "Cancelar sin pago", type: "Política", container: "Pagos", description: "Si el pago no se confirma en 24 h, el pedido se cancela." }
 add_edge { from: "cmd-pagar-pedido", to: "evt-pago-confirmado", label: "pasarela de pagos [API]" }
 add_edge { from: "cmd-pagar-pedido", to: "pol-cancelacion-24", label: "si no se confirma" }
 ```
@@ -90,7 +90,9 @@ Claves de calidad:
 1. `validate_diagram` sin errores Y sin avisos de nodos aislados.
 2. `render_mermaid`: ¿el flujo se lee de inicio a fin contando la historia del
    documento? ¿Las decisiones tienen todas sus ramas?
-3. Nombres = Lenguaje Ubicuo del documento (mismo idioma, mismos términos).
+3. Nombres = Lenguaje Ubicuo del documento (mismo idioma, mismos términos),
+   **cortos (~4 palabras)**; el detalle y las condiciones «si X → Y» van en
+   `description` o en el `label` de la arista, no en el `name` (se recorta).
 4. Cada afirmación importante del documento tiene su elemento; lo dudoso lleva
    «pendiente en documento fuente» en la descripción.
 5. ≤ ~40 nodos; si te pasas, divide en otra vista.

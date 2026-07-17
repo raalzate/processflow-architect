@@ -492,7 +492,9 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       } catch (e: any) {
         return fail(`No pude leer/parsear "${p}": ${e.message}`);
       }
-      const model = fromGraphData(data, (notation as NotationId) || "ddd");
+      // Precedencia: notación explícita del param → la que trae el propio .json
+      // (GraphData.notation) → ddd. Así reimportar un BPMN conserva su notación.
+      const model = fromGraphData(data, (notation as NotationId) || (data.notation as NotationId) || "ddd");
       const id = await freshId(slugify(data.nombre_proyecto || "importado"));
       await saveModel(id, model);
       return text(

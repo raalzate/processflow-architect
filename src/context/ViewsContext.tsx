@@ -132,7 +132,16 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentFileId, customViews, activeViewId, injectedViewIds]);
 
-  const views = useMemo(() => [...BUILTIN_VIEWS, ...customViews], [customViews]);
+  // La notación de la vista built-in "Modelo" se deriva del documento activo
+  // (graphData.notation), no del "ddd" cableado: así un proyecto BPMN se ve como
+  // BPMN en su vista principal, sin necesidad de una vista anexa.
+  const views = useMemo(() => {
+    const docNotation = (graphData?.notation as NotationId | undefined);
+    const builtins = BUILTIN_VIEWS.map((v) =>
+      v.id === "design" ? { ...v, notation: docNotation ?? v.notation } : v
+    );
+    return [...builtins, ...customViews];
+  }, [customViews, graphData?.notation]);
   const activeView = useMemo(
     () => views.find((v) => v.id === activeViewId),
     [views, activeViewId]

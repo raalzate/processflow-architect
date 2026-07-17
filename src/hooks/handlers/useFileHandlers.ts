@@ -69,6 +69,9 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         const fullContent: GraphData = {
             nombre_proyecto: raw.nombre_proyecto || name,
             version: raw.version || "1.0.0",
+            // Preserva la notación del modelo importado para que la vista "Modelo"
+            // del proyecto use la paleta correcta (BPMN/C4/UML) y no caiga a DDD.
+            notation: raw.notation,
             fecha_analisis: raw.fecha_analisis || new Date().toISOString().slice(0, 10),
             big_picture: {
                 descripcion: raw.big_picture?.descripcion || "",

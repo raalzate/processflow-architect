@@ -36,7 +36,10 @@ Llama `list_notations` y elige según el material:
 | Arquitectura de sistemas, servicios, despliegue | `c4` |
 | Clases, estados de un objeto, casos de uso | `uml` |
 
-Si dudas, pregunta al usuario UNA vez; por defecto `ddd`.
+**Si el usuario pide EXPLÍCITAMENTE una notación** («haz el BPMN», «el flujo»,
+«el C4», «un diagrama de secuencia»), usa ESA — no la cambies por `ddd`. Solo
+cuando el material es ambiguo y el usuario no declara intención: pregunta UNA
+vez, y por defecto `ddd`.
 
 ## 2 · Aprender los tipos válidos
 
@@ -70,6 +73,11 @@ Lee los documentos/código que el usuario indique ANTES de crear nodos. Extrae:
 
 Convenciones: nombres en español, descripciones cortas de una línea, ids
 autogenerados (no los inventes salvo necesidad).
+
+**Nombres cortos (el lienzo recorta los largos):** el `name` de un nodo es una
+etiqueta de máx ~4 palabras (~24 caracteres); el detalle va en `description`.
+Las condiciones de una compuerta van en el `label` de la arista («Sí»/«No»), no
+en el nombre del nodo; el protocolo va en el `label` o en `tags`, no en el name.
 
 ## 5 · Revisar y corregir
 

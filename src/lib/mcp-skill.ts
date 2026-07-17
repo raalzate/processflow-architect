@@ -96,9 +96,18 @@ preguntar. Pregunta sólo lo que el documento no decide por sí mismo:
      menores van como «pendiente en documento fuente» en la descripción del
      nodo, sin preguntar.
 
-Plantilla por defecto (si el usuario dice «lo que veas mejor» o no responde):
+**Precedencia de notación (regla dura):** si el usuario pide EXPLÍCITAMENTE una
+notación o un tipo de diagrama —«hazme el BPMN», «el flujo del proceso», «el
+diagrama de secuencia», «el C4»—, ESE diagrama es el **entregable principal** y
+se exporta con \`export_to_app\`: es el modelo del proyecto, con su propia paleta
+y simbología. **No antepongas un DDD que el usuario no pidió**, ni conviertas el
+diagrama pedido en una vista anexa de un DDD. DDD deja de ser obligatorio; solo
+es el default cuando el usuario NO declara intención (abajo).
 
-1. **\`ddd\` — Big Picture del dominio** (siempre): Contextos Delimitados por
+Plantilla por defecto — **SOLO** si el usuario dice «lo que veas mejor» o no
+responde (sin notación pedida):
+
+1. **\`ddd\` — Big Picture del dominio**: Contextos Delimitados por
    área/equipo; dentro de cada uno los Comandos → Eventos principales; Actores
    y Sistemas Externos alrededor; Políticas entre contextos.
 2. **\`bpmn\` — Un diagrama POR proceso operativo crítico** (1–2 máximo): el
@@ -139,9 +148,15 @@ Para CADA diagrama del plan:
 
 Según lo que eligió el usuario en el paso 2:
 
+- **Una sola notación pedida** (p. ej. «solo el BPMN»): usa **únicamente**
+  \`export_to_app\` de ESE diagrama. Es el modelo del proyecto y queda ACTIVO con
+  su notación correcta. **No** crees un DDD contenedor ni lo mandes como
+  \`export_as_view\` (eso lo dejaría como pestaña anexa de un modelo ajeno y con
+  la paleta equivocada — es justo lo que hay que evitar).
 - **Un proyecto con vistas** (sólo con la app conectada por HTTP):
-  1. El diagrama principal (normalmente el DDD) con \`export_to_app\` → se crea
-     el proyecto y queda ACTIVO en la app.
+  1. El diagrama principal —el de la notación que pidió el usuario; el DDD solo
+     si eligió *portafolio completo*— con \`export_to_app\` → se crea el proyecto
+     y queda ACTIVO **con su notación** (no se fuerza a DDD).
   2. Cada diagrama restante con \`export_as_view(diagramId, viewName)\` → llega
      como pestaña del proyecto activo, con su propia notación (paleta BPMN/C4
      correcta). La herramienta sólo existe en modo app; si no aparece en
@@ -161,6 +176,34 @@ Según lo que eligió el usuario en el paso 2:
     o \`export_as_view\` con el \`diagramId\` que devuelve (es el slug del archivo).
 - Cierra con un resumen: qué diagramas se crearon, qué sección del documento
   cubre cada uno, y qué quedó marcado como «pendiente en documento fuente».
+
+## Presentación (para que se vea profesional, no ambiguo)
+
+El lienzo dibuja cada nodo en una caja de tamaño acotado: **un \`name\` largo se
+recorta**. La legibilidad depende de cómo redactes los nodos, no del layout.
+
+- **Nombre de nodo corto: máx ~4 palabras (~24 caracteres).** Es una etiqueta,
+  no una frase. «Validar token», «Cotizar planes», «¿Firma confirmada?».
+- **El detalle largo va en \`description\`, nunca en el \`name\`.** Contratos,
+  endpoints, IDs, aclaraciones «pendiente en documento fuente» → \`description\`.
+- **Las condiciones de una decisión van en el \`label\` de la arista**, no en el
+  nombre del nodo: la Compuerta se llama «¿Usuario existe?» y sus aristas
+  «Sí» / «No», no un nodo «Usuario existe → crea perfil».
+- **No metas el protocolo/tecnología en el nombre**; va en el \`label\` de la
+  arista (\`usa [HTTPS/JSON]\`) o en \`tags\`.
+- Prefiere pocos nodos por carril; si un carril acumula muchos, parte el
+  proceso por fases (ver límite de ~40 nodos).
+
+## Verificación visual (obligatoria tras exportar)
+
+\`render_mermaid\` solo revisa la **topología** — el preview auto-ordena y **no**
+refleja el layout real del lienzo. Después de \`export_to_app\`/\`export_as_view\`:
+
+- Confirma al usuario que el proyecto quedó activo **con la notación correcta**
+  (BPMN se ve como BPMN, no bajo la paleta DDD) y que **no** se creó una vista
+  duplicada/anexa no deseada.
+- Si algún nombre se ve recortado en el lienzo, acórtalo (mueve el texto a
+  \`description\`) y vuelve a exportar. No entregues con labels cortados.
 
 ## Límites y calidad
 
@@ -196,7 +239,7 @@ add_container { name: "Pagos", type: "Contexto Delimitado",
   description: "Confirma pagos con la pasarela; cancela pedidos sin pago a las 24 h." }
 add_node { id: "cmd-pagar-pedido", name: "Pagar Pedido", type: "Comando", container: "Pagos" }
 add_node { id: "evt-pago-confirmado", name: "Pago Confirmado", type: "Evento", container: "Pagos" }
-add_node { id: "pol-cancelacion-24", name: "Sin pago en 24 h → Cancelar Pedido", type: "Política", container: "Pagos" }
+add_node { id: "pol-cancelacion-24", name: "Cancelar sin pago", type: "Política", container: "Pagos", description: "Si el pago no se confirma en 24 h, el pedido se cancela." }
 add_edge { from: "cmd-pagar-pedido", to: "evt-pago-confirmado", label: "pasarela de pagos [API]" }
 add_edge { from: "cmd-pagar-pedido", to: "pol-cancelacion-24", label: "si no se confirma" }
 \`\`\`
@@ -269,7 +312,9 @@ Claves de calidad:
 1. \`validate_diagram\` sin errores Y sin avisos de nodos aislados.
 2. \`render_mermaid\`: ¿el flujo se lee de inicio a fin contando la historia del
    documento? ¿Las decisiones tienen todas sus ramas?
-3. Nombres = Lenguaje Ubicuo del documento (mismo idioma, mismos términos).
+3. Nombres = Lenguaje Ubicuo del documento (mismo idioma, mismos términos),
+   **cortos (~4 palabras)**; el detalle y las condiciones «si X → Y» van en
+   \`description\` o en el \`label\` de la arista, no en el \`name\` (se recorta).
 4. Cada afirmación importante del documento tiene su elemento; lo dudoso lleva
    «pendiente en documento fuente» en la descripción.
 5. ≤ ~40 nodos; si te pasas, divide en otra vista.

@@ -380,6 +380,9 @@ export function toGraphData(input: DiagramModel): GraphData {
   return {
     nombre_proyecto: meta.nombre_proyecto,
     version: meta.version || "1.0.0",
+    // La notación viaja con el modelo: así export_to_app (que no la pasaba por
+    // canal aparte) entrega un proyecto con la paleta correcta, no forzado a DDD.
+    notation: meta.notation,
     fecha_analisis: meta.fecha_analisis || new Date().toISOString().slice(0, 10),
     big_picture: {
       descripcion: meta.descripcion || "",

@@ -1,5 +1,6 @@
 
 import type { SimulationNodeDatum, SimulationLinkDatum } from "d3";
+import type { NotationId } from "./notations";
 import { z } from "zod";
 
 export const UsageSchema = z.object({
@@ -130,6 +131,13 @@ export interface ReadModel {
 export interface GraphData {
   nombre_proyecto: string;
   version: string;
+  /**
+   * Notación del documento (DDD, BPMN, C4, UML). Viaja CON el modelo para que la
+   * vista "Modelo" del proyecto use la paleta/simbología correcta al importar,
+   * sin depender del canal de export. Si falta, la app cae a la notación por
+   * defecto (ddd).
+   */
+  notation?: NotationId;
   fecha_analisis: string;
   big_picture: BigPicture;
   agregados: Agregado[];

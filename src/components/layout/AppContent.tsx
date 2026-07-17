@@ -225,7 +225,7 @@ const WelcomeScreen = () => {
 // Este componente SÍ se volverá a renderizar en las búsquedas,
 // porque depende de `filteredNodes`. Esto es correcto y deseado.
 const GraphArea = React.memo(() => {
-  const { currentFileId } = useGraphContext();
+  const { currentFileId, graphData, handleDesignUpdate } = useGraphContext();
   const { activeView } = useViews();
 
   // Sin proyecto activo: pantalla de bienvenida. Con un proyecto activo
@@ -245,7 +245,16 @@ const GraphArea = React.memo(() => {
           // (canvasWrapperRef en ComponentDesigner). Si el wrapper externo scrollea,
           // arrastra header/toolbar/zoom fuera de vista.
           <div className="absolute inset-0 overflow-hidden">
-            <ComponentDesigner />
+            {/* La vista "Modelo" usa la notación del documento (no el "ddd" fijo):
+                un proyecto BPMN se dibuja con paleta/simbología BPMN aquí mismo. */}
+            <ComponentDesigner
+              notation={activeView?.notation}
+              onNotationChange={
+                currentFileId && graphData
+                  ? (n) => handleDesignUpdate(currentFileId, { ...graphData, notation: n })
+                  : undefined
+              }
+            />
           </div>
         )}
         {kind === "graph" && activeView && <CustomViewRenderer view={activeView} />}
