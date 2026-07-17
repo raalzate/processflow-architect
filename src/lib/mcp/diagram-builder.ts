@@ -27,9 +27,6 @@ import { validTypesFor } from "./catalog";
 // --- Geometría por defecto (misma escala que el diseñador) ---
 const NODE_W = 160;
 const NODE_H = 60;
-const AGG_W = 500;
-const AGG_H = 400;
-const GAP = 40;
 
 const ESTADOS = ["nuevo", "modificado", "sin_cambios", "existente", "eliminado"] as const;
 type Estado = (typeof ESTADOS)[number];
@@ -245,52 +242,148 @@ export function validate(model: DiagramModel): ValidationResult {
 // Layout automático (asigna geometría a lo que no la tenga)
 // =============================================================================
 
-/** Devuelve un modelo con geometría completa (respeta coords ya presentes). */
+// --- Geometría del layout swimlane dirigido por flujo ---
+const H_GAP = 60; // separación horizontal entre columnas
+const COL_STEP = NODE_W + H_GAP; // paso de columna (rango)
+const V_GAP = 30; // separación vertical entre nodos apilados en un carril
+const LANE_PAD_TOP = 46; // hueco para el título del carril
+const LANE_PAD_BOTTOM = 22;
+const LANE_PAD_LEFT = 40;
+const LANE_PAD_RIGHT = 40;
+const LANE_GAP = 28; // separación entre bandas (carriles)
+const X0 = 60;
+const Y0 = 60;
+
+/**
+ * Rango (columna) por flujo: longest-path sobre el DAG de aristas entre nodos
+ * NO contenedor. Las aristas de retorno (ciclos, p. ej. reintentos) se detectan
+ * con DFS y se ignoran para el ranking, así el flujo avanza de izquierda a
+ * derecha sin colapsar por un bucle.
+ */
+function rankByFlow(ids: string[], edges: BuilderEdge[]): Map<string, number> {
+  const idSet = new Set(ids);
+  const succ = new Map<string, string[]>();
+  ids.forEach((id) => succ.set(id, []));
+  for (const e of edges) {
+    if (!idSet.has(e.fuente) || !idSet.has(e.destino) || e.fuente === e.destino) continue;
+    succ.get(e.fuente)!.push(e.destino);
+  }
+  // Back-edges (aristas que cierran ciclo) vía coloreo DFS.
+  const backEdges = new Set<string>();
+  const color = new Map<string, 0 | 1 | 2>();
+  ids.forEach((id) => color.set(id, 0));
+  const stack: Array<{ u: string; i: number }> = [];
+  for (const start of ids) {
+    if (color.get(start) !== 0) continue;
+    stack.push({ u: start, i: 0 });
+    color.set(start, 1);
+    while (stack.length) {
+      const top = stack[stack.length - 1];
+      const kids = succ.get(top.u)!;
+      if (top.i < kids.length) {
+        const v = kids[top.i++];
+        const c = color.get(v);
+        if (c === 1) backEdges.add(`${top.u}->${v}`);
+        else if (c === 0) {
+          color.set(v, 1);
+          stack.push({ u: v, i: 0 });
+        }
+      } else {
+        color.set(top.u, 2);
+        stack.pop();
+      }
+    }
+  }
+  // Longest-path por orden topológico (Kahn) sobre el DAG sin back-edges.
+  const indeg = new Map<string, number>();
+  ids.forEach((id) => indeg.set(id, 0));
+  for (const [u, vs] of succ)
+    for (const v of vs) if (!backEdges.has(`${u}->${v}`)) indeg.set(v, (indeg.get(v) ?? 0) + 1);
+  const rank = new Map<string, number>();
+  ids.forEach((id) => rank.set(id, 0));
+  const queue = ids.filter((id) => (indeg.get(id) ?? 0) === 0);
+  while (queue.length) {
+    const u = queue.shift()!;
+    for (const v of succ.get(u)!) {
+      if (backEdges.has(`${u}->${v}`)) continue;
+      rank.set(v, Math.max(rank.get(v) ?? 0, (rank.get(u) ?? 0) + 1));
+      indeg.set(v, (indeg.get(v) ?? 0) - 1);
+      if ((indeg.get(v) ?? 0) === 0) queue.push(v);
+    }
+  }
+  return rank;
+}
+
+/**
+ * Layout swimlane: cada contenedor es una BANDA horizontal apilada (full-width),
+ * con altura dinámica según cuántos nodos apila. Los nodos fluyen de izquierda a
+ * derecha por su rango (longest-path), y las columnas son GLOBALES para que el
+ * flujo se alinee entre carriles. Respeta un modelo ya totalmente posicionado.
+ */
 export function layout(model: DiagramModel): DiagramModel {
   const containers = model.nodes.filter(isContainerNode);
   const nodes = model.nodes.filter((n) => !isContainerNode(n));
 
-  // Posición de cada contenedor: grid 2 columnas.
-  const placed = new Map<string, BuilderNode>();
-  containers.forEach((c, i) => {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const x = c.x ?? 60 + col * (AGG_W + GAP + 40);
-    const y = c.y ?? 60 + row * (AGG_H + GAP + 40);
-    const width = c.width ?? AGG_W;
-    const height = c.height ?? AGG_H;
-    placed.set(c.id, { ...c, x, y, width, height });
-  });
-
-  // Hijos dentro de su contenedor; sueltos en una columna a la derecha del grid.
-  const containersByName = new Map(
-    [...placed.values()].map((c) => [c.nombre, c])
+  const allPlaced = [...containers, ...nodes].every(
+    (n) => typeof n.x === "number" && typeof n.y === "number"
   );
-  const childCursor = new Map<string, number>();
-  const freeArea = {
-    x: 60 + 2 * (AGG_W + GAP + 40),
-    y: 60,
-  };
-  let freeIndex = 0;
+  if (allPlaced) return model;
 
-  const laidNodes = nodes.map((n) => {
-    if (typeof n.x === "number" && typeof n.y === "number") return n;
-    const parent = n.container ? containersByName.get(n.container) : undefined;
-    if (parent) {
-      const i = childCursor.get(parent.id) ?? 0;
-      childCursor.set(parent.id, i + 1);
-      const perRow = Math.max(1, Math.floor(((parent.width ?? AGG_W) - GAP) / (NODE_W + 24)));
-      const x = (parent.x ?? 0) + 24 + (i % perRow) * (NODE_W + 24);
-      const y = (parent.y ?? 0) + 60 + Math.floor(i / perRow) * (NODE_H + GAP);
-      return { ...n, x, y };
+  const containerNames = new Set(containers.map((c) => c.nombre));
+  const rank = rankByFlow(nodes.map((n) => n.id), model.edges);
+  const cols = Math.max(1, ...nodes.map((n) => (rank.get(n.id) ?? 0) + 1));
+  const laneWidth = LANE_PAD_LEFT + (cols - 1) * COL_STEP + NODE_W + LANE_PAD_RIGHT;
+
+  const colX = (r: number) => X0 + LANE_PAD_LEFT + r * COL_STEP;
+
+  // Coloca un grupo de nodos (un carril, o los sueltos) a partir de `top`;
+  // apila por rango y devuelve la altura ocupada.
+  const placeGroup = (groupNodes: BuilderNode[], top: number): { laid: BuilderNode[]; height: number } => {
+    const byRank = new Map<number, BuilderNode[]>();
+    for (const n of groupNodes) {
+      const r = rank.get(n.id) ?? 0;
+      (byRank.get(r) ?? byRank.set(r, []).get(r)!).push(n);
     }
-    const x = freeArea.x + (freeIndex % 3) * (NODE_W + 24);
-    const y = freeArea.y + Math.floor(freeIndex / 3) * (NODE_H + GAP);
-    freeIndex++;
-    return { ...n, x, y };
-  });
+    let maxRows = 0;
+    const laid: BuilderNode[] = [];
+    for (const [r, group] of byRank) {
+      maxRows = Math.max(maxRows, group.length);
+      group.forEach((n, j) => {
+        laid.push({
+          ...n,
+          x: colX(r),
+          y: top + LANE_PAD_TOP + j * (NODE_H + V_GAP),
+          width: NODE_W,
+          height: NODE_H,
+        });
+      });
+    }
+    const rows = Math.max(1, maxRows);
+    const height = LANE_PAD_TOP + rows * (NODE_H + V_GAP) - V_GAP + LANE_PAD_BOTTOM;
+    return { laid, height };
+  };
 
-  return { ...model, nodes: [...placed.values(), ...laidNodes] };
+  const out: BuilderNode[] = [];
+  let cursorY = Y0;
+
+  // Nodos sueltos (sin contenedor válido): banda superior sin rectángulo.
+  const loose = nodes.filter((n) => !n.container || !containerNames.has(n.container));
+  if (loose.length) {
+    const { laid, height } = placeGroup(loose, cursorY);
+    out.push(...laid);
+    cursorY += height + LANE_GAP;
+  }
+
+  // Un carril (banda) por contenedor, en orden de inserción.
+  for (const c of containers) {
+    const laneNodes = nodes.filter((n) => n.container === c.nombre);
+    const { laid, height } = placeGroup(laneNodes, cursorY);
+    out.push(...laid);
+    out.push({ ...c, x: X0, y: cursorY, width: laneWidth, height });
+    cursorY += height + LANE_GAP;
+  }
+
+  return { ...model, nodes: out };
 }
 
 // =============================================================================

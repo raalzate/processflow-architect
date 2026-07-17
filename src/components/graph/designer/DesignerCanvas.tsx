@@ -661,7 +661,17 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           {/* Símbolos UML canónicos (punto inicial, rombo de decisión): sin icono. */}
           {!meta?.hideIcon && <Icon className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")} />}
           {!labelOutside && (
-            <p className={cn("text-xs font-bold leading-tight select-none", isDeleted && "line-through")}>
+            <p
+              title={node.nombre}
+              className={cn(
+                // Ajusta el texto y lo acota con elipsis DENTRO de la caja en vez
+                // de desbordarse: nombres cortos se ven completos; los largos se
+                // recortan con «…» sin invadir nodos vecinos.
+                "text-xs font-bold leading-tight select-none break-words max-w-full",
+                meta?.hideIcon ? "line-clamp-3" : "line-clamp-2",
+                isDeleted && "line-through"
+              )}
+            >
               {node.nombre}
             </p>
           )}
@@ -677,12 +687,15 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         <foreignObject
           y={NODE_HEIGHT + 4}
           width={NODE_WIDTH}
-          height={36}
+          height={44}
           className="pointer-events-none overflow-visible"
         >
           <p
+            title={node.nombre}
             className={cn(
-              "text-center text-xs font-bold leading-tight select-none",
+              // Evento/compuerta: el nombre va debajo; se ajusta a 2 líneas con
+              // elipsis para no solaparse con el nodo de al lado.
+              "text-center text-xs font-bold leading-tight select-none break-words line-clamp-2",
               color.text,
               isDeleted && "line-through"
             )}
