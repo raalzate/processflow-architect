@@ -36,6 +36,14 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # Firma sólo si HAY certificado de macOS configurado. GitHub expande un secret
+    # ausente a "" (cadena vacía, NO undefined) y electron-builder trata `CSC_LINK=""`
+    # como "firma con este cert" → intenta importar una ruta vacía (la raíz del
+    # proyecto) y revienta con "not a file". Por eso NO pasamos CSC_LINK vacío:
+    # decidimos aquí, con el secret, si el paso de empaquetado firma o no.
+    env:
+      SIGN_MAC: ${{ secrets.CSC_LINK != '' }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -58,19 +66,16 @@ jobs:
       - name: Build electron app
         run: npm run build
 
+      # --- Empaquetado FIRMADO (sólo si hay certificado de macOS) ---
       # `--publish never`: subimos los artefactos con softprops (repo actual),
       # no con el publish de electron-builder (que en package.json apunta a otro
-      # repo). shell bash unifica la sintaxis en las 3 plataformas (en Windows
-      # lo aporta Git Bash).
-      - name: Package with electron-builder
+      # repo). shell bash unifica la sintaxis en las 3 plataformas.
+      - name: Package with electron-builder (signed)
+        if: env.SIGN_MAC == 'true'
         shell: bash
         run: npx electron-builder --${{ matrix.platform }} --publish never
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # --- Firma de código (opcional) ---
-          # Si defines estos secrets, electron-builder firma automáticamente.
-          # Sin ellos genera builds sin firmar (válido para pruebas/instalación
-          # manual). Ver docs/RELEASE.md.
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
@@ -78,6 +83,18 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      # --- Empaquetado SIN FIRMAR (por defecto: sin secrets de cert) ---
+      # NO pasamos CSC_LINK (vacío dispararía una firma fallida) y desactivamos
+      # el auto-descubrimiento de identidades del llavero del runner. Genera
+      # builds sin firmar, válidos para pruebas/instalación manual.
+      - name: Package with electron-builder (unsigned)
+        if: env.SIGN_MAC != 'true'
+        shell: bash
+        run: npx electron-builder --${{ matrix.platform }} --publish never
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
       # Disparo manual (sin tag): no hay release al que subir, así que dejamos
       # los instaladores como artefactos del run (descargables 30 días).
