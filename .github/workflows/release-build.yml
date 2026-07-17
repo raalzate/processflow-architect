@@ -84,14 +84,17 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      # --- Empaquetado SIN FIRMAR (por defecto: sin secrets de cert) ---
-      # NO pasamos CSC_LINK (vacío dispararía una firma fallida) y desactivamos
-      # el auto-descubrimiento de identidades del llavero del runner. Genera
-      # builds sin firmar, válidos para pruebas/instalación manual.
-      - name: Package with electron-builder (unsigned)
+      # --- Empaquetado SIN cert Apple (firma AD-HOC en macOS) ---
+      # NO pasamos CSC_LINK (vacío dispararía una firma fallida) y desactivamos el
+      # auto-descubrimiento de identidades del llavero. En Apple Silicon un binario
+      # SIN NINGUNA firma sale "dañado" (arm64 exige al menos firma ad-hoc), así que
+      # forzamos identidad ad-hoc (`mac.identity=-`) y apagamos hardenedRuntime
+      # (sólo hace falta para notarización). Resultado: el .dmg abre con clic
+      # derecho → Abrir en vez del error "está dañado". win/linux ignoran mac.*.
+      - name: Package with electron-builder (ad-hoc / unsigned)
         if: env.SIGN_MAC != 'true'
         shell: bash
-        run: npx electron-builder --${{ matrix.platform }} --publish never
+        run: npx electron-builder --${{ matrix.platform }} --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
