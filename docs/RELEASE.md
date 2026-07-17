@@ -54,20 +54,57 @@ Para probar el empaquetado sin crear un release:
 
 No se crea ni toca ningún release en este modo.
 
-## Firma de código (opcional)
+## Firma de código
 
-Sin secrets, los builds salen **sin firmar** — sirven para pruebas e instalación
-manual (macOS/Windows mostrarán aviso de desarrollador no identificado). Para
-firmar, definí estos secrets del repo (**Settings → Secrets and variables →
-Actions**); el workflow ya los pasa a electron-builder:
+El paso de empaquetado se bifurca según **haya o no** certificado de macOS
+configurado. La decisión vive en el env `SIGN_MAC` del job:
+
+```yaml
+env:
+  SIGN_MAC: ${{ secrets.CSC_LINK != '' }}
+```
+
+- **`SIGN_MAC == 'true'`** (hay cert) → paso *«(signed)»*: pasa los secrets
+  `CSC_*` / `APPLE_*` a electron-builder para firmar y notarizar de verdad.
+- **`SIGN_MAC != 'true'`** (sin cert, por defecto) → paso *«(ad-hoc / unsigned)»*:
+  **no** pasa `CSC_LINK` y fuerza firma **ad-hoc** en macOS
+  (`-c.mac.identity=- -c.mac.hardenedRuntime=false`).
+
+> **Por qué el split y la firma ad-hoc.** GitHub expande un secret ausente a `""`
+> (cadena vacía, **no** `undefined`). electron-builder trata `CSC_LINK=""` como
+> "firma con este cert" e intenta importar una ruta vacía (la raíz del repo) →
+> falla con `⨯ … not a file`. Por eso **nunca** pasamos `CSC_LINK` vacío. Además,
+> en Apple Silicon un binario **sin ninguna firma** sale como *«está dañado»*
+> (arm64 exige al menos firma ad-hoc); firmarlo ad-hoc lo degrada al aviso normal
+> de "desarrollador no identificado", que se abre con clic derecho → Abrir.
+
+### Firmar de verdad (opcional)
+
+Para firmas confiables (sin avisos), definí estos secrets del repo
+(**Settings → Secrets and variables → Actions**):
 
 | Secret | Para qué |
 |--------|----------|
-| `CSC_LINK` / `CSC_KEY_PASSWORD` | Certificado macOS (Developer ID) en base64 y su clave. |
+| `CSC_LINK` / `CSC_KEY_PASSWORD` | Certificado macOS (Developer ID) en base64 y su clave. Su presencia activa `SIGN_MAC`. |
 | `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` | Certificado de firma Windows y su clave. |
 | `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID` | Notarización de Apple (`@electron/notarize` ya está instalado). |
 
 `GITHUB_TOKEN` lo inyecta GitHub automáticamente; no hay que crearlo.
+
+> Windows: SmartScreen solo desaparece con un **cert EV** o con **reputación**
+> acumulada; un OV normal sigue mostrando el aviso hasta que la app tenga
+> descargas. Alternativa más barata que EV: **Azure Trusted Signing**.
+
+## Instalar la app (usuarios finales)
+
+Los builds por defecto **no están notarizados/firmados de confianza**, así que
+cada SO muestra un aviso de seguridad la primera vez. Cómo abrirlos:
+
+| SO | Aviso | Cómo abrir |
+|----|-------|------------|
+| **macOS** (Apple Silicon) | "aplicación no identificada" (ya **no** «está dañado» gracias a la firma ad-hoc) | Clic derecho sobre la app → **Abrir**. Si el navegador dejó cuarentena y sigue quejándose: `xattr -cr /Applications/Processflow-Architect.app` |
+| **Windows** | SmartScreen: "Windows protegió su PC" | **Más información** → **Ejecutar de todas formas**. No requiere terminal. |
+| **Linux** | — | `chmod +x Processflow-Architect-<versión>.AppImage` y ejecutá el archivo. |
 
 ## Detalles de implementación (por qué está así)
 
@@ -89,7 +126,9 @@ Actions**); el workflow ya los pasa a electron-builder:
 | Síntoma | Causa probable |
 |---------|----------------|
 | El release no aparece tras el tag | El tag no empieza con `v` (el trigger es `v*`). |
+| `⨯ … not a file` solo en macOS | `CSC_LINK` llegó vacío al paso de firma. Debe resolverse con el split `SIGN_MAC` (ver sección de firma); no pases `CSC_LINK: ""`. |
+| macOS: *«"Processflow-Architect" está dañado»* | Binario arm64 sin firma. El paso *«(ad-hoc)»* debe firmar con `-c.mac.identity=-`. Ya descargado: `xattr -cr <app>` (o `codesign --force --deep --sign - <app>`). |
+| Windows: SmartScreen "app no reconocida" | Normal en builds sin cert EV/reputación. Se abre con **Más información → Ejecutar de todas formas**. |
 | `Resource not accessible by integration` | Falta `permissions: contents: write` (ya está en el workflow). |
 | Build de Windows falla en el paso de empaquetado | Sintaxis de shell: el paso usa `shell: bash` a propósito, no lo cambies a PowerShell. |
-| App sin firmar / aviso de seguridad al instalar | No hay secrets de firma configurados (ver sección de firma). |
 | Faltan assets de una plataforma en el release | Ese job de la matriz falló; revisá su log (los demás igual publican). |
