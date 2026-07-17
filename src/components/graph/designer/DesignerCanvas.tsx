@@ -184,18 +184,33 @@ export const NodeShape: React.FC<{
   strokeWidth: number;
   /** Símbolo compacto BPMN: círculo/rombo cuadrado centrado (r = h/2). */
   compact?: boolean;
+  /**
+   * Anillo canónico BPMN para eventos compactos (círculo): "thick" = trazo
+   * grueso (Evento de Fin), "double" = doble anillo (Evento Intermedio). Sin
+   * valor → anillo simple (Evento de Inicio y demás).
+   */
+  ring?: "thick" | "double";
   /** Estilo inline (p. ej. fill personalizado); prevalece sobre las clases. */
   style?: React.CSSProperties;
-}> = ({ shape, w, h, className, strokeWidth, compact, style }) => {
+}> = ({ shape, w, h, className, strokeWidth, compact, ring, style }) => {
   // Radio del símbolo compacto: la altura del nodo manda (círculo perfecto).
   const r = Math.min(w, h) / 2;
   switch (shape) {
     case "ellipse":
-      return compact ? (
-        <circle cx={w / 2} cy={h / 2} r={r} className={className} strokeWidth={strokeWidth} style={style} />
-      ) : (
-        <ellipse cx={w / 2} cy={h / 2} rx={w / 2} ry={h / 2} className={className} strokeWidth={strokeWidth} style={style} />
-      );
+      if (!compact)
+        return <ellipse cx={w / 2} cy={h / 2} rx={w / 2} ry={h / 2} className={className} strokeWidth={strokeWidth} style={style} />;
+      // Evento de Fin: un solo anillo grueso (convención BPMN).
+      if (ring === "thick")
+        return <circle cx={w / 2} cy={h / 2} r={r} className={className} strokeWidth={strokeWidth + 2.5} style={style} />;
+      // Evento Intermedio: doble anillo (el interior sólo traza, sin relleno).
+      if (ring === "double")
+        return (
+          <g>
+            <circle cx={w / 2} cy={h / 2} r={r} className={className} strokeWidth={strokeWidth} style={style} />
+            <circle cx={w / 2} cy={h / 2} r={r - 4} className={className} strokeWidth={strokeWidth} style={{ ...style, fill: "none" }} />
+          </g>
+        );
+      return <circle cx={w / 2} cy={h / 2} r={r} className={className} strokeWidth={strokeWidth} style={style} />;
     case "diamond": {
       // Compacto: rombo cuadrado centrado; si no, ocupa toda la caja del nodo.
       const hw = compact ? r : w / 2;
@@ -610,6 +625,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   // no compacto tampoco tiene ancho útil en sus vértices → etiqueta fuera.
   const shape = shapeForType(node.tipo_elemento);
   const compact = !!meta?.compact;
+  // Anillo BPMN canónico: Fin = grueso, Intermedio = doble; el resto simple.
+  const eventRing: "thick" | "double" | undefined =
+    node.tipo_elemento === "Evento de Fin"
+      ? "thick"
+      : node.tipo_elemento === "Evento Intermedio"
+        ? "double"
+        : undefined;
   const labelOutside = compact || shape === "diamond";
   const sideInset = compact ? (NODE_WIDTH - NODE_HEIGHT) / 2 : 0;
 
@@ -632,6 +654,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         w={NODE_WIDTH}
         h={NODE_HEIGHT}
         compact={compact}
+        ring={eventRing}
         className={cn(
           "stroke-2 transition-all",
           // Sólo los contenedores son transparentes; los símbolos llevan su tinte.

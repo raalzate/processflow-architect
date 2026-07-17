@@ -191,6 +191,14 @@ function allContainerTypes(): Set<string> {
   return types;
 }
 
+/** Primera notación cuyo catálogo incluye `type` (para pistas de validación). */
+function notationOwningType(type: string): NotationId | undefined {
+  for (const id of ["ddd", "bpmn", "c4", "uml"] as NotationId[]) {
+    if (getNotation(id).elements.some((e) => e.type === type)) return id;
+  }
+  return undefined;
+}
+
 /**
  * Valida el diagrama. `errors` rompen la importación; `warnings` no, pero avisan
  * (p. ej. nodos aislados que el procesador del grafo descarta del lienzo).
@@ -210,10 +218,16 @@ export function validate(model: DiagramModel): ValidationResult {
   for (const n of model.nodes) {
     if (ids.has(n.id)) errors.push(`Id duplicado: "${n.id}".`);
     ids.add(n.id);
-    // Tipo desconocido para la notación → warning (un grafo puede mezclar notaciones).
+    // Tipo desconocido para la notación → warning (un grafo puede mezclar
+    // notaciones a propósito). Se indica a qué notación pertenece el tipo para
+    // que sea fácil corregir un mezclado accidental.
     if (!validTypes.has(n.tipo_elemento)) {
+      const owner = notationOwningType(n.tipo_elemento);
+      const hint = owner
+        ? ` (ese tipo es de la notación "${owner}"; ¿querías otro tipo, o crear el diagrama en "${owner}"?)`
+        : "";
       warnings.push(
-        `"${n.nombre}" usa el tipo "${n.tipo_elemento}", que no pertenece a la notación "${model.meta.notation}".`
+        `"${n.nombre}" usa el tipo "${n.tipo_elemento}", que no pertenece a la notación "${model.meta.notation}"${hint}.`
       );
     }
     // Nodo no-contenedor sin ninguna arista: el procesador del grafo lo descarta.
