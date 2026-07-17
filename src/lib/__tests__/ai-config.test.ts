@@ -45,6 +45,16 @@ describe("ai-config · GenerationConfig", () => {
     expect(getGenerationConfig()).toEqual(DEFAULT_GEN_CONFIG);
   });
 
+  it("sin localStorage (SSR/main) devuelve los defaults", () => {
+    vi.stubGlobal("localStorage", undefined);
+    expect(getGenerationConfig()).toEqual(DEFAULT_GEN_CONFIG);
+  });
+
+  it("setGenerationConfig no lanza sin localStorage", () => {
+    vi.stubGlobal("localStorage", undefined);
+    expect(() => setGenerationConfig({ maxTokens: 1, systemPrompt: "" })).not.toThrow();
+  });
+
   it("setGenerationConfig persiste como JSON", () => {
     const ls = makeLocalStorage();
     vi.stubGlobal("localStorage", ls);

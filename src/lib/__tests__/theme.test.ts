@@ -71,4 +71,17 @@ describe("get/setStoredTheme", () => {
     expect(getStoredTheme()).toBe(DEFAULT_THEME);
     expect(() => setStoredTheme("light")).not.toThrow();
   });
+
+  it("tolera un localStorage que lanza (catch → default)", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("boom");
+      },
+      setItem: () => {
+        throw new Error("boom");
+      },
+    });
+    expect(getStoredTheme()).toBe(DEFAULT_THEME);
+    expect(() => setStoredTheme("dark")).not.toThrow();
+  });
 });

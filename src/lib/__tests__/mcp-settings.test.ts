@@ -37,6 +37,9 @@ describe("mcp-settings", () => {
       readMcpPrefs({ getItem: (k) => (k === MCP_PORT_KEY ? "80" : "0") }) // puerto <1024
     ).toEqual({ enabled: false, port: MCP_DEFAULT_PORT });
     expect(
+      readMcpPrefs({ getItem: (k) => (k === MCP_PORT_KEY ? "99999" : "0") }) // puerto >65535
+    ).toEqual({ enabled: false, port: MCP_DEFAULT_PORT });
+    expect(
       readMcpPrefs({
         getItem: () => {
           throw new Error("boom");

@@ -76,6 +76,28 @@ describe("encodeToon", () => {
     expect(out).toContain("-");
     expect(out).toContain("nodos[1]{id}:");
   });
+
+  it("escalar en la raíz se codifica directo", () => {
+    expect(encodeToon(42)).toBe("42");
+    expect(encodeToon("hola")).toBe("hola");
+    expect(encodeToon(null)).toBe("");
+  });
+
+  it("array de arrays anidados usa marcador por elemento", () => {
+    const out = encodeToon([
+      [1, 2],
+      [3],
+    ]);
+    expect(out).toContain("root[2]:");
+    expect(out).toContain("[2]: 1,2");
+  });
+
+  it("objeto anidado y claves undefined se omiten", () => {
+    const out = encodeToon({ meta: { a: 1 }, saltar: undefined });
+    expect(out).toContain("meta:");
+    expect(out).toContain("a: 1");
+    expect(out).not.toContain("saltar");
+  });
 });
 
 describe("graphToToon", () => {
