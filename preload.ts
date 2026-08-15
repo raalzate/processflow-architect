@@ -50,6 +50,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('mcp-import-diagram', listener);
   },
 
+  // Publica el estado del lienzo (proyecto activo, notación, vistas) para que las
+  // herramientas MCP lo lean. Fire-and-forget: nunca debe frenar el render.
+  mcpPublishAppState: (state: unknown): void => {
+    ipcRenderer.send('mcp-app-state', state);
+  },
+
   // --- Playground MCP (guía /mcp) ---
   mcpPlaygroundListTools: (): Promise<any[]> => ipcRenderer.invoke('mcp-playground-list-tools'),
   mcpPlaygroundCall: (name: string, args: unknown): Promise<any> =>

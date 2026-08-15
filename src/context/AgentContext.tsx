@@ -18,11 +18,12 @@ import React, {
 import { useGraphContext } from "@/context/GraphContext";
 import { useViews } from "@/context/ViewsContext";
 import { useToast } from "@/hooks/use-toast";
-import { runLitertAgent } from "@/lib/ai/litert-agent";
+import { runLitertAgent, resolveNotations } from "@/lib/ai/litert-agent";
 import { safeGraphToToon } from "@/lib/ai/graph-toon";
 import { extractDocumentText } from "@/lib/ai/document-extract";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
 import { getGenerationConfig } from "@/lib/ai-config";
+import { DEFAULT_NOTATION_ID } from "@/lib/notations";
 import type {
   Artifact,
   ArtifactVersion,
@@ -74,7 +75,7 @@ export function artifactToText(a: Artifact): string {
 
 /** Serializa una vista del diseñador a texto plano para inyectarla como contexto. */
 function viewToContext(view: any): { kind: string; title: string; content: string } {
-  const notation = (view.notation ?? "ddd") as string;
+  const notation = (view.notation ?? DEFAULT_NOTATION_ID) as string;
   let content = "";
   if (view.kind === "graph") {
     try {
@@ -125,7 +126,7 @@ export const useAgent = () => {
 
 export function AgentProvider({ children }: { children: React.ReactNode }) {
   const { currentFileId, graphData } = useGraphContext();
-  const { views, injectedViews } = useViews();
+  const { views, injectedViews, activeView } = useViews();
   const { toast } = useToast();
 
   const [versions, setVersions] = useState<ArtifactVersion[]>([]);
@@ -277,11 +278,14 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           .map((v) => viewToContext(v))
           .filter((c) => c.content.trim());
         const contextArtifacts = [...artifactContext, ...viewContext];
-        // Notaciones de las vistas inyectadas → marco de razonamiento del agente
-        // (BPMN/C4/UML/DDD). Sin vistas inyectadas → el agente asume DDD.
-        const injectedNotations = Array.from(
-          new Set(injectedViews.map((v) => (v.notation ?? "ddd") as string))
-        );
+        // Notación del turno: vistas pineadas > vista activa > notación del
+        // documento. Antes solo se miraban las pineadas, así que preguntar sobre
+        // un lienzo C4 sin pinear nada hacía razonar al agente en DDD.
+        const notations = resolveNotations({
+          injected: injectedViews.map((v) => (v.notation ?? "") as string),
+          activeNotation: activeView?.notation,
+          graphNotation: graphData?.notation,
+        });
 
         // Adjuntos → texto (PDF/imagen con OCR / texto) como contexto del agente.
         const documents: { name: string; text: string }[] = [];
@@ -304,8 +308,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           message: trimmed,
           history,
           graphData: graphData ?? undefined,
-          views: views.map((v) => ({ name: v.name, kind: v.kind, notation: v.notation ?? "ddd" })),
-          notations: injectedNotations.length ? injectedNotations : undefined,
+          views: views.map((v) => ({ name: v.name, kind: v.kind, notation: v.notation ?? DEFAULT_NOTATION_ID })),
+          notations: notations.length ? notations : undefined,
           contextArtifacts: contextArtifacts.length ? contextArtifacts : undefined,
           documents: documents.length ? documents : undefined,
           systemPrompt: getGenerationConfig().systemPrompt || undefined,
@@ -390,6 +394,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       activeVersionId,
       injectedViews,
       views,
+      activeView,
       toast,
       updateTokenUsage,
     ]

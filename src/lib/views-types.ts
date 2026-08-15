@@ -9,8 +9,10 @@
  * Los ARTEFACTOS generados por la IA son un conjunto APARTE (no son vistas).
  */
 
-import type { GraphData } from "@/lib/types";
-import type { NotationId } from "@/lib/notations";
+// Imports RELATIVOS a propósito: este módulo lo consume también el proceso main
+// (herramientas MCP), que compila con tsconfig.electron y no resuelve el alias `@/`.
+import type { GraphData } from "./types";
+import type { NotationId } from "./notations";
 
 export type ViewKind = "design" | "graph" | "mermaid";
 
@@ -39,7 +41,11 @@ export const MAX_CUSTOM_VIEWS = 50;
 /** Máximo de vistas que pueden inyectarse simultáneamente al contexto del agente. */
 export const MAX_INJECTED_VIEWS = 10;
 
-/** Vista base: el modelo de dominio del proyecto (lienzo principal). El resto son creadas por el usuario o asistidas por la IA. */
+/**
+ * Vista base: el modelo del proyecto (lienzo principal). Su `notation` es solo la
+ * semilla: `ViewsContext` la sustituye por la del documento activo. El resto de
+ * vistas las crea el usuario o la IA.
+ */
 export const BUILTIN_VIEWS: DesignView[] = [
   { id: "design", name: "Modelo", kind: "design", notation: "ddd", builtin: true, createdAt: "" },
 ];

@@ -1,8 +1,23 @@
 # Claude Code Instructions
 
 @AGENTS.md
+@CONSTITUTION.md
 
 ---
+
+## El arnés (leer antes de tocar nada)
+
+- **Nada se entrega sin `npm run gate` verde.** Es la única definición de entregable:
+  self-test del arnés · link-check de docs · lint de convenciones · typecheck · tests
+  con cobertura · build de producción. `npm run gate:fast` omite el build: es señal de
+  desarrollo, **no** entregable.
+- Cómo está montado (hooks, subagentes, comandos, rutas protegidas): `docs/harness/harness.md`.
+- Antes de escribir código: `docs/architecture/reuse-patterns.md` (¿ya existe la abstracción?)
+  y el índice de símbolos de Serena antes de abrir archivos.
+- Trabajo de tamaño feature → ruta SDD (`docs/harness/sdd.md`). Saltarla se **declara** en una
+  línea; no se omite en silencio.
+- Un incidente que costó tiempo termina en `/lesson`: mecanismo más fuerte disponible
+  (test > lint/hook > comando > markdown), validado con el gate.
 
 ## Sobre el proyecto
 
@@ -60,13 +75,22 @@ src/lib/                 lógica pura testeable (grafo, IA, artefactos, notacion
 ## Antes de dar algo por terminado
 
 ```bash
-npm run typecheck      # tsc renderer + electron, sin emitir
-npm test               # vitest (todas las pruebas deben pasar)
-npm run test:coverage  # cobertura (mismo gate que CI)
+npm run gate           # EL entregable: arnés · docs · lint · typecheck · tests · build
+npm run gate:fast      # lo mismo sin build (señal de desarrollo, no entregable)
 ```
 
-- CI (`.github/workflows/ci.yml`) corre **typecheck + pruebas con cobertura** en cada
-  push/PR a `main`. No mergear en rojo.
+Señales sueltas, para iterar rápido mientras se programa:
+
+```bash
+npm run lint           # convenciones del repo (pureza de lib/, notación, WebGPU)
+npm run typecheck      # tsc renderer + electron, sin emitir
+npm test               # vitest (todas las pruebas deben pasar)
+```
+
+- CI (`.github/workflows/ci.yml`) corre **el mismo `npm run gate`** en cada push/PR a
+  `main`. No mergear en rojo.
+- Pre-commit real: `npm run hooks:install` (`core.hooksPath=.githooks`). Prohibido
+  `--no-verify`: si el gate estorba, se arregla el gate.
 - **TDD para `src/lib/`:** toda función nueva o cambio de comportamiento lleva prueba.
   Los tests viven en `__tests__/` junto al módulo. Si un test rojo refleja un cambio
   de comportamiento *intencional*, se actualiza el test (no se debilita el código).

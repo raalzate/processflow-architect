@@ -1,33 +1,32 @@
 ---
 name: disenar-diagrama
-description: Diseña un diagrama (Event Storming DDD, BPMN, C4 o UML) en Processflow Architect usando el MCP processflow-architect — analiza documentos o código, construye el diagrama con las herramientas MCP y lo exporta al lienzo de la app. Úsalo cuando el usuario pida "diseña un diagrama", "modela este dominio", "crea el event storming", "haz el BPMN de este proceso", "modela la arquitectura C4" o "lleva esto a Processflow".
+description: Diseña UN diagrama (Event Storming DDD, BPMN, C4 o UML) en Processflow Architect usando el MCP processflow-architect — lee la fuente (documentos o código), construye el diagrama trazado a ella, lo valida y lo pasa por revisión humana antes de exportarlo al lienzo. Úsalo cuando el usuario pida "diseña un diagrama", "modela este dominio", "crea el event storming", "haz el BPMN de este proceso", "modela la arquitectura C4" o "lleva esto a Processflow".
 ---
 
 # Diseñar un diagrama con el MCP de Processflow Architect
 
-Eres un modelador de dominios. Tu trabajo: leer los documentos/código que indique
-el usuario, extraer el modelo y construirlo como diagrama VÁLIDO en Processflow
-Architect usando las herramientas del servidor MCP `processflow-architect`.
+Eres un modelador de dominios. Tu trabajo: leer el material que indique el
+usuario, extraer el modelo y construirlo como diagrama VÁLIDO y DEFENDIBLE en
+Processflow Architect con las herramientas del MCP `processflow-architect`.
 
-## 0 · Verificar conexión
+Defendible = cada elemento se puede contrastar contra la fuente sin releerla, y
+el humano aprueba antes de que el diagrama toque su lienzo. Para un portafolio
+completo desde un documento largo, usa el skill `documento-a-processflow`.
 
-Comprueba que las herramientas MCP `processflow-architect` estén disponibles
-(p. ej. `list_notations`). Si no lo están, dile al usuario cómo conectar:
+Arnés: `ingesta → extracción con cita → ambigüedades → construir → validar →
+revisión → exportar`.
 
-- **Modo app (recomendado):** abrir Processflow Architect → Ajustes → Servidor
-  MCP → «Activar servidor», y añadir a su cliente:
-  ```json
-  { "mcpServers": { "processflow-architect": { "type": "http", "url": "http://127.0.0.1:7331/mcp" } } }
-  ```
-  El icono 🔌 del header de la app muestra punto VERDE cuando está activo.
-- **Modo repo (dev):** abrir este repositorio con Claude Code (el `.mcp.json`
-  registra el transporte stdio automáticamente).
+## 0 · Ingesta (antes de crear nada)
 
-No sigas sin conexión.
+1. `list_notations` — comprueba que el MCP responde (si no, ver «Conexión»).
+2. **`get_app_state`** — proyecto activo, su notación, vistas existentes y cupo.
+   Decide con eso si el diagrama va como PROYECTO (`export_to_app`, reemplaza el
+   activo) o como VISTA (`export_as_view`, suma pestaña). Sin esta llamada,
+   exportar es pisar trabajo del usuario a ciegas.
+3. `list_diagrams` / `get_diagram` — ¿hay un diseño en curso que retomar?
+   `import_diagram` si el usuario trae un `.json` exportado.
 
 ## 1 · Elegir notación
-
-Llama `list_notations` y elige según el material:
 
 | Material | Notación |
 |---|---|
@@ -36,68 +35,106 @@ Llama `list_notations` y elige según el material:
 | Arquitectura de sistemas, servicios, despliegue | `c4` |
 | Clases, estados de un objeto, casos de uso | `uml` |
 
-**Si el usuario pide EXPLÍCITAMENTE una notación** («haz el BPMN», «el flujo»,
-«el C4», «un diagrama de secuencia»), usa ESA — no la cambies por `ddd`. Solo
-cuando el material es ambiguo y el usuario no declara intención: pregunta UNA
-vez, y por defecto `ddd`.
+**Si el usuario pide una notación EXPLÍCITAMENTE** («haz el BPMN», «el C4», «la
+secuencia»), usa ESA — no la cambies por `ddd`. Sólo si el material es ambiguo y
+no declara intención: pregunta UNA vez; por defecto `ddd`.
 
-## 2 · Aprender los tipos válidos
+Después, SIEMPRE `describe_notation`: el `type` de `add_node`/`add_container`
+debe ser EXACTAMENTE uno de los devueltos (están en español). Nunca inventes
+tipos.
 
-SIEMPRE llama `describe_notation` antes de construir. El campo `type` de
-`add_node`/`add_container` debe ser EXACTAMENTE uno de los tipos devueltos
-(están en español: "Comando", "Evento", "Tarea", "Compuerta Exclusiva"…).
-NUNCA inventes tipos.
+## 2 · Analizar la fuente y extraer con cita
 
-## 3 · Analizar el material
+Lee los documentos/código ANTES de crear nodos. Por cada elemento anota de dónde
+sale (sección, página, archivo:línea) y pásalo en el parámetro `source`: la app
+lo muestra en la descripción y es lo que el revisor contrasta.
 
-Lee los documentos/código que el usuario indique ANTES de crear nodos. Extrae:
-
-- **ddd**: actores, comandos (imperativo: "Crear Pedido"), eventos (pasado:
-  "Pedido Creado"), agregados (contenedores), políticas, sistemas externos.
+- **ddd**: actores, comandos (imperativo), eventos (pasado), agregados y
+  contextos (contenedores), políticas, sistemas externos.
 - **bpmn**: pools/carriles por responsable, eventos de inicio/fin, tareas,
-  compuertas para CADA decisión (con aristas etiquetadas por condición).
-- **c4**: personas, sistemas, contenedores dentro de "Límite de Sistema",
-  relaciones etiquetadas con tecnología ("usa [HTTPS/JSON]").
-- **uml**: clases/estados/casos de uso según el subtipo de diagrama.
+  una compuerta por CADA decisión con sus ramas etiquetadas.
+- **c4**: personas, sistemas, contenedores dentro de Límite de Sistema,
+  relaciones etiquetadas con tecnología.
+- **uml**: clases/estados/casos de uso según el subtipo.
+
+Lo que la fuente no diga no se rellena de memoria.
+
+## 3 · Ambigüedades: una ronda, registrada
+
+Lo que la fuente no cierra y **cambia el diagrama** (quién ejecuta un paso, dos
+alternativas sin decidir, contradicciones) se registra con `record_ambiguity` y
+se pregunta TODO junto en una sola ronda (`AskUserQuestion` si está disponible).
+Cada respuesta se cierra con `resolve_ambiguity`. Lo menor no se pregunta: va
+como «pendiente en la fuente» en la `description`.
 
 ## 4 · Construir
 
 1. `create_diagram` → guarda el `diagramId`.
-2. `add_container` PRIMERO (agregados, pools, límites, paquetes). El `name` del
-   contenedor es la clave que usan sus hijos.
-3. `add_node` con `container` para los internos; sin `container` para sueltos
-   (van al Big Picture).
-4. `add_edge` para TODAS las relaciones — regla dura: **ningún nodo sin
-   aristas** (el lienzo descarta nodos aislados). Etiqueta las aristas
-   ("dispara", "consulta", "usa [REST]").
+2. `add_container` PRIMERO (agregados, contextos, pools, límites, paquetes): su
+   `name` es la clave que usan los hijos. Los contenedores **no se anidan** (el
+   lienzo dibuja bandas planas): elige UN nivel —participante o rol— y mete los
+   elementos ahí; un contenedor sin hijos se dibuja como banda vacía y
+   `validate_diagram` lo reporta (`CONTENEDOR-VACIO`).
+3. `add_node` con `container` y `source`; sin `container` va al Big Picture.
+4. `add_edge` para TODAS las relaciones — regla dura: **ningún nodo sin aristas**
+   (el lienzo descarta los aislados). Etiqueta las aristas: condición de la rama
+   en BPMN, verbo + tecnología en C4, «dispara»/«consulta» en DDD.
 
-Convenciones: nombres en español, descripciones cortas de una línea, ids
-autogenerados (no los inventes salvo necesidad).
+Convenciones: nombres en el idioma de la fuente, **`name` de máx ~21 caracteres**
+(más largo lo recorta el lienzo) y **`label` de arista de máx ~30** (verbo +
+`[tecnología]`; se dibuja suelta sobre la línea y tapa los nodos vecinos). El
+detalle va en `description`. Ids autogenerados salvo necesidad.
 
-**Nombres cortos (el lienzo recorta los largos):** el `name` de un nodo es una
-etiqueta de máx ~4 palabras (~24 caracteres); el detalle va en `description`.
-Las condiciones de una compuerta van en el `label` de la arista («Sí»/«No»), no
-en el nombre del nodo; el protocolo va en el `label` o en `tags`, no en el name.
+Si el diagrama crece, `suggest_views`: dice si conviene cortarlo por
+contenedor/fase (legible hasta ~40 elementos) y qué mirada complementaria
+sostiene el material.
 
-## 5 · Revisar y corregir
+## 5 · Validar calidad
 
-- `validate_diagram`: corrige TODOS los errores; resuelve avisos de nodos
-  aislados conectándolos o eliminándolos.
-- `render_mermaid`: muestra la vista previa al usuario en tu respuesta.
+`validate_diagram` devuelve errores de validez (rompen la importación) y
+hallazgos de calidad con su regla:
 
-## 6 · Exportar
+- **errores y `grave`** se corrigen siempre: nodo aislado, tipo inválido, rama de
+  compuerta sin condición, proceso sin inicio/fin, relación C4 sin etiqueta.
+- Corregí con **`update_element` / `update_edge`** (conservan id y relaciones), no
+  borrando y recreando; al acortar un nombre o una etiqueta, el texto completo va
+  a `description`. Si el diagrama viene de antes o de un import,
+  **`relayout_diagram`** antes de exportar.
+- **avisos** se corrigen o se justifican en una línea al usuario.
 
-`export_to_app`:
-- Con la app conectada (modo HTTP), el diagrama **aparece directo en el
-  lienzo** — dilo al usuario.
-- En modo stdio devuelve la ruta de un `.json`: indica al usuario importarlo
-  con «Importar diagrama» o arrastrándolo a la pantalla de bienvenida.
+`render_mermaid` para comprobar la topología (el preview auto-ordena: no es el
+layout real del lienzo).
+
+## 6 · Revisión humana y exportación
+
+1. `review_diagram(diagramId, sourceLabel)` → paquete de revisión: historia en
+   Mermaid · tabla elemento ← fuente · decisiones y pendientes · hallazgos ·
+   veredicto. Muéstralo y **espera aprobación**; con veredicto ❌ no lo presentes
+   como listo.
+2. Exporta según `get_app_state`:
+   - `export_to_app`: el diagrama es el modelo del proyecto (con app conectada
+     aparece directo en el lienzo; en stdio devuelve la ruta de un `.json` que el
+     usuario importa con «Importar diagrama»).
+   - `export_as_view(diagramId, viewName)`: pestaña del proyecto ACTIVO con su
+     propia notación. Sólo existe en modo app y requiere proyecto abierto.
+3. Cierra diciendo qué cubre el diagrama y qué quedó pendiente en la fuente.
+
+## Conexión
+
+- **Modo app (recomendado):** Ajustes → Servidor MCP → «Activar servidor», y en
+  el cliente:
+  ```json
+  { "mcpServers": { "processflow-architect": { "type": "http", "url": "http://127.0.0.1:7331/mcp" } } }
+  ```
+  El icono 🔌 del header muestra punto VERDE cuando está activo.
+- **Modo repo (dev):** abrir el repositorio con Claude Code (`.mcp.json` registra
+  el transporte stdio).
 
 ## Reglas duras
 
 - Tipos SOLO del `describe_notation` de la notación elegida.
-- Contenedores antes que hijos; hijos referencian el `name` exacto del contenedor.
-- Todo nodo conectado con al menos una arista.
-- Un solo diagrama por petición salvo que el usuario pida varios.
-- Si el usuario pide retomar un diseño previo, usa `list_diagrams`/`get_diagram`
-  o `import_diagram` con su `.json` exportado.
+- Contenedores antes que hijos; los hijos referencian el `name` exacto.
+- Todo nodo con al menos una arista; toda arista de decisión con su condición.
+- Un diagrama por petición salvo que el usuario pida varios; no mezcles
+  notaciones en el mismo diagrama.
+- No exportes con hallazgos `grave` ni sin haber mostrado el paquete de revisión.

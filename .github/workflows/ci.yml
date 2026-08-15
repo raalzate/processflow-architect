@@ -12,8 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Typecheck & Unit Tests
+  # Un solo job, porque hay una sola definición de "entregable": scripts/gate.sh.
+  # Lo corren los tres actores con el mismo comando — humano, agente (subagente
+  # gate-runner) y CI. Si CI corriera otra cosa, el verde local dejaría de significar algo.
+  gate:
+    name: Gate (arnés · docs · lint · typecheck · tests · build)
     runs-on: ubuntu-latest
 
     steps:
@@ -28,20 +31,18 @@ jobs:
 
       # `npm ci` instala desde package-lock.json (reproducible).
       # --ignore-scripts salta el postinstall (electron-builder install-app-deps,
-      # rebuild de módulos nativos) que no hace falta para typecheck ni pruebas
-      # unitarias. ELECTRON_SKIP_BINARY_DOWNLOAD / PUPPETEER_SKIP_DOWNLOAD evitan
-      # bajar binarios pesados y aceleran el CI.
+      # rebuild de módulos nativos) que no hace falta para el gate.
+      # ELECTRON_SKIP_BINARY_DOWNLOAD / PUPPETEER_SKIP_DOWNLOAD evitan bajar binarios pesados.
       - name: Install dependencies
         run: npm ci --ignore-scripts
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
           PUPPETEER_SKIP_DOWNLOAD: 1
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Unit tests with coverage
-        run: npm run test:coverage
+      # El self-test reporta el kit de SDD como "omitido" cuando $CI está presente:
+      # esas skills viven en la máquina del desarrollador, no en el repo.
+      - name: Gate
+        run: npm run gate
 
       - name: Upload coverage report
         if: always()

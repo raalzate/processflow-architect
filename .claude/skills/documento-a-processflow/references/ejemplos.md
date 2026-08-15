@@ -14,13 +14,18 @@ Señal del documento → modelo:
 
 ```
 add_container { name: "Pagos", type: "Contexto Delimitado",
-  description: "Confirma pagos con la pasarela; cancela pedidos sin pago a las 24 h." }
-add_node { id: "cmd-pagar-pedido", name: "Pagar Pedido", type: "Comando", container: "Pagos" }
-add_node { id: "evt-pago-confirmado", name: "Pago Confirmado", type: "Evento", container: "Pagos" }
-add_node { id: "pol-cancelacion-24", name: "Cancelar sin pago", type: "Política", container: "Pagos", description: "Si el pago no se confirma en 24 h, el pedido se cancela." }
+  description: "Confirma pagos con la pasarela; cancela pedidos sin pago a las 24 h.",
+  source: "PRD §4.2 (p. 11)" }
+add_node { id: "cmd-pagar-pedido", name: "Pagar Pedido", type: "Comando", container: "Pagos", source: "PRD §4.2 (p. 11)" }
+add_node { id: "evt-pago-confirmado", name: "Pago Confirmado", type: "Evento", container: "Pagos", source: "PRD §4.2 (p. 11)" }
+add_node { id: "pol-cancelacion-24", name: "Cancelar sin pago", type: "Política", container: "Pagos", description: "Si el pago no se confirma en 24 h, el pedido se cancela.", source: "PRD §4.2 (p. 11)" }
 add_edge { from: "cmd-pagar-pedido", to: "evt-pago-confirmado", label: "pasarela de pagos [API]" }
 add_edge { from: "cmd-pagar-pedido", to: "pol-cancelacion-24", label: "si no se confirma" }
 ```
+
+`source` es la cita de dónde sale cada elemento. No es decorativo: la tabla
+«elemento ← fuente» de `review_diagram` se construye con eso, y sin ella el
+revisor tiene que releer el documento (que es cuando la revisión no ocurre).
 
 Claves de calidad:
 - **Cadena Comando → Evento** siempre; el evento en pasado con el nombre del
@@ -87,15 +92,19 @@ Claves de calidad:
 
 ## Checklist final (antes de exportar)
 
-1. `validate_diagram` sin errores Y sin avisos de nodos aislados.
+1. `validate_diagram` sin errores, sin hallazgos `grave` y sin avisos de nodos
+   aislados.
 2. `render_mermaid`: ¿el flujo se lee de inicio a fin contando la historia del
-   documento? ¿Las decisiones tienen todas sus ramas?
+   documento? ¿Las decisiones tienen todas sus ramas etiquetadas?
 3. Nombres = Lenguaje Ubicuo del documento (mismo idioma, mismos términos),
-   **cortos (~4 palabras)**; el detalle y las condiciones «si X → Y» van en
-   `description` o en el `label` de la arista, no en el `name` (se recorta).
-4. Cada afirmación importante del documento tiene su elemento; lo dudoso lleva
-   «pendiente en documento fuente» en la descripción.
-5. ≤ ~40 nodos; si te pasas, divide en otra vista.
+   **de máx ~21 caracteres**, y etiquetas de arista **de máx ~30** (verbo +
+   `[tecnología]`); el detalle y las condiciones «si X → Y» van en `description`,
+   no en el `name` (se recorta) ni en una etiqueta kilométrica (tapa el lienzo).
+4. Cada elemento con su `source`; lo dudoso, registrado con `record_ambiguity` o
+   marcado «pendiente en documento fuente» en la descripción.
+5. ≤ ~40 nodos; si te pasas, `suggest_views` y divide.
+6. `review_diagram` con veredicto ✅ y **aprobado por el usuario**. Recién ahí
+   `export_to_app` / `export_as_view`, según lo que diga `get_app_state`.
 
 ## Antipatrones (no hacer)
 
@@ -105,3 +114,7 @@ Claves de calidad:
 - Ids genéricos (`nodo-1`, `tarea-2`): impiden conectar bien y depurar.
 - Modelar conocimiento del rubro que el documento no dice (el diagrama debe
   ser defendible línea a línea contra el documento fuente).
+- Exportar sin `get_app_state`: crea proyectos duplicados o reemplaza el que el
+  usuario tenía abierto.
+- Exportar sin mostrar `review_diagram`: la revisión se termina haciendo en el
+  lienzo, que es donde más cuesta y donde ya no hay trazabilidad a la fuente.

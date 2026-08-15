@@ -11,6 +11,8 @@ import { FileJson, FileUp, Loader2, Plug } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { parseDiagramJson, isJsonFile } from "@/lib/import-diagram";
 import { readMcpPrefs } from "@/lib/mcp-settings";
+import { describeAppState } from "@/lib/mcp/app-state";
+import { MAX_CUSTOM_VIEWS } from "@/lib/views-types";
 import { cn } from "@/lib/utils";
 import { useGraphContext } from "@/context/GraphContext";
 import type { GraphData } from "@/lib/types";
@@ -58,10 +60,28 @@ const MemoizedAppHeader = React.memo(() => {
 //    export_to_app → proyecto nuevo; export_as_view → vista (pestaña) del
 //    proyecto ACTIVO con su propia notación.
 // 2) Re-arranca el servidor al abrir la app si el usuario lo dejó activado.
+// 3) Publica el estado del lienzo (proyecto activo, notación, vistas) para que
+//    `get_app_state` lo sirva al agente: sin esa ingesta previa, el agente
+//    exporta a ciegas y duplica o pisa el trabajo del humano.
 const McpImportBridge = () => {
-  const { handleCreateProjectFromContent, currentFileId } = useGraphContext();
-  const { createView } = useViews();
+  const { handleCreateProjectFromContent, currentFileId, graphData, savedFiles } =
+    useGraphContext();
+  const { createView, views } = useViews();
   const { toast } = useToast();
+
+  useEffect(() => {
+    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    if (!electron?.mcpPublishAppState) return;
+    electron.mcpPublishAppState(
+      describeAppState({
+        graph: graphData,
+        views,
+        savedFiles,
+        viewsLimit: MAX_CUSTOM_VIEWS,
+        now: new Date().toISOString(),
+      })
+    );
+  }, [graphData, views, savedFiles]);
 
   useEffect(() => {
     const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
@@ -276,6 +296,7 @@ const MemoizedNodeModal = React.memo(() => {
     allNodes,
     allLinks,
     modalHistory,
+    graphData,
     setSelectedNode,
     handleNodeUpdate,
     handleNodeSelectFromModal,
@@ -288,6 +309,7 @@ const MemoizedNodeModal = React.memo(() => {
       allNodes={allNodes}
       allLinks={allLinks}
       historyCount={modalHistory.length}
+      notation={graphData?.notation}
       onClose={() => setSelectedNode(null)}
       onNodeUpdate={handleNodeUpdate}
       onNodeSelect={handleNodeSelectFromModal}

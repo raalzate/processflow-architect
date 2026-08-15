@@ -15,6 +15,8 @@ import {
   type RemoteGenerateArgs,
 } from './services/ai-remote';
 import { startMcpHttp, stopMcpHttp, mcpHttpStatus } from './services/mcp-http';
+import { setAppState } from './services/mcp-app-state';
+import type { AppState } from '../src/lib/mcp/app-state';
 import { getSystemInfo } from './services/system-info';
 import { playgroundListTools, playgroundCallTool } from './services/mcp-playground';
 
@@ -48,6 +50,11 @@ export function registerIpcHandlers() {
   ipcMain.handle('mcp-server-start', async (_e, port?: number) => startMcpHttp(port));
   ipcMain.handle('mcp-server-stop', async () => stopMcpHttp());
   ipcMain.handle('mcp-server-status', async () => mcpHttpStatus());
+
+  // Estado del lienzo publicado por el renderer: lo lee `get_app_state` para que
+  // el agente externo no diseñe ni exporte a ciegas. Es `on` (fire-and-forget):
+  // publicar no debe bloquear el render.
+  ipcMain.on('mcp-app-state', (_e, state: AppState | null) => setAppState(state));
 
   // --- Playground MCP (guía /mcp): ejecutar herramientas por transporte en memoria ---
   ipcMain.handle('mcp-playground-list-tools', async () => playgroundListTools());

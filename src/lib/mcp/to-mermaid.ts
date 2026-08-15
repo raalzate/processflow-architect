@@ -21,10 +21,13 @@ function label(text: string): string {
   return (text || "").replace(/"/g, "#quot;").replace(/\n/g, "<br>");
 }
 
-/** Delimitadores de forma según el `shape` de la notación. */
-function shapeDelims(node: BuilderNode): [string, string] {
-  const shape = ALL_ELEMENTS[node.tipo_elemento]?.shape ?? "rounded";
-  switch (shape) {
+/**
+ * Delimitadores Mermaid de la FORMA que la notación declara para un tipo. Única
+ * tabla forma→Mermaid del repo (la usa también `mermaid-diagram.ts`): así DDD,
+ * BPMN, C4 y UML exportan con su símbolo sin tablas de tipos cableadas.
+ */
+export function mermaidShapeDelims(tipo: string): [string, string] {
+  switch (ALL_ELEMENTS[tipo]?.shape ?? "rounded") {
     case "rect":
       return ["[", "]"];
     case "ellipse":
@@ -38,6 +41,9 @@ function shapeDelims(node: BuilderNode): [string, string] {
       return ["(", ")"];
   }
 }
+
+const shapeDelims = (node: BuilderNode): [string, string] =>
+  mermaidShapeDelims(node.tipo_elemento);
 
 const isContainer = (n: BuilderNode): boolean =>
   Boolean(ALL_ELEMENTS[n.tipo_elemento]?.container);

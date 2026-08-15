@@ -21,12 +21,46 @@
  */
 
 import type { GraphData, GraphNode, Agregado } from "../types";
-import { getNotation, isNotationContainer, type NotationId } from "../notations";
+import {
+  getNotation,
+  hasRole,
+  isNotationContainer,
+  roleOfType,
+  typesWithRole,
+  type ElementRole,
+  type NotationId,
+} from "../notations";
 import { validTypesFor } from "./catalog";
+import {
+  getPreset,
+  resolveStrategy,
+  type LayoutDensity,
+  type LayoutPreset,
+  type LayoutStrategy,
+} from "./layout-presets";
 
 // --- Geometría por defecto (misma escala que el diseñador) ---
-const NODE_W = 160;
+/** Ancho con el que el lienzo dibuja un nodo (`DesignerCanvas.NODE_WIDTH`). */
+export const NODE_W = 160;
 const NODE_H = 60;
+
+/**
+ * Caracteres que caben en el nombre de un nodo. Se deriva de cómo dibuja el
+ * lienzo, no de un número elegido a ojo: caja de `NODE_W` con padding `p-2`
+ * (8 px por lado), texto `text-xs` (~6,6 px por carácter en negrita) y
+ * `line-clamp-2`, del que la fila del icono se come una línea larga. Medido
+ * contra diagramas reales: por encima de ~21 caracteres el nombre se recorta.
+ */
+export const NAME_CHARS_POR_LINEA = Math.floor((NODE_W - 16) / 6.6);
+export const MAX_NAME_CHARS = NAME_CHARS_POR_LINEA;
+
+/**
+ * Largo máximo de la etiqueta de una arista. Se dibuja suelta sobre la línea,
+ * sin caja que la acote: pasada esa longitud invade los nodos vecinos y, con
+ * varias aristas juntas, se convierte en una mancha ilegible. El detalle largo
+ * va en la descripción de la relación.
+ */
+export const MAX_EDGE_LABEL_CHARS = 30;
 
 const ESTADOS = ["nuevo", "modificado", "sin_cambios", "existente", "eliminado"] as const;
 type Estado = (typeof ESTADOS)[number];
@@ -37,6 +71,8 @@ export interface DiagramMeta {
   descripcion?: string;
   version?: string;
   fecha_analisis?: string;
+  /** Con qué densidad y estrategia se dibujó por última vez (ver `layout-presets`). */
+  layout?: { density: LayoutDensity; strategy: LayoutStrategy };
 }
 
 /** Nodo en construcción. `container` = NOMBRE del contenedor padre (o vacío). */
@@ -45,6 +81,12 @@ export interface BuilderNode {
   nombre: string;
   tipo_elemento: string;
   descripcion?: string;
+  /**
+   * Cita de DÓNDE sale el elemento en el material fuente ("PRD §3.2 (p. 7)",
+   * "acta 12-mar", "src/pagos/service.ts"). Sostiene la revisión humana: el
+   * revisor compara elemento ↔ fuente en vez de confiar en el modelo.
+   */
+  source?: string;
   /** Nombre del contenedor al que pertenece (los contenedores lo dejan vacío). */
   container?: string;
   estado_comparativo?: Estado;
@@ -67,10 +109,30 @@ export interface BuilderEdge {
   routing?: "straight" | "curved" | "orthogonal";
 }
 
+/**
+ * Decisión de diseño que la fuente NO cierra (alternativas sin decidir,
+ * contradicciones, vacíos que cambian la topología). Vive en el modelo para que
+ * no se diluya en la conversación del agente: se pregunta una vez, se resuelve
+ * y lo que quede pendiente llega al humano en la entrega.
+ */
+export interface Ambiguity {
+  id: string;
+  pregunta: string;
+  /** Alternativas tal como las nombra la fuente. */
+  opciones?: string[];
+  /** Qué parte del diagrama cambia según la respuesta. */
+  afecta?: string;
+  /** Cita de dónde nace la duda. */
+  source?: string;
+  /** Respuesta del humano; mientras esté vacía, la ambigüedad está pendiente. */
+  resolucion?: string;
+}
+
 export interface DiagramModel {
   meta: DiagramMeta;
   nodes: BuilderNode[];
   edges: BuilderEdge[];
+  ambiguities?: Ambiguity[];
 }
 
 export interface ValidationResult {
@@ -164,6 +226,68 @@ export function addEdge(model: DiagramModel, input: BuilderEdge): DiagramModel {
   return { ...model, edges: [...model.edges, { ...input }] };
 }
 
+/**
+ * Corrige un elemento existente (nombre, descripción, cita, tags) conservando su
+ * id y sus relaciones. Sin esto, acortar un nombre obligaba a borrar y recrear el
+ * nodo —perdiendo sus aristas—, así que en la práctica nadie corregía nada.
+ * Renombrar un CONTENEDOR arrastra la referencia de sus hijos.
+ */
+export function updateNode(
+  model: DiagramModel,
+  id: string,
+  patch: Partial<Pick<BuilderNode, "nombre" | "descripcion" | "source" | "tags_tecnologia" | "tipo_elemento">>
+): DiagramModel {
+  const target = findNode(model, id);
+  if (!target) throw new Error(`No existe el elemento "${id}".`);
+  // Cambiar de familia (nodo↔contenedor) dejaría hijos colgando o un contenedor
+  // sin marco: eso es rehacer el diagrama, no corregirlo.
+  if (patch.tipo_elemento && isNotationContainer(patch.tipo_elemento) !== isContainerNode(target)) {
+    throw new Error(
+      `"${target.tipo_elemento}" y "${patch.tipo_elemento}" no son de la misma familia: un contenedor no se convierte en nodo (ni al revés). Borralo y recrealo si es lo que querés.`
+    );
+  }
+  const nuevoNombre = patch.nombre?.trim();
+  if (nuevoNombre && nuevoNombre !== target.nombre && model.nodes.some((n) => n.nombre === nuevoNombre && isContainerNode(n))) {
+    throw new Error(`Ya hay un contenedor llamado "${nuevoNombre}".`);
+  }
+  const renombraContenedor = isContainerNode(target) && nuevoNombre && nuevoNombre !== target.nombre;
+  const nodes = model.nodes.map((n) => {
+    if (n.id === id) return { ...n, ...patch, nombre: nuevoNombre || n.nombre };
+    // Los hijos referencian al contenedor por NOMBRE: hay que arrastrarlos.
+    if (renombraContenedor && n.container === target.nombre) return { ...n, container: nuevoNombre };
+    return n;
+  });
+  return { ...model, nodes };
+}
+
+/**
+ * Corrige una relación existente por sus extremos: etiqueta, estilo o dirección.
+ * `label` vacío borra la etiqueta (en C4 eso deja la relación sin explicar, y
+ * `qualityFindings` lo reporta).
+ */
+export function updateEdge(
+  model: DiagramModel,
+  from: string,
+  to: string,
+  patch: Partial<Pick<BuilderEdge, "descripcion" | "dashed" | "arrow" | "routing" | "color">>
+): DiagramModel {
+  const idx = model.edges.findIndex((e) => e.fuente === from && e.destino === to);
+  if (idx === -1) throw new Error(`No existe una relación de "${from}" a "${to}".`);
+  const edges = model.edges.map((e, i) => (i === idx ? { ...e, ...patch } : e));
+  return { ...model, edges };
+}
+
+/**
+ * Elimina UNA relación por sus extremos, sin tocar los elementos. Hacía falta
+ * para reconectar: corregir un atajo (política → evento) obliga a quitar la
+ * arista vieja, y borrar el nodo para eso se llevaba por delante el resto.
+ */
+export function removeEdge(model: DiagramModel, from: string, to: string): DiagramModel {
+  const idx = model.edges.findIndex((e) => e.fuente === from && e.destino === to);
+  if (idx === -1) throw new Error(`No existe una relación de "${from}" a "${to}".`);
+  return { ...model, edges: model.edges.filter((_, i) => i !== idx) };
+}
+
 /** Elimina un nodo/contenedor y las aristas que lo tocan. */
 export function removeNode(model: DiagramModel, id: string): DiagramModel {
   const node = findNode(model, id);
@@ -177,8 +301,99 @@ export function removeNode(model: DiagramModel, id: string): DiagramModel {
 }
 
 // =============================================================================
+// Ambigüedades (decisiones que la fuente no cierra)
+// =============================================================================
+
+/** Registra una ambigüedad pendiente. El id se deriva de la pregunta. */
+export function recordAmbiguity(
+  model: DiagramModel,
+  input: Omit<Ambiguity, "id"> & { id?: string }
+): { model: DiagramModel; id: string } {
+  const existing = model.ambiguities ?? [];
+  const base = input.id ?? slugify(input.pregunta).slice(0, 40);
+  const taken = new Set(existing.map((a) => a.id));
+  let id = base || "ambiguedad";
+  let i = 2;
+  while (taken.has(id)) id = `${base}-${i++}`;
+  return { model: { ...model, ambiguities: [...existing, { ...input, id }] }, id };
+}
+
+/** Cierra una ambigüedad con la respuesta del humano. Lanza si el id no existe. */
+export function resolveAmbiguity(
+  model: DiagramModel,
+  id: string,
+  resolucion: string
+): DiagramModel {
+  const existing = model.ambiguities ?? [];
+  if (!existing.some((a) => a.id === id)) {
+    throw new Error(
+      `No hay una ambigüedad con id "${id}". Pendientes: ${
+        pendingAmbiguities(model).map((a) => a.id).join(", ") || "ninguna"
+      }.`
+    );
+  }
+  return {
+    ...model,
+    ambiguities: existing.map((a) => (a.id === id ? { ...a, resolucion } : a)),
+  };
+}
+
+/** Ambigüedades sin respuesta: bloquean la entrega "limpia" y se declaran al humano. */
+export function pendingAmbiguities(model: DiagramModel): Ambiguity[] {
+  return (model.ambiguities ?? []).filter((a) => !a.resolucion?.trim());
+}
+
+/**
+ * Resumen de ambigüedades en texto (va a `GraphData.notas`, que la app muestra):
+ * lo que quedó sin decidir y las decisiones que se tomaron con el humano.
+ */
+export function ambiguityNotes(model: DiagramModel): string {
+  const all = model.ambiguities ?? [];
+  if (!all.length) return "";
+  const pending = all.filter((a) => !a.resolucion?.trim());
+  const resolved = all.filter((a) => a.resolucion?.trim());
+  const parts: string[] = [];
+  if (pending.length) {
+    parts.push(
+      "## Pendiente en la fuente\n" +
+        pending
+          .map(
+            (a) =>
+              `- ${a.pregunta}${a.opciones?.length ? ` (opciones: ${a.opciones.join(" | ")})` : ""}${
+                a.afecta ? ` — afecta: ${a.afecta}` : ""
+              }`
+          )
+          .join("\n")
+    );
+  }
+  if (resolved.length) {
+    parts.push(
+      "## Decisiones tomadas\n" +
+        resolved.map((a) => `- ${a.pregunta} → ${a.resolucion}`).join("\n")
+    );
+  }
+  return parts.join("\n\n");
+}
+
+// =============================================================================
 // Validación
 // =============================================================================
+
+/**
+ * Avisos de trazabilidad: nodos sin `source` cuando el diagrama YA declara
+ * fuentes. Si NINGÚN nodo la declara, el diagrama no se está trazando contra un
+ * documento (p. ej. se modeló de una conversación) y avisar sería ruido.
+ */
+export function traceabilityWarnings(model: DiagramModel): string[] {
+  const withSource = model.nodes.filter((n) => n.source?.trim());
+  if (!withSource.length) return [];
+  return model.nodes
+    .filter((n) => !n.source?.trim())
+    .map(
+      (n) =>
+        `"${n.nombre}" (${n.id}) no cita fuente; el revisor no puede contrastarlo con el documento. Añade \`source\` o quítalo.`
+    );
+}
 
 function allContainerTypes(): Set<string> {
   // Recolecta de todas las notaciones los tipos marcados como contenedor.
@@ -203,6 +418,54 @@ function notationOwningType(type: string): NotationId | undefined {
  * Valida el diagrama. `errors` rompen la importación; `warnings` no, pero avisan
  * (p. ej. nodos aislados que el procesador del grafo descarta del lienzo).
  */
+/**
+ * Avisos de FLUJO propios de BPMN. Es el error de modelado más común y ninguna
+ * validación genérica lo ve: en BPMN cada Pool es un proceso independiente, así
+ * que entre participantes solo va **flujo de mensaje** (arista `dashed`); dentro
+ * de un pool —y entre sus Carriles, que solo dicen QUIÉN ejecuta— va **flujo de
+ * secuencia** (continuo).
+ *
+ * Solo aplica a `notation: "bpmn"`: en UML una arista punteada significa otra
+ * cosa (retorno, dependencia) y avisar ahí sería ruido.
+ */
+export function bpmnFlowWarnings(model: DiagramModel): string[] {
+  if (model.meta.notation !== "bpmn") return [];
+  const warnings: string[] = [];
+
+  const containers = model.nodes.filter(isContainerNode);
+  const typeOfContainer = new Map(containers.map((c) => [c.nombre, c.tipo_elemento]));
+
+  // Un Carril es una subdivisión de un Pool: suelto, no es BPMN.
+  const lanes = containers.filter((c) => c.tipo_elemento === "Carril");
+  if (lanes.length > 0 && !containers.some((c) => c.tipo_elemento === "Pool")) {
+    warnings.push(
+      `Hay Carriles (${lanes.map((l) => `"${l.nombre}"`).join(", ")}) sin ningún Pool: un carril es una subdivisión de un participante, añade el Pool que los contiene.`
+    );
+  }
+
+  for (const e of model.edges) {
+    const from = findNode(model, e.fuente);
+    const to = findNode(model, e.destino);
+    if (!from || !to) continue; // aristas colgantes: ya las reporta validate()
+    const fromPool = from.container && typeOfContainer.get(from.container) === "Pool" ? from.container : null;
+    const toPool = to.container && typeOfContainer.get(to.container) === "Pool" ? to.container : null;
+    if (!fromPool || !toPool) continue; // sin dos pools identificables no hay regla que aplicar
+
+    if (fromPool !== toPool && !e.dashed) {
+      warnings.push(
+        `"${from.nombre}" → "${to.nombre}" cruza de "${fromPool}" a "${toPool}" con flujo de secuencia; entre Pools solo va flujo de MENSAJE (usa dashed).`
+      );
+    }
+    if (fromPool === toPool && e.dashed) {
+      warnings.push(
+        `"${from.nombre}" → "${to.nombre}" usa flujo de mensaje dentro de "${fromPool}"; dentro de un Pool el flujo es de SECUENCIA (continuo).`
+      );
+    }
+  }
+
+  return warnings;
+}
+
 export function validate(model: DiagramModel): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -249,6 +512,11 @@ export function validate(model: DiagramModel): ValidationResult {
 
   if (model.nodes.length === 0) warnings.push("El diagrama no tiene nodos.");
 
+  // Reglas de flujo propias de la notación (hoy BPMN: pools vs carriles).
+  warnings.push(...bpmnFlowWarnings(model));
+  // Trazabilidad contra la fuente (sostiene la revisión humana).
+  warnings.push(...traceabilityWarnings(model));
+
   return { ok: errors.length === 0, errors, warnings };
 }
 
@@ -256,15 +524,7 @@ export function validate(model: DiagramModel): ValidationResult {
 // Layout automático (asigna geometría a lo que no la tenga)
 // =============================================================================
 
-// --- Geometría del layout swimlane dirigido por flujo ---
-const H_GAP = 60; // separación horizontal entre columnas
-const COL_STEP = NODE_W + H_GAP; // paso de columna (rango)
-const V_GAP = 30; // separación vertical entre nodos apilados en un carril
-const LANE_PAD_TOP = 46; // hueco para el título del carril
-const LANE_PAD_BOTTOM = 22;
-const LANE_PAD_LEFT = 40;
-const LANE_PAD_RIGHT = 40;
-const LANE_GAP = 28; // separación entre bandas (carriles)
+// --- Origen del lienzo (el resto de la geometría sale del preset) ---
 const X0 = 60;
 const Y0 = 60;
 
@@ -328,31 +588,80 @@ function rankByFlow(ids: string[], edges: BuilderEdge[]): Map<string, number> {
   return rank;
 }
 
+/** Orden de lectura de los roles cuando la notación no tiene flujo (C4, DDD). */
+const ROLES_ARRIBA: ElementRole[] = ["actor"];
+const ROLES_ABAJO: ElementRole[] = ["system", "datastore", "external", "command", "event", "policy", "rule"];
+
+/** Opciones de disposición: densidad y estrategia (ver `layout-presets`). */
+export interface LayoutOptions {
+  density?: LayoutDensity;
+  strategy?: LayoutStrategy;
+}
+
+/** Medidas derivadas de un preset: todo el layout se calcula con esto. */
+function metrics(preset: LayoutPreset) {
+  const colStep = NODE_W + preset.hGap;
+  return {
+    preset,
+    colStep,
+    colX: (r: number) => X0 + preset.lanePadX + r * colStep,
+    laneHeight: (rows: number) =>
+      preset.lanePadTop + Math.max(1, rows) * (NODE_H + preset.vGap) - preset.vGap + preset.lanePadBottom,
+    laneWidthFor: (cols: number) =>
+      preset.lanePadX + (Math.max(1, cols) - 1) * colStep + NODE_W + preset.lanePadX,
+  };
+}
+
 /**
- * Layout swimlane: cada contenedor es una BANDA horizontal apilada (full-width),
- * con altura dinámica según cuántos nodos apila. Los nodos fluyen de izquierda a
- * derecha por su rango (longest-path), y las columnas son GLOBALES para que el
- * flujo se alinee entre carriles. Respeta un modelo ya totalmente posicionado.
+ * En BPMN una arista `dashed` entre participantes es flujo de MENSAJE: conecta
+ * dos procesos independientes y NO ordena columnas. Incluirla en el ranking era
+ * la causa de que un pool empujara al vecino hasta bandas de 5520 px.
+ * Sólo aplica donde el rol `pool` existe: en UML `dashed` significa retorno.
  */
-export function layout(model: DiagramModel): DiagramModel {
+function isMessageEdge(model: DiagramModel, e: BuilderEdge): boolean {
+  return Boolean(e.dashed) && typesWithRole(model.meta.notation, "pool").length > 0;
+}
+
+/**
+ * Layout de FLUJO (swimlane), para notaciones con inicio y fin (BPMN, UML de
+ * actividad/estados): cada contenedor es una banda horizontal cuyos elementos
+ * fluyen de izquierda a derecha. El rango se calcula POR BANDA y sólo con las
+ * aristas internas de secuencia, así el diagrama mide lo que mide su carril más
+ * largo y no la suma de todos.
+ */
+function layoutPorFlujo(model: DiagramModel, preset: LayoutPreset): DiagramModel {
+  const { colX, laneHeight, laneWidthFor } = metrics(preset);
   const containers = model.nodes.filter(isContainerNode);
   const nodes = model.nodes.filter((n) => !isContainerNode(n));
-
-  const allPlaced = [...containers, ...nodes].every(
-    (n) => typeof n.x === "number" && typeof n.y === "number"
-  );
-  if (allPlaced) return model;
-
   const containerNames = new Set(containers.map((c) => c.nombre));
-  const rank = rankByFlow(nodes.map((n) => n.id), model.edges);
-  const cols = Math.max(1, ...nodes.map((n) => (rank.get(n.id) ?? 0) + 1));
-  const laneWidth = LANE_PAD_LEFT + (cols - 1) * COL_STEP + NODE_W + LANE_PAD_RIGHT;
+  const { notation } = model.meta;
 
-  const colX = (r: number) => X0 + LANE_PAD_LEFT + r * COL_STEP;
+  const esInicio = (n: BuilderNode) => hasRole(notation, n.tipo_elemento, "start");
+  const esFin = (n: BuilderNode) => hasRole(notation, n.tipo_elemento, "end");
 
-  // Coloca un grupo de nodos (un carril, o los sueltos) a partir de `top`;
-  // apila por rango y devuelve la altura ocupada.
-  const placeGroup = (groupNodes: BuilderNode[], top: number): { laid: BuilderNode[]; height: number } => {
+  // Coloca un grupo (una banda o los sueltos) empezando en `top`.
+  const placeGroup = (
+    groupNodes: BuilderNode[],
+    top: number
+  ): { laid: BuilderNode[]; height: number; cols: number } => {
+    if (!groupNodes.length) return { laid: [], height: laneHeight(1), cols: 1 };
+
+    const ids = new Set(groupNodes.map((n) => n.id));
+    // Sólo aristas INTERNAS al grupo y de secuencia: un mensaje saliente no
+    // debe mover ninguna columna (FR-002).
+    const internas = model.edges.filter(
+      (e) => ids.has(e.fuente) && ids.has(e.destino) && !isMessageEdge(model, e)
+    );
+    const rank = rankByFlow(groupNodes.map((n) => n.id), internas);
+
+    // Inicio abre y fin cierra su propia banda (FR-004): un evento de fin en
+    // mitad del carril es el síntoma más visible del ranking global.
+    const maxRank = Math.max(0, ...groupNodes.map((n) => rank.get(n.id) ?? 0));
+    for (const n of groupNodes) {
+      if (esInicio(n)) rank.set(n.id, 0);
+      else if (esFin(n)) rank.set(n.id, maxRank);
+    }
+
     const byRank = new Map<number, BuilderNode[]>();
     for (const n of groupNodes) {
       const r = rank.get(n.id) ?? 0;
@@ -366,38 +675,201 @@ export function layout(model: DiagramModel): DiagramModel {
         laid.push({
           ...n,
           x: colX(r),
-          y: top + LANE_PAD_TOP + j * (NODE_H + V_GAP),
+          y: top + preset.lanePadTop + j * (NODE_H + preset.vGap),
           width: NODE_W,
           height: NODE_H,
         });
       });
     }
-    const rows = Math.max(1, maxRows);
-    const height = LANE_PAD_TOP + rows * (NODE_H + V_GAP) - V_GAP + LANE_PAD_BOTTOM;
-    return { laid, height };
+    return { laid, height: laneHeight(maxRows), cols: maxRank + 1 };
   };
 
   const out: BuilderNode[] = [];
   let cursorY = Y0;
 
-  // Nodos sueltos (sin contenedor válido): banda superior sin rectángulo.
   const loose = nodes.filter((n) => !n.container || !containerNames.has(n.container));
   if (loose.length) {
     const { laid, height } = placeGroup(loose, cursorY);
     out.push(...laid);
-    cursorY += height + LANE_GAP;
+    cursorY += height + preset.laneGap;
   }
 
-  // Un carril (banda) por contenedor, en orden de inserción.
-  for (const c of containers) {
-    const laneNodes = nodes.filter((n) => n.container === c.nombre);
+  // Las bandas comparten ancho: el de la más larga de ESTE diagrama. Escalonadas
+  // se leen como cajas sueltas; alineadas, como participantes comparables. Es
+  // distinto del bug original, donde el ancho venía del rango global acumulado.
+  const bandas = containers.map((c) => ({
+    c,
+    laneNodes: nodes.filter((n) => n.container === c.nombre),
+  }));
+  const anchoComun = laneWidthFor(
+    Math.max(
+      1,
+      ...bandas.map(({ laneNodes }) => {
+        const ids = new Set(laneNodes.map((n) => n.id));
+        const internas = model.edges.filter(
+          (e) => ids.has(e.fuente) && ids.has(e.destino) && !isMessageEdge(model, e)
+        );
+        const r = rankByFlow(laneNodes.map((n) => n.id), internas);
+        return Math.max(1, ...laneNodes.map((n) => (r.get(n.id) ?? 0) + 1));
+      })
+    )
+  );
+
+  for (const { c, laneNodes } of bandas) {
     const { laid, height } = placeGroup(laneNodes, cursorY);
     out.push(...laid);
-    out.push({ ...c, x: X0, y: cursorY, width: laneWidth, height });
-    cursorY += height + LANE_GAP;
+    out.push({ ...c, x: X0, y: cursorY, width: anchoComun, height });
+    cursorY += height + preset.laneGap;
   }
 
   return { ...model, nodes: out };
+}
+
+/**
+ * Layout por ROL, para notaciones sin flujo (C4, DDD): un longest-path sobre
+ * relaciones de arquitectura no significa nada y producía filas arbitrarias con
+ * huecos verticales. Aquí se lee por capas —quién usa el sistema, qué contiene,
+ * de qué depende— y dentro de cada capa se reparte en rejilla.
+ */
+function layoutPorRol(model: DiagramModel, preset: LayoutPreset): DiagramModel {
+  const { colX, laneWidthFor } = metrics(preset);
+  const containers = model.nodes.filter(isContainerNode);
+  const nodes = model.nodes.filter((n) => !isContainerNode(n));
+  const containerNames = new Set(containers.map((c) => c.nombre));
+  const { notation } = model.meta;
+
+  const out: BuilderNode[] = [];
+  let cursorY = Y0;
+
+  /** Reparte un grupo en filas de hasta MAX_COLS_POR_FILA. Devuelve alto y columnas. */
+  const grid = (group: BuilderNode[], top: number, padTop: number) => {
+    const laid: BuilderNode[] = [];
+    let filas = 0;
+    group.forEach((n, i) => {
+      const fila = Math.floor(i / preset.colsPerRow);
+      filas = Math.max(filas, fila + 1);
+      laid.push({
+        ...n,
+        x: colX(i % preset.colsPerRow),
+        y: top + padTop + fila * (NODE_H + preset.vGap),
+        width: NODE_W,
+        height: NODE_H,
+      });
+    });
+    return {
+      laid,
+      filas,
+      cols: Math.min(preset.colsPerRow, group.length),
+      height: padTop + Math.max(1, filas) * (NODE_H + preset.vGap) - preset.vGap + preset.lanePadBottom,
+    };
+  };
+
+  // Igual que en el layout de flujo: las bandas comparten ancho para leerse como
+  // capas comparables (aquí, contextos o límites de sistema).
+  const anchoComun = laneWidthFor(
+    Math.max(
+      1,
+      ...containers.map((c) =>
+        Math.min(preset.colsPerRow, nodes.filter((n) => n.container === c.nombre).length)
+      )
+    )
+  );
+
+  const sueltos = nodes.filter((n) => !n.container || !containerNames.has(n.container));
+  const porRol = (roles: ElementRole[]) =>
+    roles.flatMap((r) => sueltos.filter((n) => roleOfType(notation, n.tipo_elemento) === r));
+
+  const arriba = porRol(ROLES_ARRIBA);
+  const abajo = porRol(ROLES_ABAJO);
+  const colocados = new Set([...arriba, ...abajo].map((n) => n.id));
+  const resto = sueltos.filter((n) => !colocados.has(n.id));
+
+  // 1 · Quién usa el sistema (actores) arriba de todo.
+  if (arriba.length) {
+    const { laid, height } = grid(arriba, cursorY, 0);
+    out.push(...laid);
+    cursorY += height + preset.laneGap;
+  }
+
+  // 2 · Los contenedores (límites, contextos) con su contenido en rejilla.
+  for (const c of containers) {
+    const dentro = nodes.filter((n) => n.container === c.nombre);
+    const { laid, height } = grid(dentro, cursorY, preset.lanePadTop);
+    out.push(...laid);
+    out.push({ ...c, x: X0, y: cursorY, width: anchoComun, height });
+    cursorY += height + preset.laneGap;
+  }
+
+  // 3 · De qué depende (sistemas externos, almacenes) y el resto, abajo.
+  for (const grupo of [abajo, resto]) {
+    if (!grupo.length) continue;
+    const { laid, height } = grid(grupo, cursorY, 0);
+    out.push(...laid);
+    cursorY += height + preset.laneGap;
+  }
+
+  return { ...model, nodes: out };
+}
+
+/**
+ * Descarta la geometría y vuelve a calcularla. Necesario porque `layout()`
+ * respeta un modelo ya posicionado: un diagrama construido antes de una mejora
+ * de layout —o importado desde la app, que siempre trae x/y— se quedaría con la
+ * disposición vieja para siempre. No toca nodos, aristas ni notación (FR-010).
+ */
+/**
+ * Reordena las BANDAS del diagrama según una propuesta (por ejemplo la de la IA)
+ * y recalcula la geometría. La propuesta es una lista de NOMBRES: lo que no
+ * exista se ignora y lo que falte conserva su orden actual, así que ninguna
+ * respuesta —por rara que sea— puede perder o duplicar un contenedor.
+ */
+export function reorderLanes(
+  model: DiagramModel,
+  orden: string[],
+  opts: LayoutOptions = {}
+): DiagramModel {
+  const containers = model.nodes.filter(isContainerNode);
+  const posicion = new Map<string, number>();
+  orden.forEach((nombre, i) => {
+    if (containers.some((c) => c.nombre === nombre) && !posicion.has(nombre)) posicion.set(nombre, i);
+  });
+  const rank = (c: BuilderNode) => posicion.get(c.nombre) ?? Number.MAX_SAFE_INTEGER;
+
+  const ordenados = [...containers].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    // Empate (ninguno mencionado) → se respeta el orden original.
+    return ra === rb ? containers.indexOf(a) - containers.indexOf(b) : ra - rb;
+  });
+
+  const resto = model.nodes.filter((n) => !isContainerNode(n));
+  return relayout({ ...model, nodes: [...ordenados, ...resto] }, opts);
+}
+
+export function relayout(model: DiagramModel, opts: LayoutOptions = {}): DiagramModel {
+  const desnudos = model.nodes.map(({ x, y, width, height, ...n }) => n);
+  // Sin opciones explícitas, se repite la disposición con la que se dibujó.
+  return layout({ ...model, nodes: desnudos }, { ...model.meta.layout, ...opts });
+}
+
+/**
+ * Asigna geometría al modelo. Elige la estrategia por los ROLES que declara la
+ * notación, no por su id: una notación nueva con inicio y fin hereda el layout
+ * de flujo sin tocar este archivo (P6). Respeta un modelo ya posicionado
+ * (`relayout()` fuerza el recálculo).
+ */
+export function layout(model: DiagramModel, opts: LayoutOptions = {}): DiagramModel {
+  const allPlaced = model.nodes.every(
+    (n) => typeof n.x === "number" && typeof n.y === "number"
+  );
+  if (allPlaced) return model;
+
+  const preset = getPreset(opts.density);
+  const strategy = resolveStrategy(opts.strategy, model.meta.notation);
+  const dispuesto = strategy === "flujo" ? layoutPorFlujo(model, preset) : layoutPorRol(model, preset);
+  // El modelo recuerda cómo se dibujó: el menú marca el actual y el agente puede
+  // repetir por MCP exactamente la disposición que ve el humano.
+  return { ...dispuesto, meta: { ...dispuesto.meta, layout: { density: preset.id, strategy } } };
 }
 
 // =============================================================================
@@ -405,11 +877,16 @@ export function layout(model: DiagramModel): DiagramModel {
 // =============================================================================
 
 function toDomainNode(n: BuilderNode): Omit<GraphNode, "agregado"> {
+  // La cita de la fuente se anexa a la descripción: es el único campo que la app
+  // muestra al abrir el nodo, y es justo lo que el revisor humano necesita ver.
+  const descripcion = n.source?.trim()
+    ? [n.descripcion?.trim(), `Fuente: ${n.source.trim()}`].filter(Boolean).join("\n\n")
+    : n.descripcion;
   return {
     id: n.id,
     nombre: n.nombre,
     tipo_elemento: n.tipo_elemento as GraphNode["tipo_elemento"],
-    descripcion: n.descripcion,
+    descripcion,
     estado_comparativo: n.estado_comparativo ?? "nuevo",
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
@@ -468,6 +945,8 @@ export function toGraphData(input: DiagramModel): GraphData {
   const policies: NonNullable<GraphData["politicas_inter_agregados"]> = [];
 
   for (const e of model.edges) {
+    const sa = containerOf(e.fuente);
+    const ta = containerOf(e.destino);
     const arista = {
       fuente: e.fuente,
       destino: e.destino,
@@ -475,10 +954,11 @@ export function toGraphData(input: DiagramModel): GraphData {
       color: e.color,
       dashed: e.dashed,
       arrow: e.arrow,
-      routing: e.routing,
+      // Una relación que cruza de una banda a otra en línea recta atraviesa el
+      // diagrama en diagonal y pasa por encima de todo. Ortogonal por defecto;
+      // si el modelo ya trae un ruteo explícito, manda el suyo.
+      routing: e.routing ?? (sa !== ta ? ("orthogonal" as const) : undefined),
     };
-    const sa = containerOf(e.fuente);
-    const ta = containerOf(e.destino);
     if (sa && ta && sa === ta) aggByName.get(sa)!.aristas.push(arista);
     else if (sa && ta && sa !== ta) policies.push(arista);
     else bigAristas.push(arista);
@@ -501,7 +981,9 @@ export function toGraphData(input: DiagramModel): GraphData {
     read_models: [],
     politicas_inter_agregados: policies,
     responsables: [],
-    notas: "",
+    // Las decisiones y lo pendiente viajan con el modelo: el humano que revisa en
+    // la app ve por qué el diagrama dice lo que dice sin releer el documento.
+    notas: ambiguityNotes(model),
     transcript: "",
   };
 }

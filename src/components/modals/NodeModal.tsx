@@ -32,7 +32,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { type GraphNode, type GraphLink, NODE_TYPES } from "@/lib/types";
+import { type GraphNode, type GraphLink } from "@/lib/types";
+import { ALL_NODE_TYPES, notationTypes } from "@/lib/notations";
 import { ArrowLeft } from "lucide-react";
 
 interface NodeModalProps {
@@ -40,13 +41,16 @@ interface NodeModalProps {
   allNodes?: GraphNode[];
   allLinks?: GraphLink[];
   historyCount: number;
+  /**
+   * Notación del modelo abierto: acota el Select de tipo a SUS tipos. Sin ella
+   * se ofrecen los de todas las notaciones (mejor que imponer los de DDD).
+   */
+  notation?: string;
   onClose: () => void;
   onNodeUpdate: (updatedNode: GraphNode) => void;
   onNodeSelect: (nodeId: string) => void;
   onBack: () => void;
 }
-
-const nodeTypes: GraphNode["tipo_elemento"][] = [...NODE_TYPES];
 
 const nodeStatuses: GraphNode["estado_comparativo"][] = [
   "nuevo",
@@ -61,6 +65,7 @@ const NodeModal: React.FC<NodeModalProps> = ({
   allNodes = [],
   allLinks = [],
   historyCount,
+  notation,
   onClose,
   onNodeUpdate,
   onNodeSelect,
@@ -77,6 +82,13 @@ const NodeModal: React.FC<NodeModalProps> = ({
   }, [node]);
 
   if (!node || !editableNode) return null;
+
+  // Tipos ofrecidos: los de la notación del modelo (o todos si no la declara).
+  // Si el nodo trae un tipo ajeno a esa lista, se antepone o el Select saldría vacío.
+  const base = notation ? notationTypes(notation, { includeContainers: true }) : ALL_NODE_TYPES;
+  const nodeTypes = base.includes(editableNode.tipo_elemento)
+    ? base
+    : [editableNode.tipo_elemento, ...base];
 
   const parentLinks = allLinks.filter(
     (link) =>

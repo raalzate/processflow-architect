@@ -1,29 +1,23 @@
-import {
-  TerminalSquare, Zap, User, RectangleHorizontal, Gavel,
-  HardDrive, Package, Milestone
-} from "lucide-react";
+import { ALL_ELEMENTS, swatchClass } from "./notations";
 
-export const nodeTypeColors: { [key: string]: string } = {
-  Comando: "bg-blue-500",
-  Evento: "bg-orange-500",
-  Actor: "bg-emerald-500",
-  Vista: "bg-cyan-500",
-  "Regla de Negocio": "bg-yellow-500",
-  "Sistema Externo": "bg-indigo-500",
-  Agregado: "bg-pink-500",
-  "Política": "bg-purple-500",
-};
+/**
+ * Color del punto/swatch de un tipo en los paneles del visor, para CUALQUIER
+ * notación: se deriva del registro de notaciones en vez de una tabla DDD de 8
+ * entradas (antes un nodo BPMN/C4/UML salía gris "sin tipo").
+ *
+ * El relleno del lienzo es un tinte suave (-50/-100) que como punto de 8px sería
+ * invisible: se sube al tono -500 de la MISMA familia para que el punto tenga
+ * contraste y siga casando con el color del nodo.
+ */
+export const nodeTypeColors: { [key: string]: string } = Object.fromEntries(
+  Object.entries(ALL_ELEMENTS).map(([type, el]) => [
+    type,
+    swatchClass(el).replace(/-\d+$/, "-500"),
+  ])
+);
 
-export const nodeTypeIcons: Record<string, React.ElementType> = {
-  Comando: TerminalSquare,
-  Evento: Zap,
-  Actor: User,
-  Vista: RectangleHorizontal,
-  "Regla de Negocio": Gavel,
-  "Sistema Externo": HardDrive,
-  Agregado: Package,
-  "Política": Milestone,
-};
+/** Color del swatch con fallback gris para tipos libres (fuera del registro). */
+export const nodeTypeColor = (type: string): string => nodeTypeColors[type] ?? "bg-gray-400";
 
 // Constantes para LocalStorage
 export const STORAGE_API_KEY = "gemini_api_key";

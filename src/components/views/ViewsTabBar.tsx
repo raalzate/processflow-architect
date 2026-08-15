@@ -139,9 +139,11 @@ export function ViewsTabBar() {
                 ) : (
                   <span className="flex items-center gap-1.5">
                     <span className="max-w-[120px] truncate font-medium">{v.name}</span>
-                    {/* La badge de notación sólo aplica a vistas de grafo (DDD/BPMN/C4/UML);
-                        una vista Mermaid es código libre y no tiene notación. */}
-                    {!v.builtin && v.kind !== "mermaid" && (
+                    {/* La badge de notación aplica a toda vista de grafo (DDD/BPMN/C4/UML),
+                        incluida la del MODELO del proyecto: es la que fija la paleta de todo
+                        y, sin badge, un proyecto C4 parecía no tener su diagrama. Una vista
+                        Mermaid es código libre y no tiene notación. */}
+                    {v.kind !== "mermaid" && (
                       <span
                         className={cn(
                           "rounded px-1 text-[9px] font-bold uppercase tracking-wide",

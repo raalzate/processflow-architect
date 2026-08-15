@@ -7,8 +7,9 @@ import {
   suggestNextTask,
   linkLabelTask,
   bigPictureDescTask,
+  orderLanesTask,
 } from "@/lib/ai/tasks";
-import { NODE_TYPES } from "@/lib/types";
+import { DEFAULT_NOTATION_ID, notationTypes } from "@/lib/notations";
 
 describe("LIGHT task metadata", () => {
   const lightTasks = [
@@ -19,6 +20,7 @@ describe("LIGHT task metadata", () => {
     suggestNextTask,
     linkLabelTask,
     bigPictureDescTask,
+    orderLanesTask,
   ];
 
   it("all light tasks have tier 'light', a unique non-empty id, buildPrompt and parse, no structured/remoteFlow", () => {
@@ -95,15 +97,28 @@ describe("classifyTypeTask", () => {
     expect(classifyTypeTask.maxLocalChars).toBe(800);
   });
 
-  it("buildPrompt interpolates nombre and lists NODE_TYPES (with descripcion)", () => {
+  it("buildPrompt interpola nombre y lista los tipos de la notación por defecto", () => {
     const { prompt } = classifyTypeTask.buildPrompt!({
       nombre: "Pago Aprobado",
       descripcion: "Un hecho que ya ocurrió.",
     });
     expect(prompt).toContain("Pago Aprobado");
     expect(prompt).toContain("Un hecho que ya ocurrió.");
-    // All node types are listed in the prompt.
-    for (const t of NODE_TYPES) expect(prompt).toContain(t);
+    for (const t of notationTypes(DEFAULT_NOTATION_ID)) expect(prompt).toContain(t);
+  });
+
+  it("con notación BPMN ofrece SUS tipos y ninguno de DDD", () => {
+    const { prompt } = classifyTypeTask.buildPrompt!({ nombre: "Validar factura", notation: "bpmn" });
+    expect(prompt).toContain("Tarea");
+    expect(prompt).toContain("Compuerta Exclusiva");
+    expect(prompt).not.toContain("Objeto de Valor");
+    expect(prompt).toContain("analista de procesos de negocio (BPMN)");
+  });
+
+  it("parse casa contra los tipos de la notación de la entrada", () => {
+    expect(classifyTypeTask.parse!("tarea", { nombre: "x", notation: "bpmn" })).toBe("Tarea");
+    // "Comando" no existe en BPMN: no se acepta un tipo de otra notación.
+    expect(classifyTypeTask.parse!("comando", { nombre: "x", notation: "bpmn" })).toBe("");
   });
 
   it("buildPrompt uses empty descripcion fallback when missing", () => {
@@ -200,7 +215,7 @@ describe("suggestNextTask", () => {
     expect(suggestNextTask.maxLocalChars).toBe(900);
   });
 
-  it("buildPrompt interpolates element and lists NODE_TYPES (with descripcion)", () => {
+  it("buildPrompt interpola el elemento y lista los tipos de la notación por defecto", () => {
     const { prompt } = suggestNextTask.buildPrompt!({
       tipo: "Comando",
       nombre: "Registrar Pago",
@@ -209,7 +224,16 @@ describe("suggestNextTask", () => {
     expect(prompt).toContain("Registrar Pago");
     expect(prompt).toContain("Comando");
     expect(prompt).toContain("Se registra un pago.");
-    for (const t of NODE_TYPES) expect(prompt).toContain(t);
+    for (const t of notationTypes(DEFAULT_NOTATION_ID)) expect(prompt).toContain(t);
+  });
+
+  it("parse cae al tipo por defecto de LA notación, no siempre a 'Evento'", () => {
+    expect(suggestNextTask.parse!("zzz | Algo | sigue", { tipo: "Tarea", nombre: "x", notation: "bpmn" }).tipo)
+      .toBe("Tarea");
+    expect(suggestNextTask.parse!("zzz | Algo | usa", { tipo: "Sistema", nombre: "x", notation: "c4" }).tipo)
+      .toBe("Contenedor");
+    expect(suggestNextTask.parse!("zzz | Algo | asocia", { tipo: "Clase", nombre: "x", notation: "uml" }).tipo)
+      .toBe("Clase");
   });
 
   it("buildPrompt uses fallback when descripcion missing", () => {
@@ -280,5 +304,42 @@ describe("bigPictureDescTask", () => {
 
   it("parse strips surrounding quotes", () => {
     expect(bigPictureDescTask.parse!('"un resumen"')).toBe("un resumen");
+  });
+});
+
+// La IA ordena; la geometría la calcula el layout determinista (specs/002,
+// FR-008). Estas pruebas fijan ese contrato: nada de lo que devuelva puede
+// introducir grupos nuevos ni perder los existentes.
+describe("orderLanesTask", () => {
+  const bandas = ["Cotización", "Motor de Enrollment", "Core Bupa"];
+
+  it("es una tarea local (light) y pide los nombres tal cual", () => {
+    expect(orderLanesTask.id).toBe("order-lanes");
+    expect(orderLanesTask.tier).toBe("light");
+    const { prompt } = orderLanesTask.buildPrompt!({ bandas, resumen: "…" });
+    for (const b of bandas) expect(prompt).toContain(b);
+    expect(prompt).toContain("sin añadir ni inventar");
+  });
+
+  it("respeta el orden propuesto cuando los nombres existen", () => {
+    const out = orderLanesTask.parse!("Core Bupa | Cotización | Motor de Enrollment", {
+      bandas,
+      resumen: "",
+    });
+    expect(out).toEqual(["Core Bupa", "Cotización", "Motor de Enrollment"]);
+  });
+
+  it("descarta lo inventado y conserva lo omitido, sin perder ni duplicar", () => {
+    const out = orderLanesTask.parse!("Inventado | Core Bupa | core bupa | Otro", {
+      bandas,
+      resumen: "",
+    });
+    expect(out).toEqual(["Core Bupa", "Cotización", "Motor de Enrollment"]);
+    expect(new Set(out).size).toBe(bandas.length);
+  });
+
+  it("una respuesta basura deja el orden original", () => {
+    expect(orderLanesTask.parse!("no sé", { bandas, resumen: "" })).toEqual(bandas);
+    expect(orderLanesTask.parse!("", { bandas, resumen: "" })).toEqual(bandas);
   });
 });

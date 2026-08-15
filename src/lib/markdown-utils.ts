@@ -8,6 +8,7 @@ import {
 } from "@/lib/types";
 import { separateCamelCase } from "./utils";
 import { diagramBigPicture, diagramContext, diagramReadModels, diagramTechnicalElements } from "./mermaid-diagram";
+import { getNotation, notationContainerLabel } from "./notations";
 
 // Tipado para el árbol de nodos, ya que lo movimos
 type NodeTree = {
@@ -113,22 +114,29 @@ export const formatProposalToMarkdown = (proposal: TechnicalElementsOutput) => {
   return md; // .trim() para limpiar cualquier espacio en blanco al final
 };
 
+/**
+ * Markdown del modelo para copiar/pegar. Los encabezados siguen la NOTACIÓN del
+ * documento (`Modelo de Procesos` + `Análisis de pool` ante un BPMN): antes todo
+ * el reporte hablaba de dominio y agregados aunque el diagrama fuera otro.
+ */
 export const formatNodeTreeToMarkdown = (graph: GraphData) => {
   if (graph.agregados.length === 0) return "";
-  let md = "## Modelo de Dominio\n";
+  const notation = graph.notation;
+  const contenedor = notationContainerLabel(notation);
+  let md = `## ${getNotation(notation).modelLabel}\n`;
   md += graph.big_picture.descripcion + "\n\n";
 
   if (graph.big_picture.hotspots && graph.big_picture.hotspots.length > 0) {
-    md += `### Área poco clara o confusa en el modelo de dominio que requiere más atención y discusión:\n`;
+    md += `### Áreas poco claras del modelo que requieren más atención y discusión:\n`;
     for (const agg in graph.big_picture.hotspots) {
       md += `- ***${graph.big_picture.hotspots[agg]}***\n`;
     }
   }
   md += "\n\n";
   md += "### Contexto\n";
-  md += "```mermaid\n" + diagramContext(graph.big_picture) + "```\n\n";
+  md += "```mermaid\n" + diagramContext(graph.big_picture, notation) + "```\n\n";
 
-  md += `## Análisis de agregado ##\n`;
+  md += `## Análisis por ${contenedor} ##\n`;
   for (const agg in graph.agregados) {
     md += `### ${separateCamelCase(graph.agregados[agg].nombre_agregado)}\n`;
     for (const n in graph.agregados[agg].nodos) {

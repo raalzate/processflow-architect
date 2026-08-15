@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { SavedFile, GraphData, ArchitectureDriversOutput, ConstraintsRisksOutput, RoadmapOutput, TechnicalElementsOutput } from "@/lib/types";
 import { emptyGraphData } from "@/components/graph/designer/serialize";
+import type { NotationId } from "@/lib/notations";
 
 type FileHandlersDeps = {
     savedFiles: SavedFile[];
@@ -41,11 +42,13 @@ export function useFileHandlers(deps: FileHandlersDeps) {
 
     // Crea un proyecto nuevo y vacío (reemplaza la importación de JSON).
     // El diseñador gráfico genera el contenido a partir de aquí.
-    const handleCreateProject = useCallback((nombre: string) => {
+    // La notación se elige AL CREAR el proyecto y viaja en el documento: así el
+    // lienzo abre con la paleta correcta en vez de arrancar siempre en DDD.
+    const handleCreateProject = useCallback((nombre: string, notation?: NotationId) => {
         const name = (nombre || "").trim() || "Proyecto sin nombre";
         try {
             const fecha = new Date().toISOString().slice(0, 10);
-            const content = emptyGraphData(name, fecha);
+            const content = emptyGraphData(name, fecha, notation);
             const newFile: SavedFile = { id: `${name}-${new Date().getTime()}`, name: `${name}.json`, content };
             const res = loadFile(newFile);
             setVisibleAggregates(new Set(res.aggregates));

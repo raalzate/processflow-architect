@@ -15,7 +15,7 @@ import {
 } from "@/lib/ai/providers";
 import {
   nodeTypeColors,
-  nodeTypeIcons,
+  nodeTypeColor,
   STORAGE_API_KEY,
   STORAGE_MODEL,
   STORAGE_SAVED_FILES,
@@ -173,34 +173,26 @@ describe("graph-constants", () => {
     }
   });
 
-  it("nodeTypeIcons has entries that are defined component types", () => {
-    const keys = Object.keys(nodeTypeIcons);
-    expect(keys.length).toBeGreaterThan(0);
-    for (const k of keys) {
-      expect(nodeTypeIcons[k]).toBeDefined();
-    }
-  });
-
-  it("nodeTypeColors and nodeTypeIcons share the same keys", () => {
-    expect(Object.keys(nodeTypeColors).sort()).toEqual(
-      Object.keys(nodeTypeIcons).sort(),
-    );
-  });
-
-  it("includes expected node type keys", () => {
+  it("cubre los tipos de TODAS las notaciones, no solo los de DDD", () => {
     for (const key of [
       "Comando",
       "Evento",
       "Actor",
-      "Vista",
-      "Regla de Negocio",
-      "Sistema Externo",
       "Agregado",
-      "Política",
+      // BPMN / C4 / UML: antes salían sin color en los paneles del visor.
+      "Tarea",
+      "Compuerta Exclusiva",
+      "Contenedor",
+      "Clase",
+      "Estado",
     ]) {
       expect(nodeTypeColors).toHaveProperty(key);
-      expect(nodeTypeIcons).toHaveProperty(key);
     }
+  });
+
+  it("nodeTypeColor cae a gris para un tipo fuera del registro", () => {
+    expect(nodeTypeColor("Comando")).toMatch(/^bg-/);
+    expect(nodeTypeColor("TipoLibreDelUsuario")).toBe("bg-gray-400");
   });
 
   it("STORAGE_* constants have expected values", () => {

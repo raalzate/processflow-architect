@@ -42,7 +42,10 @@ export interface AiTask<I = any, O = string> {
   maxLocalChars?: number;
   // --- Ejecución LOCAL (texto) ---
   buildPrompt?: (input: I) => { prompt: string; system?: string };
-  parse?: (raw: string) => O;
+  // `input` llega a `parse` porque validar la salida a veces depende de la
+  // entrada (p. ej. casar el tipo devuelto contra los tipos de LA notación de
+  // la vista, no contra una lista fija).
+  parse?: (raw: string, input?: I) => O;
   // --- Ejecución REMOTA (genkit) ---
   remoteFlow?: string;
   buildRemoteInput?: (input: I) => any;
@@ -111,7 +114,7 @@ export async function route<I, O = string>(
     if (!task.buildPrompt) throw new Error(`La tarea "${task.id}" no define prompt local.`);
     const { prompt, system } = task.buildPrompt(input);
     const raw = await runLocal(prompt, system);
-    const output = (task.parse ? task.parse(raw) : raw) as O;
+    const output = (task.parse ? task.parse(raw, input) : raw) as O;
     return { provider, fellBack, reason, output };
   }
 
@@ -124,7 +127,7 @@ export async function route<I, O = string>(
   if (task.buildPrompt) {
     const { prompt, system } = task.buildPrompt(input);
     const raw = await remoteGenerateText(ctx?.provider ?? "gemini", ctx?.model ?? "", prompt, system);
-    const output = (task.parse ? task.parse(raw) : raw) as O;
+    const output = (task.parse ? task.parse(raw, input) : raw) as O;
     return { provider, fellBack, reason, output };
   }
   throw new Error(`La tarea "${task.id}" no define ejecución remota.`);

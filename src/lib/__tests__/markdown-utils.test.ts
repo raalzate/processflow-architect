@@ -340,7 +340,7 @@ describe("formatNodeTreeToMarkdown", () => {
     expect(md).toContain("## Modelo de Dominio");
     expect(md).toContain("Big picture detallado.");
     // hotspots block
-    expect(md).toContain("Área poco clara o confusa");
+    expect(md).toContain("Áreas poco claras del modelo");
     expect(md).toContain("***Zona confusa A***");
     expect(md).toContain("***Zona confusa B***");
     // context mermaid
@@ -348,7 +348,8 @@ describe("formatNodeTreeToMarkdown", () => {
     expect(md).toContain("```mermaid");
     expect(md).toContain("flowchart LR");
     // aggregate analysis
-    expect(md).toContain("## Análisis de agregado ##");
+    // DDD → el contenedor se llama "Agregado" (viene de la notación).
+    expect(md).toContain("## Análisis por Agregado ##");
     expect(md).toContain("### Gestion Pedidos"); // camel-split aggregate name
     expect(md).toContain("[Raíz de Agregado] Pedido:");
     expect(md).toContain("La raíz");

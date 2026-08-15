@@ -15,6 +15,7 @@
 
 import { z } from "zod";
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -26,15 +27,34 @@ import {
   addNode,
   addEdge,
   removeNode,
+  removeEdge,
+  updateNode,
+  updateEdge,
   validate,
   toGraphData,
   fromGraphData,
   slugify,
+  relayout,
+  recordAmbiguity,
+  resolveAmbiguity,
+  pendingAmbiguities,
   type DiagramModel,
 } from "../../src/lib/mcp/diagram-builder";
-import { listNotations, describeNotation } from "../../src/lib/mcp/catalog";
+import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
 import { toMermaid } from "../../src/lib/mcp/to-mermaid";
-import type { NotationId } from "../../src/lib/notations";
+import { qualityFindings, formatFindings, MAX_NODES } from "../../src/lib/mcp/quality";
+import { reviewPacket } from "../../src/lib/mcp/review";
+import { suggestViews, formatViewPlan } from "../../src/lib/mcp/view-plan";
+import { formatAppState, type AppState } from "../../src/lib/mcp/app-state";
+import {
+  listSkills,
+  renderSkillFiles,
+  skillInstallPath,
+  SKILL_IDS,
+  type SkillConfig,
+} from "../../src/lib/mcp-skill";
+import { DEFAULT_NOTATION_ID, type NotationId } from "../../src/lib/notations";
+import { MAX_CUSTOM_VIEWS } from "../../src/lib/views-types";
 import type { GraphData } from "../../src/lib/types";
 
 const NOTATION = z.enum(["ddd", "bpmn", "c4", "uml"]);
@@ -60,6 +80,15 @@ export interface McpToolsOptions {
    * ventana lo recibió.
    */
   exportMermaidToApp?: (name: string, code: string) => Promise<boolean>;
+  /**
+   * Último retrato del lienzo publicado por el renderer (modo app). Lo sirve
+   * `get_app_state`: es la INGESTA que evita que el agente exporte a ciegas.
+   */
+  getAppState?: () => AppState | null;
+  /** Transporte por el que llegó el cliente (se inyecta en el skill instalado). */
+  transport?: "http" | "stdio";
+  /** URL del servidor cuando el transporte es HTTP. */
+  serverUrl?: () => string | undefined;
 }
 
 // --- Helpers de respuesta MCP ---
@@ -68,6 +97,21 @@ const fail = (t: string) => ({ content: [{ type: "text" as const, text: t }], is
 
 export function registerProcessflowTools(server: McpServer, opts: McpToolsOptions) {
   const DIAGRAMS_DIR = path.join(opts.workspace, ".processflow", "diagrams");
+
+  // Registro observable: `install_skill` inyecta en el skill la lista de
+  // herramientas que este transporte expone de verdad (export_as_view sólo
+  // existe en modo app), y así el skill instalado no promete lo que no hay.
+  // Se envuelve el método en vez de mantener la lista a mano: una lista paralela
+  // se desincroniza en la primera herramienta nueva.
+  const registered: string[] = [];
+  const rawRegister = server.registerTool.bind(server);
+  (server as unknown as { registerTool: unknown }).registerTool = (
+    name: string,
+    ...rest: unknown[]
+  ) => {
+    registered.push(name);
+    return (rawRegister as (...args: unknown[]) => unknown)(name, ...rest);
+  };
 
   const ensureDir = (dir: string) => fs.mkdir(dir, { recursive: true });
   const modelPath = (id: string) => path.join(DIAGRAMS_DIR, `${id}.json`);
@@ -229,12 +273,18 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         name: z.string().describe("Nombre del contenedor (también su clave como padre)."),
         type: z.string().describe("Tipo contenedor válido de la notación (ver describe_notation)."),
         description: z.string().optional(),
+        source: z
+          .string()
+          .optional()
+          .describe(
+            "Cita de DÓNDE sale en la fuente (\"PRD §3.2 (p. 7)\", \"acta 12-mar\", \"src/pagos/service.ts\"). Sostiene la revisión humana: aparece en la tabla elemento←fuente de review_diagram."
+          ),
       },
     },
-    async ({ diagramId, name, type, description }) => {
+    async ({ diagramId, name, type, description, source }) => {
       const model = await loadModel(diagramId);
       try {
-        const r = addContainer(model, { nombre: name, tipo_elemento: type, descripcion: description });
+        const r = addContainer(model, { nombre: name, tipo_elemento: type, descripcion: description, source });
         await saveModel(diagramId, r.model);
         return text(`Contenedor "${name}" añadido (id=${r.id}). Úsalo como container="${name}".`);
       } catch (e: any) {
@@ -257,9 +307,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         description: z.string().optional(),
         tags: z.array(z.string()).optional().describe("Etiquetas de tecnología."),
         id: z.string().optional().describe("Id explícito (por defecto se deriva del nombre)."),
+        source: z
+          .string()
+          .optional()
+          .describe(
+            "Cita de DÓNDE sale en la fuente (\"PRD §3.2 (p. 7)\", \"acta 12-mar\", \"src/pagos/service.ts\"). Aparece en la descripción del elemento y en la tabla elemento←fuente de review_diagram: sin ella el humano no puede contrastar el diagrama."
+          ),
       },
     },
-    async ({ diagramId, name, type, container, description, tags, id }) => {
+    async ({ diagramId, name, type, container, description, tags, id, source }) => {
       const model = await loadModel(diagramId);
       try {
         const r = addNode(model, {
@@ -269,6 +325,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           container,
           descripcion: description,
           tags_tecnologia: tags,
+          source,
         });
         await saveModel(diagramId, r.model);
         return text(`Nodo "${name}" añadido (id=${r.id}).`);
@@ -311,6 +368,96 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
   );
 
   server.registerTool(
+    "update_element",
+    {
+      title: "Corregir un elemento",
+      description:
+        "Cambia nombre, descripción, cita de la fuente o tags de un elemento existente SIN perder su id ni sus relaciones. Es la herramienta para arreglar lo que reporta validate_diagram (nombres que el lienzo recorta, elementos sin fuente) en vez de borrar y recrear. Renombrar un contenedor arrastra a sus hijos.",
+      inputSchema: {
+        diagramId: z.string(),
+        id: z.string().describe("Id del elemento (nodo o contenedor)."),
+        name: z.string().optional().describe("Nombre nuevo (corto: el lienzo recorta)."),
+        type: z
+          .string()
+          .optional()
+          .describe(
+            "Tipo nuevo, de la MISMA familia (nodo→nodo, contenedor→contenedor). Para reclasificar: un Carril que en realidad es un participante independiente pasa a Pool."
+          ),
+        description: z.string().optional().describe("Descripción nueva (aquí va el detalle largo)."),
+        source: z.string().optional().describe("Cita de la fuente."),
+        tags: z.array(z.string()).optional(),
+      },
+    },
+    async ({ diagramId, id, name, type, description, source, tags }) => {
+      const model = await loadModel(diagramId);
+      try {
+        const next = updateNode(model, id, {
+          ...(name !== undefined ? { nombre: name } : {}),
+          ...(type !== undefined ? { tipo_elemento: type } : {}),
+          ...(description !== undefined ? { descripcion: description } : {}),
+          ...(source !== undefined ? { source } : {}),
+          ...(tags !== undefined ? { tags_tecnologia: tags } : {}),
+        });
+        await saveModel(diagramId, next);
+        const n = next.nodes.find((x) => x.id === id)!;
+        return text(`Elemento "${id}" actualizado: "${n.nombre}" (${n.tipo_elemento}).`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "update_edge",
+    {
+      title: "Corregir una relación",
+      description:
+        "Cambia la etiqueta o el estilo de una relación existente (por sus extremos). Úsala para acortar etiquetas largas —se dibujan sueltas sobre la línea y tapan los nodos vecinos— dejando el detalle en la descripción de los elementos que conecta.",
+      inputSchema: {
+        diagramId: z.string(),
+        from: z.string(),
+        to: z.string(),
+        label: z.string().optional().describe("Etiqueta nueva, corta: verbo + [tecnología]."),
+        dashed: z.boolean().optional(),
+        arrow: z.enum(["end", "both", "none"]).optional(),
+      },
+    },
+    async ({ diagramId, from, to, label, dashed, arrow }) => {
+      const model = await loadModel(diagramId);
+      try {
+        const next = updateEdge(model, from, to, {
+          ...(label !== undefined ? { descripcion: label } : {}),
+          ...(dashed !== undefined ? { dashed } : {}),
+          ...(arrow !== undefined ? { arrow } : {}),
+        });
+        await saveModel(diagramId, next);
+        return text(`Relación ${from} → ${to} actualizada.`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "remove_edge",
+    {
+      title: "Eliminar una relación",
+      description:
+        "Borra UNA relación por sus extremos, sin tocar los elementos. Para reconectar: p. ej. una Política que apunta directo a un Evento se corrige quitando ese atajo y pasando por el Comando que dispara.",
+      inputSchema: { diagramId: z.string(), from: z.string(), to: z.string() },
+    },
+    async ({ diagramId, from, to }) => {
+      const model = await loadModel(diagramId);
+      try {
+        await saveModel(diagramId, removeEdge(model, from, to));
+        return text(`Relación ${from} → ${to} eliminada.`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
     "remove_element",
     {
       title: "Eliminar elemento",
@@ -332,16 +479,148 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Validar diagrama",
       description:
-        "Comprueba tipos, ids duplicados, aristas colgantes y nodos aislados (que el lienzo descartaría). Devuelve errores (rompen la importación) y avisos.",
+        "Dos revisiones en una: VALIDEZ (tipos, ids duplicados, aristas colgantes, nodos aislados que el lienzo descartaría) y CALIDAD DE MODELADO por notación (¿hay inicio y fin?, ¿cada rama de la decisión dice su condición?, ¿la cadena Comando→Evento existe?, ¿las relaciones C4 declaran tecnología?, ¿los nombres caben en el lienzo?). Los errores y los hallazgos `grave` se corrigen antes de exportar.",
       inputSchema: { diagramId: z.string() },
     },
     async ({ diagramId }) => {
       const model = await loadModel(diagramId);
       const v = validate(model);
-      const parts = [v.ok ? "✅ Válido." : "❌ Con errores."];
-      if (v.errors.length) parts.push("Errores:\n- " + v.errors.join("\n- "));
-      if (v.warnings.length) parts.push("Avisos:\n- " + v.warnings.join("\n- "));
+      const findings = qualityFindings(model);
+      const graves = findings.filter((f) => f.level === "grave").length;
+      const parts = [
+        v.ok
+          ? graves
+            ? `⚠️ Importable, pero con ${graves} hallazgo(s) grave(s) de modelado.`
+            : "✅ Válido y bien modelado."
+          : "❌ Con errores de validez.",
+      ];
+      if (v.errors.length) parts.push("Errores (rompen la importación):\n- " + v.errors.join("\n- "));
+      if (v.warnings.length) parts.push("Avisos de validez:\n- " + v.warnings.join("\n- "));
+      parts.push("Calidad de modelado:\n" + formatFindings(findings));
       return text(parts.join("\n\n"));
+    }
+  );
+
+  server.registerTool(
+    "review_diagram",
+    {
+      title: "Paquete de revisión humana",
+      description:
+        "Devuelve el artefacto que el HUMANO revisa antes de que el diagrama entre a la app, siempre con la misma estructura: 1) la historia en Mermaid, 2) tabla «elemento ← fuente» agrupada por contenedor, 3) decisiones tomadas y lo que quedó pendiente en la fuente, 4) hallazgos de validez y calidad, 5) veredicto. Muéstralo al usuario y espera su aprobación: con veredicto ❌ no exportes.",
+      inputSchema: {
+        diagramId: z.string(),
+        sourceLabel: z
+          .string()
+          .optional()
+          .describe("Cómo se llama el material revisado (\"PRD Aurora v3\", \"repo backend\")."),
+      },
+    },
+    async ({ diagramId, sourceLabel }) => {
+      const model = await loadModel(diagramId);
+      const packet = reviewPacket(model, sourceLabel);
+      return text(packet.markdown);
+    }
+  );
+
+  server.registerTool(
+    "suggest_views",
+    {
+      title: "Sugerir el conjunto de vistas",
+      description: `Mira el modelo (roles de sus elementos y tamaño) y propone el conjunto de vistas ideal: CORTES cuando pasa el tamaño legible (~${MAX_NODES} elementos) y COMPLEMENTOS cuando el material sostiene otra mirada (paisaje de sistemas, proceso operativo, visión de dominio). Úsala antes de exportar un diagrama grande: una vista ilegible no se revisa.`,
+      inputSchema: { diagramId: z.string() },
+    },
+    async ({ diagramId }) => {
+      const model = await loadModel(diagramId);
+      return text(formatViewPlan(suggestViews(model)));
+    }
+  );
+
+  // -- 4b. Ambigüedades: lo que la fuente no cierra ------------------------------
+
+  server.registerTool(
+    "record_ambiguity",
+    {
+      title: "Registrar ambigüedad",
+      description:
+        "Registra en el diagrama una decisión de diseño que la FUENTE no cierra (alternativas sin decidir, contradicciones, vacíos que cambian la topología). Registra primero y pregunta TODO junto en una sola ronda. Lo que quede sin resolver viaja al humano en las notas del proyecto y en review_diagram: declarado, no inventado.",
+      inputSchema: {
+        diagramId: z.string(),
+        question: z.string().describe("La duda, tal como se le preguntaría al usuario."),
+        options: z
+          .array(z.string())
+          .optional()
+          .describe("Alternativas con el nombre que les da la fuente."),
+        affects: z.string().optional().describe("Qué parte del diagrama cambia según la respuesta."),
+        source: z.string().optional().describe("Cita de dónde nace la duda."),
+      },
+    },
+    async ({ diagramId, question, options, affects, source }) => {
+      const model = await loadModel(diagramId);
+      const r = recordAmbiguity(model, { pregunta: question, opciones: options, afecta: affects, source });
+      await saveModel(diagramId, r.model);
+      return text(
+        `Ambigüedad registrada (id="${r.id}"). Pendientes: ${pendingAmbiguities(r.model).length}. Ciérrala con resolve_ambiguity cuando el usuario responda.`
+      );
+    }
+  );
+
+  server.registerTool(
+    "resolve_ambiguity",
+    {
+      title: "Resolver ambigüedad",
+      description:
+        "Cierra una ambigüedad con la respuesta del usuario. Queda en el modelo como «decisión tomada» y aparece en review_diagram y en las notas del proyecto: el humano ve POR QUÉ el diagrama dice lo que dice.",
+      inputSchema: {
+        diagramId: z.string(),
+        id: z.string().describe("Id devuelto por record_ambiguity."),
+        resolution: z.string().describe("Qué se decidió (y quién lo decidió, si aplica)."),
+      },
+    },
+    async ({ diagramId, id, resolution }) => {
+      const model = await loadModel(diagramId);
+      try {
+        const next = resolveAmbiguity(model, id, resolution);
+        await saveModel(diagramId, next);
+        return text(`Ambigüedad "${id}" resuelta. Pendientes: ${pendingAmbiguities(next).length}.`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "relayout_diagram",
+    {
+      title: "Rehacer el layout",
+      description:
+        "Descarta la geometría del diagrama y la recalcula, sin tocar elementos ni relaciones. Úsala con diagramas construidos hace tiempo o importados desde la app (traen posiciones guardadas y por eso volverían a exportarse con la disposición vieja), o para probar otra disposición: `density` cambia cuánto aire tiene y `strategy` cómo se ordena. Son los MISMOS presets que ofrece el botón «Organizar» del lienzo.",
+      inputSchema: {
+        diagramId: z.string(),
+        density: z
+          .enum(["compacto", "comodo", "expandido"])
+          .optional()
+          .describe("Aire del diagrama. Por defecto, el que ya tenía (o `comodo`)."),
+        strategy: z
+          .enum(["flujo", "capas"])
+          .optional()
+          .describe(
+            "flujo = bandas por participante, de izquierda a derecha (procesos); capas = filas por rol, actores arriba y externos abajo (arquitectura). Por defecto, la natural de la notación."
+          ),
+      },
+    },
+    async ({ diagramId, density, strategy }) => {
+      const model = await loadModel(diagramId);
+      const next = relayout(model, { density, strategy });
+      await saveModel(diagramId, next);
+      const bandas = next.nodes.filter((n) => isContainerType(n.tipo_elemento));
+      const ancho = Math.max(...next.nodes.map((n) => (n.x ?? 0) + (n.width ?? 160)), 0);
+      const alto = Math.max(...next.nodes.map((n) => (n.y ?? 0) + (n.height ?? 60)), 0);
+      return text(
+        `Layout rehecho para "${diagramId}" (${model.meta.notation}).\n` +
+          `Disposición: ${next.meta.layout?.density} · ${next.meta.layout?.strategy}.\n` +
+          `Lienzo: ${Math.round(ancho)}×${Math.round(alto)} px · ${bandas.length} banda(s).\n` +
+          `Siguiente: export_to_app (o export_as_view) para verlo en la app.`
+      );
     }
   );
 
@@ -355,6 +634,131 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     async ({ diagramId }) => {
       const model = await loadModel(diagramId);
       return text("```mermaid\n" + toMermaid(model) + "\n```");
+    }
+  );
+
+  // -- 4c. Ingesta: qué hay en la app antes de tocarla ---------------------------
+
+  server.registerTool(
+    "get_app_state",
+    {
+      title: "Estado de la app",
+      description:
+        "PRIMERA llamada de cualquier sesión de diseño: qué proyecto está activo en Processflow Architect, con qué notación, qué vistas existen ya y cuánto cupo queda. De aquí sale la decisión entre export_to_app (crea/reemplaza el proyecto) y export_as_view (suma una pestaña al proyecto activo). Sin esta ingesta, exportar duplica vistas o pisa el trabajo del usuario.",
+      inputSchema: {},
+    },
+    async () => text(formatAppState(opts.getAppState?.() ?? null))
+  );
+
+  // -- 4d. Skills: el arnés del agente externo -----------------------------------
+
+  server.registerTool(
+    "list_skills",
+    {
+      title: "Listar skills disponibles",
+      description:
+        "Skills de Claude Code que este servidor puede instalar en el entorno del usuario: qué hace cada uno, qué archivos trae y dónde se instalan. Son el arnés que hace que un agente externo diseñe con trazabilidad y revisión en vez de improvisar.",
+      inputSchema: {},
+    },
+    async () =>
+      text(
+        listSkills()
+          .map(
+            (s) =>
+              `## ${s.id}\n${s.summary}\nArchivos: ${s.files
+                .map((f) => f.path)
+                .join(", ")}\nInstalación: ${skillInstallPath(s.id)}\nComando en Claude Code: /${s.id}`
+          )
+          .join("\n\n")
+      )
+  );
+
+  server.registerTool(
+    "install_skill",
+    {
+      title: "Instalar/configurar un skill",
+      description:
+        "Escribe un skill (o todos) en el entorno del usuario con la CONFIGURACIÓN de este servidor ya inyectada: transporte real (HTTP a la app o stdio del repo), herramientas realmente disponibles, workspace, notación por defecto y límites. Así el skill instalado no menciona herramientas que este transporte no expone. `scope: \"project\"` escribe en <projectDir>/.claude/skills (requiere projectDir); `scope: \"user\"` en ~/.claude/skills (global). Vuelve a llamarla con overwrite para actualizar un skill viejo.",
+      inputSchema: {
+        skill: z
+          .enum([...SKILL_IDS, "all"] as [string, ...string[]])
+          .default("all")
+          .describe("Id del skill (ver list_skills) o \"all\" para instalar todos."),
+        scope: z
+          .enum(["project", "user"])
+          .default("project")
+          .describe("project = .claude/skills del proyecto del usuario; user = ~/.claude/skills."),
+        projectDir: z
+          .string()
+          .optional()
+          .describe("Raíz del proyecto del usuario (obligatoria con scope=project)."),
+        overwrite: z
+          .boolean()
+          .default(false)
+          .describe("true para sobrescribir un skill ya instalado."),
+        configure: z
+          .boolean()
+          .default(true)
+          .describe("Inyectar el bloque «Configuración activa» con el estado real de este servidor."),
+      },
+    },
+    async ({ skill, scope, projectDir, overwrite, configure }) => {
+      if (scope === "project" && !projectDir) {
+        return fail(
+          "Con scope=\"project\" necesito `projectDir` (la raíz del proyecto del usuario, p. ej. el cwd de tu sesión). Con scope=\"user\" se instala en ~/.claude/skills."
+        );
+      }
+      const root =
+        scope === "user"
+          ? path.join(os.homedir(), ".claude", "skills")
+          : path.join(path.resolve(projectDir!), ".claude", "skills");
+
+      const ids = skill === "all" ? [...SKILL_IDS] : [skill];
+      const config: SkillConfig | undefined = configure
+        ? {
+            transport: opts.transport ?? (opts.exportToApp ? "http" : "stdio"),
+            url: opts.serverUrl?.(),
+            tools: registered,
+            workspace: opts.workspace,
+            defaultNotation: DEFAULT_NOTATION_ID,
+            maxNodes: MAX_NODES,
+            viewsLimit: MAX_CUSTOM_VIEWS,
+          }
+        : undefined;
+
+      const written: string[] = [];
+      const skipped: string[] = [];
+      for (const id of ids) {
+        for (const file of renderSkillFiles(id, config)) {
+          const dest = path.join(root, id, ...file.path.split("/"));
+          if (!overwrite) {
+            try {
+              await fs.access(dest);
+              skipped.push(path.relative(root, dest));
+              continue;
+            } catch {
+              // no existe: se escribe
+            }
+          }
+          await ensureDir(path.dirname(dest));
+          await fs.writeFile(dest, file.content, "utf8");
+          written.push(path.relative(root, dest));
+        }
+      }
+
+      const parts = [`Raíz de instalación: ${root}`];
+      if (written.length) parts.push(`Escritos (${written.length}):\n- ${written.join("\n- ")}`);
+      if (skipped.length) {
+        parts.push(
+          `Ya existían y NO se tocaron (${skipped.length}):\n- ${skipped.join("\n- ")}\nLlamá de nuevo con overwrite=true para actualizarlos.`
+        );
+      }
+      if (written.length) {
+        parts.push(
+          `Siguiente paso para el usuario: reiniciar la sesión de Claude Code para que cargue el skill, y escribir /${ids[0]}.`
+        );
+      }
+      return text(parts.join("\n\n"));
     }
   );
 
@@ -483,9 +887,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       inputSchema: {
         path: z.string().describe("Ruta al .json de GraphData."),
         notation: NOTATION.optional(),
+        relayout: z
+          .boolean()
+          .default(false)
+          .describe(
+            "true para rehacer el layout al importar. Un .json de la app trae posiciones guardadas: sin esto conserva su disposición original."
+          ),
       },
     },
-    async ({ path: p, notation }) => {
+    async ({ path: p, notation, relayout: rehacer }) => {
       let data: GraphData;
       try {
         data = JSON.parse(await fs.readFile(path.resolve(p), "utf8")) as GraphData;
@@ -494,11 +904,17 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       }
       // Precedencia: notación explícita del param → la que trae el propio .json
       // (GraphData.notation) → ddd. Así reimportar un BPMN conserva su notación.
-      const model = fromGraphData(data, (notation as NotationId) || (data.notation as NotationId) || "ddd");
+      const importado = fromGraphData(
+        data,
+        (notation as NotationId) || (data.notation as NotationId) || "ddd"
+      );
+      const model = rehacer ? relayout(importado) : importado;
       const id = await freshId(slugify(data.nombre_proyecto || "importado"));
       await saveModel(id, model);
       return text(
-        `Importado como diagramId="${id}" (${model.nodes.length} elementos, ${model.edges.length} aristas).`
+        `Importado como diagramId="${id}" (${model.nodes.length} elementos, ${model.edges.length} aristas)${
+          rehacer ? ", con el layout rehecho" : ". Trae la disposición del archivo; usa relayout_diagram si querés recalcularla"
+        }.`
       );
     }
   );

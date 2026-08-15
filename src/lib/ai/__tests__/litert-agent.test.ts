@@ -4,7 +4,57 @@ import {
   hasGenerationIntent,
   sanitizeMermaid,
   buildReasoningFrame,
+  resolveNotations,
+  buildContext,
 } from "../litert-agent";
+
+describe("resolveNotations", () => {
+  it("vistas pineadas mandan", () => {
+    expect(
+      resolveNotations({ injected: ["bpmn"], activeNotation: "c4", graphNotation: "ddd" })
+    ).toEqual(["bpmn"]);
+  });
+
+  it("sin pineadas cae a la vista activa (no a DDD)", () => {
+    expect(resolveNotations({ injected: [], activeNotation: "c4", graphNotation: "ddd" })).toEqual([
+      "c4",
+    ]);
+  });
+
+  it("sin vista activa cae a la notación del documento", () => {
+    expect(resolveNotations({ graphNotation: "uml" })).toEqual(["uml"]);
+  });
+
+  it("sin nada → vacío (el marco decide el default)", () => {
+    expect(resolveNotations({ injected: ["", undefined as any] })).toEqual([]);
+  });
+});
+
+describe("buildContext", () => {
+  const graph = { nodes: [{ id: "n1", type: "Contenedor", name: "API" }], edges: [] };
+
+  it("encabeza el grafo con el modelo/notación activa, sin vocabulario DDD", () => {
+    const ctx = buildContext({ modelFile: "m", message: "hola", graphData: graph, notations: ["c4"] });
+    expect(ctx).toMatch(/notación C4/);
+    expect(ctx).not.toMatch(/dominio/i);
+    expect(ctx).not.toContain("Agregado");
+  });
+
+  it("toma la notación del documento si no hay notaciones del turno", () => {
+    const ctx = buildContext({
+      modelFile: "m",
+      message: "hola",
+      graphData: { ...graph, notation: "bpmn" },
+    });
+    expect(ctx).toMatch(/notación BPMN/);
+    expect(ctx).not.toContain("Agregado");
+  });
+
+  it("sin notación alguna → DDD (default) con su vocabulario", () => {
+    const ctx = buildContext({ modelFile: "m", message: "hola", graphData: graph });
+    expect(ctx).toContain("Agregado");
+  });
+});
 
 describe("buildReasoningFrame", () => {
   it("sin notaciones → asume DDD y aplica el addendum DDD", () => {

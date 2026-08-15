@@ -7,6 +7,12 @@ export const UsageSchema = z.object({
   totalTokens: z.number(),
 });
 
+/**
+ * Tipos del Event Storming/DDD original. NO es la lista de tipos válidos del
+ * modelo: la fuente de verdad es el registro de notaciones (`notations.ts`), que
+ * cubre DDD/BPMN/C4/UML. Esta constante sobrevive para las tareas de análisis
+ * heredadas (merger, clasificación DDD) y como semilla de filtros.
+ */
 export const NODE_TYPES = [
   "Actor",
   "Sistema Externo",
@@ -44,7 +50,12 @@ export interface GraphNode extends SimulationNodeDatum {
   nombre: string;
   nivel?: string;
   agregado?: string;
-  tipo_elemento: (typeof NODE_TYPES)[number];
+  /**
+   * Tipo del elemento SEGÚN SU NOTACIÓN (`Tarea` en BPMN, `Contenedor` en C4,
+   * `Comando` en DDD…). Es `string` a propósito: atarlo a los tipos DDD obligaba
+   * a castear en cada notación y dejaba el modelo mintiendo sobre lo que acepta.
+   */
+  tipo_elemento: string;
   descripcion?: string;
   estado_comparativo: "nuevo" | "modificado" | "sin_cambios" | "existente" | "eliminado";
   tags_tecnologia?: string[] | null;

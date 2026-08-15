@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Pre-commit real (no .sample): si la integridad depende de disciplina humana, no es un gate.
+# Instalación: npm run hooks:install  (setea core.hooksPath=.githooks)
+#
+# Barato a propósito — el gate completo vive en scripts/gate.sh y en CI. Aquí sólo
+# lo que no puede entrar al historial de ninguna manera.
+set -uo pipefail
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$STAGED" ] && exit 0
+
+FAILED=0
+
+# 1. Rutas protegidas: secretos y artefactos derivados nunca se commitean.
+PROTECTED=$(echo "$STAGED" | grep -E '^(\.env|build/|dist/|coverage/|\.next/|\.processflow/)' || true)
+if [ -n "$PROTECTED" ]; then
+  echo "pre-commit: ruta protegida en el commit:"
+  echo "$PROTECTED" | sed 's/^/  - /'
+  FAILED=1
+fi
+
+# 2. Lint de convenciones sobre los archivos staged (pureza de lib/, notación, .only).
+for file in $STAGED; do
+  case "$file" in
+    *.ts|*.tsx|package.json|main.ts)
+      [ -f "$file" ] || continue
+      node scripts/repo-lint.mjs --file "$file" >/dev/null || FAILED=1
+      ;;
+  esac
+done
+if [ "$FAILED" -eq 1 ]; then
+  echo "pre-commit: corré \`node scripts/repo-lint.mjs\` para ver el detalle."
+fi
+
+if [ "$FAILED" -ne 0 ]; then
+  echo ""
+  echo "Commit abortado. Prohibido \`--no-verify\`: si el gate estorba, se arregla el gate."
+  exit 1
+fi
+
+exit 0

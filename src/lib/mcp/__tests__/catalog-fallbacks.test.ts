@@ -9,6 +9,11 @@ const synthetic: Notation = {
   label: "Sintética",
   description: "d",
   aiGuidance: "g",
+  analystRole: "analista",
+  flowRules: "- A → B",
+  defaultType: "ConGrupo",
+  namingRule: "nombre corto",
+  modelLabel: "Modelo sintético",
   paletteGroups: [{ label: "Grupo A", types: ["ConGrupo"] }],
   elements: [
     { type: "ConGrupo", icon: "Box", shape: "rect", bg: "", border: "", text: "" },

@@ -27,6 +27,27 @@ export function viewportRect(
   };
 }
 
+/**
+ * Lado lógico del lienzo: el mundo por el que se puede desplazar y soltar.
+ *
+ * Era una constante (2000) y eso recortaba los diagramas grandes: lo que caía
+ * más allá quedaba dibujado pero fuera del área scrolleable, así que no había
+ * forma de llegar hasta el final. Ahora el mundo CRECE con el contenido —el
+ * mínimo se conserva para que un lienzo vacío no quede diminuto— y se deja un
+ * margen para poder arrastrar elementos más allá del último.
+ */
+export function canvasWorldSize(
+  bounds: { maxX: number; maxY: number } | null,
+  minSize: number,
+  pad = 400
+): { width: number; height: number } {
+  if (!bounds) return { width: minSize, height: minSize };
+  return {
+    width: Math.max(minSize, Math.ceil(bounds.maxX + pad)),
+    height: Math.max(minSize, Math.ceil(bounds.maxY + pad)),
+  };
+}
+
 /** Punto del minimapa (px) → coordenadas del lienzo (deshace la escala). */
 export function miniPointToCanvas(
   mx: number,

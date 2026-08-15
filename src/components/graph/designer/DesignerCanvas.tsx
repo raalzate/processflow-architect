@@ -91,6 +91,7 @@ import {
 import {
   ALL_ELEMENTS,
   getNotation,
+  isSwimlaneContainer,
   NOTATION_LIST,
   DEFAULT_NOTATION_ID,
   type Notation,
@@ -102,6 +103,23 @@ import { isContainerType, type DesignerNode, type DesignerLink } from "./seriali
 // --- Constantes de layout (compartidas con serialize.ts) ---
 export const NODE_WIDTH = 160;
 export const NODE_HEIGHT = 60;
+
+/**
+ * Etiqueta de arista: se dibuja suelta sobre la línea, así que su largo es lo que
+ * decide si el diagrama se lee o se convierte en una mancha de texto sobre los
+ * nodos. Se acota aquí (el texto completo va al tooltip) y `src/lib/mcp/quality`
+ * avisa al agente que la escribió para que la acorte en el modelo.
+ */
+export const EDGE_LABEL_MAX_CHARS = 34;
+/** Ancho aproximado de un carácter a `text-[10px] font-semibold`, para el halo. */
+export const EDGE_LABEL_CHAR_PX = 5.4;
+
+export function truncateEdgeLabel(label: string): string {
+  const limpio = label.trim();
+  return limpio.length > EDGE_LABEL_MAX_CHARS
+    ? `${limpio.slice(0, EDGE_LABEL_MAX_CHARS - 1)}…`
+    : limpio;
+}
 export const AGGREGATE_DEFAULT_WIDTH = 500;
 export const AGGREGATE_DEFAULT_HEIGHT = 400;
 
@@ -268,7 +286,10 @@ const PaletteItem: React.FC<{
         // Texto oscuro de la notación sobre el pastel claro (los tipos C4 con texto
         // blanco usan su color alterno `paletteText` para seguir legibles aquí).
         color.paletteText ?? color.text,
-        isContainer && "border-dashed font-semibold"
+        // El chip anticipa la simbología: frontera lógica = punteado; swimlane
+        // BPMN = línea continua (como se dibujará en el lienzo).
+        isContainer && "font-semibold",
+        isContainer && !isSwimlaneContainer(type) && "border-dashed"
       )}
     >
       <Icon className="w-4 h-4 shrink-0" />
@@ -433,6 +454,10 @@ interface NodeComponentProps {
   onFinishConnect?: () => void;
   /** Si el nodo embebe una vista (subproceso), abrir esa vista. */
   onOpenSubView?: () => void;
+  /** Al pasar el ratón: muestra la ficha flotante con nombre/tipo/descripción. */
+  onHover?: (e: React.MouseEvent) => void;
+  /** Al salir del nodo: oculta la ficha. */
+  onHoverEnd?: () => void;
 }
 
 // Marca de subproceso (estilo BPMN "call activity"): cuadro con [+] centrado en
@@ -519,6 +544,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   onStartConnect,
   onFinishConnect,
   onOpenSubView,
+  onHover,
+  onHoverEnd,
 }) => {
   const color = colorForType(node.tipo_elemento);
   const hasSubView = !!node.viewRef && !!onOpenSubView;
@@ -540,7 +567,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
     const width = node.width || AGGREGATE_DEFAULT_WIDTH;
     const height = node.height || AGGREGATE_DEFAULT_HEIGHT;
     const isContext = node.tipo_elemento === "Contexto Delimitado";
-    const strokeDash = isContext ? "10 10" : "5 5";
+    // Swimlane (Pool/Carril BPMN): línea CONTINUA, esquinas rectas y banda
+    // lateral con el nombre rotado — la simbología canónica del participante.
+    // El resto de contenedores son fronteras lógicas: marco punteado.
+    const swimlane = isSwimlaneContainer(node.tipo_elemento);
+    const strokeDash = swimlane ? undefined : isContext ? "10 10" : "5 5";
+    const radius = swimlane ? 0 : 12;
+    const BAND = 28; // ancho de la banda del nombre, en coords del lienzo
     return (
       <g
         transform={`translate(${node.x},${node.y})`}
@@ -548,6 +581,9 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         onMouseUp={handleMouseUp}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
+        onMouseEnter={onHover}
+        onMouseMove={onHover}
+        onMouseLeave={onHoverEnd}
         className={cn(
           "group [filter:drop-shadow(0_1px_2px_rgb(0_0_0/0.08))]",
           connecting ? "cursor-crosshair" : "cursor-move",
@@ -558,7 +594,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         <rect
           width={width}
           height={height}
-          rx="12"
+          rx={radius}
           className={cn(
             "stroke-2 transition-all",
             meta?.transparent ? "fill-transparent" : color.bg,
@@ -572,17 +608,45 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             ...(!isSelected && node.borderColor ? { stroke: node.borderColor } : {}),
           }}
         />
-        <text
-          x="12"
-          y="24"
-          className={cn(
-            "text-lg font-bold pointer-events-none select-none",
-            color.text,
-            isDeleted && "line-through"
-          )}
-        >
-          {node.nombre}
-        </text>
+        {swimlane ? (
+          // Banda del participante: línea divisoria + nombre rotado 90° (BPMN).
+          <>
+            <line
+              x1={BAND}
+              y1={0}
+              x2={BAND}
+              y2={height}
+              className={cn(isSelected ? "stroke-blue-600" : meta?.stroke ?? color.border)}
+              strokeWidth={2}
+              style={!isSelected && node.borderColor ? { stroke: node.borderColor } : undefined}
+            />
+            <text
+              // Rotado sobre el centro de la banda; el nombre lee de abajo a arriba.
+              transform={`translate(${BAND / 2},${height / 2}) rotate(-90)`}
+              textAnchor="middle"
+              dominantBaseline="central"
+              className={cn(
+                "text-sm font-semibold pointer-events-none select-none",
+                color.text,
+                isDeleted && "line-through"
+              )}
+            >
+              {node.nombre}
+            </text>
+          </>
+        ) : (
+          <text
+            x="12"
+            y="24"
+            className={cn(
+              "text-lg font-bold pointer-events-none select-none",
+              color.text,
+              isDeleted && "line-through"
+            )}
+          >
+            {node.nombre}
+          </text>
+        )}
         <ChangeStateBadge estado={node.estado_comparativo} x={width - 2} />
         <g onMouseDown={onResizeMouseDown} className="cursor-nwse-resize">
           <rect
@@ -608,7 +672,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           <rect
             width={width}
             height={height}
-            rx="12"
+            rx={radius}
             className="fill-transparent stroke-blue-400 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity"
             strokeWidth={3}
             strokeDasharray={strokeDash}
@@ -642,6 +706,9 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       onMouseUp={handleMouseUp}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onMouseEnter={onHover}
+      onMouseMove={onHover}
+      onMouseLeave={onHoverEnd}
       className={cn(
         "group [filter:drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
         connecting ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing",
@@ -685,7 +752,6 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           {!meta?.hideIcon && <Icon className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")} />}
           {!labelOutside && (
             <p
-              title={node.nombre}
               className={cn(
                 // Ajusta el texto y lo acota con elipsis DENTRO de la caja en vez
                 // de desbordarse: nombres cortos se ven completos; los largos se
@@ -714,7 +780,6 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           className="pointer-events-none overflow-visible"
         >
           <p
-            title={node.nombre}
             className={cn(
               // Evento/compuerta: el nombre va debajo; se ajusta a 2 líneas con
               // elipsis para no solaparse con el nodo de al lado.
@@ -923,6 +988,10 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   if (!geo) return null;
   const { path, labelX, labelY } = geo;
 
+  // Etiqueta: se acota al ancho legible y el halo se ajusta al texto resultante.
+  const labelText = truncateEdgeLabel(link.descripcion ?? "");
+  const labelWidth = labelText.length * EDGE_LABEL_CHAR_PX + 10;
+
   // Dirección de la(s) flecha(s).
   const arrow = link.arrow ?? "end";
   const sel = isSelected ? "-selected" : "";
@@ -954,23 +1023,33 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
         style={!isSelected && link.color ? { stroke: link.color } : undefined}
       />
       <g onDoubleClick={onDoubleClick} className="cursor-text">
-        <rect
-          x={labelX - 40}
-          y={labelY - 10}
-          width="80"
-          height="20"
-          className="fill-white/80"
-          rx="4"
-        />
-        <text
-          x={labelX}
-          y={labelY}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          className="text-[10px] font-semibold text-gray-800 select-none pointer-events-none"
-        >
-          {link.descripcion}
-        </text>
+        {/* El halo se dimensiona con el texto. Antes era un rect fijo de 80×20 y
+            una etiqueta larga («cotiza y diligencia su solicitud [navegador web]»,
+            ~240 px) se desbordaba sin fondo, cruzando líneas, nodos y títulos de
+            contenedor. Se acota a EDGE_LABEL_MAX_CHARS y el texto completo queda
+            en el tooltip: una relación bien documentada no debe tapar el diagrama. */}
+        {!!labelText && (
+          <>
+            <title>{link.descripcion}</title>
+            <rect
+              x={labelX - labelWidth / 2}
+              y={labelY - 10}
+              width={labelWidth}
+              height="20"
+              className="fill-white/90"
+              rx="4"
+            />
+            <text
+              x={labelX}
+              y={labelY}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              className="text-[10px] font-semibold text-gray-800 select-none pointer-events-none"
+            >
+              {labelText}
+            </text>
+          </>
+        )}
       </g>
     </g>
   );

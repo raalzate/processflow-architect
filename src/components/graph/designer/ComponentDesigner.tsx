@@ -54,6 +54,16 @@ import * as DrawerPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useAi } from "@/hooks/useAi";
+import { orderLanesTask } from "@/lib/ai/tasks";
+import { arrangeGraphData, laneNames, laneSummary } from "@/lib/mcp/arrange";
+import {
+  DEFAULT_DENSITY,
+  defaultStrategyFor,
+  type LayoutDensity,
+  type LayoutStrategy,
+} from "@/lib/mcp/layout-presets";
+import { ArrangeMenu } from "./ArrangeMenu";
+import { canvasWorldSize } from "./minimap-geom";
 import {
   describeNodeTask,
   linkLabelTask,
@@ -143,11 +153,14 @@ function metaFromContent(content: GraphData): DesignerMeta {
 function buildContent(
   nodes: Map<string, DesignerNode>,
   links: Map<string, DesignerLink>,
-  meta: DesignerMeta
+  meta: DesignerMeta,
+  /** Notación activa del lienzo: se re-sella en el documento en cada guardado. */
+  notation?: NotationId
 ): GraphData {
   return canvasToGraphData(nodes, links, {
     nombre_proyecto: meta.nombre_proyecto,
     version: meta.version,
+    notation,
     fecha_analisis: meta.fecha_analisis,
     big_picture: {
       descripcion: meta.bigPictureDescripcion,
@@ -230,6 +243,8 @@ const EditNodeDialog: React.FC<{
   node: DesignerNode | null;
   /** Tipos de elemento de la notación activa (para el Select de tipo). */
   elementTypes: string[];
+  /** Notación de la vista: dirige las sugerencias de IA (tipos, rol, nombres). */
+  notation: NotationId;
   /** Vistas que se pueden embeber como subproceso (todas menos la actual). */
   subViews: { id: string; name: string }[];
   /** Abre (entra a) la vista embebida. */
@@ -241,7 +256,7 @@ const EditNodeDialog: React.FC<{
   onClose: () => void;
   onSave: (n: DesignerNode) => void;
   onCreateNext: (fromNode: DesignerNode, sug: { tipo: string; nombre: string; relacion: string }) => void;
-}> = ({ node, elementTypes, subViews, onOpenSubView, onCreateSubView, referencia, onClose, onSave, onCreateNext }) => {
+}> = ({ node, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, onClose, onSave, onCreateNext }) => {
   const [draft, setDraft] = useState<DesignerNode | null>(null);
   const { run, busy } = useAi();
   // Campo cuya sugerencia se está ejecutando: sólo ESE botón muestra el spinner.
@@ -276,17 +291,18 @@ const EditNodeDialog: React.FC<{
         nombre: draft.nombre,
         descripcion: draft.descripcion,
         referencia,
+        notation,
       });
       if (text) setDraft((d) => (d ? { ...d, descripcion: text } : d));
     });
   const suggestName = () =>
     withField("name", async () => {
-      const text = await run(suggestNameTask, { tipo: draft.tipo_elemento, descripcion: draft.descripcion, referencia });
+      const text = await run(suggestNameTask, { tipo: draft.tipo_elemento, descripcion: draft.descripcion, referencia, notation });
       if (text) setDraft((d) => (d ? { ...d, nombre: text } : d));
     });
   const suggestType = () =>
     withField("type", async () => {
-      const t = await run(classifyTypeTask, { nombre: draft.nombre, descripcion: draft.descripcion, referencia });
+      const t = await run(classifyTypeTask, { nombre: draft.nombre, descripcion: draft.descripcion, referencia, notation });
       if (t) setDraft((d) => (d ? { ...d, tipo_elemento: t as DesignerNode["tipo_elemento"] } : d));
     });
   const suggestTags = () =>
@@ -306,6 +322,7 @@ const EditNodeDialog: React.FC<{
         nombre: draft.nombre,
         descripcion: draft.descripcion,
         referencia,
+        notation,
       });
       if (sug && sug.nombre) {
         onSave(draft); // persiste el nodo actual antes de encadenar el siguiente
@@ -576,9 +593,11 @@ const EditLinkDialog: React.FC<{
   nodes: Map<string, DesignerNode>;
   /** Contexto de referencia del proyecto para la IA. */
   referencia: string;
+  /** Notación de la vista: dirige la etiqueta que sugiere la IA. */
+  notation: NotationId;
   onClose: () => void;
   onSave: (l: DesignerLink) => void;
-}> = ({ link, nodes, referencia, onClose, onSave }) => {
+}> = ({ link, nodes, referencia, notation, onClose, onSave }) => {
   const [draft, setDraft] = useState<DesignerLink | null>(null);
   const { run, busy } = useAi();
   useEffect(() => {
@@ -596,6 +615,7 @@ const EditLinkDialog: React.FC<{
       targetName: t.nombre,
       targetType: t.tipo_elemento,
       referencia,
+      notation,
     });
     if (text) setDraft((d) => (d ? { ...d, descripcion: text } : d));
   };
@@ -772,8 +792,10 @@ const MetadataDialog: React.FC<{
   onOpenChange: (o: boolean) => void;
   meta: DesignerMeta;
   summary: string;
+  /** Notación de la vista: dirige el resumen que sugiere la IA. */
+  notation: NotationId;
   onSave: (m: DesignerMeta) => void;
-}> = ({ open, onOpenChange, meta, summary, onSave }) => {
+}> = ({ open, onOpenChange, meta, summary, notation, onSave }) => {
   const [draft, setDraft] = useState<DesignerMeta>(meta);
   const { run, busy } = useAi();
   useEffect(() => {
@@ -781,7 +803,7 @@ const MetadataDialog: React.FC<{
   }, [open, meta]);
 
   const suggestBigPicture = async () => {
-    const text = await run(bigPictureDescTask, { resumen: summary });
+    const text = await run(bigPictureDescTask, { resumen: summary, notation });
     if (text) setDraft((d) => ({ ...d, bigPictureDescripcion: text }));
   };
 
@@ -979,6 +1001,9 @@ export const ComponentDesigner: React.FC<{
   const { views, activeViewId, drillStack, enterView, goToDrill, createView } = useViews();
   const { referenceText } = useReference();
   const { toast } = useToast();
+  // IA del lienzo: hoy sólo la usa «Organizar → Sugerir con IA», que pide ORDEN
+  // de grupos (nunca coordenadas: la geometría es determinista).
+  const { run: runAi } = useAi();
 
   // --- Vistas embebidas (subprocesos) ---
   // Id de la vista que edita este lienzo: en modo vista es sourceId; en el modelo
@@ -1095,8 +1120,30 @@ export const ComponentDesigner: React.FC<{
     | null
   >(null);
 
-  // Zoom del lienzo: escalamos el TAMAÑO renderizado del SVG manteniendo el
-  // viewBox 0..2000 fijo, así getScreenCTM() sigue mapeando bien (drag/drop intactos).
+  // Ficha flotante al pasar el ratón por un componente: nombre, tipo y
+  // descripción. Guardamos coordenadas de PANTALLA (clientX/Y) y la pintamos
+  // con position:fixed → nos ahorramos convertir viewBox/zoom/scroll.
+  const [hoverCard, setHoverCard] = useState<{ node: DesignerNode; x: number; y: number } | null>(
+    null
+  );
+  const showHoverCard = useCallback(
+    (e: React.MouseEvent, node: DesignerNode) => {
+      // Durante un arrastre/conexión/selección la ficha estorba: la ocultamos.
+      if (draggingInfo || connectFrom || marquee) {
+        setHoverCard(null);
+        return;
+      }
+      setHoverCard({ node, x: e.clientX, y: e.clientY });
+    },
+    [draggingInfo, connectFrom, marquee]
+  );
+  const hideHoverCard = useCallback(() => setHoverCard(null), []);
+
+  // Zoom del lienzo: escalamos el TAMAÑO renderizado del SVG y el viewBox a la
+  // par (misma escala en x e y), así getScreenCTM() sigue mapeando bien
+  // (drag/drop intactos). CANVAS_SIZE es el MÍNIMO lógico: al alejar, el área
+  // crece para llenar el viewport en vez de dejar una franja gris muerta donde
+  // no se puede soltar nada.
   const CANVAS_SIZE = 2000;
   const GRID = 20; // paso de la cuadrícula del lienzo (en coordenadas del viewBox)
   const ZOOM_MIN = 0.25;
@@ -1110,6 +1157,16 @@ export const ComponentDesigner: React.FC<{
 
   // Porción visible del lienzo (en px de scroll), para el rectángulo del minimapa.
   const [viewport, setViewport] = useState({ left: 0, top: 0, w: 0, h: 0 });
+  // El mundo del lienzo CRECE con el contenido: con un lado fijo, lo que caía
+  // más allá quedaba dibujado pero fuera del área scrolleable y no había forma
+  // de llegar al final del diagrama (un BPMN cómodo pasa de 3000 px de ancho).
+  const world = useMemo(
+    () => canvasWorldSize(computeContentBounds(nodes), CANVAS_SIZE),
+    [nodes]
+  );
+  // Lado del lienzo en px: nunca menor que el viewport (ver CANVAS_SIZE).
+  const canvasPxW = Math.max(world.width * zoom, viewport.w);
+  const canvasPxH = Math.max(world.height * zoom, viewport.h);
   const syncViewport = useCallback(() => {
     const w = canvasWrapperRef.current;
     if (!w) return;
@@ -1130,7 +1187,7 @@ export const ComponentDesigner: React.FC<{
 
   // Ajusta el zoom y el scroll para encuadrar TODO el contenido con un margen.
   // Sin nodos, vuelve al 100%. Es la acción del botón "Ajustar a contenido".
-  const fitToContent = useCallback(() => {
+  const fitToContent = useCallback((opts: { maxZoom?: number } = {}) => {
     const wrapper = canvasWrapperRef.current;
     const bounds = computeContentBounds(nodesRef.current);
     if (!wrapper || !bounds) {
@@ -1141,7 +1198,10 @@ export const ComponentDesigner: React.FC<{
     const z = clampZoom(
       Math.min(
         wrapper.clientWidth / (bounds.width + PAD * 2),
-        wrapper.clientHeight / (bounds.height + PAD * 2)
+        wrapper.clientHeight / (bounds.height + PAD * 2),
+        // Tope opcional: al ABRIR un modelo no queremos ampliar dos diagramas
+        // pequeños hasta el 300%, solo asegurar que se vean enteros.
+        opts.maxZoom ?? Infinity
       )
     );
     setZoom(z);
@@ -1217,6 +1277,16 @@ export const ComponentDesigner: React.FC<{
   useEffect(() => {
     syncViewport();
   }, [zoom, revision, syncViewport]);
+
+  // El lado del lienzo depende del tamaño del wrapper: remedir al redimensionar
+  // (sin esto, agrandar la ventana deja el lienzo corto hasta el próximo cambio).
+  useEffect(() => {
+    const wrapper = canvasWrapperRef.current;
+    if (!wrapper || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => syncViewport());
+    ro.observe(wrapper);
+    return () => ro.disconnect();
+  }, [syncViewport]);
 
   // --- Historial (deshacer / rehacer) ---
   const historyRef = useRef<{
@@ -1347,6 +1417,17 @@ export const ComponentDesigner: React.FC<{
     clearSelection();
   }, [sourceKey, sourceContent, isViewMode]);
 
+  // Encuadra el contenido al ABRIR el documento/vista: sin esto un modelo
+  // importado o recién sembrado aparece diminuto en una esquina del lienzo.
+  const fittedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!meta || fittedKeyRef.current === sourceKey) return;
+    if (nodesRef.current.size === 0) return; // lienzo vacío: nada que encuadrar
+    fittedKeyRef.current = sourceKey;
+    // Tras el primer paint: el wrapper ya tiene alto/ancho medibles.
+    requestAnimationFrame(() => fitToContent({ maxZoom: 1 }));
+  }, [sourceKey, meta, fitToContent]);
+
   // --- Autoguardado: lienzo + metadatos -> proyecto o vista ---
   useEffect(() => {
     if (!meta) return;
@@ -1355,13 +1436,13 @@ export const ComponentDesigner: React.FC<{
       return;
     }
     setSaveState("saving");
-    const content = buildContent(nodesRef.current, linksRef.current, meta);
+    const content = buildContent(nodesRef.current, linksRef.current, meta, notationId);
     if (onChangeRef.current) onChangeRef.current(content);
     else if (currentFileId) handleDesignUpdate(currentFileId, content);
     const t = setTimeout(() => setSaveState("saved"), 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revision, meta, currentFileId]);
+  }, [revision, meta, currentFileId, notationId]);
 
   // --- Acciones desde el menú nativo de Electron ---
   useEffect(() => {
@@ -1903,6 +1984,69 @@ export const ComponentDesigner: React.FC<{
     toast({ title: "Lienzo reiniciado" });
   };
 
+  // --- Organizar: reordena el lienzo con el MISMO layout que genera el MCP ---
+  // Sólo mueve cajas: aplica las posiciones que devuelve `arrangeGraphData` sobre
+  // los elementos que ya existen, así el lienzo conserva ids, selección e
+  // historial (un Ctrl+Z deshace la reorganización).
+  const [arrangement, setArrangement] = useState<{ density: LayoutDensity; strategy: LayoutStrategy }>(
+    () => ({ density: DEFAULT_DENSITY, strategy: defaultStrategyFor(notationId) })
+  );
+  const [arrangeBusy, setArrangeBusy] = useState(false);
+
+  const applyArrangement = useCallback(
+    (opts: { density?: LayoutDensity; strategy?: LayoutStrategy; laneOrder?: string[] }) => {
+      const next = {
+        density: opts.density ?? arrangement.density,
+        strategy: opts.strategy ?? arrangement.strategy,
+      };
+      if (!meta) return;
+      const content = buildContent(nodesRef.current, linksRef.current, meta, notationId);
+      const posiciones = arrangeGraphData(content, notationId, { ...next, laneOrder: opts.laneOrder });
+      updateNodes((prev) => {
+        const out = new Map(prev);
+        for (const [id, n] of prev) {
+          const box = isContainerType(n.tipo_elemento)
+            ? posiciones.containers[n.nombre]
+            : posiciones.nodes[n.id];
+          if (box) out.set(id, { ...n, x: box.x, y: box.y, width: box.width, height: box.height });
+        }
+        return out;
+      });
+      setArrangement(next);
+    },
+    [arrangement, meta, notationId, updateNodes]
+  );
+
+  const suggestArrangementWithAi = useCallback(async () => {
+    if (!meta) return;
+    const content = buildContent(nodesRef.current, linksRef.current, meta, notationId);
+    const bandas = laneNames(content);
+    if (bandas.length < 2) {
+      toast({ title: "Nada que ordenar", description: "El diagrama no tiene grupos que reordenar." });
+      return;
+    }
+    setArrangeBusy(true);
+    try {
+      // La IA sólo devuelve NOMBRES en orden; la geometría la calcula el layout.
+      const orden = await runAi(orderLanesTask, {
+        bandas,
+        resumen: laneSummary(content),
+        notation: notationId,
+      });
+      if (!orden?.length) return;
+      applyArrangement({ laneOrder: orden });
+      const cambio = orden.some((n, i) => n !== bandas[i]);
+      toast({
+        title: cambio ? "Grupos reordenados" : "Sin cambios",
+        description: cambio
+          ? `Orden sugerido: ${orden.join(" → ")}. Deshacé si no convence.`
+          : "La IA considera que el orden actual ya es el natural.",
+      });
+    } finally {
+      setArrangeBusy(false);
+    }
+  }, [applyArrangement, meta, notationId, runAi, toast]);
+
   // Exporta el lienzo actual como SVG vectorial recortado al contenido, para
   // llevar el diagrama a una presentación o documento.
   const handleExportSvg = useCallback(() => {
@@ -2011,8 +2155,8 @@ export const ComponentDesigner: React.FC<{
         <div className="max-w-md">
           <h2 className="text-xl font-semibold text-foreground">Sin proyecto activo</h2>
           <p className="mt-2 text-muted-foreground">
-            Crea un nuevo proyecto desde la barra superior para empezar a diseñar
-            tu modelo de dominio.
+            Crea un nuevo proyecto desde la barra superior y elige su notación
+            (DDD, BPMN, C4 o UML) para empezar a diseñar.
           </p>
         </div>
       </div>
@@ -2044,6 +2188,18 @@ export const ComponentDesigner: React.FC<{
               <Redo2 className="h-4 w-4" />
             </Button>
           </div>
+
+          <div className="w-px h-6 bg-border mx-1" />
+
+          {/* Reorganiza el lienzo con el mismo layout que genera el MCP. */}
+          <ArrangeMenu
+            density={arrangement.density}
+            strategy={arrangement.strategy}
+            busy={arrangeBusy}
+            hasLanes={Array.from(nodes.values()).some((n) => isContainerType(n.tipo_elemento))}
+            onArrange={applyArrangement}
+            onSuggestWithAi={suggestArrangementWithAi}
+          />
 
           <div className="w-px h-6 bg-border mx-1" />
 
@@ -2227,9 +2383,9 @@ export const ComponentDesigner: React.FC<{
           )}
           <svg
             ref={svgRef}
-            width={CANVAS_SIZE * zoom}
-            height={CANVAS_SIZE * zoom}
-            viewBox={`0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}`}
+            width={canvasPxW}
+            height={canvasPxH}
+            viewBox={`0 0 ${canvasPxW / zoom} ${canvasPxH / zoom}`}
             className="bg-white dark:bg-[hsl(222_16%_13%)]"
           >
             <defs>
@@ -2266,7 +2422,12 @@ export const ComponentDesigner: React.FC<{
 
             {/* Fondo con cuadrícula. pointerEvents none → los clics en vacío llegan
                 al <svg> y siguen deseleccionando. */}
-            <rect width={CANVAS_SIZE} height={CANVAS_SIZE} fill="url(#grid-major)" pointerEvents="none" />
+            <rect
+              width={canvasPxW / zoom}
+              height={canvasPxH / zoom}
+              fill="url(#grid-major)"
+              pointerEvents="none"
+            />
 
             {/* Capa 0-2: Contenedores (cualquier notación), de mayor a menor área */}
             <g>
@@ -2283,6 +2444,8 @@ export const ComponentDesigner: React.FC<{
                   onClick={handleNodeClick}
                   onDoubleClick={() => setEditingNode(node)}
                   onOpenSubView={subViewExists(node.viewRef) ? () => openSubView(node.viewRef!) : undefined}
+                  onHover={(e) => showHoverCard(e, node)}
+                  onHoverEnd={hideHoverCard}
                 />
               ))}
             </g>
@@ -2341,6 +2504,8 @@ export const ComponentDesigner: React.FC<{
                   onClick={handleNodeClick}
                   onDoubleClick={() => setEditingNode(node)}
                   onOpenSubView={subViewExists(node.viewRef) ? () => openSubView(node.viewRef!) : undefined}
+                  onHover={(e) => showHoverCard(e, node)}
+                  onHoverEnd={hideHoverCard}
                 />
               ))}
             </g>
@@ -2378,6 +2543,33 @@ export const ComponentDesigner: React.FC<{
           </svg>
           </div>
 
+          {/* Ficha al pasar el ratón por un componente. position:fixed sobre las
+              coordenadas del cursor y sin eventos → no interfiere con arrastrar,
+              conectar ni con el hover del propio nodo. Se voltea contra el borde
+              de la ventana para no salirse de pantalla. */}
+          {hoverCard && !capturing && (
+            <div
+              className="pointer-events-none fixed z-50 max-w-xs rounded-md border bg-popover px-3 py-2 text-popover-foreground shadow-md"
+              style={{
+                left: Math.min(hoverCard.x + 16, (typeof window !== "undefined" ? window.innerWidth : 1200) - 336),
+                top: Math.min(hoverCard.y + 18, (typeof window !== "undefined" ? window.innerHeight : 800) - 140),
+              }}
+            >
+              <p className="text-sm font-semibold leading-tight">{hoverCard.node.nombre}</p>
+              <p className="mt-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                {hoverCard.node.tipo_elemento}
+              </p>
+              <p className="mt-1.5 text-xs leading-snug text-muted-foreground">
+                {hoverCard.node.descripcion?.trim() || "Sin descripción — doble clic para editarla."}
+              </p>
+              {!!hoverCard.node.tags_tecnologia?.length && (
+                <p className="mt-1 text-[11px] italic text-muted-foreground">
+                  [{hoverCard.node.tags_tecnologia.join(", ")}]
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Controles de zoom — FUERA del wrapper scrolleable para fijarlos al
               fondo visible del viewport (dentro del scroll anclaban al fondo del
               contenido, ~1700px, y quedaban a media pantalla). */}
@@ -2409,7 +2601,7 @@ export const ComponentDesigner: React.FC<{
               <ZoomIn className="h-4 w-4" />
             </button>
             <button
-              onClick={fitToContent}
+              onClick={() => fitToContent()}
               title="Ajustar a contenido"
               className="rounded p-1.5 text-muted-foreground hover:bg-muted"
             >
@@ -2424,7 +2616,7 @@ export const ComponentDesigner: React.FC<{
               <Minimap
                 nodes={nodes}
                 zoom={zoom}
-                canvasSize={CANVAS_SIZE}
+                canvasSize={Math.max(CANVAS_SIZE, canvasPxW / zoom, canvasPxH / zoom)}
                 viewport={viewport}
                 onNavigate={navigateTo}
               />
@@ -2437,6 +2629,7 @@ export const ComponentDesigner: React.FC<{
       <EditNodeDialog
         node={editingNode}
         elementTypes={elementTypes}
+        notation={notationId}
         subViews={subViewOptions}
         onOpenSubView={openSubView}
         onCreateSubView={createSubView}
@@ -2455,6 +2648,7 @@ export const ComponentDesigner: React.FC<{
         link={editingLink}
         nodes={nodes}
         referencia={referenceText}
+        notation={notationId}
         onClose={() => setEditingLink(null)}
         onSave={(l) =>
           updateLinks((prev) => {
@@ -2467,6 +2661,7 @@ export const ComponentDesigner: React.FC<{
       <MetadataDialog
         open={metaOpen}
         onOpenChange={setMetaOpen}
+        notation={notationId}
         meta={meta}
         summary={designSummary}
         onSave={(m) => {

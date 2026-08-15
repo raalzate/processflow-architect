@@ -9,6 +9,8 @@ export interface LitertModelStatus {
   sizeBytes: number;
 }
 
+import type { AppState } from "@/lib/mcp/app-state";
+
 export interface McpServerStatus {
   running: boolean;
   port: number;
@@ -75,6 +77,12 @@ export interface ElectronAPI {
       mermaid?: boolean;
     }) => void
   ) => () => void;
+
+  /**
+   * Publica el estado del lienzo (proyecto activo, notación, vistas) para que la
+   * herramienta MCP `get_app_state` lo sirva al agente externo. Fire-and-forget.
+   */
+  mcpPublishAppState: (state: AppState | null) => void;
 
   // Playground MCP (guía /mcp): probar herramientas sin cliente externo.
   mcpPlaygroundListTools: () => Promise<PlaygroundTool[]>;

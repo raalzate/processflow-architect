@@ -1,5 +1,6 @@
 import { BigPicture, GraphLink, GraphNode, ReadModel, TechnicalDiagram } from "./types";
 import { separateCamelCase } from "./utils";
+import { mermaidShapeDelims } from "./mcp/to-mermaid";
 
 
 export const sanitizeId = (name: string): string => {
@@ -32,7 +33,15 @@ export const getTechTag = (tags: string[] | null): string =>
 
 
 
-export function diagramContext(data: BigPicture): string {
+/**
+ * Vista de "contexto": el diagrama de caja negra del modelo.
+ *
+ * En Event Storming el contexto se obtiene ocultando el interior (eventos,
+ * políticas) y dejando sólo la frontera; ese recorte SOLO tiene sentido en DDD,
+ * así que en BPMN/C4/UML se muestran todos los nodos. Si el recorte deja el
+ * diagrama vacío también se muestran todos: un ```mermaid``` sin nodos no dice nada.
+ */
+export function diagramContext(data: BigPicture, notation?: string): string {
   // 1. DEFINICIÓN DE TIPOS PERMITIDOS (Contexto General)
   const allowedTypes = new Set([
     'Actor', 
@@ -42,8 +51,10 @@ export function diagramContext(data: BigPicture): string {
     'Sistema Externo'
   ]);
 
-  // 2. FILTRAR NODOS VISIBLES
-  const visibleNodes = data.nodos.filter(n => allowedTypes.has(n.tipo_elemento));
+  // 2. FILTRAR NODOS VISIBLES (sólo en DDD; ver doc de la función)
+  const isDdd = !notation || notation === 'ddd';
+  const filtered = isDdd ? data.nodos.filter(n => allowedTypes.has(n.tipo_elemento)) : data.nodos;
+  const visibleNodes = filtered.length ? filtered : data.nodos;
   const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
 
   // 3. LÓGICA DE CONEXIÓN TRANSITIVA (Bridging)
@@ -100,7 +111,6 @@ export function diagramContext(data: BigPicture): string {
     Comando: ['[/', '/]'],            
     Vista: ['[\\', '\\]'],           
     'Read Model': ['[(', ')]'],      
-    default: ['[', ']'],
   };
 
   // 5. AGRUPACIÓN POR CONTEXTO (Igual que antes)
@@ -125,7 +135,9 @@ export function diagramContext(data: BigPicture): string {
     }
 
     groupNodes.forEach(nodo => {
-      const [open, close] = shapeMap[nodo.tipo_elemento] || shapeMap.default;
+      // Formas propias del Event Storming; para el resto de tipos manda la forma
+      // que declara su notación (compuertas en rombo, bases de datos en cilindro…).
+      const [open, close] = shapeMap[nodo.tipo_elemento] || mermaidShapeDelims(nodo.tipo_elemento);
       const label = nodo.nombre.replace(/"/g, "'").replace(/\n/g, " ");
       
       // Limpieza de clases CSS

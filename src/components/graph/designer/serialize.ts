@@ -17,7 +17,7 @@ import {
   type GraphNode,
   type Agregado,
 } from "@/lib/types";
-import { isNotationContainer } from "@/lib/notations";
+import { isNotationContainer, type NotationId } from "@/lib/notations";
 
 /**
  * Tipo de elemento del lienzo. Antes era la unión cerrada de DDD; ahora es un
@@ -174,6 +174,9 @@ export function canvasToGraphData(
   return {
     nombre_proyecto: base.nombre_proyecto,
     version: base.version || "1.0.0",
+    // La notación viaja CON el documento: si no se propaga aquí, el autoguardado
+    // del lienzo la borra y la vista vuelve a la notación por defecto.
+    notation: base.notation,
     fecha_analisis: base.fecha_analisis,
     big_picture: {
       descripcion: base.big_picture?.descripcion || "",
@@ -418,11 +421,14 @@ export function computeContentBounds(
 /** GraphData mínimo válido para un proyecto nuevo. */
 export function emptyGraphData(
   nombre_proyecto: string,
-  fecha_analisis: string
+  fecha_analisis: string,
+  /** Notación con la que nace el modelo; viaja en el documento (ver GraphData). */
+  notation?: NotationId
 ): GraphData {
   return {
     nombre_proyecto,
     version: "1.0.0",
+    notation,
     fecha_analisis,
     big_picture: { descripcion: "", hotspots: [], nodos: [], aristas: [] },
     agregados: [],

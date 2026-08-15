@@ -968,3 +968,21 @@ describe("computeContentBounds", () => {
     expect(b.maxY).toBe(350); // 300 + 50
   });
 });
+
+describe("notación en el round-trip", () => {
+  it("canvasToGraphData conserva la notación del documento", () => {
+    // Sin esto, el primer autoguardado del lienzo borraba `notation` y la vista
+    // volvía a DDD aunque el proyecto se hubiera creado en BPMN.
+    const out = canvasToGraphData(new Map(), new Map(), {
+      nombre_proyecto: "P",
+      fecha_analisis: "2026-08-05",
+      notation: "bpmn",
+    });
+    expect(out.notation).toBe("bpmn");
+  });
+
+  it("emptyGraphData sella la notación con la que nace el proyecto", () => {
+    expect(emptyGraphData("P", "2026-08-05", "c4").notation).toBe("c4");
+    expect(emptyGraphData("P", "2026-08-05").notation).toBeUndefined();
+  });
+});

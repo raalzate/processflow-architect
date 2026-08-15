@@ -55,6 +55,17 @@ export interface NotationElement {
    * Requiere `stroke` para que el contorno sea visible (en SVG, `border-*` no pinta).
    */
   transparent?: boolean;
+  /**
+   * Simbología del CONTENEDOR (ignorado en nodos sueltos):
+   *  - "boundary" (por defecto): marco punteado con el nombre en la esquina.
+   *    Es lo correcto para fronteras lógicas — Contexto Delimitado, Subdominio,
+   *    Límite de Sistema, Paquete: delimitan, no reparten trabajo.
+   *  - "swimlane": rectángulo de LÍNEA CONTINUA, esquinas rectas y banda lateral
+   *    con el nombre rotado 90°. Es la forma canónica del Pool/Carril de BPMN
+   *    (participante y rol); dibujarlos punteados con etiqueta en la esquina no
+   *    es notación BPMN.
+   */
+  containerStyle?: "boundary" | "swimlane";
   /** Clase tailwind de trazo SVG (stroke-*) que dibuja el contorno del nodo. */
   stroke?: string;
   /** Clases tailwind: relleno SVG, borde y texto. */
@@ -87,6 +98,33 @@ export interface Notation {
   elements: NotationElement[];
   /** Guía para la IA: cómo producir propuestas/diagramas en esta notación. */
   aiGuidance: string;
+  /**
+   * Rol que asume la IA al sugerir en esta notación ("analista de procesos
+   * BPMN", …). Los prompts del diseñador lo usan en lugar de asumir DDD: un
+   * modelo pequeño clasifica y nombra según el rol que se le da.
+   */
+  analystRole: string;
+  /**
+   * Encadenamiento típico de la notación (para "sugerir el siguiente
+   * elemento"): una línea por regla `Origen → Destino (relación)`.
+   */
+  flowRules: string;
+  /**
+   * Tipo al que se cae cuando la IA devuelve un tipo que no existe en la
+   * notación. Debe ser el elemento más común de su flujo.
+   */
+  defaultType: string;
+  /**
+   * Cómo se nombran los elementos en esta notación (regla para "sugerir
+   * nombre"). En DDD es Lenguaje Ubicuo; en BPMN verbo+objeto; etc.
+   */
+  namingRule: string;
+  /**
+   * Cómo se llama el modelo en la UI ("Modelo de Dominio" en DDD, "Modelo de
+   * Procesos" en BPMN…). Evita que los paneles del visor hablen siempre de
+   * dominio ante un diagrama que no lo es.
+   */
+  modelLabel: string;
 }
 
 export const DEFAULT_NOTATION_ID: NotationId = "ddd";
@@ -173,6 +211,16 @@ const DDD: Notation = {
     "Integración y servicios: Servicio de Host Abierto (OHS, protocolo público del upstream), Lenguaje Publicado (PL, contrato/esquema compartido), Capa Anticorrupción (ACL, traduce y aísla el modelo ajeno) y Núcleo Compartido (Shared Kernel, modelo común entre dos contextos). " +
     "Aislamiento Total: Caminos Separados (Separate Ways, sin integración). " +
     "Táctico: Entidades, Objetos de Valor, Agregados con su Raíz, Eventos de Dominio, Servicios de Dominio, Repositorios y Fábricas.",
+  analystRole: "analista DDD/Event Storming",
+  modelLabel: "Modelo de Dominio",
+  flowRules:
+    "- Actor → Comando (relación \"ejecuta\")\n" +
+    "- Comando → Evento (relación \"produce\")\n" +
+    "- Evento → Política o Vista (relación \"dispara\")\n" +
+    "- Política → Comando (relación \"dispara\")",
+  defaultType: "Evento",
+  namingRule:
+    "nombre en Lenguaje Ubicuo (de negocio): Comando en imperativo (\"Registrar Reembolso\"), Evento en pasado (\"Reembolso Aprobado\")",
 };
 
 // =============================================================================
@@ -226,13 +274,23 @@ const BPMN: Notation = {
     { type: "Compuerta Inclusiva", icon: "Circle", shape: "diamond", compact: true, stroke: "stroke-indigo-600", bg: "fill-indigo-100", border: "border-indigo-500", text: "text-indigo-900" },
     { type: "Compuerta de Eventos", icon: "CircleDot", shape: "diamond", compact: true, stroke: "stroke-purple-600", bg: "fill-purple-100", border: "border-purple-500", text: "text-purple-900" },
     // --- Contenedores (los ÚNICOS transparentes: un fondo taparía a sus hijos) ---
-    { type: "Pool", icon: "Container", container: true, transparent: true, stroke: "stroke-sky-500", bg: "fill-sky-50", border: "border-sky-500", text: "text-sky-900" },
-    { type: "Carril", icon: "Rows3", container: true, transparent: true, stroke: "stroke-cyan-500", bg: "fill-cyan-50", border: "border-cyan-400", text: "text-cyan-900" },
+    { type: "Pool", icon: "Container", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-sky-600", bg: "fill-sky-50", border: "border-sky-600", text: "text-sky-900" },
+    { type: "Carril", icon: "Rows3", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-cyan-600", bg: "fill-cyan-50", border: "border-cyan-600", text: "text-cyan-900" },
   ],
   aiGuidance:
     "Modela procesos BPMN: Pools y Carriles (lanes) por responsable; Eventos de Inicio/Intermedio/Fin y sus variantes (Mensaje, Temporizador, Error); Tareas y Subprocesos; Objetos y Almacenes de Datos; Anotaciones. " +
     "Para las DECISIONES y bifurcaciones del flujo usa Compuertas: Exclusiva (XOR, un único camino según condición), Paralela (AND, todos los caminos en simultáneo), Inclusiva (OR, uno o más caminos) y Basada en Eventos (el camino lo decide qué evento ocurre primero). " +
     "El flujo de secuencia conecta actividades en orden temporal; de cada compuerta exclusiva/inclusiva salen aristas etiquetadas con la condición de cada rama.",
+  analystRole: "analista de procesos de negocio (BPMN)",
+  modelLabel: "Modelo de Procesos",
+  flowRules:
+    "- Evento de Inicio → Tarea (relación \"secuencia\")\n" +
+    "- Tarea → Tarea o Compuerta Exclusiva (relación \"secuencia\")\n" +
+    "- Compuerta Exclusiva → Tarea (relación = la CONDICIÓN de la rama, p. ej. \"pago aprobado\")\n" +
+    "- Tarea → Evento de Fin (relación \"secuencia\")",
+  defaultType: "Tarea",
+  namingRule:
+    "nombre de actividad en infinitivo verbo + objeto (\"Validar documento\"); los eventos describen el hecho (\"Pedido confirmado\")",
 };
 
 // =============================================================================
@@ -272,6 +330,17 @@ const C4: Notation = {
   ],
   aiGuidance:
     "Aplica el modelo C4 (Simon Brown): nivel 1 Contexto (Personas y Sistemas y sus relaciones), nivel 2 Contenedores (apps/servicios/bases de datos dentro del Límite de Sistema), nivel 3 Componentes dentro de cada Contenedor. Etiqueta relaciones con tecnología/protocolo (ej. 'usa [HTTPS/JSON]').",
+  analystRole: "arquitecto de software que modela en C4 (Simon Brown)",
+  modelLabel: "Modelo de Arquitectura",
+  flowRules:
+    "- Persona → Sistema (relación \"usa\")\n" +
+    "- Sistema → Contenedor (relación \"contiene\")\n" +
+    "- Contenedor → Base de Datos (relación \"lee y escribe [JDBC]\")\n" +
+    "- Contenedor → Sistema Externo (relación \"consume [HTTPS/JSON]\")\n" +
+    "- Contenedor → Componente (relación \"contiene\")",
+  defaultType: "Contenedor",
+  namingRule:
+    "nombre técnico del elemento y su rol (\"API de Pedidos\", \"App Web de Clientes\"); sin verbos de acción",
 };
 
 // =============================================================================
@@ -345,6 +414,17 @@ const UML: Notation = {
     "Máquina de estados (motor de estados): modela el ciclo de vida de un objeto con Estado Inicial (pseudoestado de arranque), Estados y Estados Compuestos (anidan subestados), Decisión (elige rama según guarda), Historial (recuerda el último subestado) y Estado Final; las transiciones se etiquetan 'evento [guarda] / acción'. " +
     "Diagrama de actividad (flujos de decisión): Inicio de Actividad, Acciones, Nodo de Decisión (bifurca según condición) y su unión, Bifurcación/Unión (fork/join para flujos paralelos) y Fin de Actividad. " +
     "Los diagramas de SECUENCIA no se modelan aquí: tienen su propio editor (vista 'Diagrama de secuencia').",
+  analystRole: "modelador UML",
+  modelLabel: "Modelo UML",
+  flowRules:
+    "- Actor → Caso de Uso (relación \"asocia\")\n" +
+    "- Clase → Clase (relación \"asocia\", \"hereda\" o \"depende\")\n" +
+    "- Clase → Interfaz (relación \"implementa\")\n" +
+    "- Estado Inicial → Estado (relación = el evento de la transición)\n" +
+    "- Acción → Nodo de Decisión → Acción (relación = la guarda de la rama)",
+  defaultType: "Clase",
+  namingRule:
+    "Clases/Interfaces en sustantivo singular PascalCase (\"PedidoDeCompra\"); Casos de Uso y Acciones en verbo + objeto (\"Rastrear Envío\"); Estados en participio o adjetivo (\"En tránsito\")",
 };
 
 // =============================================================================
@@ -403,3 +483,149 @@ export const ALL_ELEMENTS: Record<string, NotationElement> = Object.fromEntries(
 
 /** Tipo contenedor según el registro de notaciones (independiente de la notación activa). */
 export const isNotationContainer = (type: string): boolean => ALL_CONTAINER_TYPES.has(type);
+
+/**
+ * Tipos de una notación para ofrecer/validar en la UI y en los prompts.
+ * `includeContainers: false` (por defecto) deja fuera Pool/Agregado/Paquete…:
+ * en el lienzo los contenedores se crean arrastrando un marco, no como nodo,
+ * y ofrecerlos como "tipo de nodo" confunde.
+ */
+export function notationTypes(
+  id: NotationId | string | undefined,
+  opts: { includeContainers?: boolean } = {}
+): string[] {
+  const els = getNotation(id).elements;
+  return (opts.includeContainers ? els : els.filter((e) => !e.container)).map((e) => e.type);
+}
+
+/** true → el contenedor se dibuja como swimlane BPMN (banda lateral, línea continua). */
+export const isSwimlaneContainer = (type: string): boolean =>
+  ALL_ELEMENTS[type]?.containerStyle === "swimlane";
+
+/**
+ * Etiqueta del contenedor típico de la notación (Agregado, Pool, Límite de
+ * Sistema, Paquete). La UI la usa para rotular filtros y grupos sin cablear
+ * "Agregado", que solo significa algo en DDD.
+ */
+export function notationContainerLabel(id: NotationId | string | undefined): string {
+  return getNotation(id).elements.find((e) => e.container)?.type ?? "Grupo";
+}
+
+/** Tipos de TODAS las notaciones (para filtros globales del visor de modelos). */
+export const ALL_NODE_TYPES: string[] = Object.keys(ALL_ELEMENTS);
+
+// =============================================================================
+// Roles semánticos (papel que juega un tipo en el flujo de su notación)
+// =============================================================================
+
+/**
+ * Papel de un tipo dentro del flujo de su notación. Existe para que las reglas
+ * de calidad (¿hay evento de inicio? ¿las ramas de la decisión están
+ * etiquetadas? ¿la política cruza contextos?) se escriban sobre ROLES y no
+ * sobre literales como "Compuerta Exclusiva": así una notación nueva hereda las
+ * reglas declarando sus roles, y `notations.ts` sigue siendo la única fuente de
+ * verdad de los tipos (P6 de la constitución).
+ */
+export type ElementRole =
+  | "start" // arranca el flujo (Evento de Inicio, pseudoestado inicial)
+  | "end" // lo cierra (Evento de Fin, Estado Final)
+  | "gateway" // bifurca según condición (Compuertas, Decisión)
+  | "task" // trabajo ejecutable (Tarea, Acción)
+  | "command" // intención que dispara un cambio (Comando)
+  | "event" // hecho consumado (Evento)
+  | "policy" // reacción "cuando X entonces Y"
+  | "rule" // restricción de negocio
+  | "actor" // persona/rol externo al sistema
+  | "external" // sistema de terceros
+  | "system" // pieza de software propia (C4)
+  | "datastore" // almacén de datos
+  | "context" // frontera de dominio (Agregado, Contexto, Subdominio)
+  | "pool" // participante de un proceso (proceso independiente)
+  | "lane" // rol dentro de un participante
+  | "boundary"; // marco lógico (Límite de Sistema, Paquete)
+
+/**
+ * Roles por notación. Sólo se declaran los tipos con papel en el FLUJO: lo que
+ * no aparece aquí es decorativo para las reglas (Nota, Anotación, Objeto de
+ * Valor…). El test `notations-agnostic` verifica que cada tipo listado exista
+ * en su notación, para que la tabla no se desincronice del registro.
+ */
+const ELEMENT_ROLES: Record<NotationId, Partial<Record<ElementRole, string[]>>> = {
+  ddd: {
+    command: ["Comando"],
+    event: ["Evento"],
+    policy: ["Política"],
+    rule: ["Regla de Negocio"],
+    actor: ["Actor"],
+    external: ["Sistema Externo"],
+    context: ["Agregado", "Contexto Delimitado", "Subdominio"],
+  },
+  bpmn: {
+    start: ["Evento de Inicio"],
+    end: ["Evento de Fin"],
+    event: ["Evento Intermedio", "Evento de Mensaje", "Evento Temporizador", "Evento de Error"],
+    task: ["Tarea", "Subproceso"],
+    gateway: [
+      "Compuerta",
+      "Compuerta Exclusiva",
+      "Compuerta Paralela",
+      "Compuerta Inclusiva",
+      "Compuerta de Eventos",
+    ],
+    datastore: ["Almacén de Datos"],
+    pool: ["Pool"],
+    lane: ["Carril"],
+  },
+  c4: {
+    actor: ["Persona"],
+    system: ["Sistema", "Contenedor", "Componente"],
+    external: ["Sistema Externo"],
+    datastore: ["Base de Datos"],
+    boundary: ["Límite de Sistema", "Límite de Contenedor"],
+  },
+  uml: {
+    start: ["Estado Inicial", "Inicio de Actividad"],
+    end: ["Estado Final", "Fin de Actividad"],
+    gateway: ["Decisión", "Nodo de Decisión"],
+    task: ["Acción", "Estado", "Caso de Uso"],
+    actor: ["Actor"],
+    boundary: ["Paquete", "Estado Compuesto"],
+  },
+};
+
+/** Tipos de una notación que juegan un rol dado (vacío si la notación no lo tiene). */
+export function typesWithRole(
+  id: NotationId | string | undefined,
+  role: ElementRole
+): string[] {
+  return ELEMENT_ROLES[getNotation(id).id][role] ?? [];
+}
+
+/** Rol de un tipo dentro de una notación (undefined si no juega ninguno). */
+export function roleOfType(
+  id: NotationId | string | undefined,
+  type: string
+): ElementRole | undefined {
+  const table = ELEMENT_ROLES[getNotation(id).id];
+  for (const [role, types] of Object.entries(table)) {
+    if (types?.includes(type)) return role as ElementRole;
+  }
+  return undefined;
+}
+
+/** true si `type` juega alguno de los roles indicados en esa notación. */
+export function hasRole(
+  id: NotationId | string | undefined,
+  type: string,
+  ...roles: ElementRole[]
+): boolean {
+  const role = roleOfType(id, type);
+  return role !== undefined && roles.includes(role);
+}
+
+/** Tabla completa de roles de una notación (para tests y para el catálogo MCP). */
+export function notationRoles(
+  id: NotationId | string | undefined
+): Partial<Record<ElementRole, string[]>> {
+  return ELEMENT_ROLES[getNotation(id).id];
+}

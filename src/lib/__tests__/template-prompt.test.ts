@@ -67,15 +67,15 @@ describe("system prompt constants", () => {
 describe("promptDescribeNode", () => {
   it("uses the type-specific hint for a known tipo", () => {
     const out = promptDescribeNode("Comando", "Registrar Reembolso", "");
-    // Hint for Comando
-    expect(out).toContain("una acción o intención que alguien solicita ejecutar (imperativo)");
+    // La pista viene de NOTATION_HELP (primera frase), no de una tabla DDD aparte.
+    expect(out).toContain("Es una intención o solicitud de que algo ocurra en el sistema");
     expect(out).toContain('El elemento es de tipo "Comando"');
     expect(out).toContain("Nombre: Registrar Reembolso");
   });
 
   it("falls back to the generic hint for an unknown tipo", () => {
     const out = promptDescribeNode("TipoInexistente", "Algo");
-    expect(out).toContain("un elemento del modelo de dominio");
+    expect(out).toContain("un elemento del modelo");
     expect(out).toContain('tipo "TipoInexistente"');
   });
 
@@ -140,13 +140,13 @@ describe("promptSuggestName", () => {
   it("uses the type hint for a known tipo and embeds descripcion", () => {
     const out = promptSuggestName("Evento", "el reembolso quedó aprobado");
     expect(out).toContain("Tipo: Evento");
-    expect(out).toContain("un hecho de negocio relevante que YA ocurrió (tiempo pasado)");
+    expect(out).toContain("Es un hecho relevante para el negocio que ya ocurrió");
     expect(out).toContain("Descripción: el reembolso quedó aprobado");
   });
 
   it("falls back to generic hint for unknown tipo", () => {
     const out = promptSuggestName("Desconocido", "algo");
-    expect(out).toContain("un elemento del modelo de dominio");
+    expect(out).toContain("un elemento del modelo");
   });
 
   it("uses placeholder when descripcion is empty", () => {
@@ -154,11 +154,21 @@ describe("promptSuggestName", () => {
     expect(out).toContain("Descripción: (sin descripción)");
   });
 
-  it("includes the ubiquitous-language naming rules", () => {
-    const out = promptSuggestName("Comando", "desc");
+  it("usa la regla de nombres de la notación indicada (DDD → Lenguaje Ubicuo)", () => {
+    const out = promptSuggestName("Comando", "desc", "ddd");
     expect(out).toContain("Lenguaje Ubicuo");
     expect(out).toContain("Comando en imperativo");
     expect(out).toContain("Evento en pasado");
+  });
+
+  it("NO impone vocabulario DDD sin notación ni en otras notaciones", () => {
+    const neutro = promptSuggestName("Tarea", "desc");
+    expect(neutro).not.toContain("Lenguaje Ubicuo");
+    const bpmn = promptSuggestName("Tarea", "desc", "bpmn");
+    expect(bpmn).toContain("infinitivo verbo + objeto");
+    expect(bpmn).not.toContain("Lenguaje Ubicuo");
+    const c4 = promptSuggestName("Contenedor", "desc", "c4");
+    expect(c4).toContain("nombre técnico del elemento");
   });
 });
 
@@ -205,7 +215,18 @@ describe("promptSuggestNext", () => {
   it("specifies the strict output format", () => {
     const out = promptSuggestNext("Comando", "X", "y", tipos);
     expect(out).toContain("TIPO | NOMBRE | RELACION");
-    expect(out).toContain("Event Storming");
+  });
+
+  it("usa el rol y el encadenamiento de la notación pedida", () => {
+    const ddd = promptSuggestNext("Comando", "X", "y", tipos, "ddd");
+    expect(ddd).toContain("analista DDD/Event Storming");
+    expect(ddd).toContain('Comando → Evento (relación "produce")');
+
+    const bpmn = promptSuggestNext("Tarea", "X", "y", ["Tarea"], "bpmn");
+    expect(bpmn).toContain("analista de procesos de negocio (BPMN)");
+    expect(bpmn).toContain("Evento de Inicio → Tarea");
+    // Sin sesgo: en BPMN no aparece la cadena Actor → Comando del Event Storming.
+    expect(bpmn).not.toContain("Actor → Comando");
   });
 });
 
@@ -240,7 +261,7 @@ describe("promptBigPictureDescription", () => {
 
   it("handles an empty summary", () => {
     const out = promptBigPictureDescription("");
-    expect(out).toContain("Elementos del diseño:\n");
+    expect(out).toContain("Elementos del diagrama:\n");
     expect(out).toContain("Resume en 2 o 3 frases");
   });
 });

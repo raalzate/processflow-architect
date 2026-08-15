@@ -194,16 +194,45 @@ export function sanitizeMermaid(code: string): string {
     .join("\n");
 }
 
-function buildContext(input: LitertAgentInput): string {
+/**
+ * Notaciones relevantes al turno, en orden de prioridad. La notación NO es una
+ * propiedad del chat sino del modelo que se está mirando: si solo se mira (sin
+ * pinear vistas) hay que tomar la de la vista activa / del documento, o el
+ * agente razona siempre en la notación por defecto (sesgo DDD).
+ */
+export function resolveNotations(opts: {
+  injected?: string[];
+  activeNotation?: string;
+  graphNotation?: string;
+}): string[] {
+  const injected = Array.from(new Set((opts.injected ?? []).filter(Boolean)));
+  if (injected.length) return injected;
+  const fallback = opts.activeNotation || opts.graphNotation;
+  return fallback ? [fallback] : [];
+}
+
+/** Notación dominante del turno (la primera de `resolveNotations`). */
+const primaryNotation = (input: LitertAgentInput) =>
+  getNotation(input.notations?.[0] ?? input.graphData?.notation ?? DEFAULT_NOTATION_ID);
+
+export function buildContext(input: LitertAgentInput): string {
   let ctx = "";
+  const n = primaryNotation(input);
   if (input.graphData) {
     // TOON en vez de JSON: poda geometría/colores del lienzo y tabula los nodos
     // y aristas para gastar menos tokens de contexto (ver graph-toon.ts). La
     // leyenda va una sola vez para que el modelo sepa leer el formato tabular.
-    // Lenguaje Ubicuo: el modelo debe nombrar cada contenedor por su
-    // `tipo_contenedor` real (Agregado, Bounded Context, Módulo…) y NO reetiquetar
-    // un Agregado como "Bounded Context" (error típico del LLM al ver cajas DDD).
-    ctx += `\n\n### Modelo de dominio actual (SOLO LECTURA · formato TOON)\n${TOON_LEGEND}\nUsa el Lenguaje Ubicuo EXACTO del modelo: refiérete a cada contenedor por su \`tipo_contenedor\` (p.ej. Agregado, Bounded Context, Módulo) sin reetiquetarlo, y a cada nodo por su \`tipo_elemento\`.\n${clamp(
+    // El encabezado y los ejemplos de contenedor salen del REGISTRO de notaciones:
+    // hablar de "modelo de dominio"/"Agregado" ante un C4 o un BPMN es lo que
+    // arrastraba al modelo a reetiquetar todo en DDD.
+    const contenedores = n.elements
+      .filter((e) => e.container)
+      .map((e) => e.type)
+      .slice(0, 3)
+      .join(", ");
+    ctx += `\n\n### ${n.modelLabel} actual (notación ${n.label} · SOLO LECTURA · formato TOON)\n${TOON_LEGEND}\nUsa el vocabulario EXACTO del modelo: refiérete a cada contenedor por su \`tipo_contenedor\`${
+      contenedores ? ` (p.ej. ${contenedores})` : ""
+    } sin reetiquetarlo, y a cada nodo por su \`tipo_elemento\`.\n${clamp(
       safeGraphToToon(input.graphData),
       8000
     )}`;
@@ -211,7 +240,9 @@ function buildContext(input: LitertAgentInput): string {
   if (input.views?.length) {
     ctx +=
       `\n\n### Vistas del diseñador\n` +
-      input.views.map((v) => `- ${v.name} (${v.kind}, ${v.notation ?? "ddd"})`).join("\n");
+      input.views
+        .map((v) => `- ${v.name} (${v.kind}, ${v.notation ?? DEFAULT_NOTATION_ID})`)
+        .join("\n");
   }
   if (input.contextArtifacts?.length) {
     ctx +=
@@ -236,11 +267,15 @@ async function genDocument(
   kind: string,
   title: string,
   instructions: string,
-  ctx: string
+  ctx: string,
+  notation?: string
 ): Promise<string> {
   const def = getDefinition(kind, "document");
+  const n = getNotation(notation);
   const sys =
-    "Eres un Arquitecto de Software Senior. Generas documentos de arquitectura claros, en español, en Markdown. Aplicas DDD y Lenguaje Ubicuo (usa los nombres reales del modelo). Responde SÓLO con el Markdown del documento, sin preámbulos." +
+    // El rol sale del registro de notaciones: un documento sobre un C4 no lo
+    // escribe un modelador DDD (eso metía Bounded Contexts donde no hay).
+    `Eres ${n.analystRole}. Generas documentos claros, en español, en Markdown. Usa el vocabulario y los nombres REALES del modelo (${n.modelLabel}, notación ${n.label}). Responde SÓLO con el Markdown del documento, sin preámbulos.` +
     (def.promptHint ? `\nGuía de formato (${def.label}): ${def.promptHint}` : "");
   return litertGenerate(modelFile, [
     { role: "system", content: sys },
@@ -254,10 +289,13 @@ async function genDiagram(
   kind: string,
   title: string,
   instructions: string,
-  ctx: string
+  ctx: string,
+  notation?: string
 ): Promise<string> {
   const def = getDefinition(kind, "diagram");
+  const n = getNotation(notation);
   const sys =
+    `Notación activa: ${n.label}. ${n.aiGuidance}\n` +
     "Eres experto en Mermaid. Generas diagramas VÁLIDOS en sintaxis Mermaid. Responde SÓLO con el código Mermaid, sin explicación ni fences." +
     // Reglas para evitar los errores típicos del modelo pequeño (paréntesis/espacios
     // en títulos rompen el parser). El sanitizer cubre subgraph; esto ayuda al resto.
@@ -328,6 +366,8 @@ export function buildReasoningFrame(opts: {
 
 export async function runLitertAgent(input: LitertAgentInput): Promise<LitertAgentResult> {
   const ctx = buildContext(input);
+  // Notación dominante: rige la persona de los artefactos que se generen.
+  const notationId = primaryNotation(input).id;
   const artifacts: AgentArtifactOut[] = [];
   const steps: AgentStepOut[] = [];
 
@@ -335,7 +375,11 @@ export async function runLitertAgent(input: LitertAgentInput): Promise<LitertAge
   // se asume DDD; con ellas se inyecta la guía de cada notación para que el modelo
   // NO razone siempre en DDD (ver buildReasoningFrame).
   const { persona, vocabRule } = buildReasoningFrame({
-    notations: input.notations,
+    // Sin vistas pineadas se cae a la notación del documento (no a DDD).
+    notations: resolveNotations({
+      injected: input.notations,
+      graphNotation: input.graphData?.notation,
+    }),
     hasGraph: !!input.graphData,
     systemPrompt: input.systemPrompt,
   });
@@ -402,12 +446,12 @@ Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."
     steps.push({ type: "action", tool: action, content: `${title} (${kind})` });
     try {
       if (action === "generate_document") {
-        const md = await genDocument(input.modelFile, kind, title, a.instructions || "", ctx);
+        const md = await genDocument(input.modelFile, kind, title, a.instructions || "", ctx, notationId);
         artifacts.push({ kind, render: "markdown", title, payload: { markdown: md } });
         nextUser = `Observación: documento "${title}" (${kind}) generado.${NEXT}`;
         steps.push({ type: "observation", content: `Documento "${title}" generado.` });
       } else if (action === "generate_diagram") {
-        const code = await genDiagram(input.modelFile, kind, title, a.instructions || "", ctx);
+        const code = await genDiagram(input.modelFile, kind, title, a.instructions || "", ctx, notationId);
         artifacts.push({ kind, render: "mermaid", title, payload: { code } });
         nextUser = `Observación: diagrama "${title}" (${kind}) generado.${NEXT}`;
         steps.push({ type: "observation", content: `Diagrama "${title}" generado.` });

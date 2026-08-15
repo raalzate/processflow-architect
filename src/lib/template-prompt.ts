@@ -1,4 +1,6 @@
 import { GraphNode } from "./types";
+import { getNotation, type NotationId } from "./notations";
+import { NOTATION_HELP } from "./notation-help";
 
 export const promptSummarize = (node: GraphNode) => {
     return `Actúa como un Analista Funcional. Describe el siguiente requerimiento para medición COSMIC.
@@ -41,39 +43,65 @@ ${prompt}`
     : prompt;
 
 /**
- * Guía por tipo de elemento (Event Storming / DDD) para dirigir al modelo local.
- * Un modelo pequeño se sesga a "componente de software" si no se le ancla el tipo.
+ * Guía por tipo de elemento para tipos que NO están en `NOTATION_HELP` (legado
+ * del Event Storming original). Un modelo pequeño se sesga a "componente de
+ * software" si no se le ancla el tipo, así que ningún tipo debe quedar sin pista.
  */
-const NODE_TYPE_HINT: Record<string, string> = {
-  Actor: "una persona, rol o sistema externo que USA el sistema o inicia acciones",
-  "Sistema Externo": "un sistema de terceros con el que el sistema se integra",
+const LEGACY_TYPE_HINT: Record<string, string> = {
   Hotspot: "un punto de duda, riesgo o decisión pendiente por resolver",
-  Comando: "una acción o intención que alguien solicita ejecutar (imperativo)",
-  Evento: "un hecho de negocio relevante que YA ocurrió (tiempo pasado)",
-  "Política": "una regla que, ante un evento, dispara una acción o decisión",
-  "Regla de Negocio": "una restricción o regla del negocio que debe cumplirse",
   "Política de UI": "una regla de comportamiento o presentación en la interfaz",
   "Entidad Raíz": "un objeto con identidad propia que es la entrada al agregado",
-  "Raíz de Agregado": "el objeto que controla y da consistencia a un agregado",
-  Agregado: "un grupo cohesivo de objetos tratado como una sola unidad transaccional",
-  Entidad: "un objeto de dominio con identidad propia y ciclo de vida",
-  "Objeto de Valor": "un valor inmutable sin identidad, definido por sus atributos",
-  "Servicio de Dominio": "lógica de dominio que coordina objetos y no pertenece a uno solo",
-  Repositorio: "la abstracción que persiste y recupera un agregado",
-  "Fábrica": "lo que crea agregados o entidades complejas en estado válido",
   "Read Model": "una vista de lectura optimizada para una consulta",
-  Vista: "una pantalla o vista que muestra información al usuario",
   "Proyección": "una proyección de eventos que alimenta una vista de lectura",
 };
 
+/**
+ * Pista de UNA frase sobre qué es un tipo, sea de la notación que sea. La fuente
+ * es `NOTATION_HELP` (ya cubre DDD/BPMN/C4/UML), así que la pista del prompt y la
+ * ayuda "?" de la paleta no se desincronizan.
+ */
+export const elementHint = (tipo: string): string => {
+  const help = NOTATION_HELP[tipo]?.description;
+  if (help) return help.split(". ")[0].replace(/\.$/, "");
+  return LEGACY_TYPE_HINT[tipo] || "un elemento del modelo";
+};
+
+/**
+ * Marco de la notación para los prompts del diseñador: rol, encadenamiento y
+ * regla de nombres. Sin notación NO se asume DDD (sería sesgo): se usa un marco
+ * neutro, y quien conoce la notación (el lienzo) la pasa siempre.
+ */
+const NEUTRAL_FRAME = {
+  analystRole: "analista de modelado de software",
+  flowRules: "- El siguiente elemento es el que continúa el flujo o la estructura del diagrama",
+  namingRule: "nombre corto y descriptivo del dominio del negocio",
+  defaultType: "",
+};
+
+const frameOf = (notation?: NotationId | string) => {
+  if (!notation) return NEUTRAL_FRAME;
+  const n = getNotation(notation);
+  return {
+    analystRole: n.analystRole,
+    flowRules: n.flowRules,
+    namingRule: n.namingRule,
+    defaultType: n.defaultType,
+  };
+};
+
 /** Descripción de un nodo: dirigida por su TIPO; refina la del usuario si existe. */
-export const promptDescribeNode = (tipo: string, nombre: string, descripcion?: string) => {
-  const hint = NODE_TYPE_HINT[tipo] || "un elemento del modelo de dominio";
+export const promptDescribeNode = (
+  tipo: string,
+  nombre: string,
+  descripcion?: string,
+  notation?: NotationId | string
+) => {
+  const hint = elementHint(tipo);
   const actual = (descripcion || "").trim();
   const tarea = actual
     ? `Mejora y aclara esta descripción del usuario SIN cambiar su intención: "${actual}".`
     : `Escribe una descripción nueva.`;
-  return `Eres analista DDD/Event Storming. ${tarea}
+  return `Eres ${frameOf(notation).analystRole}. ${tarea}
 El elemento es de tipo "${tipo}" (es decir, ${hint}). Descríbelo SEGÚN ESE TIPO y su rol en el negocio.
 Nombre: ${nombre}
 Reglas ESTRICTAS:
@@ -83,22 +111,36 @@ Reglas ESTRICTAS:
 - Sin comillas, sin preámbulos. Responde solo la frase.`;
 };
 
-/** Clasifica el tipo DDD/Event Storming de un elemento a partir de su nombre/descripción. */
-export const promptClassifyType = (nombre: string, descripcion: string, tipos: readonly string[]) =>
-  `Eres analista DDD/Event Storming. Clasifica este elemento eligiendo UNO de estos tipos:
+/**
+ * Clasifica el tipo de un elemento entre los tipos de SU notación. Las "pistas"
+ * ya no son la chuleta DDD cableada: se derivan de los tipos ofrecidos, así que
+ * en BPMN habla de Tareas y Compuertas, y en C4 de Contenedores.
+ */
+export const promptClassifyType = (
+  nombre: string,
+  descripcion: string,
+  tipos: readonly string[],
+  notation?: NotationId | string
+) =>
+  `Eres ${frameOf(notation).analystRole}. Clasifica este elemento eligiendo UNO de estos tipos:
 ${tipos.join(", ")}
 Nombre: ${nombre}
 Descripción: ${descripcion || "(sin descripción)"}
-Pistas: un Comando es una acción/intención; un Evento es un hecho ya ocurrido; un Actor usa el sistema; un Agregado agrupa objetos; un Read Model/Vista muestra datos.
+Pistas (qué es cada tipo):
+${tipos.map((t) => `- ${t}: ${elementHint(t)}`).join("\n")}
 Responde SOLO con el nombre EXACTO del tipo, sin nada más.`;
 
-/** Propone un nombre en Lenguaje Ubicuo acorde al tipo. */
-export const promptSuggestName = (tipo: string, descripcion: string) => {
-  const hint = NODE_TYPE_HINT[tipo] || "un elemento del modelo de dominio";
-  return `Propón un nombre corto en Lenguaje Ubicuo (de negocio) para este elemento DDD.
-Tipo: ${tipo} (es decir, ${hint}).
+/** Propone un nombre acorde al tipo y a la convención de nombres de la notación. */
+export const promptSuggestName = (
+  tipo: string,
+  descripcion: string,
+  notation?: NotationId | string
+) => {
+  const { namingRule } = frameOf(notation);
+  return `Propón un ${namingRule} para este elemento.
+Tipo: ${tipo} (es decir, ${elementHint(tipo)}).
 Descripción: ${descripcion || "(sin descripción)"}
-Reglas: 2 a 5 palabras; Comando en imperativo (ej. "Registrar Reembolso"); Evento en pasado (ej. "Reembolso Aprobado"); sin comillas ni punto final. Responde solo el nombre.`;
+Reglas: 2 a 5 palabras; sin comillas ni punto final. Responde solo el nombre.`;
 };
 
 /** Sugiere tecnologías/etiquetas para un elemento. */
@@ -109,42 +151,60 @@ Nombre: ${nombre}
 Descripción: ${descripcion || "(sin descripción)"}
 Responde SOLO las etiquetas separadas por comas, sin explicación ni texto extra.`;
 
-/** Event Storming: sugiere el SIGUIENTE elemento del flujo y la relación. */
+/** Sugiere el SIGUIENTE elemento y la relación, según el flujo de la notación. */
 export const promptSuggestNext = (
   tipo: string,
   nombre: string,
   descripcion: string,
-  tipos: readonly string[]
-) =>
-  `Eres facilitador de Event Storming. Dado el elemento actual, propón el SIGUIENTE elemento natural del flujo del negocio y la relación entre ambos.
-Reglas de flujo típicas:
-- Actor → Comando (relación "ejecuta")
-- Comando → Evento (relación "produce")
-- Evento → Política o Read Model (relación "dispara")
-- Política → Comando (relación "dispara")
+  tipos: readonly string[],
+  notation?: NotationId | string
+) => {
+  const { analystRole, flowRules, namingRule } = frameOf(notation);
+  return `Eres ${analystRole}. Dado el elemento actual, propón el SIGUIENTE elemento natural del diagrama y la relación entre ambos.
+Encadenamiento típico de esta notación:
+${flowRules}
 Elemento actual:
 - Tipo: ${tipo}
 - Nombre: ${nombre}
 - Descripción: ${descripcion || "(sin descripción)"}
 Responde EXACTAMENTE en una sola línea con este formato:
 TIPO | NOMBRE | RELACION
-Donde TIPO es uno EXACTO de: ${tipos.join(", ")}. El NOMBRE en Lenguaje Ubicuo (Comando en imperativo, Evento en pasado). Sin texto adicional ni comillas.`;
+Donde TIPO es uno EXACTO de: ${tipos.join(", ")}. El NOMBRE es un ${namingRule}. Sin texto adicional ni comillas.`;
+};
 
 /** Etiqueta (verbo de relación) para un enlace entre dos elementos. */
 export const promptLinkLabel = (
   sourceName: string,
   sourceType: string,
   targetName: string,
-  targetType: string
+  targetType: string,
+  notation?: NotationId | string
 ) =>
-  `Indica en 1 a 3 palabras la relación o acción entre dos elementos de un modelo de dominio (ejemplos: "invoca", "publica evento", "valida", "actualiza").
+  `Eres ${frameOf(notation).analystRole}. Indica en 1 a 3 palabras la relación o acción entre estos dos elementos del diagrama (ejemplos: "invoca", "publica evento", "valida", "actualiza").
 Origen: ${sourceName} (${sourceType})
 Destino: ${targetName} (${targetType})
 Responde solo la etiqueta en minúsculas, sin punto final.`;
 
-/** Descripción general (Big Picture) a partir de un resumen del diseño. */
-export const promptBigPictureDescription = (resumen: string) =>
-  `Resume en 2 o 3 frases el propósito general de este diseño de dominio.
-Elementos del diseño:
+/**
+ * Orden de lectura de las BANDAS de un diagrama (contextos, participantes,
+ * límites). La IA ordena; las coordenadas las calcula el layout determinista, así
+ * que lo peor que puede pasar con una mala respuesta es un orden discutible, no
+ * un diagrama roto.
+ */
+export const promptOrdenarBandas = (
+  bandas: string[],
+  resumen: string,
+  notation?: NotationId | string
+) =>
+  `Eres ${frameOf(notation).analystRole}. Ordena estos grupos del diagrama según su orden natural de lectura (de arriba abajo): primero quien inicia o consume, después el núcleo del proceso, al final los sistemas de apoyo.
+Grupos: ${bandas.join(" | ")}
+Contenido:
+${resumen}
+Responde SOLO los nombres separados por " | ", exactamente como están escritos arriba, sin añadir ni inventar ninguno.`;
+
+/** Descripción general del diagrama a partir de un resumen de sus elementos. */
+export const promptBigPictureDescription = (resumen: string, notation?: NotationId | string) =>
+  `Eres ${frameOf(notation).analystRole}. Resume en 2 o 3 frases el propósito general de este diagrama.
+Elementos del diagrama:
 ${resumen}
 Responde solo el resumen.`;

@@ -36,12 +36,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { McpPlayground } from "@/components/mcp/McpPlayground";
-import {
-  SKILL_MD,
-  SKILL_EXAMPLES_MD,
-  SKILL_NAME,
-  SKILL_EXAMPLES_PATH,
-} from "@/lib/mcp-skill";
+import { listSkills } from "@/lib/mcp-skill";
 import { buildZip } from "@/lib/zip";
 
 // Secciones de la guía: alimentan el sidebar de navegación y los anchors.
@@ -114,26 +109,33 @@ comandos y eventos que encuentres, conéctalos y expórtalo. Muéstrame el
 Mermaid antes de exportar.`;
 
 const TOOLS: { name: string; desc: string }[] = [
+  { name: "get_app_state", desc: "Qué proyecto está activo, con qué notación, qué vistas existen y cuánto cupo queda. Es la primera llamada: evita que el agente exporte a ciegas y pise tu trabajo." },
+  { name: "list_skills / install_skill", desc: "Instalar los skills de este MCP en tu proyecto (o en ~/.claude/skills) con la configuración de tu servidor ya inyectada: transporte real, herramientas disponibles y límites." },
   { name: "list_notations", desc: "Ver las notaciones (DDD, BPMN, C4, UML) y su guía de diseño." },
   { name: "describe_notation", desc: "Tipos válidos de una notación (el valor exacto para «type»), si son contenedores y su forma." },
   { name: "create_diagram", desc: "Abrir un diagrama nuevo (nombre + notación). Devuelve un diagramId." },
   { name: "list_diagrams / get_diagram", desc: "Listar diagramas en curso · ver resumen + vista previa Mermaid." },
-  { name: "add_container", desc: "Añadir contenedor: Agregado, Contexto Delimitado, Pool, Carril, Límite de Sistema, Paquete…" },
-  { name: "add_node", desc: "Añadir nodo (Comando, Evento, Tarea, Clase…), opcionalmente dentro de un contenedor." },
+  { name: "add_container", desc: "Añadir contenedor (Agregado, Contexto, Pool, Carril, Límite de Sistema, Paquete…) con su cita de la fuente." },
+  { name: "add_node", desc: "Añadir nodo (Comando, Evento, Tarea, Clase…) dentro de un contenedor, con «source» = de dónde sale en tu documento." },
   { name: "add_edge", desc: "Conectar dos elementos. La app ubica la arista sola (interna / política / big picture)." },
   { name: "remove_element", desc: "Borrar un nodo o contenedor y las aristas que lo tocan." },
-  { name: "validate_diagram", desc: "Revisar tipos, ids duplicados, aristas colgantes y nodos aislados." },
+  { name: "record_ambiguity / resolve_ambiguity", desc: "Lo que tu documento no decide queda registrado en el modelo: se pregunta una vez y lo pendiente te llega declarado, no inventado." },
+  { name: "validate_diagram", desc: "Validez (tipos, ids, aristas colgantes, nodos aislados) y CALIDAD de modelado por notación: inicio/fin, ramas con condición, cadena Comando→Evento, relaciones C4 etiquetadas." },
+  { name: "suggest_views", desc: "Propone el conjunto de vistas: cortes cuando el diagrama pasa el tamaño legible y complementos que el material sostiene." },
+  { name: "review_diagram", desc: "El paquete que TÚ revisas: la historia en Mermaid, la tabla «elemento ← fuente», decisiones y pendientes, hallazgos y veredicto." },
   { name: "render_mermaid", desc: "Vista previa del diagrama en Mermaid." },
   { name: "export_to_app", desc: "Cargar el diagrama directo al lienzo (servidor de la app activo) o escribir un .json importable (modo stdio)." },
+  { name: "export_as_view / export_mermaid_view", desc: "Sumar el diagrama (o código Mermaid) como pestaña del proyecto activo, con su propia notación. Sólo con la app conectada." },
   { name: "import_diagram", desc: "Cargar un .json exportado como diagrama editable (retomar un diseño previo)." },
 ];
 
 const STEPS: { icon: React.ElementType; title: string; body: string }[] = [
   { icon: Plug, title: "1 · Conectar", body: "Activa el servidor en Ajustes → Servidor MCP y añade el bloque HTTP en tu cliente (Claude Code / Codex). Alternativa dev: abrir el repo, que trae el modo stdio en .mcp.json." },
-  { icon: Wrench, title: "2 · Aprender la notación", body: "Pídele que llame list_notations y describe_notation para conocer los tipos válidos antes de construir." },
-  { icon: Workflow, title: "3 · Diseñar", body: "Con create_diagram + add_container/add_node/add_edge construye el diagrama mientras analiza tus documentos." },
-  { icon: ListChecks, title: "4 · Revisar", body: "render_mermaid para verlo y validate_diagram para detectar nodos sueltos o tipos inválidos." },
-  { icon: FileUp, title: "5 · Exportar", body: "export_to_app: con el servidor de la app activo, el diagrama llega DIRECTO al lienzo. En modo stdio genera un .json que importas con «Importar diagrama»." },
+  { icon: Sparkles, title: "2 · Instalar el skill", body: "Pídele «instala el skill de Processflow en este proyecto» (install_skill) o descárgalo aquí abajo. Llega con la configuración de tu servidor inyectada." },
+  { icon: Wrench, title: "3 · Ingesta", body: "El agente llama get_app_state y describe_notation: sabe qué proyecto tienes abierto y qué tipos son válidos antes de construir nada." },
+  { icon: Workflow, title: "4 · Diseñar con trazabilidad", body: "create_diagram + add_container/add_node/add_edge, cada elemento con su cita de la fuente; lo que el documento no decide se registra como ambigüedad y te lo pregunta una sola vez." },
+  { icon: ListChecks, title: "5 · Revisar", body: "validate_diagram (validez + calidad de modelado) y review_diagram: recibes la historia, la tabla elemento ← fuente, las decisiones, los pendientes y un veredicto." },
+  { icon: FileUp, title: "6 · Exportar", body: "Con tu aprobación: export_to_app carga el modelo en el lienzo y export_as_view suma pestañas al proyecto activo. En modo stdio genera un .json que importas." },
 ];
 
 /**
@@ -145,16 +147,20 @@ const STEPS: { icon: React.ElementType; title: string; body: string }[] = [
 function SkillDownloadCard() {
   // Un solo .zip con la estructura estándar de skills de Claude Code:
   // <skill>/SKILL.md + <skill>/references/…  →  descomprimir en .claude/skills/.
+  // Se entregan TODOS los skills: el flujo completo (documento → portafolio) y el
+  // puntual (un diagrama). La vía recomendada es `install_skill` por MCP, que
+  // además inyecta la configuración real del servidor; el zip es el plan B.
   const downloadZip = () => {
-    const zip = buildZip([
-      { name: `${SKILL_NAME}/SKILL.md`, content: SKILL_MD },
-      { name: `${SKILL_NAME}/${SKILL_EXAMPLES_PATH}`, content: SKILL_EXAMPLES_MD },
-    ]);
+    const zip = buildZip(
+      listSkills().flatMap((s) =>
+        s.files.map((f) => ({ name: `${s.id}/${f.path}`, content: f.content }))
+      )
+    );
     const blob = new Blob([zip.buffer as ArrayBuffer], { type: "application/zip" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${SKILL_NAME}-skill.zip`;
+    a.download = "processflow-skills.zip";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -163,42 +169,47 @@ function SkillDownloadCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5" /> Skill descargable: <code>{SKILL_NAME}</code>
+          <Sparkles className="w-5 h-5" /> Skills para tu agente
         </CardTitle>
         <CardDescription className="mt-1.5">
-          Un skill de Claude Code que orquesta TODO el flujo de esta guía: lee un documento de
-          negocio (PDF, PRD, presentación), te pregunta qué deseas obtener (portafolio completo,
-          solo el dominio o un proceso concreto, y si lo entrega como un proyecto con vistas o
-          proyectos separados) y construye los diagramas —DDD, BPMN, C4— con las herramientas
-          MCP, validados y exportados al lienzo.
+          El skill es el arnés del agente externo: lo obliga a mirar el estado de tu app antes de
+          tocarla, a citar de dónde sale cada elemento, a preguntarte UNA vez lo que tu documento
+          no decide, a validar la calidad del modelado y a pasarte un paquete de revisión antes de
+          exportar. Lo más cómodo es pedirle a tu agente que lo instale él mismo.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-2">
+          <p className="font-medium">Recomendado — que el agente se auto-configure:</p>
+          <pre className="text-xs bg-background rounded p-2 overflow-x-auto">
+            Instala los skills de Processflow en este proyecto (usa install_skill con
+            scope=&quot;project&quot; y projectDir = la raíz del repo)
+          </pre>
+          <p className="text-muted-foreground text-xs">
+            <code>install_skill</code> escribe <code>.claude/skills/&lt;skill&gt;/</code> con la
+            configuración de ESTE servidor inyectada: transporte (HTTP a la app o stdio del repo),
+            herramientas realmente disponibles, workspace y límites. Reinicia la sesión del agente
+            para que cargue el skill.
+          </p>
+        </div>
+
+        <ul className="text-sm space-y-2">
+          {listSkills().map((s) => (
+            <li key={s.id} className="rounded-md border p-3">
+              <code className="font-medium">/{s.id}</code>
+              <p className="text-muted-foreground mt-1">{s.summary}</p>
+            </li>
+          ))}
+        </ul>
+
         <div className="flex items-center gap-3 flex-wrap">
-          <Button onClick={downloadZip}>
-            <Download className="w-4 h-4 mr-2" /> Descargar skill (.zip)
+          <Button variant="outline" onClick={downloadZip}>
+            <Download className="w-4 h-4 mr-2" /> Descargar skills (.zip)
           </Button>
           <span className="text-xs text-muted-foreground">
-            Estructura estándar de Claude Code: <code>SKILL.md</code> +{" "}
-            <code>{SKILL_EXAMPLES_PATH}</code>.
+            Plan B sin MCP: descomprime en <code>.claude/skills/</code> de tu proyecto (o en{" "}
+            <code>~/.claude/skills/</code> para tenerlo global). Sin la configuración inyectada.
           </span>
-        </div>
-        <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-2">
-          <p className="font-medium">Instalación (en tu entorno):</p>
-          <ol className="list-decimal ml-5 space-y-1 text-muted-foreground">
-            <li>
-              Descomprime el zip en <code>.claude/skills/</code> de tu proyecto (o en{" "}
-              <code>~/.claude/skills/</code> para tenerlo global) — queda{" "}
-              <code>.claude/skills/{SKILL_NAME}/SKILL.md</code>.
-            </li>
-            <li>
-              Conecta el MCP como indica la sección <b>Conexión</b> (servidor de la app activo).
-            </li>
-            <li>
-              En Claude Code escribe <code>/{SKILL_NAME}</code> o pide «analiza este documento y
-              modélalo en Processflow».
-            </li>
-          </ol>
         </div>
       </CardContent>
     </Card>

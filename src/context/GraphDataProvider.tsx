@@ -27,11 +27,11 @@ import {
   type ConstraintsRisksOutput,
   type RoadmapOutput,
   type TechnicalElementsOutput,
-  NODE_TYPES,
 } from "@/lib/types";
 
 // Context
 import { GraphContext, type GraphContextType } from "@/context/GraphContext";
+import { ALL_NODE_TYPES } from "@/lib/notations";
 
 // Constants
 import {
@@ -91,8 +91,10 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
   const [visibleAggregates, setVisibleAggregates] = useState<Set<string>>(
     new Set()
   );
+  // Semilla del filtro de tipos: TODAS las notaciones, no solo las etiquetas DDD.
+  // Con la semilla DDD, un modelo BPMN/C4 abría con sus tipos desmarcados.
   const [visibleNodeTypes, setVisibleNodeTypes] = useState<Set<string>>(
-    new Set(NODE_TYPES)
+    new Set(ALL_NODE_TYPES)
   );
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [modalHistory, setModalHistory] = useState<string[]>([]);

@@ -11,6 +11,7 @@ import {
   type RoadmapOutput,
   type TechnicalElementsOutput
 } from "@/lib/types";
+import type { NotationId } from "@/lib/notations";
 
 
 
@@ -74,7 +75,7 @@ export interface GraphContextType {
   handleCopyAll: () => void;
   handleDownloadPdf: () => void;
   handleRunAnalysis: (type: 'drivers' | 'constraints' | 'roadmap' | 'proposal', { temperature, customPrompt }: { temperature?: number; customPrompt?: string; }) => Promise<void>;
-  handleCreateProject: (nombre: string) => void;
+  handleCreateProject: (nombre: string, notation?: NotationId) => void;
   handleCreateProjectFromContent: (nombre: string, content: GraphData) => string | null;
   handleDesignUpdate: (fileId: string, content: GraphData) => void;
   handleFileSelect: (id: string) => void;

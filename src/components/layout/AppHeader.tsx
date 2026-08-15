@@ -49,17 +49,24 @@ import {
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import type { SavedFile, GraphNode, GraphData } from "@/lib/types";
-import { nodeTypeIcons } from "@/lib/graph-constants";
+import { iconForType } from "@/components/graph/designer/DesignerCanvas";
 import { Badge } from "@/components/ui/badge";
 import { useGraphContext } from "@/context/GraphContext"; // Importa el hook
 import { useToast } from "@/hooks/use-toast";
 import { parseDiagramJson } from "@/lib/import-diagram";
+import {
+  DEFAULT_NOTATION_ID,
+  NOTATION_LIST,
+  getNotation,
+  notationContainerLabel,
+  type NotationId,
+} from "@/lib/notations";
       
 interface AppHeaderProps {
   savedFiles: SavedFile[];
   currentFileId: string | null;
   onFileSelect: (id: string) => void;
-  onCreateProject: (nombre: string) => void;
+  onCreateProject: (nombre: string, notation?: NotationId) => void;
   /** Importa un GraphData ya generado (p. ej. exportado por el MCP / Claude Code). */
   onImportJson: (nombre: string, content: GraphData) => string | null;
   onFileDelete: (id: string) => void;
@@ -159,6 +166,9 @@ const FileManagement: React.FC<
   // Diálogo de "Nuevo proyecto"
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  // Notación del proyecto: se elige aquí para que el lienzo abra con la paleta
+  // que el usuario quiere (BPMN, C4, UML) y no siempre con la de DDD.
+  const [newNotation, setNewNotation] = useState<NotationId>(DEFAULT_NOTATION_ID);
 
   // La paleta de comandos (⌘K) abre este diálogo por un evento de ventana, en
   // vez de duplicar el formulario de nombre.
@@ -169,8 +179,9 @@ const FileManagement: React.FC<
   }, []);
 
   const submitNewProject = () => {
-    onCreateProject(newName);
+    onCreateProject(newName, newNotation);
     setNewName("");
+    setNewNotation(DEFAULT_NOTATION_ID);
     setNewOpen(false);
   };
 
@@ -270,8 +281,8 @@ const FileManagement: React.FC<
               <FilePlus2 className="w-5 h-5" /> Nuevo proyecto
             </DialogTitle>
             <DialogDescription>
-              Ponle un nombre. Luego diséñalo en la pestaña Design para generar
-              el modelo de dominio.
+              Ponle un nombre y elige la notación con la que vas a modelar. Luego
+              diséñalo en la pestaña Design.
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
@@ -285,6 +296,24 @@ const FileManagement: React.FC<
               placeholder="Ej: Sistema de Reembolsos"
               className="mt-1"
             />
+          </div>
+          <div className="pb-2">
+            <Label htmlFor="new-project-notation">Notación</Label>
+            <Select value={newNotation} onValueChange={(v) => setNewNotation(v as NotationId)}>
+              <SelectTrigger id="new-project-notation" className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {NOTATION_LIST.map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {n.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {getNotation(newNotation).description}
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewOpen(false)}>
@@ -358,7 +387,8 @@ const GlobalSearch: React.FC<{
         </div>
         <ul className="max-h-80 overflow-y-auto">
           {searchResults.map((node) => {
-            const Icon = nodeTypeIcons[node.tipo_elemento] || "div";
+            // Icono del registro de notaciones: sirve a DDD, BPMN, C4 y UML.
+            const Icon = iconForType(node.tipo_elemento);
             return (
               <li
                 key={node.id}
@@ -408,6 +438,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
       visibleNodeTypes,
       searchResults,
       searchQuery,
+      graphData,
     } = useGraphContext();
 
   return (
@@ -447,7 +478,11 @@ const AppHeader: React.FC<AppHeaderProps> = ({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-64" align="end">
-                <DropdownMenuLabel>Filtrar por Agregado</DropdownMenuLabel>
+                {/* El rótulo sigue a la notación: "Agregado" en DDD, "Pool" en
+                    BPMN, "Límite de Sistema" en C4, "Paquete" en UML. */}
+                <DropdownMenuLabel>
+                  Filtrar por {notationContainerLabel(graphData?.notation)}
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <div className="p-2 space-y-2">
                   {aggregates.map((aggName) => (

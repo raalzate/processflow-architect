@@ -18,9 +18,10 @@ export function processGraphData(jsonData: GraphData): {
     throw new Error("El archivo JSON está vacío o es inválido.");
   }
 
-  // Fallback: si el modelo no produjo agregados (o vienen vacíos) pero SÍ hay un
-  // Big Picture, lo exponemos como un agregado "Visión General" para que el lienzo
-  // NUNCA quede vacío. Pasa con generaciones que concentran los nodos en big_picture.
+  // Fallback: si el modelo no produjo contenedores (o vienen vacíos) pero SÍ hay
+  // nodos sueltos en `big_picture`, los exponemos en un grupo "Visión General"
+  // para que el lienzo NUNCA quede vacío. El nombre es neutral a propósito: este
+  // grupo aparece igual en modelos BPMN/C4/UML, no solo en Event Storming.
   let agregados = Array.isArray(jsonData.agregados) ? jsonData.agregados : [];
   const aggHasNodes = agregados.some((a: any) => (a?.nodos?.length ?? 0) > 0);
   const bp: any = (jsonData as any).big_picture;
@@ -28,7 +29,7 @@ export function processGraphData(jsonData: GraphData): {
     agregados = [
       {
         nombre_agregado: "Visión General",
-        descripcion: bp.descripcion || "Big Picture del dominio",
+        descripcion: bp.descripcion || "Elementos sin contenedor",
         nodos: bp.nodos || [],
         aristas: bp.aristas || [],
       } as any,

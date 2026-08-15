@@ -40,7 +40,7 @@ import { useGraphContext } from "@/context/GraphContext";
 import { useViews } from "@/context/ViewsContext";
 import { getNotation, DEFAULT_NOTATION_ID, notationBadgeClass } from "@/lib/notations";
 import { collectGraphNodes } from "@/lib/view-nodes";
-import { nodeTypeColors } from "@/lib/graph-constants";
+import { nodeTypeColor } from "@/lib/graph-constants";
 import {
   formatNodeTreeToMarkdown,
   formatTaskListToMarkdown,
@@ -69,8 +69,8 @@ function AppSidebarHeader() {
               Análisis de Flujo 1
             </SheetTitle>
             <SheetDescription className="sr-only">
-              Menú principal con navegación y paneles de análisis de IA y modelo
-              de dominio.
+              Menú principal con navegación y paneles de análisis de IA y del
+              modelo del proyecto.
             </SheetDescription>
           </div>
         ) : (
@@ -185,7 +185,7 @@ function TaskListPanel() {
         <span
           className={cn(
             "w-2 h-2 rounded-full",
-            nodeTypeColors[e.node.tipo_elemento] || "bg-gray-400"
+            nodeTypeColor(e.node.tipo_elemento)
           )}
         ></span>
         <span
@@ -266,7 +266,7 @@ function TaskListPanel() {
                       <span
                         className={cn(
                           "w-2 h-2 rounded-full",
-                          nodeTypeColors[node.tipo_elemento] || "bg-gray-400"
+                          nodeTypeColor(node.tipo_elemento)
                         )}
                       ></span>
                       <span   className="flex-1 truncate block max-w-[250px]" title={node.nombre}>
@@ -298,7 +298,7 @@ function TaskListPanel() {
                       <span
                         className={cn(
                           "w-2 h-2 rounded-full",
-                          nodeTypeColors[node.tipo_elemento] || "bg-gray-400"
+                          nodeTypeColor(node.tipo_elemento)
                         )}
                       ></span>
                       <span   className="flex-1 truncate block max-w-[250px]" title={node.nombre}>
@@ -330,7 +330,7 @@ function TaskListPanel() {
                       <span
                         className={cn(
                           "w-2 h-2 rounded-full",
-                          nodeTypeColors[node.tipo_elemento] || "bg-gray-400"
+                          nodeTypeColor(node.tipo_elemento)
                         )}
                       ></span>
                       <span
@@ -365,8 +365,9 @@ function TaskListPanel() {
 // --- 4. NUEVO COMPONENTE: DomainModelPanel ---
 // ====================================================================
 /**
- * Renderiza el panel "Modelo de Dominio" (Agregados y Tipos).
- * Obtiene sus propios datos del GraphContext.
+ * Renderiza el panel del modelo (contenedores y tipos). El título y el rótulo de
+ * los grupos vienen de la NOTACIÓN del documento: ante un BPMN dice "Modelo de
+ * Procesos" y "Pools", no "Modelo de Dominio" y "Agregados".
  */
 function DomainModelPanel() {
   const {
@@ -385,7 +386,7 @@ function DomainModelPanel() {
     <SidebarGroup>
       <SidebarGroupLabel className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Workflow className="w-5 h-5" /> Modelo de Dominio
+          <Workflow className="w-5 h-5" /> {getNotation(graphData.notation).modelLabel}
         </div>
         <Button
           variant="ghost"
@@ -433,7 +434,7 @@ function DomainModelPanel() {
                           <span
                             className={cn(
                               "w-2 h-2 rounded-full",
-                              nodeTypeColors[node.tipo_elemento] || "bg-gray-400"
+                              nodeTypeColor(node.tipo_elemento)
                             )}
                           ></span>
                           <span>{node.nombre}</span>
@@ -609,7 +610,7 @@ function DesignViewsPanel() {
                           <span
                             className={cn(
                               "w-2 h-2 rounded-full shrink-0",
-                              nodeTypeColors[node.tipo_elemento] || "bg-gray-400"
+                              nodeTypeColor(node.tipo_elemento)
                             )}
                           ></span>
                           <span
