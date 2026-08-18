@@ -7,6 +7,7 @@ lo que se supone va en "deuda conocida".
 - **Fecha del último gate completo:** 2026-08-18
 - **Rama:** `main` (fusionada `feat/bpmn-notation-layout` en `a261f54`)
 - **Veredicto:** VERDE (`npm run gate`)
+- **Versión publicada:** 0.2.0 (tag `v0.2.0` → instaladores por `release-build.yml`)
 
 ## Señales
 

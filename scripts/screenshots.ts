@@ -162,7 +162,7 @@ const SYSTEM_INFO = {
   osName: "macOS", osVersion: "14.5", arch: "arm64",
   cpuModel: "Apple M3 Pro", cpuCores: 12,
   totalRamGB: 36, freeRamGB: 14, diskTotalGB: 994, diskFreeGB: 312,
-  appVersion: "0.1.1", electronVersion: "39.0.0", chromeVersion: "134.0.0.0",
+  appVersion: "0.2.0", electronVersion: "39.0.0", chromeVersion: "134.0.0.0",
   nodeVersion: "22.14.0", userDataPath: "~/Library/Application Support/processflow-architect",
 };
 
