@@ -118,11 +118,12 @@ jobs:
   # El release lo crea UN SOLO job, después de la matriz.
   #
   # Antes lo creaba cada plataforma con softprops: los tres jobs arrancaban a la
-  # vez, cada uno creaba su borrador para el mismo tag y la limpieza de
-  # "borradores duplicados" del propio action se pisaba entre corridas — en
-  # v0.2.0 los tres builds salieron verdes y el release quedó BORRADO (los logs
-  # decían "Removing duplicate draft release …"). Un publicador único no puede
-  # competir consigo mismo.
+  # vez, cada uno creaba un borrador para el mismo tag y dos de los tres se
+  # borraban en el acto ("Removing duplicate draft release …" en los logs).
+  # Funcionaba, pero ese ruido es indistinguible de un fallo real y llevó a
+  # rehacer un release que ya existía (ver el gotcha del borrador invisible en
+  # docs/harness/gotchas.md). Un publicador único no compite consigo mismo y el
+  # log dice una sola cosa.
   release:
     name: Publish draft release
     needs: build

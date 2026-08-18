@@ -116,3 +116,21 @@ Mecanismo: `docs-linkcheck.mjs` mide contra `git ls-files` (un archivo nuevo sin
          cebo gitignored y exige que el link-check lo cace, y otro que exige que `externalPaths`
          se respete. Modo virtual para probarlo sin escribir en fuentes:
          `node scripts/docs-linkcheck.mjs --file <ruta virtual> --stdin`.
+
+### GOTCHA: el release existe pero `gh` no lo ve (borrador + token sin permiso de escritura)
+
+Síntoma: se empuja el tag `v0.2.0`, los tres builds salen verdes y
+         `gh release list` / `gh api repos/:owner/:repo/releases` sólo muestran el release
+         anterior. `gh api …/releases/<id>` del release que el log nombra devuelve `404`.
+Causa:   `release-build.yml` publica con `draft: true`, y **un borrador sólo lo ve un token con
+         permiso de escritura** en el repo. Acá `gh auth status` está logueado con una cuenta que
+         tiene `permissions.push=false` (los `git push` andan por SSH, con otra identidad): para
+         ese token el borrador no existe. El release estaba creado y con sus tres instaladores.
+Regla:   "no aparece en `gh release list`" no es "no se creó". Antes de rehacer un release, leer el
+         log del job de publicación (`⬆️ Uploading` / `✅ Uploaded` / `🎉 Release ready at …`) y
+         comprobar `gh api repos/:owner/:repo --jq .permissions`. Un `404` con `push=false` es
+         falta de permiso, no ausencia del objeto.
+Mecanismo: sólo prosa: ningún comando del repo puede ver lo que el token del humano no ve. Lo que
+         sí se arregló es el ruido que llevó al diagnóstico equivocado — los tres jobs de la matriz
+         creaban y borraban borradores duplicados del mismo tag; ahora publica un job único
+         (`release`) después de la matriz.
