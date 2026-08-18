@@ -28,11 +28,17 @@ import {
   FileText,
   Pin,
   AtSign,
+  BookOpen,
+  Search,
+  ListChecks,
+  HelpCircle,
+  CheckCheck,
+  Layers,
 } from "lucide-react";
 import { getDefinition } from "@/lib/artifacts/registry";
 import { resolveContextRevisions } from "@/lib/artifacts/versioning";
 import { Markdown } from "./Markdown";
-import type { AgentStep, AgentDocument, Artifact } from "@/lib/agent-types";
+import type { AgentStep, AgentDocument, Artifact, ChatMessage } from "@/lib/agent-types";
 
 /**
  * Tipos aceptados. PDF funciona en todos los proveedores: nativo con Gemini, vía
@@ -60,9 +66,127 @@ const SUGGESTIONS = [
 ];
 
 function StepIcon({ type }: { type: AgentStep["type"] }) {
+  // Sin `switch` exhaustivo a propósito: agregar un paso al esquema no debe
+  // romper el build de la UI; lo desconocido cae en el ícono neutro.
   if (type === "thought") return <Brain className="h-3.5 w-3.5 text-primary" />;
   if (type === "action") return <Wrench className="h-3.5 w-3.5 text-info" />;
+  if (type === "read") return <BookOpen className="h-3.5 w-3.5 text-info" />;
+  if (type === "search") return <Search className="h-3.5 w-3.5 text-info" />;
+  if (type === "plan") return <ListChecks className="h-3.5 w-3.5 text-primary" />;
+  if (type === "question") return <HelpCircle className="h-3.5 w-3.5 text-warning" />;
+  if (type === "decision") return <CheckCheck className="h-3.5 w-3.5 text-primary" />;
+  if (type === "consolidate") return <Layers className="h-3.5 w-3.5 text-success" />;
   return <Eye className="h-3.5 w-3.5 text-success" />;
+}
+
+/**
+ * Tarjeta de decisión del humano: el plan por aprobar o la pregunta por
+ * responder. Es el punto donde la corrida está detenida — mientras esté acá, no
+ * se generó nada (spec 005 · H2, H3).
+ */
+function RunPauseCard({
+  message,
+  busy,
+  onDecide,
+  onCancel,
+}: {
+  message: ChatMessage;
+  busy: boolean;
+  onDecide: (d: { kind: "approve" } | { kind: "adjust"; feedback: string } | { kind: "answer"; answer: string }) => void;
+  onCancel: () => void;
+}) {
+  const [feedback, setFeedback] = useState("");
+  const [ajustando, setAjustando] = useState(false);
+  const pause = message.run?.pause;
+  if (!pause) return null;
+
+  if (pause.kind === "plan") {
+    return (
+      <div className="mt-2 rounded-md border border-primary/40 bg-background/60 p-2">
+        <div className="flex items-center gap-1.5 text-xs font-semibold">
+          <ListChecks className="h-3.5 w-3.5 text-primary" /> Plan de «{pause.title}»
+        </div>
+        <ul className="mt-1.5 space-y-1">
+          {pause.sections.map((sec, i) => (
+            <li key={i} className="text-xs">
+              <span className="font-medium">{sec.title}</span>
+              {sec.sources.length ? (
+                <span className="text-muted-foreground"> ← {sec.sources.join(", ")}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        {ajustando ? (
+          <div className="mt-2 space-y-1.5">
+            <Textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="Qué cambiar del plan (no vuelve a leer lo que ya leyó)"
+              className="min-h-[56px] text-xs"
+            />
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                disabled={busy || !feedback.trim()}
+                onClick={() => onDecide({ kind: "adjust", feedback })}
+              >
+                Enviar ajuste
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAjustando(false)}>
+                Volver
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Button size="sm" className="h-7 text-xs" disabled={busy} onClick={() => onDecide({ kind: "approve" })}>
+              Aprobar y generar
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={() => setAjustando(true)}>
+              Ajustar…
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={busy} onClick={onCancel}>
+              Cancelar
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-md border border-warning/40 bg-background/60 p-2">
+      <div className="flex items-center gap-1.5 text-xs font-semibold">
+        <HelpCircle className="h-3.5 w-3.5 text-warning" /> Decidí para seguir
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">{pause.text}</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {pause.options.map((op) => (
+          <Button
+            key={op}
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            disabled={busy}
+            onClick={() => onDecide({ kind: "answer", answer: op })}
+          >
+            {op}
+          </Button>
+        ))}
+        {/* «No sé» no traba el flujo: toma la primera opción y la declara como supuesto. */}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs"
+          disabled={busy}
+          onClick={() => onDecide({ kind: "answer", answer: "__no-se__" })}
+        >
+          No sé, seguí
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function StepsTrace({ steps }: { steps: AgentStep[] }) {
@@ -83,6 +207,7 @@ function StepsTrace({ steps }: { steps: AgentStep[] }) {
                 <span className="text-muted-foreground">
                   {s.tool ? <span className="font-mono text-foreground">{s.tool}</span> : null}
                   {s.tool ? " · " : null}
+                  {s.source ? <span className="font-medium text-foreground">{s.source}: </span> : null}
                   {s.content}
                 </span>
               </li>
@@ -99,6 +224,8 @@ export function AgentChatPanel() {
     messages,
     busy,
     sendMessage,
+    resumeRun,
+    cancelRun,
     artifacts,
     contextArtifactIds,
     toggleContextArtifact,
@@ -290,6 +417,14 @@ export function AgentChatPanel() {
                     </span>
                   ))}
                 </div>
+              )}
+              {m.role === "assistant" && m.run?.pause && (
+                <RunPauseCard
+                  message={m}
+                  busy={busy}
+                  onDecide={(d) => resumeRun(m.id, d)}
+                  onCancel={() => cancelRun(m.id)}
+                />
               )}
               {m.role === "assistant" && m.steps && <StepsTrace steps={m.steps} />}
               {m.role === "assistant" && !!m.producedArtifactIds?.length && (

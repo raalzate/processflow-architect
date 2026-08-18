@@ -147,3 +147,19 @@ Regla:   toda burbuja/tarjeta con `max-w-*` dentro de un flex lleva `min-w-0`, y
          Markdown envuelve (`whitespace-pre-wrap break-words`) porque vive en paneles angostos.
 Mecanismo: prosa + el ejemplo en `AgentChatPanel.tsx` (comentario en la burbuja). No hay test de
          layout en el repo; se verifica a ojo con `npm run electron-dev`.
+
+### GOTCHA: el chat muestra el JSON del protocolo en vez de una respuesta
+
+Síntoma: el mensaje del agente es un bloque `{"thought":"…","action":"read_view","args":{…}}` y la
+         corrida se corta ahí (la traza queda en 2 pasos).
+Causa:   el modelo local escribe **comillas dobles sin escapar** dentro de un string del JSON
+         (`… (ej. "Publica productos", "Busca productos") …`). `JSON.parse` falla y el fallback
+         mostraba el crudo — que en un turno de herramienta es el protocolo, no una respuesta.
+Regla:   un turno de PROTOCOLO nunca se le muestra al usuario. Si el JSON no parsea pero trae
+         `"action"`/`"plan"`/`"question"`/`"final"`, se rescatan los campos (`repairProtocolJson`);
+         si no se puede, se le pide repetir el paso y a la tercera se cierra con un mensaje humano.
+Mecanismo: `repairProtocolJson` + `looksLikeProtocol` en `src/lib/ai/litert-agent.ts`, con el JSON
+         real del incidente como caso de prueba en `litert-agent.test.ts` (y el nivel de bucle en
+         `litert-agent-run.test.ts`: rescata y sigue · irrecuperable no se imprime · la prosa sí).
+         Además el prompt pide comillas simples dentro de los textos: baja la frecuencia del fallo,
+         no lo elimina — el freno es el rescate.

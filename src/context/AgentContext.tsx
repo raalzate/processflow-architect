@@ -18,7 +18,14 @@ import React, {
 import { useGraphContext } from "@/context/GraphContext";
 import { useViews } from "@/context/ViewsContext";
 import { useToast } from "@/hooks/use-toast";
-import { runLitertAgent, resolveNotations } from "@/lib/ai/litert-agent";
+import {
+  runLitertAgent,
+  resumeLitertAgent,
+  resolveNotations,
+  type ResumeDecision,
+} from "@/lib/ai/litert-agent";
+import type { Catalog } from "@/lib/ai/agent-retrieval";
+import { unknownPlanSources } from "@/lib/ai/agent-run";
 import { safeGraphToToon } from "@/lib/ai/graph-toon";
 import { extractDocumentText } from "@/lib/ai/document-extract";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
@@ -134,6 +141,10 @@ export interface AgentContextType {
   attachments: AgentDocument[];
 
   sendMessage: (text: string) => Promise<void>;
+  /** Reanuda la corrida del mensaje con la decisión del humano (spec 005). */
+  resumeRun: (messageId: string, decision: ResumeDecision) => Promise<void>;
+  /** Descarta una corrida en espera sin generar nada. */
+  cancelRun: (messageId: string) => void;
   /** Revisiones de un artefacto, ascendente (histórico del linaje). */
   historyOf: (artifactId: string) => Artifact[];
   /** Restaurar = crear una revisión nueva con el contenido de la elegida. */
@@ -232,6 +243,26 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       /* ignore quota */
     }
   }, [currentFileId, versions, lineages, artifacts, messages, activeVersionId]);
+
+  /**
+   * Catálogo para las herramientas de LECTURA del agente (spec 005): el agente ya
+   * no recibe un paquete de contexto armado de antemano, pide lo que necesita. La
+   * vista «Modelo» aporta el grafo del proyecto; `pinned` marca lo que el humano
+   * ya inyectó a mano para que no se relea.
+   */
+  const catalog: Catalog = useMemo(() => {
+    const pineadas = new Set(injectedViews.map((v) => v.id));
+    return {
+      views: views.map((v) => ({
+        name: v.name,
+        notation: (v.notation ?? DEFAULT_NOTATION_ID) as string,
+        kind: v.kind,
+        graph: v.kind === "design" ? graphData ?? undefined : v.graph,
+        mermaidCode: v.mermaidCode,
+        pinned: pineadas.has(v.id),
+      })),
+    };
+  }, [views, injectedViews, graphData]);
 
   const versionArtifacts = useMemo(
     () => artifacts.filter((a) => a.versionId === activeVersionId),
@@ -433,6 +464,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           history,
           graphData: graphData ?? undefined,
           views: views.map((v) => ({ name: v.name, kind: v.kind, notation: v.notation ?? DEFAULT_NOTATION_ID })),
+          // Con catálogo el agente explora por partes y pide aprobación del plan.
+          catalog,
           notations: notations.length ? notations : undefined,
           contextArtifacts: contextArtifacts.length ? contextArtifacts : undefined,
           documents: documents.length ? documents : undefined,
@@ -485,6 +518,9 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
                   steps: data.steps,
                   producedArtifactIds: newArtifacts.map((a) => a.id),
                   error: replyIsError,
+                  // Con `pause`, este mensaje ES la corrida esperando al humano
+                  // (plan por aprobar o pregunta por responder).
+                  run: data.run?.pause ? data.run : undefined,
                 }
               : m
           )
@@ -526,10 +562,129 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       injectedViews,
       views,
       activeView,
+      catalog,
       toast,
       updateTokenUsage,
     ]
   );
+
+
+  /**
+   * Reanuda una corrida detenida (el humano aprobó/ajustó el plan, respondió una
+   * pregunta o canceló). La conversación con el modelo no se conserva: la memoria
+   * de la corrida son sus NOTAS, así que reanudar sobrevive incluso a un reload.
+   */
+  const resumeRun = useCallback(
+    async (messageId: string, decision: ResumeDecision) => {
+      if (busy) return;
+      const msg = messages.find((m) => m.id === messageId);
+      if (!msg?.run) return;
+
+      // Una corrida puede haber sobrevivido a un reload o a un cambio de
+      // proyecto. Se valida ACÁ, no al cargar: al cargar, las vistas del
+      // proyecto todavía no están y el chequeo cancelaba corridas válidas.
+      // Misma regla que al proponer el plan (`unknownPlanSources`).
+      const plan = msg.run.pause?.kind === "plan" ? msg.run.pause : null;
+      const perdidas = plan ? unknownPlanSources(plan, catalog) : [];
+      if (perdidas.length) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  run: undefined,
+                  content: `${m.content}\n\n_(corrida cancelada: el proyecto cambió y ya no existe ${perdidas.join(
+                    ", "
+                  )})_`,
+                }
+              : m
+          )
+        );
+        return;
+      }
+
+      setBusy(true);
+      // La pausa se quita YA: la tarjeta desaparece del chat en cuanto se decide.
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, run: undefined } : m))
+      );
+      const assistantId = uid();
+      try {
+        setMessages((prev) => [
+          ...prev,
+          { id: assistantId, role: "assistant", content: "", createdAt: nowIso() },
+        ]);
+        let streamed = "";
+        const data = await resumeLitertAgent({
+          modelFile: getSelectedLitertModelFile(),
+          message: msg.run.goal,
+          graphData: graphData ?? undefined,
+          catalog,
+          run: msg.run,
+          resume: decision,
+          notations: resolveNotations({
+            injected: injectedViews.map((v) => (v.notation ?? "") as string),
+            activeNotation: activeView?.notation,
+            graphNotation: graphData?.notation,
+          }),
+          systemPrompt: getGenerationConfig().systemPrompt || undefined,
+          onReplyToken: (chunk) => {
+            streamed += chunk;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: streamed } : m))
+            );
+          },
+        });
+
+        const ingested = ingestArtifacts(
+          { lineages, artifacts },
+          (data.artifacts ?? []) as AgentArtifact[],
+          { versionId: activeVersionId, sourceMessageId: assistantId },
+          versioningDeps
+        );
+        if (ingested.created.length) {
+          setLineages(ingested.lineages);
+          setArtifacts(ingested.artifacts);
+        }
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content: data.reply || streamed || "Listo.",
+                  steps: data.steps,
+                  producedArtifactIds: ingested.created.map((a) => a.id),
+                  run: data.run?.pause ? data.run : undefined,
+                }
+              : m
+          )
+        );
+      } catch (err: any) {
+        const texto = err?.message || String(err) || "Error al reanudar la corrida.";
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: texto, error: true } : m))
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, messages, graphData, catalog, injectedViews, activeView, artifacts, lineages, activeVersionId]
+  );
+
+  /** Descarta una corrida en espera sin generar nada (botón «Cancelar»). */
+  const cancelRun = useCallback((messageId: string) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? {
+              ...m,
+              run: undefined,
+              content: `${m.content}\n\n_(cancelado: no se generó ningún artefacto)_`,
+            }
+          : m
+      )
+    );
+  }, []);
 
   const value: AgentContextType = {
     versions,
@@ -543,6 +698,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     contextArtifactIds,
     attachments,
     sendMessage,
+    resumeRun,
+    cancelRun,
     historyOf,
     restoreArtifactRevision,
     purgeArtifact,

@@ -5,7 +5,7 @@ Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verifi
 lo que se supone va en "deuda conocida".
 
 - **Fecha del último gate completo:** 2026-08-18
-- **Rama:** `main` (fusionada `feat/bpmn-notation-layout` en `a261f54`)
+- **Rama:** `005-contexto-react-hitl` (feature en curso; `main` publicada en `v0.2.0`)
 - **Veredicto:** VERDE (`npm run gate`)
 - **Versión publicada:** 0.2.0 (tag `v0.2.0` → instaladores por `release-build.yml`)
 
@@ -18,7 +18,7 @@ lo que se supone va en "deuda conocida".
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
 | Typecheck | `npm run typecheck` | verde (renderer + electron) |
-| Tests | `npm run test:coverage` | verde — 62 archivos, 903 pruebas (cobertura `src/lib` 98,1 % stmts; `artifacts/versioning.ts` 99,3 %) |
+| Tests | `npm run test:coverage` | verde — 64 archivos, 1003 pruebas (cobertura `src/lib` 97,6 % stmts; `ai/agent-retrieval.ts` 98,3 %, `ai/agent-run.ts` 97,9 %) |
 | E2E del MCP (stdio) | script manual contra `mcp-server/index.ts` | verde — 20 tools; arnés completo (ingesta → citas → ambigüedades → calidad → revisión → export → install_skill) |
 | Build de producción | `npm run build` | verde |
 
@@ -38,6 +38,13 @@ Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
 | Cobertura acotada a `src/lib/**` | `vitest.config.ts` | `main/`, `mcp-server/` y la UI no tienen cobertura exigida |
 
 ## Trabajo en curso
+
+**005 · El agente recupera el contexto por partes y consulta al humano** (`specs/005-contexto-react-hitl/`).
+Ciclo SDD completo (spec · checklist · plan · testify · tasks · analyze) y el código en verde:
+herramientas de lectura (`agent-retrieval.ts`, 98,3 % stmts), corrida reanudable con plan aprobable y
+preguntas (`agent-run.ts`, 97,9 %), bucle explorador en `litert-agent.ts`, `resumeRun`/`cancelRun` en
+`AgentContext` y las tarjetas de decisión en el chat. Falta: medir el comportamiento con Gemma real
+(cuántos turnos hasta un plan usable) y probar el ciclo en modo `hybrid`/`remote`. Sale en `v0.3.0`.
 
 **Artefactos versionados (spec 004) — CON ruta SDD, ciclo completo.**
 `specs/004-artefactos-versionados/` tiene las seis fases (`spec` · `plan` · `checklist` ·

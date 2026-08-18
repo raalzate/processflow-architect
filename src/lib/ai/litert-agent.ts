@@ -20,6 +20,28 @@ import {
   documentDefinitions,
   diagramDefinitions,
 } from "@/lib/artifacts/registry";
+import type { AgentRunState, AgentStep } from "@/lib/agent-types";
+import { formatInventory, listViews, type Catalog } from "./agent-retrieval";
+import {
+  applyToolCall,
+  approvePlan,
+  adjustPlan,
+  answerQuestion,
+  cancelRun,
+  consolidationPrompt,
+  coverageOf,
+  isCancelled,
+  mustConsolidate,
+  needsPlan,
+  registerPlan,
+  registerQuestion,
+  startRun,
+  stripInvalidCitations,
+  validateCitations,
+  READ_TOOLS,
+  RUN_BUDGET,
+  type ToolCall,
+} from "./agent-run";
 
 export interface AgentArtifactOut {
   kind: string;
@@ -27,15 +49,18 @@ export interface AgentArtifactOut {
   title: string;
   payload: { markdown: string } | { code: string };
 }
-export interface AgentStepOut {
-  type: "thought" | "action" | "observation";
-  tool?: string;
-  content: string;
-}
+/** Paso de la traza. Los tipos los declara `AgentStepSchema` (agent-types). */
+export type AgentStepOut = AgentStep;
 export interface LitertAgentResult {
   reply: string;
   artifacts: AgentArtifactOut[];
   steps: AgentStepOut[];
+  /**
+   * Corrida del agente. Con `pause` presente, el turno quedó ESPERANDO al humano
+   * (plan por aprobar o pregunta por responder) y se reanuda con
+   * `resumeLitertAgent`. Ausente = el turno cerró como siempre.
+   */
+  run?: AgentRunState;
 }
 
 export interface LitertAgentInput {
@@ -55,6 +80,17 @@ export interface LitertAgentInput {
   documents?: { name: string; text: string }[];
   /** System/persona base (de Configuraciones). */
   systemPrompt?: string;
+  /**
+   * Catálogo de vistas para las herramientas de LECTURA. Con catálogo, el agente
+   * recupera el contexto por partes (explorar → plan → consolidar); sin catálogo
+   * se comporta como antes (un solo paquete de contexto), que es lo que necesitan
+   * los llamadores viejos y las pruebas del bucle clásico.
+   */
+  catalog?: Catalog;
+  /** Corrida en curso (reanudación tras una decisión del humano). */
+  run?: AgentRunState;
+  /** Presupuesto de contexto de la corrida, en caracteres. */
+  budget?: number;
   /**
    * Callback de streaming: recibe fragmentos del texto de la respuesta FINAL a
    * medida que el modelo la genera (ya desenvuelto del JSON `{"final":"..."}`).
@@ -147,6 +183,71 @@ export function salvageReply(raw: string, parsed: unknown): string {
   const partes = [campo, fuera && fuera !== campo ? fuera : ""].filter(Boolean) as string[];
   // Nada rescatable (JSON sin texto y sin prosa): el crudo es mejor que el vacío.
   return partes.join("\n\n").trim() || raw.trim();
+}
+
+/** Claves del protocolo: si el crudo trae una, es un turno de protocolo, no prosa. */
+const CLAVES_PROTOCOLO = ["action", "plan", "question", "final"] as const;
+
+/**
+ * ¿El turno intentaba hablar el protocolo? Se decide por la presencia de sus
+ * claves, no por si el JSON parsea: un turno de protocolo roto NUNCA se le muestra
+ * al usuario (era el bug: el chat imprimía `{"thought":…,"action":"read_view"…}`).
+ */
+export function looksLikeProtocol(raw: string): boolean {
+  return CLAVES_PROTOCOLO.some((k) => new RegExp(`"${k}"\\s*:`).test(raw));
+}
+
+/**
+ * Rescata un turno de protocolo cuyo JSON no parsea. El fallo real y repetido del
+ * modelo local es escribir COMILLAS SIN ESCAPAR dentro de un string:
+ * `{"thought":"… (ej. "Publica productos", "Busca") …","action":"read_view",…}`.
+ * `JSON.parse` muere y antes se caía a mostrar el crudo, con dos consecuencias:
+ * el usuario veía el protocolo y la corrida se cortaba en seco.
+ *
+ * No intenta arreglar el JSON (eso es adivinar): extrae los campos que importan
+ * con límites que no dependen del contenido de los strings.
+ */
+export function repairProtocolJson(raw: string): Record<string, unknown> | null {
+  if (!raw || !looksLikeProtocol(raw)) return null;
+  const out: Record<string, unknown> = {};
+
+  // `thought`: hasta la próxima clave del protocolo (el contenido puede traer
+  // comillas sueltas, así que el corte lo marca la clave siguiente).
+  const th = raw.match(/"thought"\s*:\s*"([\s\S]*?)"\s*,\s*"(?:action|plan|question|final)"\s*:/);
+  if (th) out.thought = th[1].replace(/\\n/g, "\n").trim();
+
+  const act = raw.match(/"action"\s*:\s*"([^"]+)"/);
+  if (act) out.action = act[1];
+
+  // `args`: el objeto balanceado que sigue a la clave.
+  const argsIdx = raw.search(/"args"\s*:\s*\{/);
+  if (argsIdx >= 0) {
+    const start = raw.indexOf("{", raw.indexOf(":", argsIdx));
+    let depth = 0;
+    for (let i = start; i < raw.length; i++) {
+      if (raw[i] === "{") depth++;
+      else if (raw[i] === "}") {
+        depth--;
+        if (depth === 0) {
+          const bloque = raw.slice(start, i + 1);
+          try {
+            out.args = JSON.parse(bloque);
+          } catch {
+            // Args con comillas sueltas: se rescatan los pares simples.
+            const pares: Record<string, string> = {};
+            for (const m of bloque.matchAll(/"(\w+)"\s*:\s*"([^"]*)"/g)) pares[m[1]] = m[2];
+            out.args = pares;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  const fin = extractField(raw, "final");
+  if (fin != null) out.final = fin;
+
+  return Object.keys(out).some((k) => k !== "thought") ? out : null;
 }
 
 /**
@@ -460,6 +561,22 @@ export async function runLitertAgent(input: LitertAgentInput): Promise<LitertAge
     return { reply: reply || "Listo.", artifacts, steps };
   }
 
+  // Con catálogo de vistas, el agente RECUPERA el contexto por partes (explorar →
+  // plan → consolidar) en vez de recibir un paquete armado antes de saber qué
+  // necesita (spec 005). Sin catálogo se sigue el bucle clásico: es lo que usan
+  // los llamadores viejos.
+  if (input.catalog) {
+    return exploreLoop(input, input.catalog, {
+      ctx,
+      notationId,
+      persona,
+      vocabRule,
+      state: input.run ?? startRun({ uid: newRunId }, input.message, input.budget ?? RUN_BUDGET),
+      steps,
+      artifacts,
+    });
+  }
+
   const system = `${persona}${vocabRule}
 
 Trabajas en un bucle Razonamiento→Acción. En CADA turno respondes con UN ÚNICO objeto JSON, sin texto fuera de él y sin fences:
@@ -472,6 +589,7 @@ Herramientas (action / args):
 Elige el "kind" del menú según lo que pida el usuario (drivers, propuesta, roadmap, ADR, mapa de contexto, C4, etc.).
 ${toolMenu()}
 
+Dentro de los textos del JSON NO uses comillas dobles (usá 'simples'): una comilla sin escapar rompe el turno.
 Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."} SIN herramientas. Tras cada acción recibirás una "Observación"; encadena lo necesario y cierra con {"final":"..."}.${ctx}`;
 
   // Una sola conversación para todo el bucle: el system+contexto se prefilla UNA
@@ -488,10 +606,15 @@ Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."
     const onToken = input.onReplyToken ? makeFinalStreamer(input.onReplyToken) : undefined;
     const raw = await convo.send(nextUser, onToken);
 
-    const parsed = parseJson(raw);
+    const parsed = parseJson(raw) ?? repairProtocolJson(raw);
 
-    // JSON ilegible: intenta rescatar "final" (JSON malformado) o muestra el texto plano.
+    // JSON ilegible: si era un turno de PROTOCOLO no se muestra —el JSON del bucle
+    // no es una respuesta— y se le pide repetirlo; si era prosa, se muestra.
     if (!parsed || typeof parsed !== "object") {
+      if (looksLikeProtocol(raw)) {
+        nextUser = `Observación: tu respuesta no era un JSON válido (escapá las comillas dentro de los textos: \\"). Repetí el paso con UN objeto JSON válido.${NEXT}`;
+        continue;
+      }
       reply = extractField(raw, "final") ?? raw.trim();
       break;
     }
@@ -533,4 +656,375 @@ Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."
     reply = artifacts.length ? `Generé ${artifacts.length} artefacto(s).` : "Listo.";
   }
   return { reply, artifacts, steps };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Bucle con recuperación por partes y human-in-the-loop (spec 005)            */
+/* -------------------------------------------------------------------------- */
+
+/** Turnos del bucle explorador: alcanza para explorar, planificar y consolidar. */
+const MAX_EXPLORE_TURNS = 12;
+/** Turnos que puede gastar LEYENDO antes de que se le exija consolidar. */
+const MAX_TOOL_TURNS = 8;
+
+const newRunId = (): string =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `run-${Math.random().toString(36).slice(2)}`;
+
+interface LoopDeps {
+  ctx: string;
+  notationId: string;
+  persona: string;
+  vocabRule: string;
+  state: AgentRunState;
+  steps: AgentStepOut[];
+  artifacts: AgentArtifactOut[];
+  /** Observación con la que arranca el turno (reanudación tras decidir el humano). */
+  seed?: string;
+}
+
+/** Decisión del humano que reanuda una corrida detenida. */
+export type ResumeDecision =
+  | { kind: "approve" }
+  | { kind: "adjust"; feedback: string }
+  | { kind: "answer"; answer: string }
+  | { kind: "cancel"; reason?: string };
+
+/**
+ * Reanuda una corrida que estaba esperando al humano. La conversación con el
+ * modelo NO se conserva (no es serializable y el usuario pudo recargar): se abre
+ * una nueva y la memoria son las NOTAS de la corrida, que es exactamente para lo
+ * que existen.
+ */
+export async function resumeLitertAgent(
+  input: LitertAgentInput & { run: AgentRunState; resume: ResumeDecision }
+): Promise<LitertAgentResult> {
+  const cat = input.catalog ?? { views: [] };
+  const artifacts: AgentArtifactOut[] = [];
+  const steps: AgentStepOut[] = [];
+  const notationId = primaryNotation(input).id;
+  const { persona, vocabRule } = buildReasoningFrame({
+    notations: resolveNotations({
+      injected: input.notations,
+      graphNotation: input.graphData?.notation,
+    }),
+    hasGraph: !!input.graphData,
+    systemPrompt: input.systemPrompt,
+  });
+
+  let state = input.run;
+  let seed: string;
+  switch (input.resume.kind) {
+    case "approve": {
+      state = approvePlan(state);
+      steps.push({ type: "decision", content: "El humano aprobó el plan." });
+      seed = "Observación: el humano APROBÓ el plan. Generá el artefacto con la herramienta correspondiente.";
+      break;
+    }
+    case "adjust": {
+      const r = adjustPlan(state, input.resume.feedback);
+      state = r.state;
+      steps.push({ type: "decision", content: `Ajuste del plan: ${input.resume.feedback}` });
+      seed = `Observación: ${r.observation}`;
+      break;
+    }
+    case "answer": {
+      state = answerQuestion(state, input.resume.answer);
+      const d = state.decisions[state.decisions.length - 1];
+      steps.push({
+        type: "decision",
+        content: d ? `${d.question} → ${d.answer}${d.assumed ? " (supuesto)" : ""}` : "Respuesta registrada.",
+      });
+      seed = `Observación: el humano respondió "${d?.answer ?? ""}"${
+        d?.assumed ? " (era un supuesto por defecto, declaralo en el artefacto)" : ""
+      }. Seguí.`;
+      break;
+    }
+    case "cancel": {
+      state = cancelRun(state, input.resume.reason ?? "cancelado por el humano");
+      return {
+        reply: `Cancelado: ${state.cancelledReason}. No generé ningún artefacto.`,
+        artifacts,
+        steps: [...steps, { type: "decision", content: "El humano canceló la corrida." }],
+        run: state,
+      };
+    }
+  }
+
+  return exploreLoop(input, cat, {
+    ctx: buildContext(input),
+    notationId,
+    persona,
+    vocabRule,
+    state,
+    steps,
+    artifacts,
+    seed,
+  });
+}
+
+/** Menú de herramientas del bucle explorador (lectura + generación). */
+function exploreToolMenu(cat: Catalog): string {
+  return `Herramientas de LECTURA (usalas antes de generar; el contexto NO viene dado):
+- "list_views" {} — qué vistas hay, con su notación y cuántos elementos tiene cada una.
+- "read_view" {"name":"<nombre exacto de la vista>"} — el grafo de esa vista.
+- "search_model" {"term":"<palabra>"} — dónde aparece un concepto (dice en qué vista vive).
+
+Herramientas de GENERACIÓN (sólo con el plan aprobado):
+- "generate_document" {"kind":"<kind>","title":"...","instructions":"qué contener"}
+- "generate_diagram" {"kind":"<kind>","title":"...","instructions":"qué representar"}
+${toolMenu()}
+
+Inventario inicial:
+${formatInventory(listViews(cat))}`;
+}
+
+function planFromJson(raw: any): { kind: "plan"; title: string; artifactKind: string; sections: { title: string; sources: string[] }[] } | null {
+  const p = raw?.plan ?? raw;
+  if (!p || typeof p !== "object") return null;
+  const secciones = Array.isArray(p.sections) ? p.sections : [];
+  return {
+    kind: "plan",
+    title: String(p.title ?? "Artefacto"),
+    artifactKind: String(p.artifactKind ?? p.kind ?? "markdown"),
+    sections: secciones.map((s: any) => ({
+      title: String(s?.title ?? ""),
+      sources: (Array.isArray(s?.sources) ? s.sources : [s?.sources])
+        .filter(Boolean)
+        .map((x: any) => String(x)),
+    })),
+  };
+}
+
+function questionFromJson(raw: any): { kind: "question"; id: string; text: string; options: string[] } | null {
+  const q = raw?.question ?? raw;
+  if (!q || typeof q !== "object" || !q.text) return null;
+  return {
+    kind: "question",
+    id: String(q.id ?? slugishId(String(q.text))),
+    text: String(q.text),
+    options: (Array.isArray(q.options) ? q.options : []).map((o: any) => String(o)),
+  };
+}
+
+const slugishId = (text: string): string =>
+  text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .slice(0, 40);
+
+/** Pie de cobertura: el artefacto DECLARA qué se leyó y qué no (FR-011). */
+function withCoverageFooter(markdown: string, state: AgentRunState): string {
+  if (/##\s*Cobertura/i.test(markdown)) return markdown;
+  const cob = state.coverage;
+  if (!cob) return markdown;
+  const lineas = [
+    "",
+    "## Cobertura",
+    `- Revisado: ${cob.readViews.length ? cob.readViews.join(", ") : "sólo el modelo principal"}.`,
+    cob.skippedViews.length
+      ? `- Sin revisar: ${cob.skippedViews.join(", ")}${cob.reason ? ` (${cob.reason})` : ""}.`
+      : "- Sin vistas pendientes.",
+  ];
+  const supuestos = state.decisions.filter((d) => d.assumed);
+  if (supuestos.length) {
+    lineas.push(
+      ...supuestos.map((d) => `- Supuesto: ${d.question} → ${d.answer} (el humano no decidió).`)
+    );
+  }
+  return `${markdown.trimEnd()}\n${lineas.join("\n")}\n`;
+}
+
+/**
+ * El bucle: explora con las herramientas de lectura, se detiene para que el
+ * humano apruebe el plan o responda una duda, y consolida citando lo leído.
+ */
+async function exploreLoop(
+  input: LitertAgentInput,
+  cat: Catalog,
+  deps: LoopDeps
+): Promise<LitertAgentResult> {
+  const { ctx, notationId, persona, vocabRule, steps, artifacts } = deps;
+  let state = deps.state;
+
+  const system = `${persona}${vocabRule}
+
+Trabajas en un bucle Razonamiento→Acción sobre un proyecto cuyo contenido NO conocés todavía: lo LEÉS con herramientas.
+En CADA turno respondés con UN ÚNICO objeto JSON, sin texto fuera de él y sin fences:
+- Leer o generar: {"thought":"por qué","action":"<nombre>","args":{...}}
+- Proponer el plan (obligatorio antes de generar): {"thought":"...","plan":{"title":"...","artifactKind":"<kind>","sections":[{"title":"...","sources":["<vista o documento>"]}]}}
+- Preguntar al humano SÓLO si la respuesta cambia el resultado: {"thought":"...","question":{"id":"<corto>","text":"...","options":["opción por defecto","alternativa"]}}
+- Cerrar conversando: {"thought":"...","final":"<respuesta>"}
+
+Reglas: leé lo que necesites antes de planificar; no inventes nombres de vistas (usá los del inventario); no repitas una pregunta ya respondida; cuando te digan que no hay presupuesto, consolidá con lo anotado.
+IMPORTANTE sobre el JSON: dentro de los textos NO uses comillas dobles (usá 'simples' si necesitás citar). Una comilla sin escapar rompe el turno.
+
+${exploreToolMenu(cat)}${ctx}`;
+
+  const convo = await createLitertConversation(input.modelFile, system);
+  const NEXT = `\n\nResponde con el JSON del próximo paso.`;
+  let nextUser = deps.seed ? `${deps.seed}${NEXT}` : `${input.message}${NEXT}`;
+  let reply = "";
+  /** Turnos con JSON inválido: a la tercera se corta con un mensaje humano. */
+  let malformados = 0;
+
+  const generar = async (action: string, a: any): Promise<void> => {
+    const tipo = action === "generate_diagram" ? "diagram" : "document";
+    const kind = (a?.kind && String(a.kind)) || state.plan?.artifactKind || tipo;
+    const title = a?.title || state.plan?.title || getDefinition(kind, tipo).label;
+    const instrucciones = String(a?.instructions ?? "");
+    state = { ...state, coverage: coverageOf(state, cat) };
+    steps.push({ type: "consolidate", content: `Consolidando "${title}" con ${state.notes.length} nota(s).` });
+    const consolidado = `\n\n${consolidationPrompt(state)}`;
+
+    if (action === "generate_diagram") {
+      const code = await genDiagram(input.modelFile, kind, title, instrucciones, consolidado, notationId);
+      artifacts.push({ kind, render: "mermaid", title, payload: { code } });
+      return;
+    }
+    let md = await genDocument(input.modelFile, kind, title, instrucciones, consolidado, notationId);
+    let v = validateCitations(md, state);
+    if (!v.ok) {
+      // Un intento de corrección: citar una fuente que no se leyó hace que la
+      // trazabilidad MIENTA, y eso es peor que no tenerla.
+      const aviso = `${instrucciones}\n\nCORREGÍ: estas citas no corresponden a nada leído: ${v.invalid.join(
+        ", "
+      )}. Usá sólo las fuentes y elementos listados.`;
+      md = await genDocument(input.modelFile, kind, title, aviso, consolidado, notationId);
+      v = validateCitations(md, state);
+      if (!v.ok) md = stripInvalidCitations(md, v.invalid);
+    }
+    artifacts.push({ kind, render: "markdown", title, payload: { markdown: withCoverageFooter(md, state) } });
+  };
+
+  for (let turn = 0; turn < MAX_EXPLORE_TURNS; turn++) {
+    state = { ...state, turn: state.turn + 1 };
+    const onToken = input.onReplyToken ? makeFinalStreamer(input.onReplyToken) : undefined;
+    const raw = await convo.send(nextUser, onToken);
+    const parsed = parseJson(raw) ?? repairProtocolJson(raw);
+
+    if (!parsed || typeof parsed !== "object") {
+      // Turno de protocolo irrecuperable: se le pide de nuevo en vez de mostrarle
+      // al usuario el JSON del bucle (que no es una respuesta).
+      if (looksLikeProtocol(raw)) {
+        malformados++;
+        if (malformados <= 2) {
+          nextUser = `Observación: tu respuesta no era un JSON válido (revisá las comillas dentro de los textos: se escriben \\"). Repetí el paso con UN objeto JSON válido.${NEXT}`;
+          continue;
+        }
+        reply = "No pude seguir: el modelo devolvió un formato inválido tres veces. Probá de nuevo o con un modelo más grande.";
+        break;
+      }
+      reply = extractField(raw, "final") ?? raw.trim();
+      break;
+    }
+    if (parsed.thought) steps.push({ type: "thought", content: String(parsed.thought) });
+
+    // --- Plan: el primer punto donde decide el humano ---
+    if (parsed.plan) {
+      const plan = planFromJson(parsed);
+      const r = plan ? registerPlan(state, plan, cat) : { state, observation: "Plan ilegible." };
+      state = r.state;
+      if (r.observation) {
+        nextUser = `Observación: ${r.observation}${NEXT}`;
+        continue;
+      }
+      steps.push({
+        type: "plan",
+        content: state.plan!.sections.map((sec) => `${sec.title} ← ${sec.sources.join(", ")}`).join(" · "),
+      });
+      return {
+        reply: `Antes de generar «${state.plan!.title}», revisá el plan.`,
+        artifacts,
+        steps,
+        run: state,
+      };
+    }
+
+    // --- Pregunta al humano ---
+    if (parsed.question) {
+      const q = questionFromJson(parsed);
+      const r = q ? registerQuestion(state, q) : { state, observation: "Pregunta ilegible." };
+      state = r.state;
+      if (r.observation) {
+        nextUser = `Observación: ${r.observation}${NEXT}`;
+        continue;
+      }
+      steps.push({ type: "question", content: q!.text });
+      return { reply: q!.text, artifacts, steps, run: state };
+    }
+
+    if (parsed.final != null || !parsed.action) {
+      reply = String(parsed.final ?? "").trim() || extractField(raw, "final") || salvageReply(raw, parsed);
+      break;
+    }
+
+    const action = String(parsed.action);
+    const a = parsed.args || {};
+
+    // --- Lecturas ---
+    if ((READ_TOOLS as readonly string[]).includes(action)) {
+      const call =
+        action === "read_view"
+          ? ({ tool: "read_view", name: String(a.name ?? a.view ?? "") } as ToolCall)
+          : action === "search_model"
+            ? ({ tool: "search_model", term: String(a.term ?? a.query ?? "") } as ToolCall)
+            : ({ tool: "list_views" } as ToolCall);
+      const r = applyToolCall(state, call, cat);
+      state = r.state;
+      steps.push({
+        type: action === "search_model" ? "search" : "read",
+        tool: action,
+        source: call.tool === "read_view" ? call.name : call.tool === "search_model" ? call.term : undefined,
+        content: r.note ? r.note.facts.join(" ") : clamp(r.observation, 200),
+      });
+      nextUser = mustConsolidate(state, { maxToolTurns: MAX_TOOL_TURNS })
+        ? `Observación: ${r.observation}\n\nYa no hay margen para leer más: proponé el plan (o generá si ya está aprobado) con lo anotado.${NEXT}`
+        : `Observación: ${r.observation}${NEXT}`;
+      continue;
+    }
+
+    // --- Generación: exige plan aprobado ---
+    if (action === "generate_document" || action === "generate_diagram") {
+      if (needsPlan(state)) {
+        nextUser = `Observación: antes de generar tenés que proponer el plan (secciones y de qué vista sale cada una) y esperar la aprobación del humano.${NEXT}`;
+        continue;
+      }
+      const title = a?.title || state.plan?.title || "artefacto";
+      steps.push({ type: "action", tool: action, content: String(title) });
+      try {
+        await generar(action, a);
+        nextUser = `Observación: "${title}" generado y puesto en el lienzo. Cerrá con {"final":"..."} resumiendo qué hiciste.${NEXT}`;
+        steps.push({ type: "observation", content: `"${title}" generado.` });
+      } catch (e: any) {
+        nextUser = `Observación: ERROR generando: ${String(e?.message ?? e)}${NEXT}`;
+        steps.push({ type: "observation", content: `Error generando: ${String(e?.message ?? e)}` });
+      }
+      continue;
+    }
+
+    nextUser = `Observación: acción inválida "${action}". Disponibles: ${READ_TOOLS.join(
+      ", "
+    )}, generate_document, generate_diagram.${NEXT}`;
+  }
+
+  // Red de seguridad: se agotaron los turnos con el plan aprobado y sin artefacto
+  // ⇒ se consolida con lo leído en vez de cerrar con las manos vacías (FR-013).
+  if (!artifacts.length && !needsPlan(state) && !isCancelled(state)) {
+    try {
+      await generar("generate_document", { kind: state.plan?.artifactKind, title: state.plan?.title });
+    } catch {
+      /* si tampoco se puede generar, el reply de abajo lo dice */
+    }
+  }
+
+  if (!reply) {
+    reply = artifacts.length
+      ? `Generé ${artifacts.length} artefacto(s) con lo leído en ${state.read.length} vista(s).`
+      : "No llegué a generar nada: probá pidiéndolo de nuevo con más detalle.";
+  }
+  return { reply, artifacts, steps, run: { ...state, pause: undefined } };
 }

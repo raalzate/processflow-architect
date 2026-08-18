@@ -43,7 +43,13 @@ export interface AppState {
   updatedAt: string;
 }
 
-function countGraph(graph: GraphData | null | undefined): AppState["counts"] {
+/**
+ * Conteo de un grafo (contenedores · nodos · aristas). Exportado porque el
+ * inventario de vistas del agente (`src/lib/ai/agent-retrieval.ts`) necesita el
+ * MISMO número que ve el humano en `get_app_state`: dos cuentas distintas del
+ * mismo grafo es una discusión que nadie gana.
+ */
+export function countGraph(graph: GraphData | null | undefined): AppState["counts"] {
   if (!graph) return { containers: 0, nodes: 0, edges: 0 };
   const containers = graph.agregados?.length ?? 0;
   const nodes =
