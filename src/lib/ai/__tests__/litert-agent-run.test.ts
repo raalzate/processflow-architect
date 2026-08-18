@@ -8,7 +8,7 @@ vi.mock("../litert-engine", () => ({
   litertGenerate: vi.fn(),
 }));
 
-import { runLitertAgent } from "../litert-agent";
+import { runLitertAgent, resumeLitertAgent } from "../litert-agent";
 import { createLitertConversation, litertGenerate } from "../litert-engine";
 
 const mockConvo = vi.mocked(createLitertConversation);
@@ -186,5 +186,214 @@ describe("runLitertAgent — bucle ReAct (con intención de generar)", () => {
     const res = await runLitertAgent({ modelFile: "m", message: "genera documentos sin parar" });
     expect(res.artifacts.length).toBeGreaterThan(0);
     expect(res.reply).toMatch(/Generé \d+ artefacto/);
+  });
+});
+
+/**
+ * Bucle con recuperación por partes y human-in-the-loop (spec 005, E29–E32).
+ *
+ * El caso que motivó esto: los artefactos se armaban con lo que el humano hubiera
+ * pineado a mano (10 vistas de 50 posibles) y nadie se enteraba de qué quedó
+ * afuera. Acá el agente lee lo que necesita y el humano decide antes de generar.
+ */
+describe("runLitertAgent — contexto por partes + human-in-the-loop", () => {
+  const nodo = (nombre: string, tipo = "Evento") => ({
+    id: nombre.toLowerCase().replace(/\s+/g, "-"),
+    nombre,
+    tipo_elemento: tipo,
+    descripcion: "",
+    estado_comparativo: "nuevo" as const,
+  });
+  const grafo = (nodos: ReturnType<typeof nodo>[]) =>
+    ({
+      nombre_proyecto: "P",
+      version: "1.0.0",
+      fecha_analisis: "2026-08-18",
+      big_picture: { descripcion: "d", hotspots: [], nodos, aristas: [] },
+      agregados: [],
+    }) as any;
+  const catalog = {
+    views: [
+      { name: "Pagos", notation: "ddd", kind: "graph" as const, graph: grafo([nodo("Cobrar prima", "Comando")]) },
+      { name: "Pedidos", notation: "ddd", kind: "graph" as const, graph: grafo([nodo("Crear pedido", "Comando")]) },
+    ],
+  };
+  const PLAN = JSON.stringify({
+    thought: "ya leí lo necesario",
+    plan: {
+      title: "Drivers de arquitectura",
+      artifactKind: "drivers",
+      sections: [{ title: "Rendimiento", sources: ["Pagos"] }],
+    },
+  });
+
+  it("explora las vistas y se detiene con el plan, sin generar nada", async () => {
+    scriptConvo([
+      '{"thought":"veo qué hay","action":"list_views","args":{}}',
+      '{"thought":"leo pagos","action":"read_view","args":{"name":"Pagos"}}',
+      '{"thought":"leo pedidos","action":"read_view","args":{"name":"Pedidos"}}',
+      PLAN,
+    ]);
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "generá los drivers",
+      catalog,
+    });
+    expect(res.artifacts).toHaveLength(0); // nada al lienzo sin aprobación
+    expect(res.run?.pause?.kind).toBe("plan");
+    expect(res.run?.read).toEqual(["Pagos", "Pedidos"]);
+    // 3 pasos de lectura: el inventario y las dos vistas (se distinguen por `tool`).
+    expect(res.steps.filter((s) => s.type === "read")).toHaveLength(3);
+    expect(res.steps.filter((s) => s.tool === "read_view")).toHaveLength(2);
+    expect(res.steps.find((s) => s.tool === "read_view")?.source).toBe("Pagos");
+    expect(res.steps.some((s) => s.type === "plan")).toBe(true);
+    expect(res.reply).toContain("Drivers de arquitectura");
+  });
+
+  it("no genera sin plan: la observación se lo exige", async () => {
+    scriptConvo([
+      '{"thought":"voy directo","action":"generate_document","args":{"kind":"drivers","title":"Drivers"}}',
+      PLAN,
+    ]);
+    const res = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    expect(res.artifacts).toHaveLength(0);
+    expect(res.run?.pause?.kind).toBe("plan");
+  });
+
+  it("aprobar el plan genera el artefacto, con cobertura declarada", async () => {
+    // 1) corrida hasta el plan
+    scriptConvo([
+      '{"thought":"leo","action":"read_view","args":{"name":"Pagos"}}',
+      PLAN,
+    ]);
+    const parada = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    expect(parada.run?.pause?.kind).toBe("plan");
+
+    // 2) reanudación tras aprobar
+    scriptConvo([
+      '{"thought":"genero","action":"generate_document","args":{"kind":"drivers","title":"Drivers"}}',
+      '{"final":"Listo, drivers en el lienzo."}',
+    ]);
+    const res = await resumeLitertAgent({
+      modelFile: "m",
+      message: "generá los drivers",
+      catalog,
+      run: parada.run!,
+      resume: { kind: "approve" },
+    });
+    expect(res.artifacts).toHaveLength(1);
+    const md = (res.artifacts[0].payload as { markdown: string }).markdown;
+    expect(md).toContain("## Cobertura");
+    expect(md).toContain("Revisado: Pagos");
+    expect(md).toContain("Sin revisar: Pedidos");
+    expect(res.steps.some((s) => s.type === "decision")).toBe(true);
+    expect(res.steps.some((s) => s.type === "consolidate")).toBe(true);
+    expect(res.run?.pause).toBeUndefined();
+  });
+
+  it("ajustar el plan no pierde lo leído", async () => {
+    scriptConvo(['{"thought":"leo","action":"read_view","args":{"name":"Pagos"}}', PLAN]);
+    const parada = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+
+    scriptConvo([PLAN]); // el modelo replantea y vuelve a pedir aprobación
+    const res = await resumeLitertAgent({
+      modelFile: "m",
+      message: "generá los drivers",
+      catalog,
+      run: parada.run!,
+      resume: { kind: "adjust", feedback: "faltan las restricciones" },
+    });
+    expect(res.run?.read).toEqual(["Pagos"]); // conserva la lectura
+    expect(res.run?.notes).toHaveLength(1);
+    expect(res.run?.pause?.kind).toBe("plan");
+    expect(res.artifacts).toHaveLength(0);
+  });
+
+  it("cancelar no genera nada y deja el motivo", async () => {
+    scriptConvo([PLAN]);
+    const parada = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    const res = await resumeLitertAgent({
+      modelFile: "m",
+      message: "generá los drivers",
+      catalog,
+      run: parada.run!,
+      resume: { kind: "cancel", reason: "me equivoqué de proyecto" },
+    });
+    expect(res.artifacts).toHaveLength(0);
+    expect(res.run?.cancelledReason).toBe("me equivoqué de proyecto");
+    expect(res.reply).toContain("me equivoqué de proyecto");
+  });
+
+  it("se detiene con una pregunta y la respuesta queda en la traza", async () => {
+    scriptConvo([
+      '{"thought":"dudo","question":{"id":"dup-cobro","text":"¿«Cobro» y «Pago» son lo mismo?","options":["Sí","No"]}}',
+    ]);
+    const parada = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    expect(parada.run?.pause?.kind).toBe("question");
+    expect(parada.reply).toContain("¿«Cobro»");
+
+    scriptConvo([PLAN]);
+    const res = await resumeLitertAgent({
+      modelFile: "m",
+      message: "generá los drivers",
+      catalog,
+      run: parada.run!,
+      resume: { kind: "answer", answer: "No" },
+    });
+    expect(res.run?.decisions).toEqual([
+      { questionId: "dup-cobro", question: "¿«Cobro» y «Pago» son lo mismo?", answer: "No" },
+    ]);
+    expect(res.steps.some((s) => s.type === "decision" && s.content.includes("No"))).toBe(true);
+  });
+
+  it("un plan que cita una vista inexistente se corrige sin molestar al humano", async () => {
+    scriptConvo([
+      JSON.stringify({
+        plan: { title: "X", artifactKind: "drivers", sections: [{ title: "S", sources: ["Ventas"] }] },
+      }),
+      PLAN,
+    ]);
+    const res = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    // El primer plan se rechazó; el humano recibe el SEGUNDO.
+    expect((res.run?.pause as { title: string }).title).toBe("Drivers de arquitectura");
+  });
+
+  it("al agotar los turnos consolida en vez de cerrar con las manos vacías", async () => {
+    // Sólo pide lecturas, para siempre: el bucle debe cortar y consolidar.
+    scriptConvo(['{"thought":"otra vez","action":"read_view","args":{"name":"Pagos"}}']);
+    const parada = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    expect(parada.artifacts).toHaveLength(0); // sin plan aprobado no se genera
+
+    // Con el plan ya aprobado, el agotamiento SÍ consolida.
+    scriptConvo(['{"thought":"leo y leo","action":"read_view","args":{"name":"Pedidos"}}']);
+    const res = await resumeLitertAgent({
+      modelFile: "m",
+      message: "generá los drivers",
+      catalog,
+      run: { ...parada.run!, plan: { kind: "plan", title: "Drivers", artifactKind: "drivers", sections: [{ title: "S", sources: ["Pagos"] }] }, planApproved: true, pause: undefined },
+      resume: { kind: "approve" },
+    });
+    expect(res.artifacts).toHaveLength(1);
+    expect((res.artifacts[0].payload as { markdown: string }).markdown).toContain("## Cobertura");
+  });
+
+  it("una cita a una fuente que nunca se leyó no sobrevive", async () => {
+    mockGen.mockResolvedValue("Latencia baja.\n  ↳ Ventas › Facturar");
+    scriptConvo([PLAN]);
+    const parada = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    scriptConvo([
+      '{"action":"generate_document","args":{"kind":"drivers","title":"Drivers"}}',
+      '{"final":"listo"}',
+    ]);
+    const res = await resumeLitertAgent({
+      modelFile: "m",
+      message: "generá los drivers",
+      catalog,
+      run: parada.run!,
+      resume: { kind: "approve" },
+    });
+    const md = (res.artifacts[0].payload as { markdown: string }).markdown;
+    expect(md).not.toContain("Ventas");
+    expect(md).toContain("Latencia baja.");
   });
 });

@@ -33,8 +33,26 @@ export type ArtifactRender = (typeof ARTIFACT_RENDERS)[number];
 
 /** Pasos del razonamiento ReAct (Thought → Action → Observation). */
 export const AgentStepSchema = z.object({
-  type: z.enum(["thought", "action", "observation"]),
+  /**
+   * Los tres primeros son el ReAct clásico; el resto llegó con 005 (el agente
+   * recupera el contexto por partes y consulta al humano): `read`/`search` son
+   * lecturas del modelo, `plan`/`question` los dos puntos donde decide el
+   * humano, `decision` su respuesta y `consolidate` el cierre con citas.
+   */
+  type: z.enum([
+    "thought",
+    "action",
+    "observation",
+    "read",
+    "search",
+    "plan",
+    "question",
+    "decision",
+    "consolidate",
+  ]),
   tool: z.string().optional().describe("Herramienta invocada en un paso 'action'."),
+  /** Fuente del paso (vista/documento) cuando aplica: la traza dice de dónde salió. */
+  source: z.string().optional(),
   content: z.string(),
 });
 export type AgentStep = z.infer<typeof AgentStepSchema>;
@@ -94,6 +112,71 @@ export interface Artifact {
   restoredFrom?: string; // revisión que se restauró para crear esta
 }
 
+/**
+ * Nota atribuida a UNA fuente: es lo único que la corrida recuerda de una lectura.
+ * Sirve tres veces: memoria externa del modelo (se re-inyecta condensada en cada
+ * turno, no el TOON completo), progreso visible en el chat, y respaldo de las
+ * citas del artefacto — una cita sin nota que la sostenga no se emite.
+ */
+export interface AgentNote {
+  source: { type: "view" | "model" | "document" | "artifact"; name: string };
+  facts: string[];
+  /** Nodos citables de esa fuente (vacío en fuentes sin nodos, p. ej. Mermaid). */
+  nodes?: string[];
+}
+
+/** Por qué la corrida se detuvo y qué se le pide al humano. */
+export type AgentPause =
+  | {
+      kind: "plan";
+      title: string;
+      artifactKind: string;
+      sections: { title: string; sources: string[] }[];
+    }
+  | { kind: "question"; id: string; text: string; options: string[] };
+
+/** Decisión del humano ante una pregunta (o el supuesto por defecto). */
+export interface AgentDecision {
+  questionId: string;
+  question: string;
+  answer: string;
+  /** true = el humano dijo "no sé" y se tomó la primera opción. */
+  assumed?: boolean;
+}
+
+/** Qué alcanzó a leer la corrida. Va al artefacto: un artefacto honesto declara su cobertura. */
+export interface AgentCoverage {
+  readViews: string[];
+  skippedViews: string[];
+  reason?: string;
+}
+
+/**
+ * Estado de una corrida del agente. Es SERIALIZABLE a propósito: viaja en el
+ * mensaje del chat (`agent_state_<fileId>`) para que una corrida detenida
+ * esperando al humano sobreviva a un reload. Lo que NO se guarda es el TOON
+ * leído: sólo las notas (ver specs/005-contexto-react-hitl/plan.md D12).
+ */
+export interface AgentRunState {
+  id: string;
+  goal: string;
+  turn: number;
+  budgetLeft: number;
+  /** Vistas ya leídas: releerlas no cuesta presupuesto. */
+  read: string[];
+  notes: AgentNote[];
+  /** Ids de preguntas ya formuladas: una por corrida. */
+  asked: string[];
+  decisions: AgentDecision[];
+  /** Presente ⇔ la corrida está esperando al humano. */
+  pause?: AgentPause;
+  plan?: Extract<AgentPause, { kind: "plan" }>;
+  planApproved?: boolean;
+  /** Motivo del cierre cuando la corrida se cancela. */
+  cancelledReason?: string;
+  coverage?: AgentCoverage;
+}
+
 export type ChatRole = "user" | "assistant";
 
 /** Mensaje del chat del agente. */
@@ -107,6 +190,12 @@ export interface ChatMessage {
   contextArtifactIds?: string[]; // artefactos inyectados como contexto (opcional)
   attachments?: { name: string; contentType: string }[]; // documentos adjuntos (mensajes del usuario)
   error?: boolean;
+  /**
+   * Corrida del agente asociada a este mensaje. Con `pause` presente, el mensaje
+   * ES la corrida esperando al humano (plan por aprobar o pregunta por
+   * responder); al terminar se limpia y quedan `steps`/`producedArtifactIds`.
+   */
+  run?: AgentRunState;
 }
 
 /* -------------------------------------------------------------------------- */
