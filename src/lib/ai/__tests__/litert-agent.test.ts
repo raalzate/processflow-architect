@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   makeFinalStreamer,
   salvageReply,
+  repairProtocolJson,
+  looksLikeProtocol,
   hasGenerationIntent,
   sanitizeMermaid,
   buildReasoningFrame,
@@ -267,5 +269,57 @@ describe("makeFinalStreamer · claves off-contract", () => {
 
   it("no streamea claves genéricas (podrían ser argumentos de una herramienta)", () => {
     expect(run(['{"action":"generate_document","args":{"instructions":"x","content":"y"}}'])).toBe("");
+  });
+});
+
+/**
+ * Incidente (captura del usuario): el chat mostró el JSON del protocolo —
+ * `{"thought":"He leído el 'Modelo' (c4)… (ej. "Publica productos nuevos", …)",
+ * "action":"read_view","args":{"name":"DDD · Dominio Producto"}}` — y la corrida
+ * se cortó ahí. Causa: comillas SIN ESCAPAR dentro del `thought` ⇒ `JSON.parse`
+ * falla ⇒ el fallback imprimía el crudo. Dos reglas nuevas: un turno de protocolo
+ * roto se rescata, y si no se puede, NUNCA se le muestra al usuario.
+ */
+const ROTO = `{"thought":"He leído el 'Modelo' (c4) y he identificado los actores (Admin, Comprador). Los requisitos se desprenden de las interacciones (ej. "Publica productos nuevos", "Busca productos", "valida precio"). Necesito leer el modelo de dominio.","action":"read_view","args":{"name":"DDD · Dominio Producto"}}`;
+
+describe("repairProtocolJson · turnos de protocolo con JSON roto", () => {
+  it("rescata la acción y sus argumentos del caso real", () => {
+    const r = repairProtocolJson(ROTO)!;
+    expect(r.action).toBe("read_view");
+    expect(r.args).toEqual({ name: "DDD · Dominio Producto" });
+    expect(String(r.thought)).toContain("He leído el 'Modelo'");
+    // El thought corta en la clave siguiente, no en la primera comilla suelta.
+    expect(String(r.thought)).toContain("valida precio");
+  });
+
+  it("el JSON roto NO parsea (si parseara, este test no tendría sentido)", () => {
+    expect(() => JSON.parse(ROTO)).toThrow();
+  });
+
+  it("rescata un `final` con comillas sueltas alrededor", () => {
+    const raw = `{"thought":"listo","final":"El resultado es claro."}`;
+    expect(repairProtocolJson(raw)!.final).toBe("El resultado es claro.");
+  });
+
+  it("rescata args aunque tengan comillas sueltas", () => {
+    const raw = `{"action":"search_model","args":{"term":"cobro "de" prima"}}`;
+    const r = repairProtocolJson(raw)!;
+    expect(r.action).toBe("search_model");
+    expect((r.args as { term: string }).term).toContain("cobro");
+  });
+
+  it("prosa sin claves del protocolo no se toca", () => {
+    expect(repairProtocolJson("Hola, esto es una explicación.")).toBeNull();
+    expect(looksLikeProtocol("Hola, esto es una explicación.")).toBe(false);
+  });
+
+  it("un objeto con sólo `thought` no alcanza para seguir", () => {
+    expect(repairProtocolJson('{"thought":"pensando"}')).toBeNull();
+  });
+
+  it("reconoce las cuatro claves del protocolo", () => {
+    for (const clave of ["action", "plan", "question", "final"]) {
+      expect(looksLikeProtocol(`{"${clave}": "x"}`)).toBe(true);
+    }
   });
 });

@@ -185,6 +185,71 @@ export function salvageReply(raw: string, parsed: unknown): string {
   return partes.join("\n\n").trim() || raw.trim();
 }
 
+/** Claves del protocolo: si el crudo trae una, es un turno de protocolo, no prosa. */
+const CLAVES_PROTOCOLO = ["action", "plan", "question", "final"] as const;
+
+/**
+ * ¿El turno intentaba hablar el protocolo? Se decide por la presencia de sus
+ * claves, no por si el JSON parsea: un turno de protocolo roto NUNCA se le muestra
+ * al usuario (era el bug: el chat imprimía `{"thought":…,"action":"read_view"…}`).
+ */
+export function looksLikeProtocol(raw: string): boolean {
+  return CLAVES_PROTOCOLO.some((k) => new RegExp(`"${k}"\\s*:`).test(raw));
+}
+
+/**
+ * Rescata un turno de protocolo cuyo JSON no parsea. El fallo real y repetido del
+ * modelo local es escribir COMILLAS SIN ESCAPAR dentro de un string:
+ * `{"thought":"… (ej. "Publica productos", "Busca") …","action":"read_view",…}`.
+ * `JSON.parse` muere y antes se caía a mostrar el crudo, con dos consecuencias:
+ * el usuario veía el protocolo y la corrida se cortaba en seco.
+ *
+ * No intenta arreglar el JSON (eso es adivinar): extrae los campos que importan
+ * con límites que no dependen del contenido de los strings.
+ */
+export function repairProtocolJson(raw: string): Record<string, unknown> | null {
+  if (!raw || !looksLikeProtocol(raw)) return null;
+  const out: Record<string, unknown> = {};
+
+  // `thought`: hasta la próxima clave del protocolo (el contenido puede traer
+  // comillas sueltas, así que el corte lo marca la clave siguiente).
+  const th = raw.match(/"thought"\s*:\s*"([\s\S]*?)"\s*,\s*"(?:action|plan|question|final)"\s*:/);
+  if (th) out.thought = th[1].replace(/\\n/g, "\n").trim();
+
+  const act = raw.match(/"action"\s*:\s*"([^"]+)"/);
+  if (act) out.action = act[1];
+
+  // `args`: el objeto balanceado que sigue a la clave.
+  const argsIdx = raw.search(/"args"\s*:\s*\{/);
+  if (argsIdx >= 0) {
+    const start = raw.indexOf("{", raw.indexOf(":", argsIdx));
+    let depth = 0;
+    for (let i = start; i < raw.length; i++) {
+      if (raw[i] === "{") depth++;
+      else if (raw[i] === "}") {
+        depth--;
+        if (depth === 0) {
+          const bloque = raw.slice(start, i + 1);
+          try {
+            out.args = JSON.parse(bloque);
+          } catch {
+            // Args con comillas sueltas: se rescatan los pares simples.
+            const pares: Record<string, string> = {};
+            for (const m of bloque.matchAll(/"(\w+)"\s*:\s*"([^"]*)"/g)) pares[m[1]] = m[2];
+            out.args = pares;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  const fin = extractField(raw, "final");
+  if (fin != null) out.final = fin;
+
+  return Object.keys(out).some((k) => k !== "thought") ? out : null;
+}
+
 /**
  * Fallback robusto: extrae el valor de "final" (o "thought") aunque el JSON esté
  * malformado (p.ej. coma colgante + `"}`). Devuelve la cadena desescapada o null.
@@ -524,6 +589,7 @@ Herramientas (action / args):
 Elige el "kind" del menú según lo que pida el usuario (drivers, propuesta, roadmap, ADR, mapa de contexto, C4, etc.).
 ${toolMenu()}
 
+Dentro de los textos del JSON NO uses comillas dobles (usá 'simples'): una comilla sin escapar rompe el turno.
 Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."} SIN herramientas. Tras cada acción recibirás una "Observación"; encadena lo necesario y cierra con {"final":"..."}.${ctx}`;
 
   // Una sola conversación para todo el bucle: el system+contexto se prefilla UNA
@@ -540,10 +606,15 @@ Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."
     const onToken = input.onReplyToken ? makeFinalStreamer(input.onReplyToken) : undefined;
     const raw = await convo.send(nextUser, onToken);
 
-    const parsed = parseJson(raw);
+    const parsed = parseJson(raw) ?? repairProtocolJson(raw);
 
-    // JSON ilegible: intenta rescatar "final" (JSON malformado) o muestra el texto plano.
+    // JSON ilegible: si era un turno de PROTOCOLO no se muestra —el JSON del bucle
+    // no es una respuesta— y se le pide repetirlo; si era prosa, se muestra.
     if (!parsed || typeof parsed !== "object") {
+      if (looksLikeProtocol(raw)) {
+        nextUser = `Observación: tu respuesta no era un JSON válido (escapá las comillas dentro de los textos: \\"). Repetí el paso con UN objeto JSON válido.${NEXT}`;
+        continue;
+      }
       reply = extractField(raw, "final") ?? raw.trim();
       break;
     }
@@ -789,6 +860,7 @@ En CADA turno respondés con UN ÚNICO objeto JSON, sin texto fuera de él y sin
 - Cerrar conversando: {"thought":"...","final":"<respuesta>"}
 
 Reglas: leé lo que necesites antes de planificar; no inventes nombres de vistas (usá los del inventario); no repitas una pregunta ya respondida; cuando te digan que no hay presupuesto, consolidá con lo anotado.
+IMPORTANTE sobre el JSON: dentro de los textos NO uses comillas dobles (usá 'simples' si necesitás citar). Una comilla sin escapar rompe el turno.
 
 ${exploreToolMenu(cat)}${ctx}`;
 
@@ -796,6 +868,8 @@ ${exploreToolMenu(cat)}${ctx}`;
   const NEXT = `\n\nResponde con el JSON del próximo paso.`;
   let nextUser = deps.seed ? `${deps.seed}${NEXT}` : `${input.message}${NEXT}`;
   let reply = "";
+  /** Turnos con JSON inválido: a la tercera se corta con un mensaje humano. */
+  let malformados = 0;
 
   const generar = async (action: string, a: any): Promise<void> => {
     const tipo = action === "generate_diagram" ? "diagram" : "document";
@@ -830,9 +904,20 @@ ${exploreToolMenu(cat)}${ctx}`;
     state = { ...state, turn: state.turn + 1 };
     const onToken = input.onReplyToken ? makeFinalStreamer(input.onReplyToken) : undefined;
     const raw = await convo.send(nextUser, onToken);
-    const parsed = parseJson(raw);
+    const parsed = parseJson(raw) ?? repairProtocolJson(raw);
 
     if (!parsed || typeof parsed !== "object") {
+      // Turno de protocolo irrecuperable: se le pide de nuevo en vez de mostrarle
+      // al usuario el JSON del bucle (que no es una respuesta).
+      if (looksLikeProtocol(raw)) {
+        malformados++;
+        if (malformados <= 2) {
+          nextUser = `Observación: tu respuesta no era un JSON válido (revisá las comillas dentro de los textos: se escriben \\"). Repetí el paso con UN objeto JSON válido.${NEXT}`;
+          continue;
+        }
+        reply = "No pude seguir: el modelo devolvió un formato inválido tres veces. Probá de nuevo o con un modelo más grande.";
+        break;
+      }
       reply = extractField(raw, "final") ?? raw.trim();
       break;
     }

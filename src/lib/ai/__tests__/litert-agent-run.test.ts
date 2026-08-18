@@ -377,6 +377,33 @@ describe("runLitertAgent — contexto por partes + human-in-the-loop", () => {
     expect((res.artifacts[0].payload as { markdown: string }).markdown).toContain("## Cobertura");
   });
 
+  const ROTO = `{"thought":"He leído el 'Modelo' (c4) y he identificado los actores (ej. "Publica productos", "Busca productos").","action":"read_view","args":{"name":"Pagos"}}`;
+
+  it("un turno de protocolo con comillas sin escapar se rescata: lee y sigue", async () => {
+    // El caso de la captura: JSON.parse falla, pero la acción se rescata.
+    scriptConvo([ROTO, PLAN]);
+    const res = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    expect(res.run?.read).toEqual(["Pagos"]);
+    expect(res.run?.pause?.kind).toBe("plan");
+    // Y sobre todo: el JSON del protocolo NO se le muestra al usuario.
+    expect(res.reply).not.toContain('"action"');
+    expect(res.reply).not.toContain("thought");
+  });
+
+  it("un turno irrecuperable se le pide de nuevo, no se imprime", async () => {
+    // Ni parsea ni tiene acción rescatable, pero es protocolo (trae "action":).
+    scriptConvo(['{"thought":"roto", "action":}']);
+    const res = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    expect(res.reply).not.toContain("thought");
+    expect(res.reply).toMatch(/formato inválido/);
+  });
+
+  it("prosa suelta sigue mostrándose tal cual (no es protocolo)", async () => {
+    scriptConvo(["No hay suficiente información en el proyecto."]);
+    const res = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    expect(res.reply).toBe("No hay suficiente información en el proyecto.");
+  });
+
   it("una cita a una fuente que nunca se leyó no sobrevive", async () => {
     mockGen.mockResolvedValue("Latencia baja.\n  ↳ Ventas › Facturar");
     scriptConvo([PLAN]);
