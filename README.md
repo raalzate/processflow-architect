@@ -25,7 +25,7 @@ Event Storming · DDD · BPMN · C4 · UML · agente ReAct local · exporta a Me
 
 ![Big Picture de Event Storming en el lienzo de ProcessFlow Architect](docs/screenshots/02-canvas.png)
 
-<sub>captura real · Big Picture de Event Storming — agregados en swimlanes, tipos de elemento por color</sub>
+<sub>captura real · Big Picture de Event Storming — agregados en bandas, paleta de la notación activa a la izquierda y pestañas de vistas abajo</sub>
 
 </div>
 
@@ -83,7 +83,7 @@ npm run electron-dev   # Next.js + Electron + tsc watch
 
 ![Agrupador de nodos / fusión de sesiones](docs/screenshots/06-merger.png)
 
-<sub>Agrupador de nodos — depura duplicados del proyecto activo</sub>
+<sub>Agrupador de nodos — depura duplicados del proyecto activo («Prima cobrada» ← «Cobro confirmado»)</sub>
 
 </div>
 
