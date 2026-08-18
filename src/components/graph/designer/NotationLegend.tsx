@@ -32,7 +32,7 @@ export function NotationLegend({ notation }: { notation: NotationId }) {
         <div className="max-h-[40vh] overflow-y-auto border-t px-3 py-2">
           {n.paletteGroups.map((g) => (
             <div key={g.label} className="mb-2 last:mb-0">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {g.label}
               </p>
               <ul className="space-y-1">

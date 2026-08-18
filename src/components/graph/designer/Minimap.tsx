@@ -2,7 +2,8 @@
 
 import React, { useRef } from "react";
 import { isContainerType, type DesignerNode } from "./serialize";
-import { NODE_WIDTH, NODE_HEIGHT, AGGREGATE_DEFAULT_WIDTH, AGGREGATE_DEFAULT_HEIGHT } from "./DesignerCanvas";
+import { AGGREGATE_DEFAULT_WIDTH, AGGREGATE_DEFAULT_HEIGHT } from "./link-geom";
+import { sizeOfType, type NotationId } from "@/lib/notations";
 import { minimapScale, viewportRect, miniPointToCanvas } from "./minimap-geom";
 
 const MINI_W = 168;
@@ -22,9 +23,12 @@ export function Minimap({
   zoom,
   canvasSize,
   viewport,
+  notation,
   onNavigate,
 }: {
   nodes: Map<string, DesignerNode>;
+  /** Notación de la vista: decide el tamaño del nodo suelto (C4 es más grande). */
+  notation?: NotationId;
   zoom: number;
   canvasSize: number;
   viewport: { left: number; top: number; w: number; h: number };
@@ -65,8 +69,9 @@ export function Minimap({
         <rect width={MINI_W} height={MINI_H} className="fill-muted/40" />
         {list.map((n) => {
           const isC = isContainerType(n.tipo_elemento);
-          const w = (n.width ?? (isC ? AGGREGATE_DEFAULT_WIDTH : NODE_WIDTH)) * s;
-          const h = (n.height ?? (isC ? AGGREGATE_DEFAULT_HEIGHT : NODE_HEIGHT)) * s;
+          // Igual que en el lienzo: el tamaño guardado manda sólo en contenedores.
+          const w = (isC ? n.width ?? AGGREGATE_DEFAULT_WIDTH : sizeOfType(n.tipo_elemento, notation).w) * s;
+          const h = (isC ? n.height ?? AGGREGATE_DEFAULT_HEIGHT : sizeOfType(n.tipo_elemento, notation).h) * s;
           return (
             <rect
               key={n.id}

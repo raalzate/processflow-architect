@@ -30,8 +30,9 @@ import {
   AtSign,
 } from "lucide-react";
 import { getDefinition } from "@/lib/artifacts/registry";
+import { resolveContextRevisions } from "@/lib/artifacts/versioning";
 import { Markdown } from "./Markdown";
-import type { AgentStep, AgentDocument } from "@/lib/agent-types";
+import type { AgentStep, AgentDocument, Artifact } from "@/lib/agent-types";
 
 /**
  * Tipos aceptados. PDF funciona en todos los proveedores: nativo con Gemini, vía
@@ -59,9 +60,9 @@ const SUGGESTIONS = [
 ];
 
 function StepIcon({ type }: { type: AgentStep["type"] }) {
-  if (type === "thought") return <Brain className="h-3.5 w-3.5 text-violet-500" />;
-  if (type === "action") return <Wrench className="h-3.5 w-3.5 text-sky-500" />;
-  return <Eye className="h-3.5 w-3.5 text-emerald-500" />;
+  if (type === "thought") return <Brain className="h-3.5 w-3.5 text-primary" />;
+  if (type === "action") return <Wrench className="h-3.5 w-3.5 text-info" />;
+  return <Eye className="h-3.5 w-3.5 text-success" />;
 }
 
 function StepsTrace({ steps }: { steps: AgentStep[] }) {
@@ -193,7 +194,19 @@ export function AgentChatPanel() {
     await sendMessage(text);
   };
 
-  const contextArtifacts = artifacts.filter((a) => contextArtifactIds.includes(a.id));
+  // Los chips muestran lo que de verdad se va a inyectar: la revisión vigente
+  // de cada linaje marcado, sin repetir (FR-010 de 004-artefactos-versionados).
+  const contextArtifacts = resolveContextRevisions(artifacts, contextArtifactIds);
+
+  /** Quitar un chip desmarca todas las revisiones de ese linaje. */
+  const quitarContexto = (a: Artifact) => {
+    const linaje = a.lineageId ?? a.id;
+    const marcados = contextArtifactIds.filter((id) => {
+      const art = artifacts.find((x) => x.id === id);
+      return art && (art.lineageId ?? art.id) === linaje;
+    });
+    (marcados.length ? marcados : [a.id]).forEach(toggleContextArtifact);
+  };
 
   return (
     <div
@@ -227,7 +240,7 @@ export function AgentChatPanel() {
                 <button
                   key={s}
                   onClick={() => setInput(s)}
-                  className="rounded-full border px-2 py-1 text-[11px] hover:bg-muted"
+                  className="rounded-full border px-2 py-1 text-2xs hover:bg-muted"
                 >
                   {s}
                 </button>
@@ -266,7 +279,7 @@ export function AgentChatPanel() {
                   {m.attachments.map((a) => (
                     <span
                       key={a.name}
-                      className="flex max-w-[160px] items-center gap-1 rounded bg-primary-foreground/15 px-1.5 py-0.5 text-[10px]"
+                      className="flex max-w-[160px] items-center gap-1 rounded-md bg-primary-foreground/15 px-1.5 py-0.5 text-2xs"
                     >
                       <FileText className="h-2.5 w-2.5 shrink-0" />
                       <span className="truncate">{a.name}</span>
@@ -294,13 +307,16 @@ export function AgentChatPanel() {
       {/* Chips de contexto inyectado */}
       {contextArtifacts.length > 0 && (
         <div className="flex flex-wrap items-center gap-1 border-t px-1 py-2">
-          <span className="text-[11px] text-muted-foreground">Contexto:</span>
+          <span className="text-2xs text-muted-foreground">Contexto:</span>
           {contextArtifacts.map((a) => {
             const def = getDefinition(a.kind);
             return (
-              <Badge key={a.id} variant="outline" className="gap-1 text-[11px]">
+              <Badge key={a.id} variant="outline" className="gap-1 text-2xs">
                 {def.label}
-                <button onClick={() => toggleContextArtifact(a.id)} title="Quitar">
+                {a.revision && a.revision > 1 && (
+                  <span className="font-semibold text-primary">v{a.revision}</span>
+                )}
+                <button onClick={() => quitarContexto(a)} title="Quitar">
                   <X className="h-3 w-3" />
                 </button>
               </Badge>
@@ -308,7 +324,7 @@ export function AgentChatPanel() {
           })}
           <button
             onClick={clearContextArtifacts}
-            className="ml-1 text-[11px] text-muted-foreground hover:text-foreground"
+            className="ml-1 text-2xs text-muted-foreground hover:text-foreground"
           >
             limpiar
           </button>
@@ -318,11 +334,11 @@ export function AgentChatPanel() {
       {/* Vistas inyectadas como contexto */}
       {injectedViews.length > 0 && (
         <div className="flex flex-wrap items-center gap-1 border-t px-1 py-2">
-          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1 text-2xs text-muted-foreground">
             <Pin className="h-3 w-3 fill-primary text-primary" /> Vistas:
           </span>
           {injectedViews.map((v) => (
-            <Badge key={v.id} variant="outline" className="gap-1 text-[11px]">
+            <Badge key={v.id} variant="outline" className="gap-1 text-2xs">
               {v.name}
               <button onClick={() => toggleInject(v.id)} title="Quitar del contexto">
                 <X className="h-3 w-3" />
@@ -335,9 +351,9 @@ export function AgentChatPanel() {
       {/* Documentos adjuntos */}
       {attachments.length > 0 && (
         <div className="flex flex-wrap items-center gap-1 border-t px-1 py-2">
-          <span className="text-[11px] text-muted-foreground">Adjuntos:</span>
+          <span className="text-2xs text-muted-foreground">Adjuntos:</span>
           {attachments.map((d) => (
-            <Badge key={d.name} variant="secondary" className="max-w-[180px] gap-1 text-[11px]">
+            <Badge key={d.name} variant="secondary" className="max-w-[180px] gap-1 text-2xs">
               <FileText className="h-3 w-3 shrink-0" />
               <span className="truncate">{d.name}</span>
               <button onClick={() => removeAttachment(d.name)} title="Quitar">
@@ -362,7 +378,7 @@ export function AgentChatPanel() {
           {/* Menú de mención "@" → incluir vistas como contexto */}
           {mentionQuery !== null && (
             <div className="absolute bottom-full left-2 z-30 mb-1 max-h-56 w-64 overflow-auto rounded-lg border bg-popover p-1 shadow-lg">
-              <div className="px-2 py-1 text-[11px] text-muted-foreground">Incluir vista en el contexto</div>
+              <div className="px-2 py-1 text-2xs text-muted-foreground">Incluir vista en el contexto</div>
               {mentionMatches.length === 0 ? (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">Sin vistas que coincidan.</div>
               ) : (
@@ -375,14 +391,14 @@ export function AgentChatPanel() {
                         e.preventDefault();
                         applyMention(v.id);
                       }}
-                      className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted"
+                      className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted"
                     >
                       <span className="flex items-center gap-1.5 truncate">
                         <AtSign className="h-3 w-3 text-primary" />
                         {v.name}
-                        <span className="text-[10px] text-muted-foreground">· {v.kind}</span>
+                        <span className="text-2xs text-muted-foreground">· {v.kind}</span>
                       </span>
-                      {already && <span className="text-[10px] text-primary">incluida</span>}
+                      {already && <span className="text-2xs text-primary">incluida</span>}
                     </button>
                   );
                 })
@@ -438,11 +454,11 @@ export function AgentChatPanel() {
         </div>
 
         <div className="mt-1 flex items-center justify-between px-1">
-          <span className="text-[11px] text-muted-foreground">Enter para enviar · Shift+Enter salto de línea</span>
+          <span className="text-2xs text-muted-foreground">Enter para enviar · Shift+Enter salto de línea</span>
           {messages.length > 0 && (
             <button
               onClick={clearChat}
-              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+              className="flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
             >
               <Trash2 className="h-3 w-3" /> Limpiar
             </button>

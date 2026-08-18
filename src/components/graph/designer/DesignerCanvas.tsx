@@ -81,6 +81,14 @@ import {
 } from "@/components/ui/dialog";
 import { NOTATION_HELP } from "@/lib/notation-help";
 import { cn } from "@/lib/utils";
+import { splitEdgeLabel } from "@/lib/edge-label";
+import {
+  clampPanelWidth,
+  isAtLimit,
+  readPanelWidth,
+  TOOLBOX_LIMITS,
+  TOOLBOX_WIDTH_KEY,
+} from "@/lib/panel-size";
 import {
   Select,
   SelectContent,
@@ -91,7 +99,11 @@ import {
 import {
   ALL_ELEMENTS,
   getNotation,
+  defaultRoutingFor,
+  isBlobContainer,
   isSwimlaneContainer,
+  labelLayoutOfType,
+  sizeOfType,
   NOTATION_LIST,
   DEFAULT_NOTATION_ID,
   type Notation,
@@ -99,10 +111,29 @@ import {
   type ShapeKind,
 } from "@/lib/notations";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
+import {
+  clipToShape,
+  linkEndpoints,
+  linkGeometry,
+  nodeBox,
+  shapeForType,
+  simplifyPath,
+  AGGREGATE_DEFAULT_WIDTH,
+  AGGREGATE_DEFAULT_HEIGHT,
+} from "./link-geom";
 
-// --- Constantes de layout (compartidas con serialize.ts) ---
-export const NODE_WIDTH = 160;
-export const NODE_HEIGHT = 60;
+// La geometría vive en `link-geom.ts` (puro y con pruebas); se reexporta para no
+// cambiar los imports de quien ya la tomaba de este archivo.
+export {
+  clipToShape,
+  linkEndpoints,
+  linkGeometry,
+  nodeBox,
+  shapeForType,
+  simplifyPath,
+  AGGREGATE_DEFAULT_WIDTH,
+  AGGREGATE_DEFAULT_HEIGHT,
+};
 
 /**
  * Etiqueta de arista: se dibuja suelta sobre la línea, así que su largo es lo que
@@ -111,7 +142,7 @@ export const NODE_HEIGHT = 60;
  * avisa al agente que la escribió para que la acorte en el modelo.
  */
 export const EDGE_LABEL_MAX_CHARS = 34;
-/** Ancho aproximado de un carácter a `text-[10px] font-semibold`, para el halo. */
+/** Ancho aproximado de un carácter a `text-2xs font-semibold`, para el halo. */
 export const EDGE_LABEL_CHAR_PX = 5.4;
 
 export function truncateEdgeLabel(label: string): string {
@@ -120,8 +151,6 @@ export function truncateEdgeLabel(label: string): string {
     ? `${limpio.slice(0, EDGE_LABEL_MAX_CHARS - 1)}…`
     : limpio;
 }
-export const AGGREGATE_DEFAULT_WIDTH = 500;
-export const AGGREGATE_DEFAULT_HEIGHT = 400;
 
 // Resolución NOMBRE → componente de icono (notations.ts referencia iconos por string).
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -138,10 +167,15 @@ const ICON_MAP: Record<string, React.ElementType> = {
 export const iconForType = (type: string): React.ElementType =>
   ICON_MAP[ALL_ELEMENTS[type]?.icon ?? ""] || FilePlus;
 
+/**
+ * Color de caída para un tipo que no está en el registro. Sigue la misma regla
+ * que el resto de la simbología —relleno oscuro, letra clara— para que un tipo
+ * desconocido se vea neutro pero legible, y no como un agujero blanco.
+ */
 const defaultColor = {
-  bg: "fill-gray-100",
-  border: "border-gray-300",
-  text: "text-gray-800",
+  bg: "fill-muted",
+  border: "border-border",
+  text: "text-muted-foreground",
 };
 
 /**
@@ -182,12 +216,11 @@ const ChangeStateBadge: React.FC<{ estado?: DesignerNode["estado_comparativo"]; 
 // Colores derivados del registro GLOBAL de notaciones (cualquier tipo de cualquier grupo).
 const colorForType = (
   type: string
-): { bg: string; border: string; text: string; paletteText?: string } => {
+): { bg: string; border: string; text: string } => {
   const e = ALL_ELEMENTS[type];
-  return e ? { bg: e.bg, border: e.border, text: e.text, paletteText: e.paletteText } : defaultColor;
+  return e ? { bg: e.bg, border: e.border, text: e.text } : defaultColor;
 };
 
-const shapeForType = (type: string): ShapeKind => ALL_ELEMENTS[type]?.shape ?? "rounded";
 
 /**
  * Dibuja la silueta SVG de un nodo NO contenedor según su forma. `fill` y `stroke`
@@ -279,13 +312,13 @@ const PaletteItem: React.FC<{
       className={cn(
         "flex items-center space-x-2 p-2 border rounded-md shadow-sm cursor-grab active:cursor-grabbing transition-all",
         // `bg` es `fill-*` (SVG del lienzo); en el chip HTML lo traducimos a `bg-*`
-        // para dar un fondo pastel SÓLIDO. Así el chip es legible en claro y oscuro
-        // (si fuera transparente heredaría el panel oscuro y el texto se perdería).
+        // para que el chip se vea como se verá el nodo: mismo relleno, mismo texto.
         color.bg.replace("fill-", "bg-"),
         color.border,
-        // Texto oscuro de la notación sobre el pastel claro (los tipos C4 con texto
-        // blanco usan su color alterno `paletteText` para seguir legibles aquí).
-        color.paletteText ?? color.text,
+        // El chip lleva el MISMO texto que el nodo: con la app oscura, su fondo y
+        // el del nodo son el mismo, y un tono pensado para fondo blanco quedaba
+        // negro sobre negro.
+        color.text,
         // El chip anticipa la simbología: frontera lógica = punteado; swimlane
         // BPMN = línea continua (como se dibujará en el lienzo).
         isContainer && "font-semibold",
@@ -334,6 +367,47 @@ export const Toolbox: React.FC<{
   const active: Notation = getNotation(notationId);
   const help = helpType ? NOTATION_HELP[helpType] : null;
 
+  // Ancho flexible pero con topes (src/lib/panel-size.ts): la paleta se adapta a
+  // nombres largos sin comerse el lienzo. Se recuerda entre sesiones.
+  const [width, setWidth] = React.useState(TOOLBOX_LIMITS.default);
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+  const [resizing, setResizing] = React.useState(false);
+
+  React.useEffect(() => {
+    try {
+      setWidth(readPanelWidth(localStorage.getItem(TOOLBOX_WIDTH_KEY), TOOLBOX_LIMITS));
+    } catch {
+      /* sin localStorage: se queda con el default */
+    }
+  }, []);
+
+  const aplicarAncho = React.useCallback((px: number) => {
+    const w = clampPanelWidth(px, TOOLBOX_LIMITS);
+    setWidth(w);
+    try {
+      localStorage.setItem(TOOLBOX_WIDTH_KEY, String(w));
+    } catch {
+      /* ignore quota */
+    }
+  }, []);
+
+  // El arrastre se escucha en `window`: si el puntero se sale del tirador (y con
+  // los topes se sale seguro), el gesto tiene que seguir vivo.
+  React.useEffect(() => {
+    if (!resizing) return;
+    const izquierda = panelRef.current?.getBoundingClientRect().left ?? 0;
+    const mover = (e: MouseEvent) => aplicarAncho(e.clientX - izquierda);
+    const soltar = () => setResizing(false);
+    window.addEventListener("mousemove", mover);
+    window.addEventListener("mouseup", soltar);
+    return () => {
+      window.removeEventListener("mousemove", mover);
+      window.removeEventListener("mouseup", soltar);
+    };
+  }, [resizing, aplicarAncho]);
+
+  const limite = isAtLimit(width, TOOLBOX_LIMITS);
+
   const handleDragStart = (e: React.DragEvent, item: any) => {
     e.dataTransfer.setData("application/json", JSON.stringify(item));
     e.dataTransfer.effectAllowed = "copy";
@@ -343,8 +417,57 @@ export const Toolbox: React.FC<{
     setCollapsed((prev) => ({ ...prev, [label]: !prev[label] }));
 
   return (
-    <div className="flex-shrink-0 w-60 bg-background p-3 space-y-4 overflow-y-auto shadow-lg z-10 border-r">
-      <div>
+    // El scroll vive en el hijo: así el tirador queda fijo al borde y no se va
+    // con el contenido al bajar por la paleta.
+    <div
+      ref={panelRef}
+      style={{ width }}
+      className={cn(
+        "relative flex-shrink-0 flex flex-col bg-background shadow-lg z-10 border-r",
+        resizing && "select-none"
+      )}
+    >
+      {/* Tirador de ancho. Doble clic vuelve al ancho por defecto; con foco,
+          las flechas mueven de a 16 px (y de a 1 con Shift). */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Ancho de la paleta"
+        aria-valuenow={width}
+        aria-valuemin={TOOLBOX_LIMITS.min}
+        aria-valuemax={TOOLBOX_LIMITS.max}
+        tabIndex={0}
+        title={
+          limite === "min"
+            ? "Ancho mínimo alcanzado"
+            : limite === "max"
+              ? "Ancho máximo alcanzado"
+              : "Arrastrar para cambiar el ancho · doble clic para restablecer"
+        }
+        onMouseDown={(e) => {
+          e.preventDefault();
+          setResizing(true);
+        }}
+        onDoubleClick={() => aplicarAncho(TOOLBOX_LIMITS.default)}
+        onKeyDown={(e) => {
+          const paso = e.shiftKey ? 1 : 16;
+          if (e.key === "ArrowLeft") aplicarAncho(width - paso);
+          else if (e.key === "ArrowRight") aplicarAncho(width + paso);
+          else if (e.key === "Home") aplicarAncho(TOOLBOX_LIMITS.min);
+          else if (e.key === "End") aplicarAncho(TOOLBOX_LIMITS.max);
+          else return;
+          e.preventDefault();
+        }}
+        className={cn(
+          "absolute inset-y-0 right-0 z-20 w-1.5 cursor-col-resize transition-colors",
+          "hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none",
+          resizing && "bg-primary/60",
+          // Pegado a un tope: el cursor lo dice antes de que el usuario insista.
+          limite === "min" && "cursor-e-resize",
+          limite === "max" && "cursor-w-resize"
+        )}
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-2 px-1">
           Elementos
         </h3>
@@ -389,7 +512,7 @@ export const Toolbox: React.FC<{
                     <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                   )}
                   <span className="truncate">{group.label}</span>
-                  <span className="ml-auto text-[10px] font-medium text-muted-foreground/70">
+                  <span className="ml-auto text-2xs font-medium text-muted-foreground/70">
                     {group.types.length}
                   </span>
                 </button>
@@ -441,6 +564,11 @@ export const Toolbox: React.FC<{
 
 interface NodeComponentProps {
   node: DesignerNode;
+  /**
+   * Notación de la vista. Hace falta porque hay tipos con el mismo nombre en dos
+   * notaciones ("Sistema Externo" en DDD y en C4) que se dibujan distinto.
+   */
+  notation?: NotationId;
   isSelected: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
   onResizeMouseDown: (e: React.MouseEvent) => void;
@@ -484,7 +612,7 @@ const SubProcessMarker: React.FC<{ cx: number; y: number; onOpen: () => void }> 
       width={18}
       height={14}
       rx={2}
-      className="fill-white stroke-gray-400 transition-colors hover:fill-blue-50 hover:stroke-blue-500"
+      className="fill-white dark:fill-zinc-800 stroke-gray-400 dark:stroke-zinc-500 transition-colors hover:fill-blue-50 dark:hover:fill-blue-950 hover:stroke-blue-500"
       strokeWidth={1.5}
     />
     <line x1={cx} y1={y + 3} x2={cx} y2={y + 11} className="stroke-gray-600" strokeWidth={1.5} />
@@ -533,8 +661,48 @@ const ConnectPorts: React.FC<{
   );
 };
 
+/**
+ * Silueta de un CONTENEDOR: elipse en los blob (mapa de conceptos), rectángulo
+ * en el resto. Vive a nivel de módulo a propósito: definida dentro del render,
+ * cada pasada crearía un tipo de componente distinto y React desmontaría la
+ * figura —perdiendo sus transiciones justo al arrastrar o seleccionar—.
+ */
+const ContainerShape: React.FC<{
+  blob: boolean;
+  width: number;
+  height: number;
+  radius: number;
+  strokeDash?: string;
+  className: string;
+  strokeWidth: number;
+  style?: React.CSSProperties;
+}> = ({ blob, width, height, radius, strokeDash, className, strokeWidth, style }) =>
+  blob ? (
+    <ellipse
+      cx={width / 2}
+      cy={height / 2}
+      rx={width / 2}
+      ry={height / 2}
+      className={className}
+      strokeWidth={strokeWidth}
+      strokeDasharray={strokeDash}
+      style={style}
+    />
+  ) : (
+    <rect
+      width={width}
+      height={height}
+      rx={radius}
+      className={className}
+      strokeWidth={strokeWidth}
+      strokeDasharray={strokeDash}
+      style={style}
+    />
+  );
+
 export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   node,
+  notation,
   isSelected,
   onMouseDown,
   onResizeMouseDown,
@@ -571,8 +739,11 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
     // lateral con el nombre rotado — la simbología canónica del participante.
     // El resto de contenedores son fronteras lógicas: marco punteado.
     const swimlane = isSwimlaneContainer(node.tipo_elemento);
+    // Blob (mapa de conceptos DDD): elipse punteada, nombre en el borde inferior.
+    const blob = isBlobContainer(node.tipo_elemento);
     const strokeDash = swimlane ? undefined : isContext ? "10 10" : "5 5";
     const radius = swimlane ? 0 : 12;
+    /** Silueta del contenedor: elipse en los blobs, rectángulo en el resto. */
     const BAND = 28; // ancho de la banda del nombre, en coords del lienzo
     return (
       <g
@@ -591,17 +762,18 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           isDeleted && "opacity-60"
         )}
       >
-        <rect
+        <ContainerShape
+          blob={blob}
           width={width}
           height={height}
-          rx={radius}
+          radius={radius}
+          strokeDash={strokeDash}
           className={cn(
             "stroke-2 transition-all",
             meta?.transparent ? "fill-transparent" : color.bg,
             isSelected ? "stroke-blue-600" : meta?.stroke ?? color.border
           )}
           strokeWidth={isSelected ? 3 : 2}
-          strokeDasharray={strokeDash}
           // Colores personalizados del contenedor: fondo siempre; borde sólo sin selección.
           style={{
             ...(node.color ? { fill: node.color } : {}),
@@ -625,6 +797,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               transform={`translate(${BAND / 2},${height / 2}) rotate(-90)`}
               textAnchor="middle"
               dominantBaseline="central"
+              // En SVG el color del texto es `fill`; sin esto cae a negro.
+              fill="currentColor"
               className={cn(
                 "text-sm font-semibold pointer-events-none select-none",
                 color.text,
@@ -634,10 +808,27 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               {node.nombre}
             </text>
           </>
+        ) : blob ? (
+          // El nombre va DENTRO del borde de abajo: en una elipse las esquinas
+          // no existen, y ahí el óvalo ya no tapa a ningún hijo.
+          <text
+            x={width / 2}
+            y={height - 14}
+            textAnchor="middle"
+            fill="currentColor"
+            className={cn(
+              "text-base font-semibold pointer-events-none select-none",
+              color.text,
+              isDeleted && "line-through"
+            )}
+          >
+            {node.nombre}
+          </text>
         ) : (
           <text
             x="12"
             y="24"
+            fill="currentColor"
             className={cn(
               "text-lg font-bold pointer-events-none select-none",
               color.text,
@@ -658,24 +849,25 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           />
           <path
             d={`M${width - 10},${height} L${width},${height - 10}`}
-            className={cn(isSelected ? "stroke-blue-600" : meta?.stroke ?? "stroke-gray-400")}
+            className={cn(isSelected ? "stroke-blue-600" : meta?.stroke ?? "stroke-gray-400 dark:stroke-zinc-500")}
             strokeWidth="2"
           />
           <path
             d={`M${width - 6},${height} L${width},${height - 6}`}
-            className={cn(isSelected ? "stroke-blue-600" : meta?.stroke ?? "stroke-gray-400")}
+            className={cn(isSelected ? "stroke-blue-600" : meta?.stroke ?? "stroke-gray-400 dark:stroke-zinc-500")}
             strokeWidth="2"
           />
         </g>
         {/* Resalte al pasar por encima mientras se conecta (posible destino). */}
         {connecting && (
-          <rect
+          <ContainerShape
+            blob={blob}
             width={width}
             height={height}
-            rx={radius}
+            radius={radius}
+            strokeDash={strokeDash}
             className="fill-transparent stroke-blue-400 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity"
             strokeWidth={3}
-            strokeDasharray={strokeDash}
           />
         )}
         {hasSubView && <SubProcessMarker cx={width / 2} y={height - 18} onOpen={onOpenSubView!} />}
@@ -697,7 +889,12 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         ? "double"
         : undefined;
   const labelOutside = compact || shape === "diamond";
-  const sideInset = compact ? (NODE_WIDTH - NODE_HEIGHT) / 2 : 0;
+  // Tamaño declarado por la notación del tipo (C4 es más grande: su ficha lleva
+  // tres líneas). Los símbolos compactos se dibujan cuadrados dentro de la caja.
+  const { w: nodeW, h: nodeH } = sizeOfType(node.tipo_elemento, notation);
+  const sideInset = compact ? (nodeW - nodeH) / 2 : 0;
+  // Ficha C4: icono chico arriba a la izquierda, y nombre · descripción · [Tipo].
+  const detail = !labelOutside && labelLayoutOfType(node.tipo_elemento, notation) === "detail";
 
   return (
     <g
@@ -718,8 +915,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
     >
       <NodeShape
         shape={shape}
-        w={NODE_WIDTH}
-        h={NODE_HEIGHT}
+        w={nodeW}
+        h={nodeH}
         compact={compact}
         ring={eventRing}
         className={cn(
@@ -739,43 +936,90 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           ...(!isSelected && node.borderColor ? { stroke: node.borderColor } : {}),
         }}
       />
-      <foreignObject width={NODE_WIDTH} height={NODE_HEIGHT} className="pointer-events-none">
-        <div
-          className={cn(
-            "w-full h-full flex flex-col items-center justify-center p-2 text-center",
-            color.text,
-            // Deja aire para el badge de subproceso apoyado en el borde inferior.
-            hasSubView && !labelOutside && "pb-3"
-          )}
-        >
-          {/* Símbolos UML canónicos (punto inicial, rombo de decisión): sin icono. */}
-          {!meta?.hideIcon && <Icon className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")} />}
-          {!labelOutside && (
-            <p
-              className={cn(
-                // Ajusta el texto y lo acota con elipsis DENTRO de la caja en vez
-                // de desbordarse: nombres cortos se ven completos; los largos se
-                // recortan con «…» sin invadir nodos vecinos.
-                "text-xs font-bold leading-tight select-none break-words max-w-full",
-                meta?.hideIcon ? "line-clamp-3" : "line-clamp-2",
-                isDeleted && "line-through"
+      <foreignObject width={nodeW} height={nodeH} className="pointer-events-none">
+        {detail ? (
+          // La FICHA: el icono no compite con el texto —va chico, arriba a la
+          // izquierda— y el bloque central se lee como una tarjeta: qué es, para
+          // qué sirve y de qué tipo es. Es el rotulado de todas las notaciones.
+          <div
+            className={cn(
+              "w-full h-full relative pt-5 pb-2",
+              color.text,
+              // En un óvalo el ancho útil se angosta al alejarse del eje: con el
+              // padding del rectángulo, el nombre se sale por los costados.
+              shape === "ellipse" ? "px-9" : "px-3",
+            )}
+          >
+            {/* En el óvalo el icono se mete hacia adentro para no caer fuera de la curva. */}
+            {!meta?.hideIcon && (
+              <Icon
+                className={cn(
+                  "w-4 h-4 absolute top-2 opacity-90",
+                  shape === "ellipse" ? "left-8" : "left-2",
+                )}
+              />
+            )}
+            <div className="h-full flex flex-col items-center justify-center text-center gap-0.5">
+              <p
+                className={cn(
+                  "text-sm font-bold leading-tight select-none break-words max-w-full line-clamp-2",
+                  isDeleted && "line-through"
+                )}
+              >
+                {node.nombre}
+              </p>
+              {!!node.descripcion && (
+                <p className="text-2xs leading-tight opacity-80 select-none break-words max-w-full line-clamp-2">
+                  {node.descripcion}
+                </p>
               )}
-            >
-              {node.nombre}
-            </p>
-          )}
-          {/* Línea de tecnología al estilo C4: [java, spring mvc]. */}
-          {!labelOutside && !!node.tags_tecnologia?.length && (
-            <p className="text-[10px] italic leading-tight opacity-80 truncate max-w-full select-none">
-              [{node.tags_tecnologia.join(", ")}]
-            </p>
-          )}
-        </div>
+              <p className="text-2xs leading-tight opacity-70 select-none truncate max-w-full">
+                [{node.tipo_elemento}
+                {node.tags_tecnologia?.length ? `: ${node.tags_tecnologia.join(", ")}` : ""}]
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div
+            className={cn(
+              "w-full h-full flex flex-col items-center justify-center p-2 text-center",
+              color.text,
+              // En un óvalo el ancho útil se angosta al alejarse del eje: con el
+              // padding del rectángulo, el nombre se salía por los costados.
+              shape === "ellipse" && !compact && "px-5",
+              // Deja aire para el badge de subproceso apoyado en el borde inferior.
+              hasSubView && !labelOutside && "pb-3"
+            )}
+          >
+            {/* Símbolos UML canónicos (punto inicial, rombo de decisión): sin icono. */}
+            {!meta?.hideIcon && <Icon className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")} />}
+            {!labelOutside && (
+              <p
+                className={cn(
+                  // Ajusta el texto y lo acota con elipsis DENTRO de la caja en vez
+                  // de desbordarse: nombres cortos se ven completos; los largos se
+                  // recortan con «…» sin invadir nodos vecinos.
+                  "text-xs font-bold leading-tight select-none break-words max-w-full",
+                  meta?.hideIcon ? "line-clamp-3" : "line-clamp-2",
+                  isDeleted && "line-through"
+                )}
+              >
+                {node.nombre}
+              </p>
+            )}
+            {/* Línea de tecnología al estilo C4: [java, spring mvc]. */}
+            {!labelOutside && !!node.tags_tecnologia?.length && (
+              <p className="text-2xs italic leading-tight opacity-80 truncate max-w-full select-none">
+                [{node.tags_tecnologia.join(", ")}]
+              </p>
+            )}
+          </div>
+        )}
       </foreignObject>
       {labelOutside && (
         <foreignObject
-          y={NODE_HEIGHT + 4}
-          width={NODE_WIDTH}
+          y={nodeH + 4}
+          width={nodeW}
           height={44}
           className="pointer-events-none overflow-visible"
         >
@@ -794,15 +1038,15 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       )}
       {/* Badge de subproceso apoyado sobre el borde inferior (mitad fuera),
           como el marcador estándar BPMN: no invade el área del nombre. */}
-      {hasSubView && <SubProcessMarker cx={NODE_WIDTH / 2} y={NODE_HEIGHT - 7} onOpen={onOpenSubView!} />}
+      {hasSubView && <SubProcessMarker cx={nodeW / 2} y={nodeH - 7} onOpen={onOpenSubView!} />}
       <ChangeStateBadge
         estado={node.estado_comparativo}
         // Esquina superior derecha de la FORMA dibujada (no de la caja lógica).
-        x={compact ? NODE_WIDTH / 2 + NODE_HEIGHT / 2 : NODE_WIDTH - 2}
+        x={compact ? nodeW / 2 + nodeH / 2 : nodeW - 2}
       />
       <ConnectPorts
-        w={NODE_WIDTH}
-        h={NODE_HEIGHT}
+        w={nodeW}
+        h={nodeH}
         sideInset={sideInset}
         connecting={connecting}
         onStartConnect={onStartConnect}
@@ -818,6 +1062,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
 interface LinkComponentProps {
   link: DesignerLink;
   nodes: Map<string, DesignerNode>;
+  /** Notación de la vista: decide el trazo y el tamaño de los nodos que une. */
+  notation?: NotationId;
   isSelected: boolean;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
@@ -825,172 +1071,30 @@ interface LinkComponentProps {
   onLineDoubleClick?: (e: React.MouseEvent) => void;
 }
 
-// Recorta un extremo al CONTORNO de la forma (en la dirección que sale del centro),
-// así la línea nace/termina en el borde y nunca cruza el interior (clave con relleno
-// transparente). Soporta elipse, rombo y rectángulo (contenedores → rectángulo).
-const clipToShape = (
-  cx: number,
-  cy: number,
-  hw: number,
-  hh: number,
-  shape: ShapeKind,
-  dirX: number,
-  dirY: number
-) => {
-  if (dirX === 0 && dirY === 0) return { x: cx, y: cy };
-  let scale: number;
-  if (shape === "ellipse") {
-    scale = 1 / Math.sqrt((dirX / hw) ** 2 + (dirY / hh) ** 2);
-  } else if (shape === "diamond") {
-    scale = 1 / (Math.abs(dirX) / hw + Math.abs(dirY) / hh);
-  } else {
-    scale = 1 / Math.max(Math.abs(dirX) / hw, Math.abs(dirY) / hh);
-  }
-  return { x: cx + dirX * scale, y: cy + dirY * scale };
-};
-
-/**
- * Calcula los puntos de inicio/fin de un enlace: si hay ancla del usuario la
- * punta va exacta ahí; si no, se recorta al borde de la forma apuntando al otro
- * extremo. Compartido por el trazo y por las manijas de reanclado.
- */
-export function linkEndpoints(
-  link: DesignerLink,
-  nodes: Map<string, DesignerNode>
-): { start: { x: number; y: number }; end: { x: number; y: number } } | null {
-  const sourceNode = nodes.get(link.sourceId);
-  const targetNode = nodes.get(link.targetId);
-  if (!sourceNode || !targetNode) return null;
-  const isContainer = (t: string) => isContainerType(t);
-
-  const sw = (isContainer(sourceNode.tipo_elemento) ? sourceNode.width || AGGREGATE_DEFAULT_WIDTH : NODE_WIDTH) / 2;
-  const sh = (isContainer(sourceNode.tipo_elemento) ? sourceNode.height || AGGREGATE_DEFAULT_HEIGHT : NODE_HEIGHT) / 2;
-  const tw = (isContainer(targetNode.tipo_elemento) ? targetNode.width || AGGREGATE_DEFAULT_WIDTH : NODE_WIDTH) / 2;
-  const th = (isContainer(targetNode.tipo_elemento) ? targetNode.height || AGGREGATE_DEFAULT_HEIGHT : NODE_HEIGHT) / 2;
-  const scx = sourceNode.x + sw;
-  const scy = sourceNode.y + sh;
-  const tcx = targetNode.x + tw;
-  const tcy = targetNode.y + th;
-  if (scx === tcx && scy === tcy && !link.sourceAnchor && !link.targetAnchor) return null;
-
-  const sAnchorPt = link.sourceAnchor
-    ? { x: sourceNode.x + link.sourceAnchor.x * (2 * sw), y: sourceNode.y + link.sourceAnchor.y * (2 * sh) }
-    : null;
-  const tAnchorPt = link.targetAnchor
-    ? { x: targetNode.x + link.targetAnchor.x * (2 * tw), y: targetNode.y + link.targetAnchor.y * (2 * th) }
-    : null;
-  const sRef = sAnchorPt ?? { x: scx, y: scy };
-  const tRef = tAnchorPt ?? { x: tcx, y: tcy };
-
-  const sShape: ShapeKind = isContainer(sourceNode.tipo_elemento) ? "rect" : shapeForType(sourceNode.tipo_elemento);
-  const tShape: ShapeKind = isContainer(targetNode.tipo_elemento) ? "rect" : shapeForType(targetNode.tipo_elemento);
-  // Símbolos compactos (círculo/rombo pequeño): el contorno REAL es r = altura/2,
-  // no el ancho de la caja — sin esto la línea quedaría flotando antes del borde.
-  const sHw = ALL_ELEMENTS[sourceNode.tipo_elemento]?.compact ? Math.min(sw, sh) : sw;
-  const tHw = ALL_ELEMENTS[targetNode.tipo_elemento]?.compact ? Math.min(tw, th) : tw;
-  const start = sAnchorPt ?? clipToShape(scx, scy, sHw, sh, sShape, tRef.x - scx, tRef.y - scy);
-  const end = tAnchorPt ?? clipToShape(tcx, tcy, tHw, th, tShape, sRef.x - tcx, sRef.y - tcy);
-  return { start, end };
-}
-
-// Quita vértices casi coincidentes y colineales: así el ÚLTIMO segmento es el
-// real (la flecha orient=auto apunta bien) y el trazo queda sin dobleces redundantes.
-function simplifyPath(pts: Array<[number, number]>): Array<[number, number]> {
-  const clean: Array<[number, number]> = [];
-  for (const p of pts) {
-    const prev = clean[clean.length - 1];
-    if (prev && Math.abs(prev[0] - p[0]) < 1 && Math.abs(prev[1] - p[1]) < 1) continue;
-    clean.push(p);
-  }
-  for (let i = clean.length - 2; i >= 1; i--) {
-    const [ax, ay] = clean[i - 1];
-    const [bx, by] = clean[i];
-    const [cx, cy] = clean[i + 1];
-    if ((ax === bx && bx === cx) || (ay === by && by === cy)) clean.splice(i, 1);
-  }
-  return clean;
-}
-
-/**
- * Geometría completa del enlace: extremos + trazo SVG + posición de la etiqueta.
- * En enrutado escalonado expone el doblez automático (`bend`, cuando no hay
- * puntos de quiebre) y los puntos de quiebre del usuario (`waypoints`), todos
- * arrastrables. Compartida por el componente del enlace y la capa de manijas.
- */
-export function linkGeometry(link: DesignerLink, nodes: Map<string, DesignerNode>) {
-  const ep = linkEndpoints(link, nodes);
-  if (!ep) return null;
-  const { start, end } = ep;
-  const routing = link.routing ?? "straight";
-  let path: string;
-  let labelX = (start.x + end.x) / 2;
-  let labelY = (start.y + end.y) / 2;
-  let bend: { x: number; y: number } | null = null;
-  let waypoints: { x: number; y: number }[] = [];
-
-  if (routing === "curved") {
-    const len = Math.hypot(end.x - start.x, end.y - start.y) || 1;
-    const px = -(end.y - start.y) / len;
-    const py = (end.x - start.x) / len;
-    const bow = Math.min(80, len * 0.25);
-    const cx = labelX + px * bow;
-    const cy = labelY + py * bow;
-    path = `M${start.x},${start.y} Q${cx},${cy} ${end.x},${end.y}`;
-    // Vértice de la Bézier cuadrática en t=0.5 (para la etiqueta).
-    labelX = 0.25 * start.x + 0.5 * cx + 0.25 * end.x;
-    labelY = 0.25 * start.y + 0.5 * cy + 0.25 * end.y;
-  } else if (routing === "orthogonal") {
-    // Compat: grafos viejos usaban un único `midpoint`.
-    const ways =
-      link.midpoints && link.midpoints.length
-        ? link.midpoints
-        : link.midpoint
-        ? [link.midpoint]
-        : [];
-    let pts: Array<[number, number]>;
-    if (ways.length === 0) {
-      // Auto: un corredor según el eje dominante (esquina única sugerida).
-      if (Math.abs(end.x - start.x) >= Math.abs(end.y - start.y)) {
-        const cx = (start.x + end.x) / 2;
-        pts = [[start.x, start.y], [cx, start.y], [cx, end.y], [end.x, end.y]];
-        bend = { x: cx, y: (start.y + end.y) / 2 };
-      } else {
-        const cy = (start.y + end.y) / 2;
-        pts = [[start.x, start.y], [start.x, cy], [end.x, cy], [end.x, end.y]];
-        bend = { x: (start.x + end.x) / 2, y: cy };
-      }
-    } else {
-      // Poli-línea que pasa por cada punto de quiebre del usuario, en orden.
-      pts = [
-        [start.x, start.y],
-        ...ways.map((w) => [w.x, w.y] as [number, number]),
-        [end.x, end.y],
-      ];
-      waypoints = ways;
-    }
-    path = "M" + simplifyPath(pts).map((p) => `${p[0]},${p[1]}`).join(" L");
-  } else {
-    path = `M${start.x},${start.y} L${end.x},${end.y}`;
-  }
-
-  return { start, end, path, labelX, labelY, bend, waypoints };
-}
 
 export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   link,
   nodes,
+  notation,
   isSelected,
   onClick,
   onDoubleClick,
   onLineDoubleClick,
 }) => {
-  const geo = linkGeometry(link, nodes);
+  const geo = linkGeometry(link, nodes, notation);
   if (!geo) return null;
   const { path, labelX, labelY } = geo;
 
   // Etiqueta: se acota al ancho legible y el halo se ajusta al texto resultante.
-  const labelText = truncateEdgeLabel(link.descripcion ?? "");
-  const labelWidth = labelText.length * EDGE_LABEL_CHAR_PX + 10;
+  // `consume [HTTPS/JSON]` se parte en dos renglones: la acción y, debajo y más
+  // tenue, la tecnología — como en C4, donde esa segunda línea es la mitad del
+  // valor de la relación y en un solo renglón se pierde.
+  const { texto, nota } = splitEdgeLabel(link.descripcion);
+  const labelText = truncateEdgeLabel(texto);
+  const notaText = nota ? truncateEdgeLabel(nota) : "";
+  const labelWidth =
+    Math.max(labelText.length, notaText.length) * EDGE_LABEL_CHAR_PX + 10;
+  const labelHeight = notaText && labelText ? 30 : 20;
 
   // Dirección de la(s) flecha(s).
   const arrow = link.arrow ?? "end";
@@ -1011,7 +1115,7 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
         d={path}
         className={cn(
           "transition-all",
-          isSelected ? "stroke-blue-600" : link.color ? "" : "stroke-gray-400 opacity-60"
+          isSelected ? "stroke-blue-600" : link.color ? "" : "stroke-gray-400 dark:stroke-zinc-500 opacity-60 dark:opacity-90"
         )}
         strokeWidth={isSelected ? 2.5 : 1.5}
         markerEnd={markerEnd}
@@ -1028,26 +1132,42 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
             ~240 px) se desbordaba sin fondo, cruzando líneas, nodos y títulos de
             contenedor. Se acota a EDGE_LABEL_MAX_CHARS y el texto completo queda
             en el tooltip: una relación bien documentada no debe tapar el diagrama. */}
-        {!!labelText && (
+        {!!(labelText || notaText) && (
           <>
             <title>{link.descripcion}</title>
             <rect
               x={labelX - labelWidth / 2}
-              y={labelY - 10}
+              y={labelY - labelHeight / 2}
               width={labelWidth}
-              height="20"
-              className="fill-white/90"
+              height={labelHeight}
+              className="fill-canvas/90"
               rx="4"
             />
-            <text
-              x={labelX}
-              y={labelY}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              className="text-[10px] font-semibold text-gray-800 select-none pointer-events-none"
-            >
-              {labelText}
-            </text>
+            {!!labelText && (
+              <text
+                x={labelX}
+                // Con dos renglones, la acción sube para dejar sitio a la nota.
+                y={notaText ? labelY - 4 : labelY}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="currentColor"
+                className="text-2xs font-semibold text-foreground select-none pointer-events-none"
+              >
+                {labelText}
+              </text>
+            )}
+            {!!notaText && (
+              <text
+                x={labelX}
+                y={labelText ? labelY + 8 : labelY}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="currentColor"
+                className="text-2xs text-muted-foreground select-none pointer-events-none"
+              >
+                [{notaText}]
+              </text>
+            )}
           </>
         )}
       </g>
@@ -1062,11 +1182,13 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
 export const LinkEndpointHandles: React.FC<{
   link: DesignerLink;
   nodes: Map<string, DesignerNode>;
+  /** Notación de la vista: sin ella las manijas no caen sobre el trazo en C4. */
+  notation?: NotationId;
   onEndpointMouseDown: (e: React.MouseEvent, which: "source" | "target" | "bend") => void;
   onWaypointMouseDown: (e: React.MouseEvent, index: number) => void;
   onWaypointDoubleClick: (index: number) => void;
-}> = ({ link, nodes, onEndpointMouseDown, onWaypointMouseDown, onWaypointDoubleClick }) => {
-  const geo = linkGeometry(link, nodes);
+}> = ({ link, nodes, notation, onEndpointMouseDown, onWaypointMouseDown, onWaypointDoubleClick }) => {
+  const geo = linkGeometry(link, nodes, notation);
   if (!geo) return null;
   const { start, end, bend, waypoints } = geo;
   return (

@@ -192,7 +192,9 @@ describe("graph-constants", () => {
 
   it("nodeTypeColor cae a gris para un tipo fuera del registro", () => {
     expect(nodeTypeColor("Comando")).toMatch(/^bg-/);
-    expect(nodeTypeColor("TipoLibreDelUsuario")).toBe("bg-gray-400");
+    // Cambio intencional (spec 003): el gris de caída sale del tema, no de la
+    // paleta de Tailwind, para que respete el modo oscuro como el resto.
+    expect(nodeTypeColor("TipoLibreDelUsuario")).toBe("bg-muted-foreground");
   });
 
   it("STORAGE_* constants have expected values", () => {

@@ -33,12 +33,39 @@
     --input: 210 20% 88%;
     --ring: 218 35% 62%;
 
-    /* Gráficos también en tonos fríos y apagados */
-    --chart-1: 210 40% 60%;
-    --chart-2: 200 35% 55%;
-    --chart-3: 220 30% 50%;
-    --chart-4: 190 35% 65%;
-    --chart-5: 230 30% 45%;
+
+    /* Estado y superficies auxiliares. La app se muestra en oscuro (spec 003),
+       pero los tokens se definen también acá: una variable mapeada en Tailwind
+       y no definida resuelve a un hsl() inválido, que es justo el bug que esta
+       tanda vino a cerrar. */
+    --success: 152 45% 34%;
+    --success-foreground: 150 45% 20%;
+    --success-surface: 150 50% 94%;
+    --success-border: 150 35% 78%;
+
+    --warning: 32 75% 45%;
+    --warning-foreground: 30 60% 24%;
+    --warning-surface: 40 85% 94%;
+    --warning-border: 38 60% 78%;
+
+    --info: 214 60% 48%;
+    --info-foreground: 214 50% 26%;
+    --info-surface: 210 70% 95%;
+    --info-border: 210 45% 80%;
+
+    --code: 222 18% 14%;
+    --code-foreground: 210 14% 88%;
+
+    --canvas: 210 20% 99%;
+
+    --sidebar-background: 210 20% 96%;
+    --sidebar-foreground: 220 15% 20%;
+    --sidebar-primary: 218 35% 62%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 18% 90%;
+    --sidebar-accent-foreground: 220 12% 22%;
+    --sidebar-border: 210 20% 86%;
+    --sidebar-ring: 218 35% 62%;
 
     --radius: 0.5rem;
   }
@@ -61,26 +88,62 @@
     --secondary-foreground: 210 14% 82%;
 
     --muted: 220 13% 25%;
-    --muted-foreground: 215 12% 66%;
+    --muted-foreground: 215 14% 74%;
 
     /* accent = superficie de hover/focus de menús (convención shadcn): slate
        sutil sobre el fondo, con texto claro, para que todo siga legible. */
     --accent: 220 13% 28%;
     --accent-foreground: 210 16% 92%;
 
-    --destructive: 0 60% 50%;
-    --destructive-foreground: 0 0% 98%;
+    /* `destructive` se usa como TEXTO de error (sobre el fondo de la app) y como
+       FONDO de botón. Un solo tono no sirve para las dos cosas: se elige el
+       claro —que es el que hay que leer sobre el fondo oscuro— y el botón se
+       invierte, con su texto casi negro encima. */
+    --destructive: 0 68% 68%;
+    --destructive-foreground: 0 45% 10%;
 
-    --border: 220 12% 30%;
-    --input: 220 12% 30%;
+    --border: 220 12% 34%;
+    --input: 220 12% 34%;
     --ring: 218 52% 68%;
 
-    /* Gráficos oscuros pero fríos */
-    --chart-1: 210 45% 65%;
-    --chart-2: 200 40% 60%;
-    --chart-3: 220 40% 55%;
-    --chart-4: 190 45% 70%;
-    --chart-5: 230 35% 50%;
+
+    /* --- Estado: el significado, no el color. Toda la app dice "salió bien",
+       "ojo con esto" o "esto falló" con estos tokens; antes cada pantalla
+       elegía su propio verde. Cada uno trae superficie, borde y texto. --- */
+    --success: 152 48% 60%;
+    --success-foreground: 150 40% 88%;
+    --success-surface: 152 30% 18%;
+    --success-border: 152 30% 30%;
+
+    --warning: 38 78% 62%;
+    --warning-foreground: 40 60% 88%;
+    --warning-surface: 36 35% 18%;
+    --warning-border: 36 35% 32%;
+
+    --info: 210 65% 68%;
+    --info-foreground: 210 45% 90%;
+    --info-surface: 214 30% 20%;
+    --info-border: 214 30% 34%;
+
+    /* Superficie de CÓDIGO: un escalón por debajo del fondo, para que el
+       bloque se lea como "otra cosa" sin ser un agujero negro. */
+    --code: 222 18% 12%;
+    --code-foreground: 210 14% 86%;
+
+    /* Lienzo: un punto por debajo del fondo de la app. Es la superficie de
+       trabajo y se distingue del resto sin cambiar de familia de color. */
+    --canvas: 222 16% 13%;
+
+    /* Barra lateral: `tailwind.config.ts` mapea estas variables desde siempre,
+       pero nadie las definía y `bg-sidebar` resolvía a un hsl() inválido. */
+    --sidebar-background: 222 16% 15%;
+    --sidebar-foreground: 210 16% 88%;
+    --sidebar-primary: 218 52% 68%;
+    --sidebar-primary-foreground: 222 20% 12%;
+    --sidebar-accent: 220 13% 24%;
+    --sidebar-accent-foreground: 210 16% 92%;
+    --sidebar-border: 220 12% 28%;
+    --sidebar-ring: 218 52% 68%;
   }
 }
 

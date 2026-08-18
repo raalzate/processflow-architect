@@ -10,7 +10,12 @@
  * genera el agente sean exactamente la misma disposición.
  */
 
-import { typesWithRole, type NotationId } from "../notations";
+import {
+  getNotation,
+  typesWithRole,
+  type LayoutHint,
+  type NotationId,
+} from "../notations";
 
 /** Cuánto aire tiene el diagrama. */
 export type LayoutDensity = "compacto" | "comodo" | "expandido";
@@ -20,9 +25,11 @@ export type LayoutDensity = "compacto" | "comodo" | "expandido";
  *  - `flujo`: bandas horizontales y avance de izquierda a derecha por el orden
  *    de las relaciones (procesos: BPMN, actividad UML).
  *  - `capas`: filas por rol semántico —quién usa el sistema, qué contiene, de
- *    qué depende— sin suponer que hay un flujo (arquitectura: C4, DDD).
+ *    qué depende— sin suponer que hay un flujo (arquitectura: C4).
+ *  - `radial`: un concepto central y anillos concéntricos por distancia de
+ *    relación (mapas de conceptos: el modelo de dominio de DDD).
  */
-export type LayoutStrategy = "flujo" | "capas";
+export type LayoutStrategy = LayoutHint;
 
 export interface LayoutPreset {
   id: LayoutDensity;
@@ -108,7 +115,41 @@ export const LAYOUT_STRATEGIES: Record<LayoutStrategy, { id: LayoutStrategy; lab
     label: "Por capas (roles)",
     hint: "Actores arriba, sistemas propios en medio, externos abajo.",
   },
+  radial: {
+    id: "radial",
+    label: "Radial (mapa de conceptos)",
+    hint: "Concepto central y anillos con lo que se relaciona alrededor.",
+  },
 };
+
+/**
+ * Ancho con el que se midieron los huecos de los presets. Es una referencia
+ * histórica, NO el tamaño actual del nodo: cuando la ficha pasó a ser el default
+ * y `DEFAULT_NODE_SIZE` creció, usar el default como referencia dejó el factor
+ * en 1 y el aire volvió a ser absoluto — el salto entre densidades se perdía.
+ */
+const ANCHO_DE_REFERENCIA = 160;
+
+/**
+ * Escala el aire de un preset al tamaño de nodo de la notación. Los huecos están
+ * medidos para una caja de 160 px; con fichas más grandes, dejarlos en píxeles
+ * absolutos aprieta el diagrama y borra el salto entre densidades (spec 002
+ * SC-001: expandido ≥1,6× compacto). El aire se mide en anchos de nodo.
+ */
+export function scalePreset(preset: LayoutPreset, size: { w: number }): LayoutPreset {
+  const k = size.w / ANCHO_DE_REFERENCIA;
+  if (k === 1) return preset;
+  const esc = (v: number) => Math.round(v * k);
+  return {
+    ...preset,
+    hGap: esc(preset.hGap),
+    vGap: esc(preset.vGap),
+    lanePadTop: esc(preset.lanePadTop),
+    lanePadX: esc(preset.lanePadX),
+    lanePadBottom: esc(preset.lanePadBottom),
+    laneGap: esc(preset.laneGap),
+  };
+}
 
 /** Preset por id, con caída al default si llega algo desconocido. */
 export function getPreset(id: LayoutDensity | string | undefined): LayoutPreset {
@@ -121,6 +162,9 @@ export function getPreset(id: LayoutDensity | string | undefined): LayoutPreset 
  * id de la notación (P6): una notación nueva hereda la decisión al declararlos.
  */
 export function defaultStrategyFor(notation: NotationId | string | undefined): LayoutStrategy {
+  // Lo declarado en el registro manda: es la única fuente de verdad (P6).
+  const declarada = getNotation(notation).defaultLayout;
+  if (declarada) return declarada;
   const tieneFlujo =
     typesWithRole(notation, "start").length > 0 && typesWithRole(notation, "end").length > 0;
   return tieneFlujo ? "flujo" : "capas";
@@ -131,5 +175,10 @@ export function resolveStrategy(
   strategy: LayoutStrategy | string | undefined,
   notation: NotationId | string | undefined
 ): LayoutStrategy {
-  return strategy === "flujo" || strategy === "capas" ? strategy : defaultStrategyFor(notation);
+  // `in` también encuentra las claves heredadas del prototipo ("constructor",
+  // "toString"): grabarían basura en `meta.layout.strategy` y el menú dejaría de
+  // marcar la actual.
+  return strategy && Object.prototype.hasOwnProperty.call(LAYOUT_STRATEGIES, strategy)
+    ? (strategy as LayoutStrategy)
+    : defaultStrategyFor(notation);
 }

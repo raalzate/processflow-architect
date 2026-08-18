@@ -7,11 +7,16 @@
  *
  *   node scripts/repo-lint.mjs                 # todo el repo (señal del gate)
  *   node scripts/repo-lint.mjs --file <ruta>   # sólo ese archivo (hook PostToolUse)
+ *   node scripts/repo-lint.mjs --file <ruta> --stdin   # contenido por stdin; la ruta sólo elige reglas
  *
  * Reglas:
  *   PUREZA    src/lib/** es lógica pura: sin React, sin Electron, sin Next, sin UI.
  *   NOTACION  los tipos de componente sólo se cablean en src/lib/notations.ts (+ allowlist de deuda).
  *   ONLY      nada de .only( en tests: apaga la suite entera en silencio.
+ *   DEPSHOOK  un useMemo/useCallback que lee `notationId` lo declara en sus dependencias.
+ *   TOKENS    la UI usa los tokens del tema, no colores crudos de Tailwind ni tamaños en px.
+ *   SVGFILL   un <text> de SVG pinta con `fill`: sin él, una clase text-* cae a negro.
+ *   PLATAFORMA  detectar el sistema operativo sólo en src/lib/platform.ts (y sin API deprecada).
  *   DEPS      sin SDKs de nube en package.json (las llamadas van con fetch desde el main).
  *   WEBGPU    main.ts conserva los switches de WebGPU y no reactiva disableHardwareAcceleration.
  */
@@ -45,6 +50,28 @@ function sourceFiles(root) {
   return out;
 }
 
+/**
+ * Texto de una llamada a hook desde su paréntesis de apertura hasta el cierre,
+ * contando el balance. Sin AST (no hay dependencias nuevas): alcanza porque sólo
+ * se busca si un identificador aparece en el cuerpo y en la lista de deps.
+ */
+function hookBody(content, start) {
+  let nivel = 0;
+  for (let i = start; i < content.length; i++) {
+    const c = content[i];
+    if (c === "(") nivel++;
+    else if (c === ")") {
+      nivel--;
+      if (nivel === 0) {
+        // Incluye lo que sigue hasta el fin de la sentencia: ahí está `, [deps])`.
+        const fin = content.indexOf("\n", i);
+        return { texto: content.slice(start, fin === -1 ? content.length : fin + 1) };
+      }
+    }
+  }
+  return null;
+}
+
 const isTest = (relPath) => /(^|\/)__tests__\//.test(relPath) || /\.(test|spec)\.tsx?$/.test(relPath);
 const lineOf = (content, index) => content.slice(0, index).split("\n").length;
 
@@ -55,12 +82,14 @@ const NOTATION_TYPES = (() => {
   return [...new Set([...src.matchAll(/type:\s*"([^"]+)"/g)].map((m) => m[1]))];
 })();
 
-function checkFile(relPath) {
-  let content;
-  try {
-    content = read(relPath);
-  } catch {
-    return; // el archivo pudo borrarse entre la edición y el chequeo
+function checkFile(relPath, contenidoDado = null) {
+  let content = contenidoDado;
+  if (content === null) {
+    try {
+      content = read(relPath);
+    } catch {
+      return; // el archivo pudo borrarse entre la edición y el chequeo
+    }
   }
 
   // PUREZA — src/lib/ no conoce React, Electron ni la UI.
@@ -93,6 +122,90 @@ function checkFile(relPath) {
         );
         break;
       }
+    }
+  }
+
+  // DEPSHOOK — un hook que MIDE con la notación tiene que reaccionar a ella.
+  // Sin ESLint en el repo, `react-hooks/exhaustive-deps` no existe como
+  // mecanismo; esta regla cubre el caso que ya falló: al pasar una vista a C4 en
+  // caliente, el encuadre, el drop y el SVG exportado seguían midiendo con la
+  // caja de la notación anterior porque `notationId` no estaba en las deps.
+  if (relPath.startsWith("src/components/") && !isTest(relPath)) {
+    for (const m of content.matchAll(/\buse(?:Memo|Callback)\s*\(/g)) {
+      const cuerpo = hookBody(content, m.index);
+      if (!cuerpo) continue;
+      const deps = /\)\s*,\s*\[([^\]]*)\]\s*\)\s*;?\s*$/.exec(cuerpo.texto);
+      if (!deps) continue;
+      const usa = /\bnotationId\b/.test(cuerpo.texto.slice(0, deps.index));
+      const declara = /\bnotationId\b/.test(deps[1]);
+      if (usa && !declara) {
+        fail(
+          relPath,
+          lineOf(content, m.index),
+          "DEPSHOOK",
+          "el hook usa `notationId` pero no lo declara en sus dependencias: al cambiar la notación de la vista seguiría midiendo los nodos con la caja anterior.",
+        );
+      }
+    }
+  }
+
+  // TOKENS — el color y la escala salen del tema, no de la paleta de Tailwind.
+  // Sin esto, cada pantalla reinventa su verde de "salió bien" y el modo oscuro
+  // se rompe de a un archivo por vez (spec 003, FR-007/FR-008).
+  if (relPath.startsWith("src/") && !isTest(relPath) && !config.tokens.allow.includes(relPath)) {
+    const crudo = new RegExp(
+      `\\b(?:bg|text|border|stroke|fill|ring|from|to|via|divide|outline|shadow|decoration|accent|caret)-(?:${config.tokens.palettes.join("|")})-\\d{2,3}\\b`,
+    );
+    const m = crudo.exec(content);
+    if (m) {
+      fail(
+        relPath,
+        lineOf(content, m.index),
+        "TOKENS",
+        `color crudo de Tailwind (\`${m[0]}\`). Usá el token del tema: \`success\`/\`warning\`/\`info\`/\`destructive\` para estado, \`muted\`/\`primary\`/\`card\` para superficie. La paleta del DIAGRAMA vive en \`${config.notation.source}\`.`,
+      );
+    }
+    const px = /text-\[\d+px\]/.exec(content);
+    if (px) {
+      fail(
+        relPath,
+        lineOf(content, px.index),
+        "TOKENS",
+        `tamaño de letra arbitrario (\`${px[0]}\`). La escala del sistema es \`text-2xs\` … \`text-base\`: tres tamaños sueltos indistinguibles no son una jerarquía.`,
+      );
+    }
+  }
+
+  // SVGFILL — en SVG el color de un `<text>` lo da `fill`, no `color`. Una clase
+  // `text-*` sólo fija `color`, así que el texto cae a NEGRO: los títulos de los
+  // contenedores del lienzo se dibujaban negros sobre el fondo oscuro y nada lo
+  // detectaba, porque compila, pasa los tests y sólo se ve mirando la pantalla.
+  if (relPath.endsWith(".tsx") && !isTest(relPath)) {
+    for (const m of content.matchAll(/<text\b[\s\S]{0,600}?>/g)) {
+      const etiqueta = m[0];
+      if (/\bfill[=:]/.test(etiqueta)) continue;
+      if (!/className/.test(etiqueta)) continue;
+      fail(
+        relPath,
+        lineOf(content, m.index),
+        "SVGFILL",
+        "`<text>` de SVG sin `fill`: una clase `text-*` no pinta el texto y el navegador cae a negro. Poné `fill=\"currentColor\"` (el color lo sigue dando la clase) o un `fill-*` explícito.",
+      );
+    }
+  }
+
+  // PLATAFORMA — `navigator.platform` está DEPRECADO y los navegadores lo van
+  // congelando; además la detección estaba duplicada y desalineada, así que un
+  // atajo nuevo no tenía de dónde tomar el criterio. Vive en un solo módulo.
+  if (relPath.startsWith("src/") && !isTest(relPath) && relPath !== "src/lib/platform.ts") {
+    const m = /navigator\s*\.\s*(platform|userAgent)\b/.exec(content);
+    if (m) {
+      fail(
+        relPath,
+        lineOf(content, m.index),
+        "PLATAFORMA",
+        `\`navigator.${m[1]}\` está deprecado y la detección de plataforma vive en \`src/lib/platform.ts\`. Usá \`isMacPlatform()\`, \`modifierLabel()\` o \`hasPlatformModifier()\`.`,
+      );
     }
   }
 
@@ -137,9 +250,15 @@ function checkWebgpu() {
 
 const fileFlagIndex = process.argv.indexOf("--file");
 const single = fileFlagIndex !== -1 ? process.argv[fileFlagIndex + 1] : null;
+// `--stdin`: el contenido llega por la entrada estándar y la ruta sólo elige las
+// reglas. Es lo que usa el self-test para probar los frenos SIN escribir archivos
+// temporales dentro de `src/`: con `next dev` vivo, el watcher los veía aparecer
+// y desaparecer y el build moría con ENOENT (ver docs/harness/gotchas.md).
+const desdeStdin = process.argv.includes("--stdin");
+const contenidoStdin = desdeStdin ? fs.readFileSync(0, "utf8") : null;
 
 if (single) {
-  if (/\.(ts|tsx)$/.test(single)) checkFile(single);
+  if (/\.(ts|tsx)$/.test(single)) checkFile(single, contenidoStdin);
   if (single === "package.json") checkDeps();
   if (single === config.webgpu.file) checkWebgpu();
 } else {

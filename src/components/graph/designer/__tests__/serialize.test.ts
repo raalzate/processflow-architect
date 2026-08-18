@@ -947,25 +947,44 @@ describe("computeContentBounds", () => {
   });
 
   it("usa el tamaño por defecto de nodo simple cuando falta width/height", () => {
-    // Comando (no contenedor) sin geometría → 160x60 por defecto.
+    // Comando (no contenedor) sin geometría → la ficha, 220x104.
     const a = makeNode({ id: "a", x: 100, y: 200 });
     const b = computeContentBounds(nodesMap(a))!;
     expect(b.minX).toBe(100);
     expect(b.minY).toBe(200);
-    expect(b.maxX).toBe(260); // 100 + 160
-    expect(b.maxY).toBe(260); // 200 + 60
-    expect(b.width).toBe(160);
-    expect(b.height).toBe(60);
+    expect(b.maxX).toBe(320); // 100 + 220
+    expect(b.maxY).toBe(304); // 200 + 104
+    expect(b.width).toBe(220);
+    expect(b.height).toBe(104);
   });
 
-  it("envuelve varios nodos y respeta width/height explícitos", () => {
+  it("en un nodo SUELTO manda el tamaño de su tipo, no el width guardado", () => {
+    // Cambio intencional: el lienzo nunca leyó `width` para dibujar un nodo
+    // suelto (no es redimensionable; el handle es de contenedor), pero el
+    // encuadre sí lo respetaba. Con tamaño por notación esa incoherencia recorta
+    // el export —un nodo C4 mide 220 y el `width` viejo dice 160—, así que ahora
+    // ambos preguntan a `sizeOfType`. En contenedores sigue mandando lo guardado.
     const a = makeNode({ id: "a", x: 0, y: 0, width: 100, height: 100 });
     const c = makeNode({ id: "c", x: 400, y: 300, width: 200, height: 50 });
     const b = computeContentBounds(nodesMap(a, c))!;
     expect(b.minX).toBe(0);
     expect(b.minY).toBe(0);
-    expect(b.maxX).toBe(600); // 400 + 200
-    expect(b.maxY).toBe(350); // 300 + 50
+    expect(b.maxX).toBe(620); // 400 + 220 (tamaño del tipo, no el width guardado)
+    expect(b.maxY).toBe(404); // 300 + 104
+  });
+
+  it("en un CONTENEDOR sigue mandando el tamaño guardado (es redimensionable)", () => {
+    const caja = makeNode({
+      id: "caja",
+      tipo_elemento: "Contexto Delimitado",
+      x: 0,
+      y: 0,
+      width: 700,
+      height: 420,
+    });
+    const b = computeContentBounds(nodesMap(caja))!;
+    expect(b.maxX).toBe(700);
+    expect(b.maxY).toBe(420);
   });
 });
 

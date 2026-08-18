@@ -160,13 +160,13 @@ export function ReferenceContextDialog({
                     <span className="min-w-0 flex-1 truncate text-sm" title={d.name}>
                       {d.name}
                     </span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                    <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">
                       {d.chars.toLocaleString()} car.
                     </span>
                     <button
                       onClick={() => removeDoc(d.id)}
                       title="Quitar"
-                      className="shrink-0 rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -175,7 +175,7 @@ export function ReferenceContextDialog({
               </ul>
             )}
             {totalChars > 0 && (
-              <p className="mt-2 text-[11px] text-muted-foreground">
+              <p className="mt-2 text-2xs text-muted-foreground">
                 Total: {totalChars.toLocaleString()} caracteres. La IA usa hasta ~12&nbsp;000
                 como referencia (se recorta el excedente).
               </p>

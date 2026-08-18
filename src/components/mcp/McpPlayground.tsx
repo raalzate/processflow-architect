@@ -151,15 +151,15 @@ export function McpPlayground() {
               <label className="text-sm font-medium">Argumentos (JSON)</label>
               <textarea
                 className={cn(
-                  "mt-1 w-full rounded-md border bg-zinc-900 text-zinc-100 font-mono text-xs p-3 min-h-40",
-                  argsError && "border-red-500"
+                  "mt-1 w-full rounded-md border bg-code text-code-foreground font-code text-xs p-3 min-h-40",
+                  argsError && "border-destructive"
                 )}
                 spellCheck={false}
                 value={argsText}
                 onChange={(e) => setArgsText(e.target.value)}
               />
               {argsError ? (
-                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                <p className="text-xs text-destructive mt-1 flex items-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5" /> {argsError}
                 </p>
               ) : (
@@ -183,7 +183,7 @@ export function McpPlayground() {
             <div
               className={cn(
                 "mt-1 rounded-md border p-3 min-h-40 max-h-96 overflow-auto text-xs font-mono whitespace-pre-wrap",
-                result?.isError ? "border-red-300 bg-red-50 text-red-900" : "bg-muted/40"
+                result?.isError ? "border-destructive/40 bg-destructive/10 text-destructive-foreground" : "bg-muted/40"
               )}
             >
               {result

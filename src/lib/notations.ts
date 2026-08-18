@@ -15,6 +15,16 @@
 export type NotationId = "ddd" | "bpmn" | "c4" | "uml";
 
 /**
+ * Disposición natural de una notación. Vive acá —y no en el layout— porque el
+ * arnés es agnóstico de notación (P6): quien agrega una notación declara cómo
+ * se lee su modelo, y el algoritmo obedece sin cablear ids.
+ *  - flujo:  bandas y avance de izquierda a derecha (hay inicio y fin).
+ *  - capas:  filas por rol semántico (actores arriba, dependencias abajo).
+ *  - radial: un concepto central y anillos concéntricos de relaciones.
+ */
+export type LayoutHint = "flujo" | "capas" | "radial";
+
+/**
  * Forma SVG con la que se dibuja un nodo NO contenedor en el lienzo.
  *  - rounded: rectángulo redondeado (por defecto; nota adhesiva / Event Storming).
  *  - rect:    rectángulo recto (clases UML, contenedores lógicos C4).
@@ -64,20 +74,18 @@ export interface NotationElement {
    *    con el nombre rotado 90°. Es la forma canónica del Pool/Carril de BPMN
    *    (participante y rol); dibujarlos punteados con etiqueta en la esquina no
    *    es notación BPMN.
+   *  - "blob": ELIPSE punteada con el nombre en el borde inferior. Es la forma
+   *    con que se dibujan los agrupamientos de un mapa de conceptos de DDD
+   *    (Comportamiento, Ciclo de Vida, Composición): agrupan por afinidad, no
+   *    delimitan un territorio, y un rectángulo los hacía leer como sistema.
    */
-  containerStyle?: "boundary" | "swimlane";
+  containerStyle?: "boundary" | "swimlane" | "blob";
   /** Clase tailwind de trazo SVG (stroke-*) que dibuja el contorno del nodo. */
   stroke?: string;
   /** Clases tailwind: relleno SVG, borde y texto. */
   bg: string;
   border: string;
   text: string;
-  /**
-   * Color del texto en la PALETA (fondo blanco). Necesario cuando `text` es
-   * blanco porque el nodo tiene relleno oscuro (C4 canónico): blanco sobre la
-   * paleta sería invisible. Si falta, la paleta usa `text`.
-   */
-  paletteText?: string;
 }
 
 /** Sección colapsable dentro de la paleta de una notación. */
@@ -125,9 +133,59 @@ export interface Notation {
    * dominio ante un diagrama que no lo es.
    */
   modelLabel: string;
+  /**
+   * Disposición con la que se dibuja por defecto. Si falta, se deduce de los
+   * roles: con inicio y fin declarados es `flujo`, si no `capas`.
+   */
+  defaultLayout?: LayoutHint;
+  /**
+   * Tamaño de sus nodos sueltos. Si falta, `DEFAULT_NODE_SIZE`. C4 lo declara
+   * más grande porque su caja lleva tres líneas (nombre, descripción y tipo) y
+   * en 160×60 la descripción no entra.
+   */
+  nodeSize?: { w: number; h: number };
+  /**
+   * Cómo se rotula un nodo suelto:
+   *  - "center" (por defecto): icono grande centrado y el nombre debajo.
+   *  - "detail": icono chico arriba a la izquierda y bloque de texto centrado
+   *    —nombre en negrita, descripción y `[Tipo]`—, la ficha canónica de C4.
+   */
+  labelLayout?: "center" | "detail";
+  /**
+   * Trazo de sus relaciones cuando la arista no pide uno. C4 usa curvas: en un
+   * paisaje con muchas relaciones cruzadas, dos rectas superpuestas se leen como
+   * una sola y la curva deja ver cuál va a dónde.
+   */
+  defaultRouting?: "straight" | "curved" | "orthogonal";
 }
 
+/**
+ * Tamaño de un nodo suelto. Es la FICHA: nombre, descripción y `[Tipo]` no
+ * entran en una caja de 160×60. Vale para todas las notaciones.
+ */
+export const DEFAULT_NODE_SIZE = { w: 220, h: 104 } as const;
+
+/**
+ * Tamaño de los símbolos COMPACTOS (eventos, compuertas, pseudoestados). Su
+ * figura es el significado y se dibuja pequeña con el nombre debajo: agrandarla
+ * al tamaño de la ficha convertiría un evento BPMN en un plato.
+ */
+export const COMPACT_NODE_SIZE = { w: 160, h: 60 } as const;
+
+/**
+ * Notación que se asume cuando un modelo NO declara la suya. Es compatibilidad
+ * con los datos: la app nació siendo sólo DDD, así que un grafo guardado sin el
+ * campo `notation` es un modelo de dominio y hay que seguir leyéndolo así.
+ * No es «la notación principal» — para eso está `INITIAL_NOTATION_ID`.
+ */
 export const DEFAULT_NOTATION_ID: NotationId = "ddd";
+
+/**
+ * Notación con la que arranca lo NUEVO (un proyecto, una vista). C4 es por donde
+ * se suele abrir un modelo —el paisaje de sistemas— y desde ahí se baja al
+ * proceso (BPMN) o al dominio (DDD). Cambiar esto no toca ningún dato guardado.
+ */
+export const INITIAL_NOTATION_ID: NotationId = "c4";
 
 // =============================================================================
 // DDD / Event Storming (notación original)
@@ -175,35 +233,39 @@ const DDD: Notation = {
     },
   ],
   elements: [
-    // Notas adhesivas del Event Storming: relleno -100 + contorno sutil del
-    // mismo tono (antes no tenían trazo y los bordes se veían difusos).
-    { type: "Comando", icon: "TerminalSquare", stroke: "stroke-blue-300", bg: "fill-blue-100", border: "border-blue-300", text: "text-blue-800" },
-    { type: "Evento", icon: "Zap", stroke: "stroke-orange-300", bg: "fill-orange-100", border: "border-orange-300", text: "text-orange-800" },
-    { type: "Actor", icon: "User", stroke: "stroke-emerald-300", bg: "fill-emerald-100", border: "border-emerald-300", text: "text-emerald-800" },
-    { type: "Vista", icon: "RectangleHorizontal", stroke: "stroke-cyan-300", bg: "fill-cyan-100", border: "border-cyan-300", text: "text-cyan-800" },
-    { type: "Regla de Negocio", icon: "Gavel", stroke: "stroke-yellow-300", bg: "fill-yellow-100", border: "border-yellow-300", text: "text-yellow-800" },
-    { type: "Sistema Externo", icon: "HardDrive", stroke: "stroke-indigo-300", bg: "fill-indigo-100", border: "border-indigo-300", text: "text-indigo-800" },
-    { type: "Política", icon: "Milestone", stroke: "stroke-purple-300", bg: "fill-purple-100", border: "border-purple-300", text: "text-purple-800" },
-    { type: "Raíz de Agregado", icon: "Crown", stroke: "stroke-rose-400", bg: "fill-rose-100", border: "border-rose-400", text: "text-rose-900" },
-    { type: "Entidad", icon: "Fingerprint", stroke: "stroke-pink-300", bg: "fill-pink-100", border: "border-pink-300", text: "text-pink-800" },
-    { type: "Objeto de Valor", icon: "Gem", stroke: "stroke-violet-300", bg: "fill-violet-100", border: "border-violet-300", text: "text-violet-800" },
-    { type: "Servicio de Dominio", icon: "Cog", stroke: "stroke-slate-300", bg: "fill-slate-100", border: "border-slate-300", text: "text-slate-800" },
-    { type: "Repositorio", icon: "Archive", stroke: "stroke-amber-300", bg: "fill-amber-100", border: "border-amber-300", text: "text-amber-800" },
-    { type: "Fábrica", icon: "Factory", stroke: "stroke-lime-300", bg: "fill-lime-100", border: "border-lime-300", text: "text-lime-800" },
-    { type: "Agregado", icon: "Package", container: true, stroke: "stroke-stone-700", bg: "fill-stone-100", border: "border-stone-800", text: "text-pink-900" },
-    { type: "Contexto Delimitado", icon: "Box", container: true, stroke: "stroke-teal-500", bg: "fill-teal-50", border: "border-teal-500", text: "text-teal-900" },
-    { type: "Subdominio", icon: "Layers", container: true, stroke: "stroke-fuchsia-500", bg: "fill-fuchsia-50", border: "border-fuchsia-500", text: "text-fuchsia-900" },
+    // DDD se dibuja como MAPA DE CONCEPTOS: todo elemento es un óvalo unido por
+    // relaciones con nombre. No son notas adhesivas pegadas en una pared —eso es
+    // el tablero de un taller, no el modelo— así que la silueta es la misma para
+    // todos y lo que distingue es el color, el icono y la relación.
+    { type: "Comando", icon: "TerminalSquare", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Evento", icon: "Zap", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Actor", icon: "User", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Vista", icon: "RectangleHorizontal", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Regla de Negocio", icon: "Gavel", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Sistema Externo", icon: "HardDrive", shape: "ellipse", stroke: "stroke-zinc-400", bg: "fill-zinc-500", border: "border-zinc-500", text: "text-white" },
+    { type: "Política", icon: "Milestone", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Raíz de Agregado", icon: "Crown", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Entidad", icon: "Fingerprint", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Objeto de Valor", icon: "Gem", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Servicio de Dominio", icon: "Cog", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Repositorio", icon: "Archive", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Fábrica", icon: "Factory", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    // Agrupamientos del mapa: elipse punteada alrededor de los conceptos que
+    // van juntos, con el nombre en el borde de abajo (ver `containerStyle`).
+    { type: "Agregado", icon: "Package", container: true, containerStyle: "blob", stroke: "stroke-stone-700", bg: "fill-stone-950/40", border: "border-stone-800", text: "text-stone-100" },
+    { type: "Contexto Delimitado", icon: "Box", container: true, containerStyle: "blob", stroke: "stroke-teal-500", bg: "fill-teal-950/40", border: "border-teal-500", text: "text-teal-100" },
+    { type: "Subdominio", icon: "Layers", container: true, containerStyle: "blob", stroke: "stroke-fuchsia-500", bg: "fill-fuchsia-950/40", border: "border-fuchsia-500", text: "text-fuchsia-100" },
     // --- Mapa de Contexto: Relación de Poder (Aguas Arriba/Aguas Abajo) ---
-    { type: "Cliente/Proveedor", icon: "ArrowLeftRight", shape: "rect", stroke: "stroke-red-400", bg: "fill-red-100", border: "border-red-400", text: "text-red-900" },
-    { type: "Conformista", icon: "ArrowRightToLine", shape: "rect", stroke: "stroke-orange-400", bg: "fill-orange-100", border: "border-orange-400", text: "text-orange-900" },
-    { type: "Partnership", icon: "Handshake", shape: "rect", stroke: "stroke-amber-400", bg: "fill-amber-100", border: "border-amber-400", text: "text-amber-900" },
+    { type: "Cliente/Proveedor", icon: "ArrowLeftRight", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Conformista", icon: "ArrowRightToLine", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Partnership", icon: "Handshake", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     // --- Mapa de Contexto: Integración y Servicios ---
-    { type: "Servicio de Host Abierto (OHS)", icon: "DoorOpen", shape: "rect", stroke: "stroke-sky-400", bg: "fill-sky-100", border: "border-sky-400", text: "text-sky-900" },
-    { type: "Lenguaje Publicado (PL)", icon: "Languages", shape: "rect", stroke: "stroke-blue-400", bg: "fill-blue-100", border: "border-blue-400", text: "text-blue-900" },
-    { type: "Capa Anticorrupción (ACL)", icon: "ShieldHalf", shape: "rect", stroke: "stroke-indigo-400", bg: "fill-indigo-100", border: "border-indigo-400", text: "text-indigo-900" },
-    { type: "Núcleo Compartido", icon: "Share2", shape: "rect", stroke: "stroke-cyan-400", bg: "fill-cyan-100", border: "border-cyan-400", text: "text-cyan-900" },
+    { type: "Servicio de Host Abierto (OHS)", icon: "DoorOpen", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Lenguaje Publicado (PL)", icon: "Languages", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Capa Anticorrupción (ACL)", icon: "ShieldHalf", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Núcleo Compartido", icon: "Share2", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     // --- Mapa de Contexto: Aislamiento Total ---
-    { type: "Caminos Separados", icon: "Unlink", shape: "rect", stroke: "stroke-zinc-400", bg: "fill-zinc-100", border: "border-zinc-400", text: "text-zinc-800" },
+    { type: "Caminos Separados", icon: "Unlink", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
   ],
   aiGuidance:
     "Aplica DDD y Lenguaje Ubicuo. Estratégico: Subdominios (Core/Supporting/Generic), Bounded Contexts y Mapa de Contexto. " +
@@ -213,6 +275,10 @@ const DDD: Notation = {
     "Táctico: Entidades, Objetos de Valor, Agregados con su Raíz, Eventos de Dominio, Servicios de Dominio, Repositorios y Fábricas.",
   analystRole: "analista DDD/Event Storming",
   modelLabel: "Modelo de Dominio",
+  // DDD no cuenta una historia con inicio y fin: cuenta cómo un concepto central
+  // se relaciona con todo lo demás (el mapa de patrones de Evans se dibuja así).
+  // Por capas quedaba una rejilla que escondía justamente eso: las relaciones.
+  defaultLayout: "radial",
   flowRules:
     "- Actor → Comando (relación \"ejecuta\")\n" +
     "- Comando → Evento (relación \"produce\")\n" +
@@ -254,28 +320,28 @@ const BPMN: Notation = {
     // --- Eventos ---
     // Símbolos compactos al estilo BPMN: círculo pequeño con tinte -100 + anillo
     // fuerte -600, nombre debajo (como en las herramientas BPMN clásicas).
-    { type: "Evento de Inicio", icon: "Play", shape: "ellipse", compact: true, stroke: "stroke-green-600", bg: "fill-green-100", border: "border-green-500", text: "text-green-800" },
-    { type: "Evento Intermedio", icon: "Circle", shape: "ellipse", compact: true, stroke: "stroke-yellow-600", bg: "fill-yellow-100", border: "border-yellow-500", text: "text-yellow-800" },
-    { type: "Evento de Fin", icon: "StopCircle", shape: "ellipse", compact: true, stroke: "stroke-red-600", bg: "fill-red-100", border: "border-red-500", text: "text-red-800" },
-    { type: "Evento de Mensaje", icon: "Mail", shape: "ellipse", compact: true, stroke: "stroke-sky-600", bg: "fill-sky-100", border: "border-sky-500", text: "text-sky-800" },
-    { type: "Evento Temporizador", icon: "Timer", shape: "ellipse", compact: true, stroke: "stroke-amber-600", bg: "fill-amber-100", border: "border-amber-500", text: "text-amber-800" },
-    { type: "Evento de Error", icon: "AlertTriangle", shape: "ellipse", compact: true, stroke: "stroke-rose-600", bg: "fill-rose-100", border: "border-rose-500", text: "text-rose-800" },
+    { type: "Evento de Inicio", icon: "Play", shape: "ellipse", compact: true, stroke: "stroke-green-600", bg: "fill-green-950", border: "border-green-500", text: "text-green-100" },
+    { type: "Evento Intermedio", icon: "Circle", shape: "ellipse", compact: true, stroke: "stroke-yellow-600", bg: "fill-yellow-950", border: "border-yellow-500", text: "text-yellow-100" },
+    { type: "Evento de Fin", icon: "StopCircle", shape: "ellipse", compact: true, stroke: "stroke-red-600", bg: "fill-red-950", border: "border-red-500", text: "text-red-100" },
+    { type: "Evento de Mensaje", icon: "Mail", shape: "ellipse", compact: true, stroke: "stroke-sky-600", bg: "fill-sky-950", border: "border-sky-500", text: "text-sky-100" },
+    { type: "Evento Temporizador", icon: "Timer", shape: "ellipse", compact: true, stroke: "stroke-amber-600", bg: "fill-amber-950", border: "border-amber-500", text: "text-amber-100" },
+    { type: "Evento de Error", icon: "AlertTriangle", shape: "ellipse", compact: true, stroke: "stroke-rose-600", bg: "fill-rose-950", border: "border-rose-500", text: "text-rose-100" },
     // --- Actividades y datos ---
-    { type: "Tarea", icon: "Square", shape: "rounded", stroke: "stroke-blue-400", bg: "fill-blue-50", border: "border-blue-300", text: "text-blue-800" },
-    { type: "Subproceso", icon: "Boxes", shape: "rounded", stroke: "stroke-indigo-400", bg: "fill-indigo-50", border: "border-indigo-300", text: "text-indigo-800" },
-    { type: "Objeto de Datos", icon: "FileText", shape: "rect", stroke: "stroke-slate-300", bg: "fill-slate-100", border: "border-slate-300", text: "text-slate-800" },
-    { type: "Almacén de Datos", icon: "Database", shape: "cylinder", stroke: "stroke-slate-400", bg: "fill-slate-100", border: "border-slate-400", text: "text-slate-800" },
-    { type: "Anotación", icon: "MessageSquare", shape: "rect", stroke: "stroke-zinc-300", bg: "fill-zinc-50", border: "border-zinc-300", text: "text-zinc-700" },
+    { type: "Tarea", icon: "Square", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Subproceso", icon: "Boxes", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Objeto de Datos", icon: "FileText", shape: "rect", stroke: "stroke-zinc-400", bg: "fill-zinc-500", border: "border-zinc-500", text: "text-white" },
+    { type: "Almacén de Datos", icon: "Database", shape: "cylinder", stroke: "stroke-zinc-400", bg: "fill-zinc-500", border: "border-zinc-500", text: "text-white" },
+    { type: "Anotación", icon: "MessageSquare", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     // --- Compuertas (decisiones / bifurcaciones): rombo compacto, nombre debajo ---
     // Compuerta genérica: se conserva por compatibilidad con diagramas existentes.
-    { type: "Compuerta", icon: "Diamond", shape: "diamond", compact: true, stroke: "stroke-amber-600", bg: "fill-amber-100", border: "border-amber-500", text: "text-amber-900" },
-    { type: "Compuerta Exclusiva", icon: "X", shape: "diamond", compact: true, stroke: "stroke-orange-600", bg: "fill-orange-100", border: "border-orange-500", text: "text-orange-900" },
-    { type: "Compuerta Paralela", icon: "Plus", shape: "diamond", compact: true, stroke: "stroke-emerald-600", bg: "fill-emerald-100", border: "border-emerald-500", text: "text-emerald-900" },
-    { type: "Compuerta Inclusiva", icon: "Circle", shape: "diamond", compact: true, stroke: "stroke-indigo-600", bg: "fill-indigo-100", border: "border-indigo-500", text: "text-indigo-900" },
-    { type: "Compuerta de Eventos", icon: "CircleDot", shape: "diamond", compact: true, stroke: "stroke-purple-600", bg: "fill-purple-100", border: "border-purple-500", text: "text-purple-900" },
+    { type: "Compuerta", icon: "Diamond", shape: "diamond", compact: true, stroke: "stroke-amber-600", bg: "fill-amber-950", border: "border-amber-500", text: "text-amber-100" },
+    { type: "Compuerta Exclusiva", icon: "X", shape: "diamond", compact: true, stroke: "stroke-orange-600", bg: "fill-orange-950", border: "border-orange-500", text: "text-orange-100" },
+    { type: "Compuerta Paralela", icon: "Plus", shape: "diamond", compact: true, stroke: "stroke-emerald-600", bg: "fill-emerald-950", border: "border-emerald-500", text: "text-emerald-100" },
+    { type: "Compuerta Inclusiva", icon: "Circle", shape: "diamond", compact: true, stroke: "stroke-indigo-600", bg: "fill-indigo-950", border: "border-indigo-500", text: "text-indigo-100" },
+    { type: "Compuerta de Eventos", icon: "CircleDot", shape: "diamond", compact: true, stroke: "stroke-purple-600", bg: "fill-purple-950", border: "border-purple-500", text: "text-purple-100" },
     // --- Contenedores (los ÚNICOS transparentes: un fondo taparía a sus hijos) ---
-    { type: "Pool", icon: "Container", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-sky-600", bg: "fill-sky-50", border: "border-sky-600", text: "text-sky-900" },
-    { type: "Carril", icon: "Rows3", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-cyan-600", bg: "fill-cyan-50", border: "border-cyan-600", text: "text-cyan-900" },
+    { type: "Pool", icon: "Container", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-sky-600", bg: "fill-sky-950/40", border: "border-sky-600", text: "text-sky-900 dark:text-sky-200" },
+    { type: "Carril", icon: "Rows3", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-cyan-600", bg: "fill-cyan-950/40", border: "border-cyan-600", text: "text-cyan-900 dark:text-cyan-200" },
   ],
   aiGuidance:
     "Modela procesos BPMN: Pools y Carriles (lanes) por responsable; Eventos de Inicio/Intermedio/Fin y sus variantes (Mensaje, Temporizador, Error); Tareas y Subprocesos; Objetos y Almacenes de Datos; Anotaciones. " +
@@ -316,17 +382,22 @@ const C4: Notation = {
     },
   ],
   elements: [
-    // Paleta CANÓNICA C4 (Structurizr): escala de azules por nivel — persona
-    // oscura, sistema propio azul, contenedor azul medio, componente azul
-    // claro — y gris para lo externo. Texto blanco sobre los rellenos oscuros.
-    { type: "Persona", icon: "User", shape: "rounded", stroke: "stroke-blue-950", bg: "fill-blue-900", border: "border-blue-900", text: "text-white", paletteText: "text-blue-900" },
-    { type: "Sistema", icon: "Box", shape: "rounded", stroke: "stroke-blue-800", bg: "fill-blue-700", border: "border-blue-700", text: "text-white", paletteText: "text-blue-700" },
-    { type: "Sistema Externo", icon: "HardDrive", shape: "rounded", stroke: "stroke-gray-600", bg: "fill-gray-500", border: "border-gray-500", text: "text-white", paletteText: "text-gray-600" },
-    { type: "Contenedor", icon: "Container", shape: "rounded", stroke: "stroke-blue-600", bg: "fill-blue-500", border: "border-blue-500", text: "text-white", paletteText: "text-blue-600" },
-    { type: "Componente", icon: "Component", shape: "rect", stroke: "stroke-blue-400", bg: "fill-blue-300", border: "border-blue-400", text: "text-blue-950", paletteText: "text-blue-700" },
-    { type: "Base de Datos", icon: "Database", shape: "cylinder", stroke: "stroke-blue-700", bg: "fill-blue-600", border: "border-blue-600", text: "text-white", paletteText: "text-blue-700" },
-    { type: "Límite de Sistema", icon: "Frame", container: true, transparent: true, stroke: "stroke-slate-500", bg: "fill-slate-50", border: "border-slate-500", text: "text-slate-900" },
-    { type: "Límite de Contenedor", icon: "SquareDashedBottom", container: true, transparent: true, stroke: "stroke-zinc-400", bg: "fill-zinc-50", border: "border-zinc-400", text: "text-zinc-900" },
+    // Paleta NEUTRA (estilo IcePanel): la caja no codifica el nivel —para eso
+    // está el `[Tipo]` de la ficha— así que todas son del mismo grafito y el
+    // color queda libre para lo que sí distingue, el icono. La escala de azules
+    // de Structurizr obligaba a memorizar cuatro tonos para leer lo que el texto
+    // ya dice. Lo de TERCEROS sí se atenúa: es la única jerarquía que el ojo
+    // necesita de un vistazo.
+    { type: "Persona", icon: "User", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Sistema", icon: "Box", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Sistema Externo", icon: "HardDrive", shape: "rounded", stroke: "stroke-zinc-400", bg: "fill-zinc-500", border: "border-zinc-500", text: "text-white" },
+    { type: "Contenedor", icon: "Container", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Componente", icon: "Component", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Base de Datos", icon: "Database", shape: "cylinder", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    // Los límites son marcos: su nombre se lee sobre el lienzo, así que el color
+    // del texto cambia con el tema (en oscuro, un -900 era invisible).
+    { type: "Límite de Sistema", icon: "Frame", container: true, transparent: true, stroke: "stroke-zinc-400", bg: "fill-transparent", border: "border-zinc-400", text: "text-zinc-700 dark:text-zinc-200" },
+    { type: "Límite de Contenedor", icon: "SquareDashedBottom", container: true, transparent: true, stroke: "stroke-zinc-400", bg: "fill-transparent", border: "border-zinc-400", text: "text-zinc-600 dark:text-zinc-300" },
   ],
   aiGuidance:
     "Aplica el modelo C4 (Simon Brown): nivel 1 Contexto (Personas y Sistemas y sus relaciones), nivel 2 Contenedores (apps/servicios/bases de datos dentro del Límite de Sistema), nivel 3 Componentes dentro de cada Contenedor. Etiqueta relaciones con tecnología/protocolo (ej. 'usa [HTTPS/JSON]').",
@@ -338,6 +409,7 @@ const C4: Notation = {
     "- Contenedor → Base de Datos (relación \"lee y escribe [JDBC]\")\n" +
     "- Contenedor → Sistema Externo (relación \"consume [HTTPS/JSON]\")\n" +
     "- Contenedor → Componente (relación \"contiene\")",
+  defaultRouting: "curved",
   defaultType: "Contenedor",
   namingRule:
     "nombre técnico del elemento y su rol (\"API de Pedidos\", \"App Web de Clientes\"); sin verbos de acción",
@@ -376,38 +448,38 @@ const UML: Notation = {
     },
   ],
   elements: [
-    { type: "Clase", icon: "Box", shape: "rect", stroke: "stroke-blue-500", bg: "fill-blue-50", border: "border-blue-300", text: "text-blue-800" },
-    { type: "Clase Abstracta", icon: "BoxSelect", shape: "rect", stroke: "stroke-indigo-500", bg: "fill-indigo-50", border: "border-indigo-300", text: "text-indigo-800" },
-    { type: "Interfaz", icon: "Plug", shape: "ellipse", stroke: "stroke-violet-500", bg: "fill-violet-50", border: "border-violet-300", text: "text-violet-800" },
-    { type: "Enumeración", icon: "List", shape: "rect", stroke: "stroke-amber-500", bg: "fill-amber-50", border: "border-amber-300", text: "text-amber-800" },
-    { type: "Componente", icon: "Component", shape: "rect", stroke: "stroke-cyan-500", bg: "fill-cyan-50", border: "border-cyan-300", text: "text-cyan-800" },
-    { type: "Nodo", icon: "Server", shape: "rect", stroke: "stroke-slate-500", bg: "fill-slate-50", border: "border-slate-300", text: "text-slate-800" },
+    { type: "Clase", icon: "Box", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Clase Abstracta", icon: "BoxSelect", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Interfaz", icon: "Plug", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Enumeración", icon: "List", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Componente", icon: "Component", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Nodo", icon: "Server", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     // Actor UML: figura humana (stick figure), como en las herramientas UML clásicas.
-    { type: "Actor", icon: "PersonStanding", shape: "rounded", stroke: "stroke-emerald-300", bg: "fill-emerald-100", border: "border-emerald-300", text: "text-emerald-800" },
-    { type: "Caso de Uso", icon: "Circle", shape: "ellipse", stroke: "stroke-teal-500", bg: "fill-teal-50", border: "border-teal-300", text: "text-teal-800" },
+    { type: "Actor", icon: "PersonStanding", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Caso de Uso", icon: "Circle", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     // Nota adhesiva UML (comentario anclable a cualquier elemento).
-    { type: "Nota", icon: "StickyNote", shape: "rect", stroke: "stroke-yellow-400", bg: "fill-yellow-100", border: "border-yellow-400", text: "text-yellow-900" },
-    { type: "Paquete", icon: "Folder", container: true, transparent: true, stroke: "stroke-yellow-600", bg: "fill-yellow-50", border: "border-yellow-500", text: "text-yellow-900" },
+    { type: "Nota", icon: "StickyNote", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Paquete", icon: "Folder", container: true, transparent: true, stroke: "stroke-yellow-600", bg: "fill-yellow-950/40", border: "border-yellow-500", text: "text-yellow-900 dark:text-yellow-200" },
     // --- Máquina de estados ---
     // Pseudoestado inicial CANÓNICO: punto sólido oscuro, sin icono (la figura
     // rellena ES el símbolo UML).
-    { type: "Estado Inicial", icon: "Disc", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-slate-800", bg: "fill-slate-800", border: "border-slate-800", text: "text-slate-900" },
-    { type: "Estado", icon: "ToggleLeft", shape: "rounded", stroke: "stroke-sky-400", bg: "fill-sky-100", border: "border-sky-400", text: "text-sky-900" },
-    { type: "Estado Compuesto", icon: "Boxes", container: true, transparent: true, stroke: "stroke-sky-500", bg: "fill-sky-50", border: "border-sky-500", text: "text-sky-900" },
+    { type: "Estado Inicial", icon: "Disc", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-slate-400", bg: "fill-slate-300", border: "border-slate-800", text: "text-slate-100" },
+    { type: "Estado", icon: "ToggleLeft", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Estado Compuesto", icon: "Boxes", container: true, transparent: true, stroke: "stroke-sky-500", bg: "fill-sky-950/40", border: "border-sky-500", text: "text-sky-900 dark:text-sky-200" },
     // Rombo de decisión canónico: vacío por dentro (las guardas van en las aristas).
-    { type: "Decisión", icon: "Diamond", shape: "diamond", compact: true, hideIcon: true, stroke: "stroke-amber-600", bg: "fill-amber-50", border: "border-amber-500", text: "text-amber-900" },
-    { type: "Historial", icon: "History", shape: "ellipse", compact: true, stroke: "stroke-purple-500", bg: "fill-purple-100", border: "border-purple-400", text: "text-purple-800" },
+    { type: "Decisión", icon: "Diamond", shape: "diamond", compact: true, hideIcon: true, stroke: "stroke-amber-600", bg: "fill-amber-950", border: "border-amber-500", text: "text-amber-100" },
+    { type: "Historial", icon: "History", shape: "ellipse", compact: true, stroke: "stroke-purple-500", bg: "fill-purple-950", border: "border-purple-400", text: "text-purple-100" },
     // Estado final: círculo con anillo (ojo de buey).
-    { type: "Estado Final", icon: "Target", shape: "ellipse", compact: true, stroke: "stroke-slate-700", bg: "fill-slate-100", border: "border-slate-700", text: "text-slate-900" },
+    { type: "Estado Final", icon: "Target", shape: "ellipse", compact: true, stroke: "stroke-slate-700", bg: "fill-slate-950", border: "border-slate-700", text: "text-slate-100" },
     // --- Diagrama de actividad ---
     // Nodo inicial canónico: punto sólido (verde oscuro para distinguirlo del de estados).
-    { type: "Inicio de Actividad", icon: "Disc", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-emerald-800", bg: "fill-emerald-800", border: "border-emerald-700", text: "text-emerald-900" },
-    { type: "Acción", icon: "Activity", shape: "rounded", stroke: "stroke-blue-400", bg: "fill-blue-100", border: "border-blue-400", text: "text-blue-900" },
-    { type: "Nodo de Decisión", icon: "GitBranch", shape: "diamond", compact: true, hideIcon: true, stroke: "stroke-orange-600", bg: "fill-orange-50", border: "border-orange-500", text: "text-orange-900" },
+    { type: "Inicio de Actividad", icon: "Disc", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-emerald-400", bg: "fill-emerald-300", border: "border-emerald-700", text: "text-emerald-100" },
+    { type: "Acción", icon: "Activity", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Nodo de Decisión", icon: "GitBranch", shape: "diamond", compact: true, hideIcon: true, stroke: "stroke-orange-600", bg: "fill-orange-950", border: "border-orange-500", text: "text-orange-100" },
     // Barra de bifurcación/unión (fork/join): icono Minus evoca la barra; trazo
     // y texto oscuros para legibilidad en paleta y lienzo.
-    { type: "Bifurcación/Unión", icon: "Minus", shape: "rect", stroke: "stroke-slate-800", bg: "fill-slate-300", border: "border-slate-800", text: "text-slate-900" },
-    { type: "Fin de Actividad", icon: "Target", shape: "ellipse", stroke: "stroke-rose-700", bg: "fill-rose-50", border: "border-rose-700", text: "text-rose-900" },
+    { type: "Bifurcación/Unión", icon: "Minus", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Fin de Actividad", icon: "Target", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
   ],
   aiGuidance:
     "Aplica UML. Diagramas de clases (Clases, Clases Abstractas, Interfaces, Enumeraciones con relaciones de herencia, implementación, asociación, agregación, composición y dependencia), de componentes y de casos de uso (Actores y Casos de Uso agrupados en Paquetes). " +
@@ -442,7 +514,9 @@ export const NOTATIONS: Record<NotationId, Notation> = {
 export const NOTATION_LIST: Notation[] = [DDD, BPMN, C4, UML];
 
 export function getNotation(id: NotationId | string | undefined): Notation {
-  return NOTATIONS[(id as NotationId)] ?? DDD;
+  // La caída es la notación por defecto DECLARADA, no una cableada: si no,
+  // cambiar el default deja media app hablando de la otra notación.
+  return NOTATIONS[(id as NotationId)] ?? NOTATIONS[DEFAULT_NOTATION_ID];
 }
 
 /**
@@ -501,6 +575,76 @@ export function notationTypes(
 /** true → el contenedor se dibuja como swimlane BPMN (banda lateral, línea continua). */
 export const isSwimlaneContainer = (type: string): boolean =>
   ALL_ELEMENTS[type]?.containerStyle === "swimlane";
+
+/** true si el contenedor se dibuja como ELIPSE punteada (mapa de conceptos). */
+export const isBlobContainer = (type: string): boolean =>
+  ALL_ELEMENTS[type]?.containerStyle === "blob";
+
+/**
+ * Notación dueña de cada tipo. Se calcula una vez: el lienzo sólo conoce el
+ * `tipo_elemento` del nodo y necesita llegar a lo que declara su notación
+ * (tamaño, rotulado) sin saber cuál está activa.
+ */
+const NOTATION_BY_TYPE: Record<string, Notation> = (() => {
+  const dueños = new Map<string, Notation[]>();
+  for (const n of NOTATION_LIST) {
+    for (const e of n.elements) dueños.set(e.type, [...(dueños.get(e.type) ?? []), n]);
+  }
+  // Los tipos AMBIGUOS ("Sistema Externo" vive en DDD y en C4) quedan fuera: sin
+  // saber la notación de la vista, elegir una sería dibujar el nodo con la
+  // simbología de la otra. Sin dueño, valen los valores por defecto.
+  return Object.fromEntries(
+    [...dueños].filter(([, ns]) => ns.length === 1).map(([type, ns]) => [type, ns[0]])
+  );
+})();
+
+/**
+ * Tamaño del nodo suelto de un tipo: lo que MIDE al dibujarse. Quien necesite
+ * medir un nodo (lienzo, minimapa, layout, export) pregunta acá en vez de
+ * repetir la constante. El único 160 que sobrevive fuera es `NODE_W` de
+ * `mcp/diagram-builder`, que acota nombres y no dibuja nada.
+ */
+export function sizeOfType(type: string, notation?: NotationId | string): { w: number; h: number } {
+  if (ALL_ELEMENTS[type]?.compact) return COMPACT_NODE_SIZE;
+  return notationOf(type, notation).nodeSize ?? DEFAULT_NODE_SIZE;
+}
+
+/** Tamaño de nodo de una notación (para el layout, que dispone por notación). */
+export function nodeSizeForNotation(
+  notation: NotationId | string | undefined
+): { w: number; h: number } {
+  return getNotation(notation).nodeSize ?? DEFAULT_NODE_SIZE;
+}
+
+/** Trazo por defecto de las relaciones de una notación (ver `defaultRouting`). */
+export function defaultRoutingFor(
+  notation: NotationId | string | undefined
+): "straight" | "curved" | "orthogonal" {
+  return getNotation(notation).defaultRouting ?? "straight";
+}
+
+/** Cómo se rotula un nodo suelto de ese tipo (ver `labelLayout`). */
+export function labelLayoutOfType(
+  type: string,
+  notation?: NotationId | string
+): "center" | "detail" {
+  // `detail` es el rotulado de TODA la app: la ficha (icono chico arriba, nombre,
+  // descripción y `[Tipo]`) dice lo mismo en cualquier notación. Una notación
+  // puede pedir `center` explícitamente si su símbolo no admite texto dentro.
+  return notationOf(type, notation).labelLayout ?? "detail";
+}
+
+/**
+ * Notación desde la que hay que leer un tipo. Hay tipos con el MISMO nombre en
+ * dos notaciones ("Sistema Externo" está en DDD y en C4) y difieren en tamaño y
+ * rotulado: si la vista dice en qué notación está, esa manda. Sin ese dato se
+ * cae al dueño del índice global, que es lo mejor que se puede saber.
+ */
+function notationOf(type: string, notation?: NotationId | string): Partial<Notation> {
+  const activa = notation ? NOTATIONS[notation as NotationId] : undefined;
+  if (activa?.elements.some((e) => e.type === type)) return activa;
+  return NOTATION_BY_TYPE[type] ?? {};
+}
 
 /**
  * Etiqueta del contenedor típico de la notación (Agregado, Pool, Límite de

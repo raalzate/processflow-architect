@@ -274,7 +274,7 @@ export default function SettingsPage() {
                               <FolderOpen className="w-4 h-4 mr-2" /> Mostrar en Finder
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              className="text-red-600 focus:text-red-600"
+                              className="text-destructive focus:text-destructive"
                               onClick={() => handleDeleteModel(m.id as LitertModelId, m.label)}
                             >
                               <Trash2 className="w-4 h-4 mr-2" /> Borrar modelo
@@ -286,7 +286,7 @@ export default function SettingsPage() {
 
                     <div className="mt-3 ml-7 flex items-center gap-3">
                       {m.downloaded ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
+                        <span className="inline-flex items-center gap-1 text-xs text-success font-medium">
                           <CheckCircle2 className="w-4 h-4" /> Descargado
                         </span>
                       ) : (

@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import * as DrawerPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
+import { hasPlatformModifier, modifierLabel } from "@/lib/platform";
 import { useToast } from "@/hooks/use-toast";
 import { useAi } from "@/hooks/useAi";
 import { orderLanesTask } from "@/lib/ai/tasks";
@@ -75,6 +76,7 @@ import {
 } from "@/lib/ai/tasks";
 import {
   getNotation,
+  sizeOfType,
   DEFAULT_NOTATION_ID,
   type NotationId,
 } from "@/lib/notations";
@@ -97,13 +99,14 @@ import {
   DesignerNodeComponent,
   DesignerLinkComponent,
   LinkEndpointHandles,
-  linkEndpoints,
-  NODE_WIDTH,
-  NODE_HEIGHT,
-  AGGREGATE_DEFAULT_WIDTH,
-  AGGREGATE_DEFAULT_HEIGHT,
   CHANGE_STATES,
 } from "./DesignerCanvas";
+import {
+  linkEndpoints,
+  nodeBox,
+  AGGREGATE_DEFAULT_WIDTH,
+  AGGREGATE_DEFAULT_HEIGHT,
+} from "./link-geom";
 import {
   type DesignerNode,
   type DesignerLink,
@@ -219,7 +222,7 @@ const ColorField: React.FC<{
           className="absolute -left-1 -top-1 h-8 w-8 cursor-pointer p-0 opacity-0"
         />
         {!(value && !COLOR_PRESETS.includes(value)) && (
-          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] text-gray-500">
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-2xs text-gray-500">
             +
           </span>
         )}
@@ -1161,8 +1164,8 @@ export const ComponentDesigner: React.FC<{
   // más allá quedaba dibujado pero fuera del área scrolleable y no había forma
   // de llegar al final del diagrama (un BPMN cómodo pasa de 3000 px de ancho).
   const world = useMemo(
-    () => canvasWorldSize(computeContentBounds(nodes), CANVAS_SIZE),
-    [nodes]
+    () => canvasWorldSize(computeContentBounds(nodes, notationId), CANVAS_SIZE),
+    [nodes, notationId]
   );
   // Lado del lienzo en px: nunca menor que el viewport (ver CANVAS_SIZE).
   const canvasPxW = Math.max(world.width * zoom, viewport.w);
@@ -1189,7 +1192,7 @@ export const ComponentDesigner: React.FC<{
   // Sin nodos, vuelve al 100%. Es la acción del botón "Ajustar a contenido".
   const fitToContent = useCallback((opts: { maxZoom?: number } = {}) => {
     const wrapper = canvasWrapperRef.current;
-    const bounds = computeContentBounds(nodesRef.current);
+    const bounds = computeContentBounds(nodesRef.current, notationId);
     if (!wrapper || !bounds) {
       zoomReset();
       return;
@@ -1211,7 +1214,7 @@ export const ComponentDesigner: React.FC<{
       wrapper.scrollTop = (bounds.minY - PAD) * z;
       syncViewport();
     });
-  }, [zoomReset, syncViewport]);
+  }, [zoomReset, syncViewport, notationId]);
 
   // `revision` se incrementa sólo en puntos de commit (no en cada frame de
   // arrastre), para disparar el autoguardado una vez por cambio efectivo.
@@ -1485,8 +1488,7 @@ export const ComponentDesigner: React.FC<{
         return;
       }
 
-      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-      const mod = isMac ? e.metaKey : e.ctrlKey;
+      const mod = hasPlatformModifier(e);
 
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -1561,8 +1563,8 @@ export const ComponentDesigner: React.FC<{
         agregado: isContainer ? nombre : smallest ? smallest.nombre : "",
         estado_comparativo: "nuevo",
         descripcion: "",
-        x: isContainer ? p.x - AGGREGATE_DEFAULT_WIDTH / 2 : p.x - NODE_WIDTH / 2,
-        y: isContainer ? p.y - AGGREGATE_DEFAULT_HEIGHT / 2 : p.y - NODE_HEIGHT / 2,
+        x: isContainer ? p.x - AGGREGATE_DEFAULT_WIDTH / 2 : p.x - sizeOfType(dropped.tipo_elemento, notationId).w / 2,
+        y: isContainer ? p.y - AGGREGATE_DEFAULT_HEIGHT / 2 : p.y - sizeOfType(dropped.tipo_elemento, notationId).h / 2,
         ...(isContainer
           ? { width: AGGREGATE_DEFAULT_WIDTH, height: AGGREGATE_DEFAULT_HEIGHT }
           : {}),
@@ -1573,7 +1575,7 @@ export const ComponentDesigner: React.FC<{
         return n;
       });
     },
-    [updateNodes]
+    [updateNodes, notationId]
   );
 
   // --- Mover / redimensionar / seleccionar ---
@@ -1668,8 +1670,7 @@ export const ComponentDesigner: React.FC<{
         const nodeId = ep.kind === "source" ? link.sourceId : link.targetId;
         const node = nodesRef.current.get(nodeId);
         if (!node) return;
-        const w = isContainerType(node.tipo_elemento) ? node.width || AGGREGATE_DEFAULT_WIDTH : NODE_WIDTH;
-        const h = isContainerType(node.tipo_elemento) ? node.height || AGGREGATE_DEFAULT_HEIGHT : NODE_HEIGHT;
+        const { w, h } = nodeBox(node, notationId);
         const ax = Math.min(1, Math.max(0, (p.x - node.x) / w));
         const ay = Math.min(1, Math.max(0, (p.y - node.y) / h));
         const key = ep.kind === "source" ? "sourceAnchor" : "targetAnchor";
@@ -1718,7 +1719,7 @@ export const ComponentDesigner: React.FC<{
         });
       }
     },
-    [draggingInfo]
+    [draggingInfo, notationId]
   );
 
   const handleCanvasMouseUp = useCallback(() => {
@@ -1745,12 +1746,7 @@ export const ComponentDesigner: React.FC<{
       // Marco con tamaño real (no un clic): selecciona los nodos que intersecta.
       if (xMax - xMin > 3 || yMax - yMin > 3) {
         for (const node of nodesRef.current.values()) {
-          const w = isContainerType(node.tipo_elemento)
-            ? node.width || AGGREGATE_DEFAULT_WIDTH
-            : NODE_WIDTH;
-          const h = isContainerType(node.tipo_elemento)
-            ? node.height || AGGREGATE_DEFAULT_HEIGHT
-            : NODE_HEIGHT;
+          const { w, h } = nodeBox(node, notationId);
           if (node.x < xMax && node.x + w > xMin && node.y < yMax && node.y + h > yMin) {
             hit.add(node.id);
           }
@@ -1790,7 +1786,7 @@ export const ComponentDesigner: React.FC<{
     }
     pushSnapshot(nodesRef.current, linksRef.current);
     setDraggingInfo(null);
-  }, [draggingInfo, pushSnapshot]);
+  }, [draggingInfo, pushSnapshot, notationId]);
 
   // --- Selección ---
   // La selección de nodos se resuelve en mousedown; el click no debe reajustarla
@@ -1933,7 +1929,7 @@ export const ComponentDesigner: React.FC<{
         agregado: fromNode.agregado,
         estado_comparativo: "nuevo",
         descripcion: "",
-        x: (fromNode.x ?? 60) + NODE_WIDTH + 60,
+        x: (fromNode.x ?? 60) + sizeOfType(fromNode.tipo_elemento, notationId).w + 60,
         y: fromNode.y ?? 60,
       };
       updateNodes((prev) => new Map(prev).set(id, newNode));
@@ -1949,7 +1945,7 @@ export const ComponentDesigner: React.FC<{
       );
       selectOnly(id);
     },
-    [updateNodes, updateLinks, selectOnly]
+    [updateNodes, updateLinks, selectOnly, notationId]
   );
 
   const handleClear = () => {
@@ -2051,11 +2047,11 @@ export const ComponentDesigner: React.FC<{
   // llevar el diagrama a una presentación o documento.
   const handleExportSvg = useCallback(() => {
     if (!svgRef.current) return;
-    const bounds = computeContentBounds(nodesRef.current);
+    const bounds = computeContentBounds(nodesRef.current, notationId);
     const base = (meta?.nombre_proyecto || "diagrama").replace(/[^\w.-]+/g, "_");
     exportCanvasSvg(svgRef.current, bounds, `${base}.svg`);
     toast({ title: "Diagrama exportado", description: "Se descargó un SVG del lienzo." });
-  }, [meta, toast]);
+  }, [meta, toast, notationId]);
 
   // Exporta un PNG rasterizando la página en el proceso main (capturePage): así
   // sí sale el foreignObject de los nodos. Encuadra todo y oculta overlays antes.
@@ -2147,7 +2143,7 @@ export const ComponentDesigner: React.FC<{
   // valores leídos del ref siempre están frescos al pintar los botones.
   const canUndo = historyRef.current.index > 0;
   const canRedo = historyRef.current.index < historyRef.current.snapshots.length - 1;
-  const modKey = typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC") ? "⌘" : "Ctrl";
+  const modKey = modifierLabel();
 
   if (!meta || (!isViewMode && !currentFileId)) {
     return (
@@ -2287,21 +2283,27 @@ export const ComponentDesigner: React.FC<{
 
         <div className="flex items-center gap-3">
           {isolated.length > 0 && (
-            <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
-              <AlertTriangle className="w-4 h-4" />
-              {isolated.length} sin enlaces no aparecerán en las vistas: {isolated.slice(0, 3).join(", ")}
-              {isolated.length > 3 ? "…" : ""}
-            </div>
+            // Aviso PASIVO: informa, no interrumpe. Antes era un recuadro con
+            // fondo y borde propios —el elemento más llamativo de una barra donde
+            // todo lo demás es texto— por un detalle que ni siquiera bloquea.
+            // El detalle (qué nodos) va al tooltip; acá queda el número.
+            <span
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+              title={`Sin enlaces, no aparecerán en las vistas: ${isolated.join(", ")}`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-warning" />
+              {isolated.length} sin enlaces
+            </span>
           )}
           {/* Estado de autoguardado: los tres estados se distinguen a simple vista
               (girando / verde recién guardado / gris en reposo). */}
           <div className="flex items-center gap-1.5 text-xs min-w-[120px] justify-end">
             {saveState === "saving" ? (
-              <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+              <span className="flex items-center gap-1.5 text-warning">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando…
               </span>
             ) : saveState === "saved" ? (
-              <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+              <span className="flex items-center gap-1.5 text-success">
                 <Check className="w-3.5 h-3.5" /> Guardado
               </span>
             ) : (
@@ -2320,7 +2322,7 @@ export const ComponentDesigner: React.FC<{
           <button
             onClick={() => goToDrill(drillPath.length - 2)}
             title="Volver a la vista anterior"
-            className="mr-1 flex items-center gap-1 rounded px-1.5 py-0.5 font-medium text-primary hover:bg-primary/10"
+            className="mr-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-primary hover:bg-primary/10"
           >
             <ArrowLeft className="h-3.5 w-3.5" /> Volver
           </button>
@@ -2353,7 +2355,7 @@ export const ComponentDesigner: React.FC<{
         <div className="flex-grow h-full relative overflow-hidden">
         <div
           ref={canvasWrapperRef}
-          className="absolute inset-0 overflow-auto bg-slate-50 dark:bg-slate-900"
+          className="absolute inset-0 overflow-auto bg-background"
           onScroll={syncViewport}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
@@ -2371,11 +2373,11 @@ export const ComponentDesigner: React.FC<{
                     <span className="text-foreground">Arrastra</span> un elemento desde la paleta de la izquierda.
                   </li>
                   <li>
-                    <kbd className="rounded border bg-muted px-1 text-xs">{modKey}</kbd>
-                    <kbd className="ml-0.5 rounded border bg-muted px-1 text-xs">K</kbd> abre la paleta de acciones.
+                    <kbd className="rounded-md border bg-muted px-1 text-xs">{modKey}</kbd>
+                    <kbd className="ml-0.5 rounded-md border bg-muted px-1 text-xs">K</kbd> abre la paleta de acciones.
                   </li>
                   <li>
-                    <kbd className="rounded border bg-muted px-1 text-xs">@</kbd> en el chat inyecta una vista como contexto.
+                    <kbd className="rounded-md border bg-muted px-1 text-xs">@</kbd> en el chat inyecta una vista como contexto.
                   </li>
                 </ul>
               </div>
@@ -2386,7 +2388,10 @@ export const ComponentDesigner: React.FC<{
             width={canvasPxW}
             height={canvasPxH}
             viewBox={`0 0 ${canvasPxW / zoom} ${canvasPxH / zoom}`}
-            className="bg-white dark:bg-[hsl(222_16%_13%)]"
+            // Un punto por debajo del fondo de la app: el lienzo es la superficie
+            // de trabajo y se distingue del resto sin cambiar de familia de color.
+            // Ya no necesita forzar `dark`: la app entera lo es (spec 003).
+            className="bg-canvas"
           >
             <defs>
               {/* Cuadrícula estilo lienzo de diseño (Figma/Miro): puntos finos por
@@ -2435,6 +2440,7 @@ export const ComponentDesigner: React.FC<{
                 <DesignerNodeComponent
                   key={node.id}
                   node={node}
+                  notation={notationId}
                   isSelected={isSelected(node.id)}
                   connecting={connectFrom !== null}
                   onStartConnect={(e) => startConnect(e, node.id)}
@@ -2456,6 +2462,7 @@ export const ComponentDesigner: React.FC<{
                   key={link.id}
                   link={link}
                   nodes={nodes}
+                  notation={notationId}
                   isSelected={isSelected(link.id)}
                   onClick={(e) => handleLinkClick(e, link.id)}
                   onDoubleClick={() => setEditingLink(link)}
@@ -2469,12 +2476,7 @@ export const ComponentDesigner: React.FC<{
               (() => {
                 const s = nodes.get(connectFrom);
                 if (!s) return null;
-                const sw = isContainerType(s.tipo_elemento)
-                  ? s.width || AGGREGATE_DEFAULT_WIDTH
-                  : NODE_WIDTH;
-                const sh = isContainerType(s.tipo_elemento)
-                  ? s.height || AGGREGATE_DEFAULT_HEIGHT
-                  : NODE_HEIGHT;
+                const { w: sw, h: sh } = nodeBox(s, notationId);
                 const sx = s.x + sw / 2;
                 const sy = s.y + sh / 2;
                 return (
@@ -2495,6 +2497,7 @@ export const ComponentDesigner: React.FC<{
                 <DesignerNodeComponent
                   key={node.id}
                   node={node}
+                  notation={notationId}
                   isSelected={isSelected(node.id)}
                   connecting={connectFrom !== null}
                   onStartConnect={(e) => startConnect(e, node.id)}
@@ -2520,6 +2523,7 @@ export const ComponentDesigner: React.FC<{
                     key={`ep-${link.id}`}
                     link={link}
                     nodes={nodes}
+                    notation={notationId}
                     onEndpointMouseDown={(e, which) => startEndpointDrag(e, link.id, which)}
                     onWaypointMouseDown={(e, i) => startWaypointDrag(e, link.id, i)}
                     onWaypointDoubleClick={(i) => removeWaypoint(link.id, i)}
@@ -2556,14 +2560,14 @@ export const ComponentDesigner: React.FC<{
               }}
             >
               <p className="text-sm font-semibold leading-tight">{hoverCard.node.nombre}</p>
-              <p className="mt-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <p className="mt-0.5 text-2xs uppercase tracking-wide text-muted-foreground">
                 {hoverCard.node.tipo_elemento}
               </p>
               <p className="mt-1.5 text-xs leading-snug text-muted-foreground">
                 {hoverCard.node.descripcion?.trim() || "Sin descripción — doble clic para editarla."}
               </p>
               {!!hoverCard.node.tags_tecnologia?.length && (
-                <p className="mt-1 text-[11px] italic text-muted-foreground">
+                <p className="mt-1 text-2xs italic text-muted-foreground">
                   [{hoverCard.node.tags_tecnologia.join(", ")}]
                 </p>
               )}
@@ -2581,14 +2585,14 @@ export const ComponentDesigner: React.FC<{
               onClick={zoomOut}
               disabled={zoom <= ZOOM_MIN}
               title="Alejar (Ctrl/⌘ + rueda)"
-              className="rounded p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
             >
               <ZoomOut className="h-4 w-4" />
             </button>
             <button
               onClick={zoomReset}
               title="Restablecer zoom (100%)"
-              className="min-w-[3rem] rounded px-1 py-1.5 text-center text-xs font-medium tabular-nums text-foreground hover:bg-muted"
+              className="min-w-[3rem] rounded-md px-1 py-1.5 text-center text-xs font-medium tabular-nums text-foreground hover:bg-muted"
             >
               {Math.round(zoom * 100)}%
             </button>
@@ -2596,14 +2600,14 @@ export const ComponentDesigner: React.FC<{
               onClick={zoomIn}
               disabled={zoom >= ZOOM_MAX}
               title="Acercar (Ctrl/⌘ + rueda)"
-              className="rounded p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
             >
               <ZoomIn className="h-4 w-4" />
             </button>
             <button
               onClick={() => fitToContent()}
               title="Ajustar a contenido"
-              className="rounded p-1.5 text-muted-foreground hover:bg-muted"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"
             >
               <Maximize className="h-4 w-4" />
             </button>
@@ -2615,6 +2619,7 @@ export const ComponentDesigner: React.FC<{
             <>
               <Minimap
                 nodes={nodes}
+                notation={notationId}
                 zoom={zoom}
                 canvasSize={Math.max(CANVAS_SIZE, canvasPxW / zoom, canvasPxH / zoom)}
                 viewport={viewport}
@@ -2704,7 +2709,7 @@ export const ComponentDesigner: React.FC<{
               ["?", "Abrir esta ayuda"],
             ].map(([k, d]) => (
               <div key={k} className="flex items-center justify-between gap-4 border-b last:border-0 py-1.5">
-                <kbd className="px-2 py-0.5 rounded bg-muted border text-xs font-mono whitespace-nowrap">{k}</kbd>
+                <kbd className="px-2 py-0.5 rounded-md bg-muted border text-xs font-mono whitespace-nowrap">{k}</kbd>
                 <span className="text-muted-foreground text-right">{d}</span>
               </div>
             ))}

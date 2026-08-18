@@ -12,11 +12,14 @@ import { cn } from "@/lib/utils";
 import {
   Search, Undo2, Redo2, Settings2, Library, Download, Maximize, Trash,
   HelpCircle, Layers, Plus, GitGraph, Plug, FileDown, ArrowRight, PanelLeft,
-  FilePlus2,
+  FilePlus2, Sparkles,
 } from "lucide-react";
 import { useViews } from "@/context/ViewsContext";
 import { useGraphContext } from "@/context/GraphContext";
 import { useSidebar } from "@/components/ui/sidebar";
+import { useAgent } from "@/context/AgentContext";
+import { hasPlatformModifier } from "@/lib/platform";
+import { getDefinition } from "@/lib/artifacts/registry";
 import { NOTATION_LIST } from "@/lib/notations";
 
 /** Acción del lienzo: se despacha a ComponentDesigner por un evento de ventana. */
@@ -51,12 +54,15 @@ export function CommandPalette() {
 
   const { views, setActiveView, createView } = useViews();
   const { handleDownloadJson, currentFileId } = useGraphContext();
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, setOpen: setSidebarOpen } = useSidebar();
+  const { artifacts } = useAgent();
 
-  // Atajo global ⌘K / Ctrl+K para abrir/cerrar; ignora si se escribe en un campo.
+  // Atajo global ⌘K (Mac) / Ctrl+K (Windows y Linux) para abrir y cerrar. El
+  // modificador es el de la plataforma, no cualquiera de los dos: en macOS,
+  // Ctrl+K ya tiene significado del sistema dentro de un campo de texto.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      if (hasPlatformModifier(e) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((o) => !o);
       }
@@ -77,6 +83,32 @@ export function CommandPalette() {
         icon: Layers,
         keywords: `vista ${v.name} ${v.kind}`,
         run: () => setActiveView(v.id),
+      });
+    }
+
+    // Artefactos generados por el agente. Viven en el panel del chat, que es el
+    // sidebar: al colapsarlo dejaban de existir para la UI aunque siguieran
+    // guardados. Acá quedan siempre a mano — se abre el panel y se muestra el
+    // artefacto elegido.
+    for (const a of artifacts) {
+      cmds.push({
+        id: `artifact-${a.id}`,
+        label: `Ver artefacto: ${a.title}`,
+        hint: getDefinition(a.kind).label,
+        group: "Artefactos",
+        icon: Sparkles,
+        keywords: `artefacto ${a.title} ${a.kind} ${a.render}`,
+        run: () => {
+          setSidebarOpen(true);
+          // El panel no está montado mientras el sidebar está colapsado, así que
+          // el evento tiene que salir DESPUÉS de que React lo monte; en el mismo
+          // tick no habría nadie escuchando.
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() =>
+              window.dispatchEvent(new CustomEvent("open-artifact", { detail: a.id })),
+            ),
+          );
+        },
       });
     }
 
@@ -169,7 +201,7 @@ export function CommandPalette() {
     }
 
     return cmds;
-  }, [views, setActiveView, createView, router, toggleSidebar, currentFileId, handleDownloadJson]);
+  }, [views, setActiveView, createView, router, toggleSidebar, currentFileId, handleDownloadJson, artifacts, setSidebarOpen]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -245,7 +277,7 @@ export function CommandPalette() {
             placeholder="Buscar una acción… (vistas, lienzo, exportar, ajustes)"
             className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
-          <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:block">
+          <kbd className="hidden shrink-0 rounded-md border bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground sm:block">
             Esc
           </kbd>
         </div>
@@ -258,7 +290,7 @@ export function CommandPalette() {
           ) : (
             groups.map(([group, items]) => (
               <div key={group} className="mb-1">
-                <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <p className="px-2 py-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {group}
                 </p>
                 {items.map(({ cmd, idx }) => {

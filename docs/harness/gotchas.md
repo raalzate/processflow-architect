@@ -53,17 +53,17 @@ Causa:   vitest transpila por archivo y **no** hace type-check del proyecto; dev
 Regla:   nada se entrega con una sola señal. El entregable es `npm run gate`.
 Mecanismo: `scripts/gate.sh`, el hook `Stop` (`.claude/hooks/gate-stop.mjs`) y el job `gate` de CI.
 
-### GOTCHA: correr el gate completo con la app abierta rompe el dev server
+### GOTCHA (RESUELTA): correr el gate completo con la app abierta rompía el dev server
 
-Síntoma: la ventana de Electron muestra `Runtime Error · Cannot find module './1331.js'` con un
-         require stack que apunta a `.next/server/webpack-runtime.js`.
-Causa:   `npm run gate` incluye `npm run build`, y `next build` reescribe `.next/` — el MISMO
-         directorio desde el que sirve `next dev`. El dev server queda pidiendo chunks que ya
-         no existen.
-Regla:   mientras desarrollás con la app abierta, la señal es `npm run gate:fast` (sin build).
-         El gate completo, antes de entregar y con la app cerrada; si igual lo corrés, relanzá
-         `next dev` y la app después.
-Mecanismo: `scripts/gate.sh` avisa si detecta un `next dev` corriendo antes de lanzar el build.
+Síntoma: la ventana de Electron mostraba `Runtime Error · Cannot find module './1331.js'` con un
+         require stack que apuntaba a `.next/server/webpack-runtime.js`.
+Causa:   `npm run gate` incluye `npm run build`, y `next build` reescribía `.next/` — el MISMO
+         directorio desde el que servía `next dev`. El dev server quedaba pidiendo chunks que
+         ya no existían.
+Regla:   ya no aplica: el gate se puede correr con la app abierta.
+Mecanismo: `next.config.ts` da al dev server su propio `distDir` (`.next-dev/`), así el build de
+         producción no lo pisa. El aviso que traía `gate.sh` se retiró porque describía un
+         problema que dejó de existir.
 
 ### GOTCHA: la app lanzada por el agente muere al terminar la tarea
 
@@ -85,3 +85,18 @@ Causa:   el tipo se comparó contra un literal (`tipo_elemento === "Contexto Del
 Regla:   `src/lib/notations.ts` es la única fuente de verdad. Los archivos que ya lo violan son
          deuda declarada y esa lista sólo baja.
 Mecanismo: regla NOTACION de `scripts/repo-lint.mjs` + allowlist en `.claude/harness.config.json`.
+
+### GOTCHA: `ENOENT __harness-selftest-tmp.tsx` en el build de Next
+
+Síntoma: correr el gate con `next dev`/`electron-dev` vivo deja el navegador en
+         `Build Error — ENOENT: no such file or directory, stat '…/__harness-selftest-tmp.tsx'`,
+         reportado sobre `globals.css`. Recargar lo arregla y vuelve al gate siguiente.
+Causa:   el self-test probaba los frenos del lint **escribiendo archivos temporales dentro de
+         `src/`** y borrándolos al instante. El watcher de Next y el escaneo de contenido de
+         Tailwind los alcanzaban a ver; cuando iban a leerlos ya no existían.
+Regla:   el arnés no escribe nunca en el árbol de fuentes. Para probar un freno del lint se le pasa
+         el contenido por stdin y la ruta sólo elige las reglas:
+         `node scripts/repo-lint.mjs --file <ruta virtual> --stdin`.
+Mecanismo: `--stdin` en `scripts/repo-lint.mjs` + el helper `lintVirtual`/`frenoDelLint` del
+         self-test, y un caso del propio self-test que falla si vuelve a quedar un
+         `__selftest*` dentro de `src/`.

@@ -133,7 +133,7 @@ export function ViewsTabBar() {
                       if (e.key === "Enter") commitRename();
                       if (e.key === "Escape") setEditingId(null);
                     }}
-                    className="w-24 rounded bg-background px-1 text-xs outline-none ring-1 ring-primary"
+                    className="w-24 rounded-md bg-background px-1 text-xs outline-none ring-1 ring-primary"
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
@@ -146,7 +146,7 @@ export function ViewsTabBar() {
                     {v.kind !== "mermaid" && (
                       <span
                         className={cn(
-                          "rounded px-1 text-[9px] font-bold uppercase tracking-wide",
+                          "rounded-md px-1 text-2xs font-bold uppercase tracking-wide",
                           notationBadgeClass(v.notation)
                         )}
                         title={`Grupo: ${getNotation(v.notation).label}`}
@@ -164,7 +164,7 @@ export function ViewsTabBar() {
                   <DropdownMenuTrigger asChild>
                     <button
                       title="Opciones de la vista"
-                      className="rounded p-0.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
+                      className="rounded-md p-0.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <MoreVertical className="h-3.5 w-3.5" />
@@ -213,7 +213,7 @@ export function ViewsTabBar() {
                 className="flex flex-col items-start gap-0.5"
               >
                 <span className="font-medium">{n.label}</span>
-                <span className="text-[10px] text-muted-foreground">{n.description}</span>
+                <span className="text-2xs text-muted-foreground">{n.description}</span>
               </DropdownMenuItem>
             ))}
             {/* Editor Mermaid genérico: código + vista previa (no es lienzo de nodos). */}
@@ -224,7 +224,7 @@ export function ViewsTabBar() {
               <span className="flex items-center gap-1.5 font-medium">
                 <GitGraph className="h-3.5 w-3.5" /> Diagrama Mermaid
               </span>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-2xs text-muted-foreground">
                 Código + vista previa: secuencia, flujo, clases, estados, ER, gantt.
               </span>
             </DropdownMenuItem>
@@ -232,8 +232,8 @@ export function ViewsTabBar() {
         </DropdownMenu>
       </div>
 
-      <span className="shrink-0 border-l pl-2 text-[11px] text-muted-foreground">
-        Incluye vistas en el chat con <kbd className="rounded border bg-muted px-1">@</kbd>
+      <span className="shrink-0 border-l pl-2 text-2xs text-muted-foreground">
+        Incluye vistas en el chat con <kbd className="rounded-md border bg-muted px-1">@</kbd>
       </span>
 
       {/* Confirmación de borrado */}

@@ -55,7 +55,7 @@ import { useGraphContext } from "@/context/GraphContext"; // Importa el hook
 import { useToast } from "@/hooks/use-toast";
 import { parseDiagramJson } from "@/lib/import-diagram";
 import {
-  DEFAULT_NOTATION_ID,
+  INITIAL_NOTATION_ID,
   NOTATION_LIST,
   getNotation,
   notationContainerLabel,
@@ -123,7 +123,7 @@ const McpStatusButton = () => {
         {running !== null && (
           <span
             className={`absolute top-1 right-1 h-2 w-2 rounded-full ring-2 ring-card ${
-              running ? "bg-green-500 animate-pulse" : "bg-zinc-400"
+              running ? "bg-success animate-pulse" : "bg-muted-foreground"
             }`}
           />
         )}
@@ -168,7 +168,7 @@ const FileManagement: React.FC<
   const [newName, setNewName] = useState("");
   // Notación del proyecto: se elige aquí para que el lienzo abra con la paleta
   // que el usuario quiere (BPMN, C4, UML) y no siempre con la de DDD.
-  const [newNotation, setNewNotation] = useState<NotationId>(DEFAULT_NOTATION_ID);
+  const [newNotation, setNewNotation] = useState<NotationId>(INITIAL_NOTATION_ID);
 
   // La paleta de comandos (⌘K) abre este diálogo por un evento de ventana, en
   // vez de duplicar el formulario de nombre.
@@ -181,7 +181,7 @@ const FileManagement: React.FC<
   const submitNewProject = () => {
     onCreateProject(newName, newNotation);
     setNewName("");
-    setNewNotation(DEFAULT_NOTATION_ID);
+    setNewNotation(INITIAL_NOTATION_ID);
     setNewOpen(false);
   };
 

@@ -32,7 +32,12 @@ export function artifactBodyMarkdown(a: Artifact, allNodes: GraphNode[]): string
   }
 }
 
-/** Markdown del artefacto con encabezado de título (para documentos/PDF). */
+/**
+ * Markdown del artefacto con encabezado de título (para documentos/PDF).
+ * La revisión viaja en el encabezado cuando es > 1: un export sin número
+ * esconde que el documento tuvo historia (004-artefactos-versionados, FR-012).
+ */
 export function artifactToMarkdown(a: Artifact, allNodes: GraphNode[]): string {
-  return `## ${a.title}\n\n${artifactBodyMarkdown(a, allNodes)}\n`;
+  const rev = a.revision && a.revision > 1 ? ` · v${a.revision}` : "";
+  return `## ${a.title}${rev}\n\n${artifactBodyMarkdown(a, allNodes)}\n`;
 }

@@ -11,6 +11,8 @@ Cuándo arranca una feature por aquí y cuándo no: `docs/harness/sdd.md`.
 
 ## Estado
 
-Todavía no hay features con artefactos versionados en este repo. Cuando la primera entre,
+Cuatro features con artefactos acá: `001-layout-legible`, `002-layout-organizar`,
+`003-ui-homogenea` y `004-artefactos-versionados` — esta última es la primera con el ciclo
+completo (`spec` · `plan` · `checklist` · `testify` · `tasks` · `analyze`).
 `scripts/harness-selftest.mjs` valida que el puntero de feature activa resuelva a una carpeta real
 (un puntero colgado deja el gate en rojo).

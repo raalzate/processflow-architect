@@ -24,8 +24,23 @@ import { extractDocumentText } from "@/lib/ai/document-extract";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
 import { getGenerationConfig } from "@/lib/ai-config";
 import { DEFAULT_NOTATION_ID } from "@/lib/notations";
+import {
+  archiveLineage,
+  attachToLineage,
+  detachArtifact,
+  ingestArtifacts,
+  lineageHistory,
+  lineageOf,
+  migrateState,
+  purgeLineage,
+  resolveContextRevisions,
+  restoreRevision,
+  visibleArtifacts as visibleByLineage,
+  type VersioningDeps,
+} from "@/lib/artifacts/versioning";
 import type {
   Artifact,
+  ArtifactLineage,
   ArtifactVersion,
   ChatMessage,
   AgentArtifact,
@@ -40,8 +55,12 @@ const uid = () =>
 
 const nowIso = () => new Date().toISOString();
 
+/** El reloj y los ids que consume la lógica pura de versionado (§P3). */
+const versioningDeps: VersioningDeps = { uid, now: nowIso };
+
 interface AgentState {
   versions: ArtifactVersion[];
+  lineages: ArtifactLineage[];
   artifacts: Artifact[];
   messages: ChatMessage[];
   activeVersionId?: string;
@@ -54,12 +73,21 @@ function storageKey(fileId: string) {
 function loadState(fileId: string): AgentState {
   try {
     const raw = localStorage.getItem(storageKey(fileId));
-    if (raw) return JSON.parse(raw) as AgentState;
+    if (raw) {
+      const parsed = JSON.parse(raw) as AgentState;
+      // El estado anterior a 004 no tiene linajes: se normaliza al cargar
+      // (idempotente, así que correrlo siempre no cuesta nada).
+      const migrado = migrateState(
+        { lineages: parsed.lineages ?? [], artifacts: parsed.artifacts ?? [] },
+        versioningDeps
+      );
+      return { ...parsed, ...migrado };
+    }
   } catch {
     /* ignore */
   }
   const v: ArtifactVersion = { id: uid(), label: "v1", createdAt: nowIso() };
-  return { versions: [v], artifacts: [], messages: [] };
+  return { versions: [v], lineages: [], artifacts: [], messages: [] };
 }
 
 /** Serializa un artefacto a texto plano para inyectarlo como contexto. */
@@ -96,14 +124,27 @@ function viewToContext(view: any): { kind: string; title: string; content: strin
 export interface AgentContextType {
   versions: ArtifactVersion[];
   activeVersionId: string;
-  artifacts: Artifact[]; // todos
-  versionArtifacts: Artifact[]; // de la versión activa
+  lineages: ArtifactLineage[];
+  artifacts: Artifact[]; // todas las revisiones
+  versionArtifacts: Artifact[]; // todas las del snapshot activo
+  visibleArtifacts: Artifact[]; // UNA por linaje: la revisión vigente (lo que ve el panel)
   messages: ChatMessage[];
   busy: boolean;
   contextArtifactIds: string[];
   attachments: AgentDocument[];
 
   sendMessage: (text: string) => Promise<void>;
+  /** Revisiones de un artefacto, ascendente (histórico del linaje). */
+  historyOf: (artifactId: string) => Artifact[];
+  /** Restaurar = crear una revisión nueva con el contenido de la elegida. */
+  restoreArtifactRevision: (artifactId: string) => void;
+  /** Borrado definitivo del linaje entero: lo único que destruye histórico. */
+  purgeArtifact: (artifactId: string) => void;
+  /** Mueve una revisión al linaje de otro artefacto (título cambiado). */
+  attachArtifactTo: (artifactId: string, targetArtifactId: string) => void;
+  /** Saca una revisión a un linaje propio. */
+  detachArtifactRevision: (artifactId: string) => void;
+  /** Archiva el linaje (lo que hace el botón de borrar del panel). */
   deleteArtifact: (id: string) => void;
   clearVersionArtifacts: () => void;
   createVersion: (label?: string) => void;
@@ -131,6 +172,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
 
   const [versions, setVersions] = useState<ArtifactVersion[]>([]);
   const [activeVersionId, setActiveVersionId] = useState<string>("");
+  const [lineages, setLineages] = useState<ArtifactLineage[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
@@ -156,6 +198,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     if (!currentFileId) {
       setVersions([]);
       setActiveVersionId("");
+      setLineages([]);
       setArtifacts([]);
       setMessages([]);
       setContextArtifactIds([]);
@@ -170,6 +213,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         ? s.activeVersionId
         : s.versions[s.versions.length - 1]?.id ?? "";
     setActiveVersionId(savedActive);
+    setLineages(s.lineages);
     setArtifacts(s.artifacts);
     setMessages(s.messages);
     setContextArtifactIds([]);
@@ -182,16 +226,23 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.setItem(
         storageKey(currentFileId),
-        JSON.stringify({ versions, artifacts, messages, activeVersionId } as AgentState)
+        JSON.stringify({ versions, lineages, artifacts, messages, activeVersionId } as AgentState)
       );
     } catch {
       /* ignore quota */
     }
-  }, [currentFileId, versions, artifacts, messages, activeVersionId]);
+  }, [currentFileId, versions, lineages, artifacts, messages, activeVersionId]);
 
   const versionArtifacts = useMemo(
     () => artifacts.filter((a) => a.versionId === activeVersionId),
     [artifacts, activeVersionId]
+  );
+
+  // Lo que ve el panel: una entrada por linaje (su revisión vigente). El
+  // histórico queda a un clic; no compite por espacio en la lista (FR-005).
+  const visibleArtifacts = useMemo(
+    () => visibleByLineage({ lineages, artifacts }, activeVersionId),
+    [lineages, artifacts, activeVersionId]
   );
 
   const updateTokenUsage = useCallback((tokens?: number) => {
@@ -215,13 +266,80 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
 
   const setActiveVersion = useCallback((id: string) => setActiveVersionId(id), []);
 
-  const deleteArtifact = useCallback((id: string) => {
-    setArtifacts((prev) => prev.filter((a) => a.id !== id));
-    setContextArtifactIds((prev) => prev.filter((x) => x !== id));
-  }, []);
+  const historyOf = useCallback(
+    (artifactId: string) => {
+      const art = artifacts.find((a) => a.id === artifactId);
+      return art?.lineageId ? lineageHistory(artifacts, art.lineageId) : art ? [art] : [];
+    },
+    [artifacts]
+  );
+
+  /**
+   * Borrar en la UI **archiva**: el artefacto sale de la lista y su histórico
+   * queda recuperable (FR-009). Destruir es `purgeArtifact`, con confirmación.
+   * Se mantiene el nombre `deleteArtifact` porque es el que llama el panel.
+   */
+  const deleteArtifact = useCallback(
+    (id: string) => {
+      const lineage = lineageOf({ lineages, artifacts }, id);
+      if (!lineage) {
+        // Artefacto sin linaje (estado raro): se retira igual, sin dejar basura.
+        setArtifacts((prev) => prev.filter((a) => a.id !== id));
+      } else {
+        setLineages(archiveLineage({ lineages, artifacts }, lineage.id, versioningDeps).lineages);
+      }
+      setContextArtifactIds((prev) => prev.filter((x) => x !== id));
+    },
+    [lineages, artifacts]
+  );
+
+  const purgeArtifact = useCallback(
+    (id: string) => {
+      const lineage = lineageOf({ lineages, artifacts }, id);
+      if (!lineage) return;
+      const next = purgeLineage({ lineages, artifacts }, lineage.id);
+      const purgados = new Set(
+        artifacts.filter((a) => a.lineageId === lineage.id).map((a) => a.id)
+      );
+      setLineages(next.lineages);
+      setArtifacts(next.artifacts);
+      setContextArtifactIds((prev) => prev.filter((x) => !purgados.has(x)));
+    },
+    [lineages, artifacts]
+  );
+
+  const restoreArtifactRevision = useCallback(
+    (artifactId: string) => {
+      const next = restoreRevision({ lineages, artifacts }, artifactId, versioningDeps);
+      setLineages(next.lineages);
+      setArtifacts(next.artifacts);
+    },
+    [lineages, artifacts]
+  );
+
+  const attachArtifactTo = useCallback(
+    (artifactId: string, targetArtifactId: string) => {
+      const target = lineageOf({ lineages, artifacts }, targetArtifactId);
+      if (!target) return;
+      const next = attachToLineage({ lineages, artifacts }, artifactId, target.id);
+      setLineages(next.lineages);
+      setArtifacts(next.artifacts);
+    },
+    [lineages, artifacts]
+  );
+
+  const detachArtifactRevision = useCallback(
+    (artifactId: string) => {
+      const next = detachArtifact({ lineages, artifacts }, artifactId, versioningDeps);
+      setLineages(next.lineages);
+      setArtifacts(next.artifacts);
+    },
+    [lineages, artifacts]
+  );
 
   const clearVersionArtifacts = useCallback(() => {
     setArtifacts((prev) => prev.filter((a) => a.versionId !== activeVersionId));
+    setLineages((prev) => prev.filter((l) => l.versionId !== activeVersionId));
   }, [activeVersionId]);
 
   const toggleContextArtifact = useCallback((id: string) => {
@@ -270,9 +388,15 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       const assistantId = uid();
       try {
         const history = messages.slice(-10).map((m) => ({ role: m.role, content: m.content }));
-        const artifactContext = artifacts
-          .filter((a) => usedContextIds.includes(a.id))
-          .map((a) => ({ kind: a.kind, title: a.title, content: artifactToText(a) }));
+        // Se inyecta la revisión VIGENTE de cada linaje marcado, una sola vez:
+        // marcar la v2 y que llegue la v3 es lo correcto, no un bug (FR-010).
+        const resolvedContext = resolveContextRevisions(artifacts, usedContextIds);
+        const resolvedContextIds = resolvedContext.map((a) => a.id);
+        const artifactContext = resolvedContext.map((a) => ({
+          kind: a.kind,
+          title: a.revision && a.revision > 1 ? `${a.title} · v${a.revision}` : a.title,
+          content: artifactToText(a),
+        }));
         // Vistas inyectadas (pin en la barra inferior) → contexto del agente.
         const viewContext = injectedViews
           .map((v) => viewToContext(v))
@@ -330,18 +454,24 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           !data.artifacts?.length &&
           /^ocurrió un problema al ejecutar el agente/i.test(data.reply ?? "");
 
-        const newArtifacts: Artifact[] = (data.artifacts ?? []).map((a: AgentArtifact) => ({
-          id: uid(),
-          versionId: activeVersionId,
-          kind: a.kind,
-          render: a.render,
-          title: a.title,
-          payload: a.payload,
-          createdAt: nowIso(),
-          sourceMessageId: assistantId,
-          contextArtifactIds: usedContextIds.length ? usedContextIds : undefined,
-        }));
-        if (newArtifacts.length) setArtifacts((prev) => [...prev, ...newArtifacts]);
+        // El ingreso decide linaje y revisión (versioning.ts): si el artefacto
+        // ya existía, esto es su vN+1 y la anterior queda en el histórico.
+        const incoming = (data.artifacts ?? []) as AgentArtifact[];
+        const ingested = ingestArtifacts(
+          { lineages, artifacts },
+          incoming,
+          {
+            versionId: activeVersionId,
+            sourceMessageId: assistantId,
+            contextArtifactIds: resolvedContextIds,
+          },
+          versioningDeps
+        );
+        const newArtifacts = ingested.created;
+        if (newArtifacts.length) {
+          setLineages(ingested.lineages);
+          setArtifacts(ingested.artifacts);
+        }
 
         // Finaliza el placeholder con el resultado completo (fuente de verdad:
         // `data.reply` ya parseado; el texto streameado es solo el avance en vivo).
@@ -387,6 +517,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       busy,
       messages,
       artifacts,
+      lineages,
       contextArtifactIds,
       attachments,
       graphData,
@@ -403,13 +534,20 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const value: AgentContextType = {
     versions,
     activeVersionId,
+    lineages,
     artifacts,
     versionArtifacts,
+    visibleArtifacts,
     messages,
     busy,
     contextArtifactIds,
     attachments,
     sendMessage,
+    historyOf,
+    restoreArtifactRevision,
+    purgeArtifact,
+    attachArtifactTo,
+    detachArtifactRevision,
     deleteArtifact,
     clearVersionArtifacts,
     createVersion,

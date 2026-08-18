@@ -12,8 +12,9 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Plug, Power, PowerOff, Copy, CopyCheck, Loader2 } from "lucide-react";
+import { Plug, Power, PowerOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CodeBlock } from "@/components/ui/code-block";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -40,7 +41,6 @@ export function McpServerConfig() {
   const [url, setUrl] = useState("");
   const [port, setPort] = useState<number>(MCP_DEFAULT_PORT);
   const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   // Estado inicial: puerto guardado + estado real del server (puede haber
   // quedado encendido por el auto-arranque del bridge).
@@ -109,18 +109,6 @@ export function McpServerConfig() {
     }
   }, [running, port, toast]);
 
-  const copyConfig = async () => {
-    const cfg = clientConfigJson(port);
-    try {
-      if (api()?.copyToClipboard) await api()!.copyToClipboard(cfg);
-      else await navigator.clipboard.writeText(cfg);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast({ variant: "destructive", title: "No se pudo copiar" });
-    }
-  };
-
   return (
     <Card>
       <CardHeader>
@@ -131,13 +119,13 @@ export function McpServerConfig() {
               <span
                 className={cn(
                   "ml-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
-                  running ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
+                  running ? "bg-success-surface text-success-foreground" : "bg-muted text-muted-foreground"
                 )}
               >
                 <span
                   className={cn(
                     "h-1.5 w-1.5 rounded-full",
-                    running ? "bg-green-500" : "bg-zinc-400"
+                    running ? "bg-success" : "bg-muted-foreground"
                   )}
                 />
                 {running ? "Activo" : "Apagado"}
@@ -180,7 +168,7 @@ export function McpServerConfig() {
 
         {running && (
           <p className="text-xs text-muted-foreground">
-            Escuchando en <code className="bg-muted rounded px-1">{url}</code>
+            Escuchando en <code className="bg-muted rounded-md px-1">{url}</code>
           </p>
         )}
 
@@ -188,24 +176,7 @@ export function McpServerConfig() {
           <Label className="text-xs text-muted-foreground">
             Configuración para el cliente (Claude Code · <code>.mcp.json</code>):
           </Label>
-          <div className="relative group">
-            <pre className="rounded-lg border bg-zinc-900 text-zinc-100 text-xs p-3 overflow-x-auto">
-              <code>{clientConfigJson(port)}</code>
-            </pre>
-            <Button
-              variant="outline"
-              size="icon"
-              className="absolute top-2 right-2 h-7 w-7 opacity-70 group-hover:opacity-100"
-              onClick={copyConfig}
-              title="Copiar"
-            >
-              {copied ? (
-                <CopyCheck className="h-3.5 w-3.5 text-green-600" />
-              ) : (
-                <Copy className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          </div>
+          <CodeBlock code={clientConfigJson(port)} size="sm" />
         </div>
       </CardContent>
     </Card>

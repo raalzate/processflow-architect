@@ -196,7 +196,7 @@ function TaskListPanel() {
         >
           {e.node.nombre}
         </span>
-        <Badge variant="outline" className="shrink-0 text-[10px] px-1 py-0 max-w-[80px] truncate">
+        <Badge variant="outline" className="shrink-0 text-2xs px-1 py-0 max-w-[80px] truncate">
           {e.viewName}
         </Badge>
       </div>
@@ -221,7 +221,7 @@ function TaskListPanel() {
             {isGenerating ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-                <Sparkles className="w-4 h-4 text-purple-500" />
+                <Sparkles className="w-4 h-4 text-primary" />
             )}
             </Button>
             <Button
@@ -234,7 +234,7 @@ function TaskListPanel() {
             title="Copiar lista de elementos"
             >
             {copiedStates["tasklist"] ? (
-                <CopyCheck className="w-4 h-4 text-green-500" />
+                <CopyCheck className="w-4 h-4 text-success" />
             ) : (
                 <Copy className="w-4 h-4" />
             )}
@@ -316,7 +316,7 @@ function TaskListPanel() {
         )}
         {hasDeleted && (
           <AccordionItem value="eliminados">
-            <AccordionTrigger className="text-sm font-medium px-2 py-1.5 hover:bg-muted rounded-md text-red-700">
+            <AccordionTrigger className="text-sm font-medium px-2 py-1.5 hover:bg-muted rounded-md text-destructive">
               Eliminados ({taskListNodes.deleted.length + viewDeleted.length})
             </AccordionTrigger>
             <AccordionContent className="pt-1">
@@ -398,7 +398,7 @@ function DomainModelPanel() {
           title="Copiar flujo de elementos"
         >
           {copiedStates["nodetree"] ? (
-            <CopyCheck className="w-4 h-4 text-green-500" />
+            <CopyCheck className="w-4 h-4 text-success" />
           ) : (
             <Copy className="w-4 h-4" />
           )}
@@ -535,9 +535,9 @@ function EmptyGraphState() {
 // ====================================================================
 /** Punto de color del estado del cambio (nuevo/modificado/eliminado). */
 const ESTADO_DOT: Record<string, string> = {
-  nuevo: "bg-emerald-500",
-  modificado: "bg-amber-500",
-  eliminado: "bg-red-500",
+  nuevo: "bg-success",
+  modificado: "bg-warning",
+  eliminado: "bg-destructive",
 };
 
 /**
@@ -582,13 +582,13 @@ function DesignViewsPanel() {
                   <Badge
                     variant="outline"
                     className={cn(
-                      "shrink-0 border-transparent px-1 py-0 text-[10px]",
+                      "shrink-0 border-transparent px-1 py-0 text-2xs",
                       notationBadgeClass(v.notation)
                     )}
                   >
                     {notationLabel}
                   </Badge>
-                  <span className="shrink-0 text-[10px] tabular-nums opacity-70">
+                  <span className="shrink-0 text-2xs tabular-nums opacity-70">
                     {nodes.length}
                   </span>
                 </span>

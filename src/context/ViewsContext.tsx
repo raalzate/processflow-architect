@@ -23,7 +23,7 @@ import {
   MAX_INJECTED_VIEWS,
   type DesignView,
 } from "@/lib/views-types";
-import { DEFAULT_NOTATION_ID, type NotationId } from "@/lib/notations";
+import { DEFAULT_NOTATION_ID, INITIAL_NOTATION_ID, type NotationId } from "@/lib/notations";
 import { emptyGraphData } from "@/components/graph/designer/serialize";
 import type { GraphData } from "@/lib/types";
 import { DEFAULT_MERMAID_CODE } from "@/lib/mermaid/templates";
@@ -198,7 +198,7 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
         id: uid(),
         name,
         kind,
-        notation: opts?.notation ?? DEFAULT_NOTATION_ID,
+        notation: opts?.notation ?? INITIAL_NOTATION_ID,
         graph: isMermaid ? undefined : opts?.graph ?? emptyGraphData(name, new Date().toISOString().slice(0, 10)),
         mermaidCode: isMermaid ? opts?.mermaidCode ?? DEFAULT_MERMAID_CODE : undefined,
         description: opts?.description,

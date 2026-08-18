@@ -213,16 +213,21 @@ describe("reglas de presentación", () => {
   });
 
   it("el umbral de nombre sale de la geometría real del lienzo", () => {
-    // 21 caracteres es lo que cabe en una caja de 160 px con padding y text-xs.
-    expect(MAX_NAME_CHARS).toBeGreaterThanOrEqual(18);
-    expect(MAX_NAME_CHARS).toBeLessThanOrEqual(24);
+    // El umbral se deriva del ancho real del nodo. Con la ficha (220 px) entran
+    // ~30 caracteres; antes, con la caja de 160, eran ~21. Esto cierra la deuda
+    // que STATUS declaraba: el aviso de "el nombre se recorta" ya no avisa de
+    // más en las notaciones de caja grande.
+    expect(MAX_NAME_CHARS).toBeGreaterThanOrEqual(26);
+    expect(MAX_NAME_CHARS).toBeLessThanOrEqual(34);
     let m = emptyDiagram({ nombre_proyecto: "P", notation: "ddd" as const });
-    m = nodo(m, "a", "Registro Civil de Ecuador", "command", "ddd"); // 25 car.
+    // Con la ficha, 25 caracteres YA ENTRAN: el nombre de prueba tiene que
+    // superar el umbral nuevo para que la regla tenga algo que avisar.
+    m = nodo(m, "a", "Registro Civil de Ecuador y Colombia", "command", "ddd"); // 36 car.
     m = nodo(m, "b", "Pago Confirmado", "event", "ddd"); // 15 car.
     m = addEdge(m, { fuente: "a", destino: "b", descripcion: "dispara" });
     const largos = qualityFindings(m).filter((f) => f.rule === "NOMBRE-LARGO");
     expect(largos).toHaveLength(1);
-    expect(largos[0].message).toContain("Registro Civil de Ecuador");
+    expect(largos[0].message).toContain("Registro Civil de Ecuador y Colombia");
   });
 
   it("avisa de un diagrama que pasa el tamaño legible", () => {

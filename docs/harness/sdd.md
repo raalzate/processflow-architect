@@ -75,9 +75,11 @@ ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
 
 ## Estado
 
-- Ninguna feature de este repo tiene artefactos SDD versionados todavía: `specs/` está vacío salvo
-  su README y `.specify/active-feature` está en blanco. Es honesto decirlo: la ruta está montada y
-  probada, pero aún no se ejerció aquí.
+- La ruta ya se ejerció: `specs/` tiene cuatro features y `.specify/active-feature` apunta a
+  `004-artefactos-versionados`, la primera con el ciclo completo de fases
+  (`spec` · `plan` · `checklist` · `testify` · `tasks` · `analyze`). Las skills `sofka-0x` no están
+  versionadas en el repo, así que las fases se ejecutaron siguiendo su contrato con las
+  herramientas del repo (vitest en lugar de un runner de Gherkin; queda dicho en `testify.md`).
 - Deuda: nada impide entregar una feature grande sin spec — sólo el criterio del agente y el review.
   Candidato a mecanismo fuerte: un check en el `reviewer` que marque diffs con archivos nuevos bajo
   `src/app/`, `main/services/` o `src/lib/notations.ts` sin `specs/` asociado.

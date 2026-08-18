@@ -130,7 +130,7 @@ export function RemoteAiConfig() {
               >
                 <Icon className={cn("h-5 w-5", settings.mode === val && "text-primary")} />
                 <span className="text-sm font-medium">{lbl}</span>
-                <span className="text-[10px] leading-tight">{sub}</span>
+                <span className="text-2xs leading-tight">{sub}</span>
               </button>
             ))}
           </div>
@@ -150,7 +150,7 @@ export function RemoteAiConfig() {
             </div>
 
             {!isDesktop && (
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <p className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground">
                 La IA remota sólo está disponible en la app de escritorio.
               </p>
             )}
@@ -196,7 +196,7 @@ export function RemoteAiConfig() {
             </Label>
             {configured ? (
               <Badge variant="secondary" className="gap-1">
-                <Check className="h-3 w-3 text-green-600" /> Configurada
+                <Check className="h-3 w-3 text-success" /> Configurada
               </Badge>
             ) : (
               <Badge variant="outline">No configurada</Badge>
@@ -236,7 +236,7 @@ export function RemoteAiConfig() {
           </a>
         </div>
 
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Modelo efectivo: <code>{modelFor(settings, provider)}</code>. Usar la nube
               envía tus prompts (y el contexto de referencia) al proveedor elegido.
             </p>

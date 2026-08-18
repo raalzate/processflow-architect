@@ -23,7 +23,7 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
     else if (m[3] !== undefined) parts.push(<em key={`${keyBase}-i${i}`}>{m[3]}</em>);
     else if (m[4] !== undefined)
       parts.push(
-        <code key={`${keyBase}-c${i}`} className="rounded bg-muted px-1 py-0.5 text-[0.85em] font-mono">
+        <code key={`${keyBase}-c${i}`} className="rounded-md bg-muted px-1 py-0.5 text-[0.85em] font-mono">
           {m[4]}
         </code>
       );
@@ -114,7 +114,7 @@ export function Markdown({ content, className }: { content: string; className?: 
         );
       } else {
         blocks.push(
-          <pre key={`pre-${blocks.length}`} className="my-2 overflow-x-auto rounded bg-muted p-3 text-xs font-mono">
+          <pre key={`pre-${blocks.length}`} className="my-2 overflow-x-auto rounded-md bg-muted p-3 text-xs font-mono">
             <code>{code.join("\n")}</code>
           </pre>
         );

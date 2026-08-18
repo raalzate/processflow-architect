@@ -351,6 +351,24 @@ describe("artifactToMarkdown", () => {
     expect(artifactToMarkdown(a, NO_NODES)).toBe("## Vacío\n\n\n");
   });
 
+  it("el encabezado incluye la revisión cuando es > 1", () => {
+    // E21 de specs/004-artefactos-versionados/testify.md
+    const v3 = makeArtifact({
+      render: "markdown",
+      title: "Drivers",
+      payload: { markdown: "x" },
+      revision: 3,
+    });
+    expect(artifactToMarkdown(v3, NO_NODES)).toBe("## Drivers · v3\n\nx\n");
+  });
+
+  it("la revisión 1 (o ausente) no lleva sufijo", () => {
+    const v1 = makeArtifact({ render: "markdown", title: "Drivers", payload: { markdown: "x" }, revision: 1 });
+    expect(artifactToMarkdown(v1, NO_NODES)).toBe("## Drivers\n\nx\n");
+    const sinRevision = makeArtifact({ render: "markdown", title: "Drivers", payload: { markdown: "x" } });
+    expect(artifactToMarkdown(sinRevision, NO_NODES)).toBe("## Drivers\n\nx\n");
+  });
+
   it("delegates the body to artifactBodyMarkdown (drivers stay consistent)", () => {
     const a = makeArtifact({
       render: "drivers",

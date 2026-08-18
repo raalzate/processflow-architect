@@ -149,17 +149,91 @@ for (const [hook, name, payload, expected] of blocks) {
   }
 }
 
-// El lint del repo también tiene que morder: se prueba con un archivo temporal impuro.
+/**
+ * Corre el lint sobre un archivo QUE NO EXISTE: la ruta elige las reglas y el
+ * contenido viaja por stdin. Antes esto se probaba escribiendo temporales dentro
+ * de `src/`; con `next dev` vivo, el watcher los veía aparecer y desaparecer y
+ * el build moría con `ENOENT ... __harness-selftest-tmp.tsx`. El self-test ya no
+ * escribe una sola línea en el árbol de fuentes.
+ */
+function lintVirtual(rutaVirtual, contenido) {
+  const res = spawnSync(
+    "node",
+    [abs("scripts/repo-lint.mjs"), "--file", rutaVirtual, "--stdin"],
+    { cwd: REPO_ROOT, encoding: "utf8", input: contenido },
+  );
+  return { status: res.status, salida: `${res.stderr}${res.stdout}` };
+}
+
+/** Un freno del lint muerde: el caso impuro sale con exit 1 y nombra su regla. */
+function frenoDelLint(titulo, rutaVirtual, contenido, regla, extras = []) {
+  const { status, salida } = lintVirtual(rutaVirtual, contenido);
+  const pega = status === 1 && new RegExp(regla).test(salida);
+  const conExtras = extras.every((e) => salida.includes(e));
+  if (pega && conExtras) ok(titulo);
+  else bad(titulo, `exit ${status}: ${salida.trim().slice(0, 240)}`);
+}
+
+// El lint del repo también tiene que morder: se prueba con un archivo impuro virtual.
+frenoDelLint(
+  "repo-lint: detecta React dentro de src/lib",
+  "src/lib/__selftest.ts",
+  'import { useState } from "react";\nexport const x = useState;\n',
+  "PUREZA",
+);
+
+// DEPSHOOK: el freno que faltaba cuando un hook midió con la notación pero no
+// reaccionaba a ella. Sin ESLint en el repo, esta regla es el único mecanismo.
+frenoDelLint(
+  "repo-lint: detecta hook que usa notationId sin declararlo",
+  "src/components/__selftest.tsx",
+  "export const X = () => {\n  const w = useMemo(() => medir(nodes, notationId), [nodes]);\n  return w;\n};\n",
+  "DEPSHOOK",
+);
+
+// TOKENS: el color y la escala salen del tema. Sin este freno, el modo oscuro se
+// rompe de a un archivo por vez (spec 003).
+frenoDelLint(
+  "repo-lint: detecta color crudo y tamaño de letra arbitrario",
+  "src/components/__selftest-tokens.tsx",
+  'export const X = () => <div className="bg-green-100 text-[11px]" />;\n',
+  "TOKENS",
+  ["bg-green-100", "text-[11px]"],
+);
+
+// SVGFILL: el texto de un <text> SVG sin `fill` cae a negro. Compila, pasa los
+// tests y sólo se ve mirando la pantalla: por eso necesita un freno.
+frenoDelLint(
+  "repo-lint: detecta <text> de SVG sin fill",
+  "src/components/__selftest-svg.tsx",
+  'export const X = () => <svg><text className="text-sm">hola</text></svg>;\n',
+  "SVGFILL",
+);
+
+// PLATAFORMA: la detección del SO vive en un solo módulo y sin API deprecada.
+frenoDelLint(
+  "repo-lint: detecta navigator.platform fuera de lib/platform",
+  "src/components/__selftest-plat.tsx",
+  'export const esMac = () => navigator.platform.includes("Mac");\n',
+  "PLATAFORMA",
+);
+
+// El self-test no deja rastro en el árbol de fuentes: si algún freno vuelve a
+// escribir un temporal en `src/`, esto lo caza (era el ENOENT del build con dev vivo).
 {
-  const tmp = abs("src/lib/__harness-selftest-tmp.ts");
-  try {
-    fs.writeFileSync(tmp, 'import { useState } from "react";\nexport const x = useState;\n');
-    const res = spawnSync("node", [abs("scripts/repo-lint.mjs"), "--file", "src/lib/__harness-selftest-tmp.ts"], { cwd: REPO_ROOT, encoding: "utf8" });
-    if (res.status === 1 && /PUREZA/.test(res.stderr)) ok("repo-lint: detecta React dentro de src/lib");
-    else bad("repo-lint: detecta React dentro de src/lib", `exit ${res.status}: ${(res.stderr || res.stdout).trim().slice(0, 200)}`);
-  } finally {
-    if (fs.existsSync(tmp)) fs.rmSync(tmp);
-  }
+  const sospechosos = [];
+  const buscar = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === "node_modules") continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) buscar(p);
+      else if (/__(harness-)?selftest/.test(e.name)) sospechosos.push(path.relative(REPO_ROOT, p));
+    }
+  };
+  buscar(abs("src"));
+  if (!sospechosos.length) ok("el self-test no escribe temporales dentro de src/");
+  else bad("el self-test no escribe temporales dentro de src/", `quedaron: ${sospechosos.join(", ")}`);
 }
 
 // ── 4. El clasificador SDD no se degrada ─────────────────────────────────────

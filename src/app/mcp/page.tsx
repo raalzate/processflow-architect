@@ -25,6 +25,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CodeBlock } from "@/components/ui/code-block";
 import {
   Card,
   CardContent,
@@ -52,38 +53,6 @@ const SECTIONS = [
 type SectionId = (typeof SECTIONS)[number]["id"];
 
 /** Bloque de código con botón de copiar (usa el portapapeles de Electron si existe). */
-function CodeBlock({ code, lang }: { code: string; lang?: string }) {
-  const { toast } = useToast();
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      const api = (typeof window !== "undefined" && (window as any).electronAPI) || null;
-      if (api?.copyToClipboard) await api.copyToClipboard(code);
-      else await navigator.clipboard.writeText(code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast({ variant: "destructive", title: "No se pudo copiar" });
-    }
-  };
-  return (
-    <div className="relative group">
-      <pre className="rounded-lg border bg-zinc-900 text-zinc-100 text-xs p-4 overflow-x-auto">
-        <code>{code}</code>
-      </pre>
-      <Button
-        variant="outline"
-        size="icon"
-        className="absolute top-2 right-2 h-7 w-7 opacity-70 group-hover:opacity-100"
-        onClick={copy}
-        title="Copiar"
-      >
-        {copied ? <CopyCheck className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
-      </Button>
-    </div>
-  );
-}
-
 const MCP_HTTP_JSON = `{
   "mcpServers": {
     "processflow-architect": {
@@ -181,7 +150,7 @@ function SkillDownloadCard() {
       <CardContent className="space-y-4">
         <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-2">
           <p className="font-medium">Recomendado — que el agente se auto-configure:</p>
-          <pre className="text-xs bg-background rounded p-2 overflow-x-auto">
+          <pre className="text-xs bg-background rounded-md p-2 overflow-x-auto">
             Instala los skills de Processflow en este proyecto (usa install_skill con
             scope=&quot;project&quot; y projectDir = la raíz del repo)
           </pre>
@@ -421,7 +390,7 @@ export default function McpGuidePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2.5">
                 {TOOLS.map((t) => (
                   <div key={t.name} className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3 border-b pb-2">
-                    <code className="text-xs bg-muted rounded px-1.5 py-0.5 shrink-0 sm:w-44">{t.name}</code>
+                    <code className="text-xs bg-muted rounded-md px-1.5 py-0.5 shrink-0 sm:w-44">{t.name}</code>
                     <span className="text-sm text-muted-foreground">{t.desc}</span>
                   </div>
                 ))}

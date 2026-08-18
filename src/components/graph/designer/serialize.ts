@@ -17,7 +17,12 @@ import {
   type GraphNode,
   type Agregado,
 } from "@/lib/types";
-import { isNotationContainer, type NotationId } from "@/lib/notations";
+import {
+  isNotationContainer,
+  sizeOfType,
+  DEFAULT_NODE_SIZE,
+  type NotationId,
+} from "@/lib/notations";
 
 /**
  * Tipo de elemento del lienzo. Antes era la unión cerrada de DDD; ahora es un
@@ -75,8 +80,10 @@ export interface DesignerLink {
 export const isContainerType = (t: string) => isNotationContainer(t);
 
 // --- Layout por defecto al reconstruir nodos sin geometría guardada ---
-const NODE_W = 160;
-const NODE_H = 60;
+// El tamaño del nodo suelto lo declara su notación (`sizeOfType`); estos valores
+// sólo sirven para la rejilla de reconstrucción, que es previa al tipo.
+const NODE_W = DEFAULT_NODE_SIZE.w;
+const NODE_H = DEFAULT_NODE_SIZE.h;
 const AGG_W = 500;
 const AGG_H = 400;
 
@@ -399,7 +406,8 @@ export interface ContentBounds {
  * null si no hay nodos. La usa "ajustar a contenido" para encuadrar el zoom.
  */
 export function computeContentBounds(
-  nodes: Map<string, DesignerNode>
+  nodes: Map<string, DesignerNode>,
+  notation?: NotationId
 ): ContentBounds | null {
   if (nodes.size === 0) return null;
   let minX = Infinity;
@@ -408,8 +416,11 @@ export function computeContentBounds(
   let maxY = -Infinity;
   for (const n of nodes.values()) {
     const isC = isContainerType(n.tipo_elemento);
-    const w = n.width ?? (isC ? AGG_W : NODE_W);
-    const h = n.height ?? (isC ? AGG_H : NODE_H);
+    // El tamaño guardado sólo manda en los contenedores (son redimensionables);
+    // en un nodo suelto puede venir de un layout viejo y dejaría el encuadre —y
+    // el recorte del export— más chico que el nodo que se dibuja hoy.
+    const w = isC ? n.width ?? AGG_W : sizeOfType(n.tipo_elemento, notation).w;
+    const h = isC ? n.height ?? AGG_H : sizeOfType(n.tipo_elemento, notation).h;
     if (n.x < minX) minX = n.x;
     if (n.y < minY) minY = n.y;
     if (n.x + w > maxX) maxX = n.x + w;

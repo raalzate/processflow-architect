@@ -19,4 +19,20 @@ TDD en `src/lib/` (P3). Cada tarea con su prueba; entrega con `npm run gate` ver
 
 ## Estado
 
-- [ ] T1 · [ ] T2 · [ ] T3 · [ ] T4 · [ ] T5 · [ ] T6 · [ ] T7 · [ ] T8 · [ ] T9 · [ ] T10 · [ ] T11 · [ ] T12
+- [x] T1 · [x] T2 · [x] T3 · [ ] T4 · [x] T5 · [ ] T6 · [ ] T7 · [x] T8 · [ ] T9 · [ ] T10 · [x] T11 · [x] T12
+
+Marcado con comando corrido, no de memoria:
+
+| Tarea | Verificado con |
+|---|---|
+| T1 | `LAYOUT_PRESETS` / `LAYOUT_STRATEGIES` en `src/lib/mcp/layout-presets.ts`, con pruebas en `diagram-builder.test.ts` |
+| T2 | `diagram-builder.test.ts` — «la densidad se nota: expandido ocupa bastante más que compacto» (SC-001, ≥1,6×) |
+| T3 | `diagram-builder.test.ts:546` — `meta.layout` recuerda densidad y estrategia |
+| T5 | `main/services/mcp-tools.ts:592` — `relayout_diagram` con `density` y `strategy` |
+| T8 | `src/components/graph/designer/ArrangeMenu.tsx`, alimentado por `LAYOUT_STRATEGIES` |
+| T11 | `node scripts/sync-skills.mjs --check`, dentro del gate |
+| T12 | `npm run gate` verde (ver STATUS.md) |
+
+Sin marcar porque **nadie corrió el comando que lo demuestra**: T4 y T10 necesitan la sonda
+sobre los modelos reales; T6/T7 son la `AiTask` de organización, que no se implementó; T9
+(deshacer) sólo se puede ver a mano en el lienzo.

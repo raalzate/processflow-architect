@@ -16,19 +16,11 @@ export default function RootLayout({
   
 
   return (
-    <html lang="en">
-      <head>
-        {/*
-          Aplica la clase `.dark` ANTES del primer pintado para evitar el flash de
-          tema claro. Debe ser JS inline sin dependencias (corre antes de React).
-          Espeja la lógica de src/lib/theme.ts (THEME_STORAGE = "pf_theme").
-        */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("pf_theme")||"system";var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d);}catch(e){}})();`,
-          }}
-        />
-      </head>
+    // La app se muestra SIEMPRE en oscuro (spec 003, FR-001): es una superficie
+    // de trabajo sobre la que vive un diagrama, y el salto de luminosidad entre
+    // el lienzo y el resto era la incoherencia más visible. Al ser fija, no hace
+    // falta el script anti-FOUC que decidía el tema antes del primer pintado.
+    <html lang="es" className="dark">
       <body className="font-body antialiased">{children}</body>
     </html>
   );

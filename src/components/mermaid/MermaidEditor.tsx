@@ -68,7 +68,7 @@ export function MermaidEditor({
           className="flex-1 resize-none bg-background p-3 font-mono text-xs leading-relaxed outline-none"
           placeholder="Escribe código Mermaid… (usa el botón Plantilla para empezar)"
         />
-        <p className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">
+        <p className="border-t px-3 py-1.5 text-2xs text-muted-foreground">
           Cualquier diagrama Mermaid. Los errores de sintaxis se muestran en la vista previa.
         </p>
       </div>

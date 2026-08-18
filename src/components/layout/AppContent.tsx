@@ -207,7 +207,7 @@ const WelcomeScreen = () => {
       </h2>
       <p className="mt-2 text-lg max-w-xl">
         Crea un nuevo proyecto desde la barra superior y diséñalo en la pestaña{" "}
-        <span className="font-medium text-blue-600">Modelo</span>, o{" "}
+        <span className="font-medium text-primary">Modelo</span>, o{" "}
         <span className="font-medium text-foreground">arrastra aquí un .json</span>{" "}
         exportado (p. ej. por Claude Code vía MCP).
       </p>

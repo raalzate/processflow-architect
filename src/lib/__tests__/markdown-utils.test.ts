@@ -1,4 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { getNotation, DEFAULT_NOTATION_ID } from "@/lib/notations";
+
+// El encabezado sale del `modelLabel` de la notación: derivarlo del registro
+// evita fijar "Modelo de Dominio" y volver a romper si cambia el default (P6).
+const TITULO_MODELO = `## ${getNotation(DEFAULT_NOTATION_ID).modelLabel}`;
 import {
   formatDriversToMarkdown,
   formatConstraintsToMarkdown,
@@ -337,7 +342,7 @@ describe("formatNodeTreeToMarkdown", () => {
       ],
     });
     const md = formatNodeTreeToMarkdown(graph);
-    expect(md).toContain("## Modelo de Dominio");
+    expect(md).toContain(TITULO_MODELO);
     expect(md).toContain("Big picture detallado.");
     // hotspots block
     expect(md).toContain("Áreas poco claras del modelo");
@@ -385,7 +390,7 @@ describe("formatNodeTreeToMarkdown", () => {
       read_models: [],
     });
     const md = formatNodeTreeToMarkdown(graph);
-    expect(md).toContain("## Modelo de Dominio");
+    expect(md).toContain(TITULO_MODELO);
     expect(md).not.toContain("Área poco clara o confusa");
     expect(md).toContain("## Vista de Datos ##");
     expect(md).not.toContain("### Modelo de lectura:");

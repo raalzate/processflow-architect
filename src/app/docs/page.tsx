@@ -60,7 +60,7 @@ function ElementPreview({ el }: { el: NotationElement }) {
           rx={8}
           strokeDasharray="6 6"
           strokeWidth={2}
-          className={cn("fill-transparent", el.stroke ?? "stroke-gray-400")}
+          className={cn("fill-transparent", el.stroke ?? "stroke-muted-foreground")}
         />
       ) : (
         <NodeShape
@@ -93,12 +93,12 @@ function ElementCard({ el }: { el: NotationElement }) {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-sm">{el.type}</span>
           {el.container && (
-            <Badge variant="outline" className="text-[10px] px-1 py-0">
+            <Badge variant="outline" className="text-2xs px-1 py-0">
               contenedor
             </Badge>
           )}
           {el.compact && (
-            <Badge variant="outline" className="text-[10px] px-1 py-0">
+            <Badge variant="outline" className="text-2xs px-1 py-0">
               símbolo compacto
             </Badge>
           )}

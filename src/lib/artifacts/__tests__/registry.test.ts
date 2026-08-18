@@ -4,6 +4,7 @@ import {
   getDefinition,
   documentDefinitions,
   diagramDefinitions,
+  isSingletonKind,
   type ArtifactDefinition,
   type ToolFamily,
 } from "@/lib/artifacts/registry";
@@ -31,8 +32,6 @@ describe("ARTIFACT_REGISTRY", () => {
       expect(d.label.length).toBeGreaterThan(0);
       expect(typeof d.icon).toBe("string");
       expect(d.icon.length).toBeGreaterThan(0);
-      expect(typeof d.accent).toBe("string");
-      expect(d.accent.length).toBeGreaterThan(0);
       expect(typeof d.description).toBe("string");
       expect(d.description.length).toBeGreaterThan(0);
     }
@@ -100,7 +99,6 @@ describe("getDefinition", () => {
     expect(def.family).toBe("document");
     expect(def.render).toBe("markdown");
     expect(def.icon).toBe("FileText");
-    expect(def.accent).toBe("text-slate-600");
     expect(def.description).toContain("my-custom-thing");
   });
 
@@ -173,6 +171,18 @@ describe("family selector helpers", () => {
   it("los selectores particionan todo el registro", () => {
     const total = documentDefinitions().length + diagramDefinitions().length;
     expect(total).toBe(ARTIFACT_REGISTRY.length);
+  });
+
+  it("los kind singleton son exactamente los cuatro declarados", () => {
+    // E20 de specs/004-artefactos-versionados/testify.md: el versionado por
+    // linaje ignora el título en estos, así que la lista no crece por descuido.
+    const singletons = ARTIFACT_REGISTRY.filter((d) => d.singleton).map((d) => d.kind).sort();
+    expect(singletons).toEqual(["constraints", "drivers", "proposal", "roadmap"]);
+    expect(singletons.every((k) => isSingletonKind(k))).toBe(true);
+  });
+
+  it("un kind fuera del registro no es singleton", () => {
+    expect(isSingletonKind("kind-inventado-por-el-agente")).toBe(false);
   });
 
   it("getDefinition resuelve cada kind de cada selector a sí mismo", () => {

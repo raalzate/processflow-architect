@@ -12,6 +12,8 @@
 
 # next.js
 /.next/
+# dev server: distDir propio para que el build del gate no lo pise
+/.next-dev/
 /out/
 
 # production

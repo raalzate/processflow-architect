@@ -23,8 +23,6 @@ export interface ArtifactDefinition {
   label: string;
   /** Nombre de icono lucide-react (resuelto en la UI). */
   icon: string;
-  /** Clase de color tailwind para el acento del card. */
-  accent: string;
   /** Forma de render universal. */
   render: ArtifactRender;
   /** Cómo lo genera el agente. */
@@ -35,6 +33,13 @@ export interface ArtifactDefinition {
   promptHint?: string;
   /** Para diagramas: tipo de diagrama Mermaid sugerido. */
   mermaidKind?: string;
+  /**
+   * Hay UNO por proyecto: al versionar, la clave de linaje ignora el título
+   * (regenerar el roadmap con otro nombre sigue siendo el mismo roadmap).
+   * Marcarlo acá —y no con un `if (kind === ...)` en el contexto— es lo que
+   * mantiene el versionado agnóstico del catálogo (CONSTITUTION §P6).
+   */
+  singleton?: boolean;
 }
 
 /**
@@ -48,9 +53,9 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "drivers",
     label: "Drivers de Arquitectura",
     icon: "Target",
-    accent: "text-sky-600",
     render: "markdown",
     family: "document",
+    singleton: true,
     description:
       "Extrae los drivers de arquitectura (requisitos funcionales clave, atributos de calidad y restricciones) a partir del modelo de dominio y el contexto.",
     promptHint:
@@ -60,9 +65,9 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "constraints",
     label: "Riesgos y Restricciones",
     icon: "ShieldAlert",
-    accent: "text-amber-600",
     render: "markdown",
     family: "document",
+    singleton: true,
     description:
       "Identifica restricciones y riesgos técnicos y de negocio del sistema, con su impacto y mitigación.",
     promptHint:
@@ -72,9 +77,9 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "proposal",
     label: "Propuesta Técnica",
     icon: "Layers",
-    accent: "text-violet-600",
     render: "markdown",
     family: "document",
+    singleton: true,
     description:
       "Propuesta de arquitectura técnica: backend, base de datos, infraestructura y herramientas, justificada en drivers y restricciones.",
     promptHint:
@@ -84,9 +89,9 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "roadmap",
     label: "Roadmap",
     icon: "Milestone",
-    accent: "text-emerald-600",
     render: "markdown",
     family: "document",
+    singleton: true,
     description:
       "Roadmap de implementación por fases con épicas, roles requeridos y dependencias.",
     promptHint:
@@ -98,7 +103,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "adr",
     label: "ADR (Decisión de Arquitectura)",
     icon: "FileText",
-    accent: "text-indigo-600",
     render: "markdown",
     family: "document",
     description:
@@ -110,7 +114,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "tech-stack",
     label: "Stack Tecnológico",
     icon: "Boxes",
-    accent: "text-cyan-600",
     render: "markdown",
     family: "document",
     description:
@@ -122,7 +125,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "nfr",
     label: "Atributos de Calidad (NFR)",
     icon: "Gauge",
-    accent: "text-rose-600",
     render: "markdown",
     family: "document",
     description:
@@ -134,7 +136,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "capacity-plan",
     label: "Plan de Capacidad",
     icon: "Activity",
-    accent: "text-orange-600",
     render: "markdown",
     family: "document",
     description:
@@ -144,7 +145,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "ubiquitous-language",
     label: "Lenguaje Ubicuo (Glosario)",
     icon: "BookMarked",
-    accent: "text-purple-600",
     render: "markdown",
     family: "document",
     description:
@@ -156,7 +156,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "user-stories",
     label: "Historias de Usuario",
     icon: "ClipboardList",
-    accent: "text-green-600",
     render: "markdown",
     family: "document",
     description:
@@ -168,7 +167,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "api-spec",
     label: "Contrato de API",
     icon: "Webhook",
-    accent: "text-teal-700",
     render: "markdown",
     family: "document",
     description:
@@ -180,7 +178,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "threat-model",
     label: "Modelo de Amenazas (STRIDE)",
     icon: "ShieldAlert",
-    accent: "text-red-600",
     render: "markdown",
     family: "document",
     description:
@@ -192,7 +189,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "test-strategy",
     label: "Estrategia de Pruebas",
     icon: "FlaskConical",
-    accent: "text-cyan-700",
     render: "markdown",
     family: "document",
     description:
@@ -206,7 +202,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "context-map",
     label: "Mapa de Contexto (DDD)",
     icon: "Map",
-    accent: "text-violet-700",
     render: "mermaid",
     family: "diagram",
     mermaidKind: "flowchart",
@@ -219,7 +214,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "aggregate-model",
     label: "Modelo de Agregados (DDD)",
     icon: "Boxes",
-    accent: "text-indigo-700",
     render: "mermaid",
     family: "diagram",
     mermaidKind: "classDiagram",
@@ -232,7 +226,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "c4-context",
     label: "C4 · Contexto",
     icon: "Network",
-    accent: "text-blue-600",
     render: "mermaid",
     family: "diagram",
     mermaidKind: "flowchart",
@@ -245,7 +238,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "c4-container",
     label: "C4 · Contenedores",
     icon: "Container",
-    accent: "text-blue-700",
     render: "mermaid",
     family: "diagram",
     mermaidKind: "flowchart",
@@ -258,7 +250,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "component-diagram",
     label: "Diagrama de Componentes",
     icon: "Component",
-    accent: "text-teal-600",
     render: "mermaid",
     family: "diagram",
     mermaidKind: "flowchart",
@@ -268,7 +259,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "sequence-diagram",
     label: "Diagrama de Secuencia",
     icon: "ArrowLeftRight",
-    accent: "text-fuchsia-600",
     render: "mermaid",
     family: "diagram",
     mermaidKind: "sequenceDiagram",
@@ -279,7 +269,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "deployment-diagram",
     label: "Diagrama de Despliegue",
     icon: "Server",
-    accent: "text-lime-600",
     render: "mermaid",
     family: "diagram",
     mermaidKind: "flowchart",
@@ -290,7 +279,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "data-model",
     label: "Modelo de Datos (ER)",
     icon: "Database",
-    accent: "text-stone-600",
     render: "mermaid",
     family: "diagram",
     mermaidKind: "erDiagram",
@@ -301,7 +289,6 @@ export const ARTIFACT_REGISTRY: ArtifactDefinition[] = [
     kind: "state-diagram",
     label: "Diagrama de Estados",
     icon: "Workflow",
-    accent: "text-amber-700",
     render: "mermaid",
     family: "diagram",
     mermaidKind: "stateDiagram-v2",
@@ -334,7 +321,6 @@ export function getDefinition(kind: string, family: ToolFamily = "document"): Ar
       .replace(/[-_]/g, " ")
       .replace(/\b\w/g, (c) => c.toUpperCase()),
     icon: family === "diagram" ? "Workflow" : "FileText",
-    accent: "text-slate-600",
     render: fallbackRender(family),
     family,
     description: `Artefacto generado dinámicamente: ${kind}`,
@@ -347,4 +333,12 @@ export function documentDefinitions(): ArtifactDefinition[] {
 
 export function diagramDefinitions(): ArtifactDefinition[] {
   return ARTIFACT_REGISTRY.filter((d) => d.family === "diagram");
+}
+
+/**
+ * ¿Hay uno solo por proyecto? Lo usa el versionado para decidir si el título
+ * entra en la clave de linaje. Un `kind` inventado por el agente NO es singleton.
+ */
+export function isSingletonKind(kind: string): boolean {
+  return BY_KIND.get(kind)?.singleton === true;
 }

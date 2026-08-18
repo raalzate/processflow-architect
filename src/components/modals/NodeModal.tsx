@@ -102,7 +102,7 @@ const NodeModal: React.FC<NodeModalProps> = ({
         return (
           <Badge
             variant="outline"
-            className="bg-green-100 text-green-800 border-green-300"
+            className="bg-success-surface text-success-foreground border-success-border"
           >
             Nuevo
           </Badge>
@@ -111,7 +111,7 @@ const NodeModal: React.FC<NodeModalProps> = ({
         return (
           <Badge
             variant="outline"
-            className="bg-yellow-100 text-yellow-800 border-yellow-300"
+            className="bg-warning-surface text-warning-foreground border-warning-border"
           >
             Modificado
           </Badge>

@@ -30,6 +30,12 @@ export default {
   ],
   theme: {
     extend: {
+      fontSize: {
+        // Micro-tipografía del sistema. Existía como 9, 10 y 11 px sueltos en 45
+        // sitios: tres tamaños indistinguibles entre sí eligiendo cada archivo
+        // el suyo. Uno solo, con nombre, y deja de ser una decisión por archivo.
+        '2xs': ['0.625rem', { lineHeight: '0.875rem' }],
+      },
       fontFamily: {
         body: ['Inter', 'sans-serif'],
         headline: ['Inter', 'sans-serif'],
@@ -69,13 +75,31 @@ export default {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
-        chart: {
-          '1': 'hsl(var(--chart-1))',
-          '2': 'hsl(var(--chart-2))',
-          '3': 'hsl(var(--chart-3))',
-          '4': 'hsl(var(--chart-4))',
-          '5': 'hsl(var(--chart-5))',
+        // Estado semántico: lo consume toda la app en vez de elegir un verde
+        // por archivo (spec 003, FR-003).
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+          surface: 'hsl(var(--success-surface))',
+          border: 'hsl(var(--success-border))',
         },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--warning-foreground))',
+          surface: 'hsl(var(--warning-surface))',
+          border: 'hsl(var(--warning-border))',
+        },
+        info: {
+          DEFAULT: 'hsl(var(--info))',
+          foreground: 'hsl(var(--info-foreground))',
+          surface: 'hsl(var(--info-surface))',
+          border: 'hsl(var(--info-border))',
+        },
+        code: {
+          DEFAULT: 'hsl(var(--code))',
+          foreground: 'hsl(var(--code-foreground))',
+        },
+        canvas: 'hsl(var(--canvas))',
         sidebar: {
           DEFAULT: 'hsl(var(--sidebar-background))',
           foreground: 'hsl(var(--sidebar-foreground))',

@@ -338,8 +338,11 @@ export function buildReasoningFrame(opts: {
   systemPrompt?: string;
 }): { persona: string; vocabRule: string; dddActive: boolean } {
   const notationIds = Array.from(new Set((opts.notations ?? []).filter(Boolean)));
-  const dddActive = notationIds.length === 0 || notationIds.includes("ddd");
-  const guidance = (notationIds.length ? notationIds : [DEFAULT_NOTATION_ID])
+  // Sin notaciones a la vista se asume la por defecto del registro; dar por
+  // sentado DDD dejaba el addendum de dominio activo en modelos que no lo son.
+  const activas = notationIds.length ? notationIds : [DEFAULT_NOTATION_ID];
+  const dddActive = activas.includes("ddd");
+  const guidance = activas
     .map((id) => {
       const n = getNotation(id);
       return `Notación ${n.label}: ${n.aiGuidance}`;

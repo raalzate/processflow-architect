@@ -43,16 +43,6 @@ run "typecheck"             npm run typecheck --silent
 run "tests con cobertura"   npm run test:coverage --silent
 
 if [ "$MODE" != "fast" ]; then
-  # `next build` reescribe .next/, que es el mismo directorio que sirve `next dev`.
-  # Con la app abierta en desarrollo, el dev server queda pidiendo chunks que ya no
-  # existen ("Cannot find module './1331.js'") y hay que relanzarlo. Avisar antes,
-  # no fallar: en CI no hay dev server y el build debe correr igual.
-  if pgrep -f "next dev" >/dev/null 2>&1; then
-    echo ""
-    echo "⚠️  Hay un 'next dev' corriendo: el build va a reescribir .next/ y ese dev server"
-    echo "    quedará roto (Cannot find module './NNNN.js'). Relanzalo después, o usá"
-    echo "    'npm run gate:fast' mientras desarrollás con la app abierta."
-  fi
   # 6. Dev y prod difieren (tree-shaking, resolución de módulos, empaquetado Electron).
   run "build de producción" npm run build --silent
 fi

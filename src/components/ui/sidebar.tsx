@@ -4,6 +4,7 @@ import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { VariantProps, cva } from "class-variance-authority"
 import { PanelLeft } from "lucide-react"
+import { hasPlatformModifier } from "@/lib/platform"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
@@ -99,10 +100,9 @@ const SidebarProvider = React.forwardRef<
     // Adds a keyboard shortcut to toggle the sidebar.
     React.useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
-        if (
-          event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-          (event.metaKey || event.ctrlKey)
-        ) {
+        // Modificador de la plataforma (⌘ en Mac, Ctrl en el resto), igual que
+        // el resto de los atajos de la app: ver `src/lib/platform.ts`.
+        if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && hasPlatformModifier(event)) {
           event.preventDefault()
           toggleSidebar()
         }

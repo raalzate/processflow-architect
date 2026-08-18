@@ -1,41 +1,105 @@
 {
   "$comment": "Único archivo específico del repo. Los hooks de .claude/hooks/ son genéricos: leen de aquí. Portar el arnés a otro repo = cambiar este archivo. Ver docs/harness/harness.md.",
-
   "gate": {
     "command": "npm run gate",
     "fastCommand": "npm run gate:fast",
     "marker": ".git/gate-dirty",
-    "codeGlobs": ["src/", "main/", "mcp-server/", "main.ts", "preload.ts", "scripts/", ".claude/hooks/"]
-  },
-
-  "protectedPaths": [
-    { "pattern": "^\\.env", "reason": ".env* es la llave del reino: lo edita el humano, nunca el agente." },
-    { "pattern": "^package-lock\\.json$", "reason": "el lockfile se regenera con `npm install`, no se edita a mano (gotcha de npm/Electron)." },
-    { "pattern": "^\\.git/", "reason": "historia de git: fuera del alcance del agente." },
-    { "pattern": "^build/", "reason": "artefacto derivado de `npm run build`; se regenera, no se edita." },
-    { "pattern": "^dist/", "reason": "artefacto de electron-builder; se regenera, no se edita." },
-    { "pattern": "^\\.next/", "reason": "caché de Next; derivada." },
-    { "pattern": "^coverage/", "reason": "reporte derivado de vitest." },
-    { "pattern": "^node_modules/", "reason": "dependencias: se cambian por package.json + install (usar patch-package si hace falta parchear)." },
-    { "pattern": "^docs/harness/buenas-practicas\\.md$", "reason": "guía origen agnóstica de stack; lo específico de este repo va en docs/harness/harness.md." }
-  ],
-
-  "bash": {
-    "deny": [
-      { "pattern": "--no-verify", "reason": "saltarse los hooks de verificación está prohibido. Si el gate estorba, se arregla el gate." },
-      { "pattern": "git\\s+push\\s+.*--force(?!-with-lease)", "reason": "`--force` reescribe historia remota. Usá --force-with-lease y pedí confirmación." },
-      { "pattern": "git\\s+reset\\s+--hard", "reason": "`reset --hard` destruye trabajo sin commitear. Usá `git stash` o pedí confirmación al humano." },
-      { "pattern": "git\\s+checkout\\s+--\\s+\\.", "reason": "descarta todos los cambios del working tree. Pedí confirmación explícita." },
-      { "pattern": "git\\s+clean\\s+-[a-z]*f", "reason": "borra archivos no rastreados (incluye .processflow/ y trabajo en curso). Dry-run primero: `git clean -n`." },
-      { "pattern": "git\\s+add\\s+(\\.|-A|--all)(\\s|$)", "reason": "`git add .` arrastra artefactos y secretos. Agregá archivos por nombre." },
-      { "pattern": "\\bsed\\s+(-[a-zA-Z]*\\s+)*-i\\b.*\\b(src|main|mcp-server)\\b", "reason": "edición masiva in-place sobre fuente: el incidente arquetípico de la guía. Usá Edit/Write o hacé commit + dry-run antes." },
-      { "pattern": "\\bperl\\s+-[a-zA-Z]*i\\b.*\\b(src|main|mcp-server)\\b", "reason": "edición masiva in-place sobre fuente. Usá Edit/Write." },
-      { "pattern": "rm\\s+-[a-zA-Z]*r[a-zA-Z]*f?\\s+[^|;&]*\\b(src|main|mcp-server|docs|scripts|assets|public)\\b", "reason": "borrado recursivo de un directorio fuente. Listá primero y pedí confirmación." },
-      { "pattern": "\\bfind\\b[^|;&]*-delete", "reason": "`find -delete` borra sin mostrar. Corré el find sin -delete y confirmá la lista." },
-      { "pattern": "npm\\s+(install|i|ci)\\b(?![^|;&]*--dry-run)[^|;&]*\\s(--force|-f)\\b", "reason": "instalar con --force rompe la reproducibilidad del lockfile." }
+    "codeGlobs": [
+      "src/",
+      "main/",
+      "mcp-server/",
+      "main.ts",
+      "preload.ts",
+      "scripts/",
+      ".claude/hooks/"
     ]
   },
-
+  "protectedPaths": [
+    {
+      "pattern": "^\\.env",
+      "reason": ".env* es la llave del reino: lo edita el humano, nunca el agente."
+    },
+    {
+      "pattern": "^package-lock\\.json$",
+      "reason": "el lockfile se regenera con `npm install`, no se edita a mano (gotcha de npm/Electron)."
+    },
+    {
+      "pattern": "^\\.git/",
+      "reason": "historia de git: fuera del alcance del agente."
+    },
+    {
+      "pattern": "^build/",
+      "reason": "artefacto derivado de `npm run build`; se regenera, no se edita."
+    },
+    {
+      "pattern": "^dist/",
+      "reason": "artefacto de electron-builder; se regenera, no se edita."
+    },
+    {
+      "pattern": "^\\.next/",
+      "reason": "caché de Next; derivada."
+    },
+    {
+      "pattern": "^coverage/",
+      "reason": "reporte derivado de vitest."
+    },
+    {
+      "pattern": "^node_modules/",
+      "reason": "dependencias: se cambian por package.json + install (usar patch-package si hace falta parchear)."
+    },
+    {
+      "pattern": "^docs/harness/buenas-practicas\\.md$",
+      "reason": "guía origen agnóstica de stack; lo específico de este repo va en docs/harness/harness.md."
+    }
+  ],
+  "bash": {
+    "deny": [
+      {
+        "pattern": "--no-verify",
+        "reason": "saltarse los hooks de verificación está prohibido. Si el gate estorba, se arregla el gate."
+      },
+      {
+        "pattern": "git\\s+push\\s+.*--force(?!-with-lease)",
+        "reason": "`--force` reescribe historia remota. Usá --force-with-lease y pedí confirmación."
+      },
+      {
+        "pattern": "git\\s+reset\\s+--hard",
+        "reason": "`reset --hard` destruye trabajo sin commitear. Usá `git stash` o pedí confirmación al humano."
+      },
+      {
+        "pattern": "git\\s+checkout\\s+--\\s+\\.",
+        "reason": "descarta todos los cambios del working tree. Pedí confirmación explícita."
+      },
+      {
+        "pattern": "git\\s+clean\\s+-[a-z]*f",
+        "reason": "borra archivos no rastreados (incluye .processflow/ y trabajo en curso). Dry-run primero: `git clean -n`."
+      },
+      {
+        "pattern": "git\\s+add\\s+(\\.|-A|--all)(\\s|$)",
+        "reason": "`git add .` arrastra artefactos y secretos. Agregá archivos por nombre."
+      },
+      {
+        "pattern": "\\bsed\\s+(-[a-zA-Z]*\\s+)*-i\\b.*\\b(src|main|mcp-server)\\b",
+        "reason": "edición masiva in-place sobre fuente: el incidente arquetípico de la guía. Usá Edit/Write o hacé commit + dry-run antes."
+      },
+      {
+        "pattern": "\\bperl\\s+-[a-zA-Z]*i\\b.*\\b(src|main|mcp-server)\\b",
+        "reason": "edición masiva in-place sobre fuente. Usá Edit/Write."
+      },
+      {
+        "pattern": "rm\\s+-[a-zA-Z]*r[a-zA-Z]*f?\\s+[^|;&]*\\b(src|main|mcp-server|docs|scripts|assets|public)\\b",
+        "reason": "borrado recursivo de un directorio fuente. Listá primero y pedí confirmación."
+      },
+      {
+        "pattern": "\\bfind\\b[^|;&]*-delete",
+        "reason": "`find -delete` borra sin mostrar. Corré el find sin -delete y confirmá la lista."
+      },
+      {
+        "pattern": "npm\\s+(install|i|ci)\\b(?![^|;&]*--dry-run)[^|;&]*\\s(--force|-f)\\b",
+        "reason": "instalar con --force rompe la reproducibilidad del lockfile."
+      }
+    ]
+  },
   "reuse": [
     {
       "pattern": "(NOTATION|ELEMENT_TYPES|TIPOS_ELEMENTO)\\s*[:=]\\s*\\[",
@@ -56,12 +120,13 @@
       "see": "preload.ts"
     }
   ],
-
   "lint": {
-    "command": ["node", "scripts/repo-lint.mjs"],
+    "command": [
+      "node",
+      "scripts/repo-lint.mjs"
+    ],
     "fileFlag": "--file"
   },
-
   "notation": {
     "$comment": "Regla: notations.ts es la única fuente de verdad de los tipos de componente (memoria: notation-agnostic-rule). El allowlist es DEUDA CONOCIDA — archivos que ya cablean literales antes de instalar la regla. No se agrega nada a esta lista sin justificarlo en STATUS.md.",
     "source": "src/lib/notations.ts",
@@ -85,40 +150,71 @@
       "src/hooks/handlers/useUIHandlers.ts"
     ]
   },
-
   "purity": {
     "$comment": "src/lib/ es lógica pura (sin React, sin Electron, sin Next). Es lo único con cobertura exigida.",
     "dir": "src/lib",
-    "forbiddenImports": ["react", "react-dom", "electron", "next/", "@/components", "@/context", "@/hooks"]
+    "forbiddenImports": [
+      "react",
+      "react-dom",
+      "electron",
+      "next/",
+      "@/components",
+      "@/context",
+      "@/hooks"
+    ]
   },
-
   "forbiddenDeps": {
     "$comment": "SDKs de nube: la regla de CLAUDE.md es fetch nativo desde el main.",
-    "packages": ["@anthropic-ai/sdk", "openai", "@google/generative-ai", "@google/genai", "@ai-sdk/anthropic", "@ai-sdk/openai", "langchain"]
+    "packages": [
+      "@anthropic-ai/sdk",
+      "openai",
+      "@google/generative-ai",
+      "@google/genai",
+      "@ai-sdk/anthropic",
+      "@ai-sdk/openai",
+      "langchain"
+    ]
   },
-
   "webgpu": {
     "$comment": "LiteRT-LM no arranca sin GPU. Estos invariantes de main.ts no se tocan.",
     "file": "main.ts",
-    "required": ["enable-unsafe-webgpu", "WebGPU"],
-    "forbidden": ["app.disableHardwareAcceleration()"]
+    "required": [
+      "enable-unsafe-webgpu",
+      "WebGPU"
+    ],
+    "forbidden": [
+      "app.disableHardwareAcceleration()"
+    ]
   },
-
   "docs": {
     "$comment": "`.tessl/plugins` es documentación vendorizada de terceros: se reinstala con `tessl install`, no la mantenemos nosotros. buenas-practicas.md es la guía agnóstica: sus rutas son ejemplos, no punteros de este repo.",
-    "ignore": ["node_modules", ".next", "build", "dist", "coverage", ".git", "out", ".processflow", ".tessl"],
-    "ignoreFiles": ["docs/harness/buenas-practicas.md"]
+    "ignore": [
+      "node_modules",
+      ".next",
+      "build",
+      "dist",
+      "coverage",
+      ".git",
+      "out",
+      ".processflow",
+      ".tessl"
+    ],
+    "ignoreFiles": [
+      "docs/harness/buenas-practicas.md"
+    ]
   },
-
   "status": {
     "file": "STATUS.md"
   },
-
   "sdd": {
     "$comment": "Ruta SDD. Este repo NO tiene el Intent Integrity Kit instalado en .tessl/plugins; usa las skills sofka-0x del entorno. El self-test exige que las skills existan y en CI reporta 'omitido' en vez de fallar. Ver docs/harness/sdd.md.",
     "kit": "sofka",
     "skillPrefix": "sofka-",
-    "skillRoots": ["~/.claude/skills", ".claude/skills", ".tessl/plugins"],
+    "skillRoots": [
+      "~/.claude/skills",
+      ".claude/skills",
+      ".tessl/plugins"
+    ],
     "phases": [
       "sofka-00-constitution",
       "sofka-01-specify",
@@ -134,29 +230,104 @@
     "routes": [
       {
         "route": "sdd",
-        "patterns": ["\\bnueva (feature|funcionalidad|pantalla|vista|notación|notacion)\\b", "\\b(feature|módulo|modulo) nuev[oa]\\b", "\\bepic\\b", "\\bmvp\\b", "\\bhistorias de usuario\\b", "\\breescrib(ir|e)\\b", "\\brearquitect", "\\bmigrar (el|la|todo)\\b", "\\bnuevo (endpoint|handler ipc|servicio)\\b", "\\bsoportar (una )?nueva notación\\b"],
+        "patterns": [
+          "\\bnueva (feature|funcionalidad|pantalla|vista|notación|notacion)\\b",
+          "\\b(feature|módulo|modulo) nuev[oa]\\b",
+          "\\bepic\\b",
+          "\\bmvp\\b",
+          "\\bhistorias de usuario\\b",
+          "\\breescrib(ir|e)\\b",
+          "\\brearquitect",
+          "\\bmigrar (el|la|todo)\\b",
+          "\\bnuevo (endpoint|handler ipc|servicio)\\b",
+          "\\bsoportar (una )?nueva notación\\b"
+        ],
         "message": "Pedido de tamaño FEATURE → ruta SDD (docs/harness/sdd.md): arrancá por `/sofka-01-specify` y no toques producción sin spec, plan y tasks. Si decidís saltarla, declaralo en una línea con el porqué."
       },
       {
         "route": "bugfix",
-        "patterns": ["\\bbug\\b", "\\bfalla\\b", "\\bno funciona\\b", "\\bse rompe\\b", "\\berror en\\b", "\\bregresi[óo]n\\b"],
+        "patterns": [
+          "\\bbug\\b",
+          "\\bfalla\\b",
+          "\\bno funciona\\b",
+          "\\bse rompe\\b",
+          "\\berror en\\b",
+          "\\bregresi[óo]n\\b"
+        ],
         "message": "Falla sobre algo que ya existe → `/sofka-bugfix` (o test rojo primero). Reproducí con un test antes de tocar producción (TDD es BLOCKING en src/lib)."
       },
       {
         "route": "clarify",
-        "patterns": ["\\bno s[ée] si\\b", "\\balgo as[íi]\\b", "\\bcomo veas\\b", "\\bmejorar (todo|esto)\\b", "\\bhacelo mejor\\b"],
+        "patterns": [
+          "\\bno s[ée] si\\b",
+          "\\balgo as[íi]\\b",
+          "\\bcomo veas\\b",
+          "\\bmejorar (todo|esto)\\b",
+          "\\bhacelo mejor\\b"
+        ],
         "message": "Pedido ambiguo → preguntá UNA sola cosa antes de tocar archivos (`/sofka-clarify` si hay artefacto)."
       },
       {
         "route": "ai",
-        "patterns": ["\\bprompt\\b", "\\bsystem prompt\\b", "\\bmodelo (local|remoto)\\b", "\\blitert\\b", "\\bgemma\\b", "\\bai ?task\\b", "\\brouter de ia\\b", "\\btemperatur", "\\bprovider\\b"],
+        "patterns": [
+          "\\bprompt\\b",
+          "\\bsystem prompt\\b",
+          "\\bmodelo (local|remoto)\\b",
+          "\\blitert\\b",
+          "\\bgemma\\b",
+          "\\bai ?task\\b",
+          "\\brouter de ia\\b",
+          "\\btemperatur",
+          "\\bprovider\\b"
+        ],
         "message": "Cambio de IA → la superficie es `src/lib/ai/tasks.ts` (declarar una AiTask), no el router ni los providers. Local es el default; la nube es opt-in y las llaves NUNCA llegan al renderer."
       },
       {
         "route": "none",
-        "patterns": ["\\btypo\\b", "\\bcopy\\b", "\\btooltip\\b", "\\brenombrar\\b", "\\bformatear\\b", "\\bdocumentar\\b", "\\bexplicame\\b", "\\bqu[ée] hace\\b", "\\bauditar?\\b"],
+        "patterns": [
+          "\\btypo\\b",
+          "\\bcopy\\b",
+          "\\btooltip\\b",
+          "\\brenombrar\\b",
+          "\\bformatear\\b",
+          "\\bdocumentar\\b",
+          "\\bexplicame\\b",
+          "\\bqu[ée] hace\\b",
+          "\\bauditar?\\b"
+        ],
         "message": ""
       }
+    ]
+  },
+  "tokens": {
+    "palettes": [
+      "slate",
+      "gray",
+      "zinc",
+      "neutral",
+      "stone",
+      "red",
+      "orange",
+      "amber",
+      "yellow",
+      "lime",
+      "green",
+      "emerald",
+      "teal",
+      "cyan",
+      "sky",
+      "blue",
+      "indigo",
+      "violet",
+      "purple",
+      "fuchsia",
+      "pink",
+      "rose"
+    ],
+    "allow": [
+      "src/lib/notations.ts",
+      "src/components/graph/designer/DesignerCanvas.tsx",
+      "src/components/graph/designer/ComponentDesigner.tsx"
     ]
   }
 }

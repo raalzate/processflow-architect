@@ -66,7 +66,7 @@ const CheckboxNodeItem: React.FC<Props> = ({
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-foreground hover:text-blue-600"
+          className="text-muted-foreground hover:text-primary"
           onClick={handleViewClick}
         >
           <Eye className="h-4 w-4" />

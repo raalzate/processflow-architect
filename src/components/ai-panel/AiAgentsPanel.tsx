@@ -47,7 +47,7 @@ export function AiAgentsPanel() {
             title="Copiar todo el análisis"
           >
             {copiedStates["all"] ? (
-              <CopyCheck className="w-4 h-4 text-green-500" />
+              <CopyCheck className="w-4 h-4 text-success" />
             ) : (
               <Copy className="w-4 h-4" />
             )}

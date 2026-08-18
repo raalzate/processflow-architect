@@ -66,7 +66,7 @@ export function MermaidDiagram({ code }: { code: string }) {
     return (
       <div className="space-y-2">
         <p className="text-xs text-destructive">Diagrama inválido: {error}</p>
-        <pre className="overflow-x-auto rounded bg-muted p-3 text-xs font-mono">
+        <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs font-mono">
           <code>{code}</code>
         </pre>
       </div>

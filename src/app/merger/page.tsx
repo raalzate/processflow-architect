@@ -290,7 +290,7 @@ export default function MergerPage() {
 
       <main className="flex-1 flex flex-col overflow-y-auto p-8">
         {!currentFile ? (
-          <Card className="max-w-xl mx-auto">
+          <Card className="max-w-3xl mx-auto">
             <CardHeader>
               <CardTitle>No hay ningún archivo cargado</CardTitle>
               <CardDescription>Carga un archivo JSON en la página del analizador para usar esta herramienta.</CardDescription>
@@ -302,12 +302,12 @@ export default function MergerPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="max-w-7xl mx-auto space-y-6 flex flex-col flex-1 w-full min-h-0">
-            <Card className="bg-blue-50 border-blue-200 flex-shrink-0">
+          <div className="max-w-5xl mx-auto space-y-6 flex flex-col flex-1 w-full min-h-0">
+            <Card className="bg-info-surface border-info-border flex-shrink-0">
               <CardHeader>
-                <CardTitle className="flex items-center gap-3 text-blue-900"><Info /> ¿Cómo funciona la fusión?</CardTitle>
+                <CardTitle className="flex items-center gap-3 text-info-foreground"><Info /> ¿Cómo funciona la fusión?</CardTitle>
               </CardHeader>
-              <CardContent className="text-sm text-blue-800 space-y-2">
+              <CardContent className="text-sm text-info-foreground space-y-2">
                 <p>
                   Los modelos generados desde documentos (por la IA local o importados desde Claude Code
                   vía MCP) suelen traer el mismo concepto con nombres distintos — p. ej. “Cliente”,
@@ -329,7 +329,7 @@ export default function MergerPage() {
             </Card>
 
             {allNodesMap.size === 0 && (
-              <Card className="max-w-xl mx-auto">
+              <Card className="max-w-3xl mx-auto">
                 <CardHeader>
                   <CardTitle>El proyecto no tiene nodos todavía</CardTitle>
                   <CardDescription>

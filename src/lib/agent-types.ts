@@ -63,7 +63,21 @@ export interface ArtifactVersion {
   createdAt: string; // ISO
 }
 
-/** Artefacto persistido en el lienzo. */
+/**
+ * Historia de UN artefacto: agrupa sus revisiones. Es el eje vertical del
+ * versionado; `ArtifactVersion` (snapshot) es el horizontal y ambos conviven.
+ * Ver `src/lib/artifacts/versioning.ts` y specs/004-artefactos-versionados/.
+ */
+export interface ArtifactLineage {
+  id: string;
+  key: string; // clave de linaje normalizada (kind [+ título])
+  kind: string;
+  versionId: string; // snapshot al que pertenece: el linaje no cruza snapshots
+  createdAt: string; // ISO
+  archivedAt?: string; // borrar en la UI = archivar, no destruir
+}
+
+/** Artefacto persistido en el lienzo. Cada uno es UNA revisión de su linaje. */
 export interface Artifact {
   id: string;
   versionId: string;
@@ -74,6 +88,10 @@ export interface Artifact {
   createdAt: string; // ISO
   sourceMessageId?: string; // mensaje del chat que lo generó
   contextArtifactIds?: string[]; // artefactos inyectados como contexto al generarlo
+  lineageId?: string; // opcional: el estado anterior a 004 no lo trae (migrateState lo pone)
+  revision?: number; // 1, 2, 3… entero ≥ 1
+  supersededBy?: string; // revisión que la reemplazó (rastro de la cadena)
+  restoredFrom?: string; // revisión que se restauró para crear esta
 }
 
 export type ChatRole = "user" | "assistant";

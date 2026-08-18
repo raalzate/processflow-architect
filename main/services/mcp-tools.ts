@@ -601,10 +601,10 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .optional()
           .describe("Aire del diagrama. Por defecto, el que ya tenía (o `comodo`)."),
         strategy: z
-          .enum(["flujo", "capas"])
+          .enum(["flujo", "capas", "radial"])
           .optional()
           .describe(
-            "flujo = bandas por participante, de izquierda a derecha (procesos); capas = filas por rol, actores arriba y externos abajo (arquitectura). Por defecto, la natural de la notación."
+            "flujo = bandas por participante, de izquierda a derecha (procesos); capas = filas por rol, actores arriba y externos abajo (arquitectura); radial = concepto central y anillos de relaciones alrededor (mapas de dominio DDD). Por defecto, la natural de la notación."
           ),
       },
     },

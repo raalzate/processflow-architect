@@ -9,11 +9,9 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { Cpu, MemoryStick, HardDrive, MonitorCog, Gauge, CheckCircle2, XCircle, Sun, Moon, Palette } from "lucide-react";
+import { Cpu, MemoryStick, HardDrive, MonitorCog, Gauge, CheckCircle2, XCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { useTheme } from "@/hooks/useTheme";
-import type { Theme } from "@/lib/theme";
 import type { SystemInfo } from "@/types/electron";
 
 const api = () => (typeof window !== "undefined" ? (window as any).electronAPI : undefined);
@@ -55,37 +53,6 @@ function SectionLabel({ icon: Icon, children }: { icon: React.ElementType; child
   );
 }
 
-const THEME_OPTIONS: { value: Theme; label: string; icon: React.ElementType }[] = [
-  { value: "light", label: "Claro", icon: Sun },
-  { value: "dark", label: "Oscuro", icon: Moon },
-  { value: "system", label: "Sistema", icon: MonitorCog },
-];
-
-/** Conmutador segmentado claro/oscuro/sistema (persistido en localStorage). */
-function ThemeSelector() {
-  const { theme, setTheme } = useTheme();
-  return (
-    <div className="inline-flex rounded-lg border p-0.5" role="radiogroup" aria-label="Tema de la aplicación">
-      {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
-        <button
-          key={value}
-          role="radio"
-          aria-checked={theme === value}
-          onClick={() => setTheme(value)}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors",
-            theme === value
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-muted",
-          )}
-        >
-          <Icon className="w-4 h-4" /> {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function SystemInfoCard() {
   const [info, setInfo] = useState<SystemInfo | null>(null);
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
@@ -107,12 +74,7 @@ export function SystemInfoCard() {
           </CardTitle>
           <CardDescription>Información del equipo disponible sólo en la app de escritorio.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <SectionLabel icon={Palette}>Apariencia</SectionLabel>
-          <div className="py-1.5">
-            <ThemeSelector />
-          </div>
-        </CardContent>
+        <CardContent />
       </Card>
     );
   }
@@ -129,11 +91,6 @@ export function SystemInfoCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <SectionLabel icon={Palette}>Apariencia</SectionLabel>
-        <div className="py-1.5">
-          <ThemeSelector />
-        </div>
-
         <SectionLabel icon={Cpu}>Hardware</SectionLabel>
         <div className="divide-y">
           <Row label="Sistema operativo" value={`${info.osName} ${info.osVersion} (${info.arch})`} />
@@ -166,11 +123,11 @@ export function SystemInfoCard() {
               gpu == null ? (
                 "Detectando…"
               ) : gpu.available ? (
-                <span className="inline-flex items-center gap-1 text-green-600">
+                <span className="inline-flex items-center gap-1 text-success">
                   <CheckCircle2 className="w-4 h-4" /> Disponible
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-red-600">
+                <span className="inline-flex items-center gap-1 text-destructive">
                   <XCircle className="w-4 h-4" /> No disponible — la IA local no funcionará
                 </span>
               )

@@ -19,7 +19,7 @@ Al terminar en verde borra `.git/gate-dirty`, que es lo que mira el hook `Stop`.
 |---|---|---|
 | `node scripts/harness-selftest.mjs` | que los hooks bloquean lo que dicen bloquear y que ninguna ruta del config apunta a la nada | un hook roto o un config inválido fallan en silencio: ninguna otra señal los ve |
 | `node scripts/docs-linkcheck.mjs` | que ninguna referencia a un doc o a una ruta del repo apunte a la nada | mover un archivo rompe punteros que ninguna otra señal mira |
-| `node scripts/repo-lint.mjs` | convenciones que el compilador no ve: pureza de `src/lib/`, agnosticismo de notación, invariantes de WebGPU, SDKs de nube prohibidos, `.only(` olvidado | barato, atrapa clases enteras de error; ver ADR `docs/decisions/0001-arnes-del-agente.md` sobre por qué no es ESLint |
+| `node scripts/repo-lint.mjs` | convenciones que el compilador no ve: pureza de `src/lib/`, agnosticismo de notación, invariantes de WebGPU, SDKs de nube prohibidos, `.only(` olvidado, dependencias de hook que leen la notación, tokens del tema en la UI, `fill` en los `<text>` de SVG y detección de plataforma en un solo módulo | barato, atrapa clases enteras de error; ver ADR `docs/decisions/0001-arnes-del-agente.md` sobre por qué no es ESLint |
 | `npm run typecheck` | que el proyecto compila completo (renderer + electron) | vitest transpila por archivo y **no** type-checkea: un import inválido pasa los tests y rompe el build |
 | `npm run test:coverage` | comportamiento de `src/lib/` con la misma cobertura que exige CI | no ve tipos ni empaquetado |
 | `npm run build` | que el artefacto publicable se genera (`next build` + `tsc` de electron + `move-out`) | dev y prod difieren (tree-shaking, resolución de módulos, asar) |
@@ -28,6 +28,11 @@ Al terminar en verde borra `.git/gate-dirty`, que es lo que mira el hook `Stop`.
 > El self-test las exige en una máquina de desarrollo —que es donde el ruteo SDD ocurre— y en CI
 > (`$CI`) reporta la ausencia como *omitido* en vez de fallar. El "omitido" se imprime siempre:
 > nunca se confunde con "pasó". Ver `docs/harness/sdd.md`.
+
+> **El arnés no escribe en el árbol de fuentes.** Para probar un freno del lint se le pasa el
+> contenido por stdin y la ruta sólo elige las reglas:
+> `node scripts/repo-lint.mjs --file <ruta virtual> --stdin`. Escribir temporales dentro de `src/`
+> rompía el watcher de Next (ver `docs/harness/gotchas.md`); un caso del self-test falla si vuelven.
 
 **Test verde ≠ compila ≠ entregable.** Reportar "listo" sin un gate verde es una violación, no un descuido.
 

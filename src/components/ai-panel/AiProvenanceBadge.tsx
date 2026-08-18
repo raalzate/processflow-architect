@@ -40,10 +40,10 @@ export function AiProvenanceBadge({ className }: { className?: string }) {
     <span
       title={engine.detail}
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
+        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-2xs font-medium",
         engine.isLocal
-          ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
-          : "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300",
+          ? "border-success-border bg-success-surface text-success-foreground"
+          : "border-info-border bg-info-surface text-info-foreground",
         className
       )}
     >

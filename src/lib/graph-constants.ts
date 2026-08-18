@@ -17,7 +17,7 @@ export const nodeTypeColors: { [key: string]: string } = Object.fromEntries(
 );
 
 /** Color del swatch con fallback gris para tipos libres (fuera del registro). */
-export const nodeTypeColor = (type: string): string => nodeTypeColors[type] ?? "bg-gray-400";
+export const nodeTypeColor = (type: string): string => nodeTypeColors[type] ?? "bg-muted-foreground";
 
 // Constantes para LocalStorage
 export const STORAGE_API_KEY = "gemini_api_key";

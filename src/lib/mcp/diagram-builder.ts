@@ -24,7 +24,10 @@ import type { GraphData, GraphNode, Agregado } from "../types";
 import {
   getNotation,
   hasRole,
+  isBlobContainer,
   isNotationContainer,
+  nodeSizeForNotation,
+  DEFAULT_NODE_SIZE,
   roleOfType,
   typesWithRole,
   type ElementRole,
@@ -34,15 +37,20 @@ import { validTypesFor } from "./catalog";
 import {
   getPreset,
   resolveStrategy,
+  scalePreset,
   type LayoutDensity,
   type LayoutPreset,
   type LayoutStrategy,
 } from "./layout-presets";
 
-// --- Geometría por defecto (misma escala que el diseñador) ---
-/** Ancho con el que el lienzo dibuja un nodo (`DesignerCanvas.NODE_WIDTH`). */
-export const NODE_W = 160;
-const NODE_H = 60;
+// --- Geometría por defecto ---
+/**
+ * Ancho de referencia para acotar NOMBRES. No es el tamaño con el que se dibuja:
+ * ese lo declara cada notación (`sizeOfType`) y el layout lo lee de ahí. Se
+ * mantiene aparte porque el aviso de "este nombre se va a recortar" viaja al
+ * agente por MCP y usa la caja por defecto (ver deuda en STATUS.md).
+ */
+export const NODE_W = DEFAULT_NODE_SIZE.w;
 
 /**
  * Caracteres que caben en el nombre de un nodo. Se deriva de cómo dibuja el
@@ -61,6 +69,12 @@ export const MAX_NAME_CHARS = NAME_CHARS_POR_LINEA;
  * va en la descripción de la relación.
  */
 export const MAX_EDGE_LABEL_CHARS = 30;
+
+/**
+ * Alto que se reserva abajo en un contenedor elíptico para su nombre: el lienzo
+ * lo dibuja sobre el borde inferior y sin este aire pisaría al hijo más bajo.
+ */
+const ETIQUETA_BLOB = 24;
 
 const ESTADOS = ["nuevo", "modificado", "sin_cambios", "existente", "eliminado"] as const;
 type Estado = (typeof ESTADOS)[number];
@@ -598,17 +612,21 @@ export interface LayoutOptions {
   strategy?: LayoutStrategy;
 }
 
-/** Medidas derivadas de un preset: todo el layout se calcula con esto. */
-function metrics(preset: LayoutPreset) {
-  const colStep = NODE_W + preset.hGap;
+/**
+ * Medidas derivadas de un preset y del tamaño de nodo de la notación: todo el
+ * layout se calcula con esto. El tamaño entra como parámetro porque C4 dibuja
+ * fichas de 220×104 y con el paso del nodo de 160 las columnas se solapaban.
+ */
+function metrics(preset: LayoutPreset, size: { w: number; h: number }) {
+  const colStep = size.w + preset.hGap;
   return {
     preset,
     colStep,
     colX: (r: number) => X0 + preset.lanePadX + r * colStep,
     laneHeight: (rows: number) =>
-      preset.lanePadTop + Math.max(1, rows) * (NODE_H + preset.vGap) - preset.vGap + preset.lanePadBottom,
+      preset.lanePadTop + Math.max(1, rows) * (size.h + preset.vGap) - preset.vGap + preset.lanePadBottom,
     laneWidthFor: (cols: number) =>
-      preset.lanePadX + (Math.max(1, cols) - 1) * colStep + NODE_W + preset.lanePadX,
+      preset.lanePadX + (Math.max(1, cols) - 1) * colStep + size.w + preset.lanePadX,
   };
 }
 
@@ -630,7 +648,8 @@ function isMessageEdge(model: DiagramModel, e: BuilderEdge): boolean {
  * largo y no la suma de todos.
  */
 function layoutPorFlujo(model: DiagramModel, preset: LayoutPreset): DiagramModel {
-  const { colX, laneHeight, laneWidthFor } = metrics(preset);
+  const sz = nodeSizeForNotation(model.meta.notation);
+  const { colX, laneHeight, laneWidthFor } = metrics(preset, sz);
   const containers = model.nodes.filter(isContainerNode);
   const nodes = model.nodes.filter((n) => !isContainerNode(n));
   const containerNames = new Set(containers.map((c) => c.nombre));
@@ -675,9 +694,9 @@ function layoutPorFlujo(model: DiagramModel, preset: LayoutPreset): DiagramModel
         laid.push({
           ...n,
           x: colX(r),
-          y: top + preset.lanePadTop + j * (NODE_H + preset.vGap),
-          width: NODE_W,
-          height: NODE_H,
+          y: top + preset.lanePadTop + j * (sz.h + preset.vGap),
+          width: sz.w,
+          height: sz.h,
         });
       });
     }
@@ -732,7 +751,8 @@ function layoutPorFlujo(model: DiagramModel, preset: LayoutPreset): DiagramModel
  * de qué depende— y dentro de cada capa se reparte en rejilla.
  */
 function layoutPorRol(model: DiagramModel, preset: LayoutPreset): DiagramModel {
-  const { colX, laneWidthFor } = metrics(preset);
+  const sz = nodeSizeForNotation(model.meta.notation);
+  const { colX, laneWidthFor } = metrics(preset, sz);
   const containers = model.nodes.filter(isContainerNode);
   const nodes = model.nodes.filter((n) => !isContainerNode(n));
   const containerNames = new Set(containers.map((c) => c.nombre));
@@ -751,16 +771,16 @@ function layoutPorRol(model: DiagramModel, preset: LayoutPreset): DiagramModel {
       laid.push({
         ...n,
         x: colX(i % preset.colsPerRow),
-        y: top + padTop + fila * (NODE_H + preset.vGap),
-        width: NODE_W,
-        height: NODE_H,
+        y: top + padTop + fila * (sz.h + preset.vGap),
+        width: sz.w,
+        height: sz.h,
       });
     });
     return {
       laid,
       filas,
       cols: Math.min(preset.colsPerRow, group.length),
-      height: padTop + Math.max(1, filas) * (NODE_H + preset.vGap) - preset.vGap + preset.lanePadBottom,
+      height: padTop + Math.max(1, filas) * (sz.h + preset.vGap) - preset.vGap + preset.lanePadBottom,
     };
   };
 
@@ -809,6 +829,145 @@ function layoutPorRol(model: DiagramModel, preset: LayoutPreset): DiagramModel {
   }
 
   return { ...model, nodes: out };
+}
+
+/**
+ * Layout RADIAL, para notaciones que son un MAPA DE CONCEPTOS y no un proceso
+ * (DDD): el concepto más conectado va al centro y el resto se acomoda en anillos
+ * concéntricos según a cuántos saltos de relación está de él. Es la forma en que
+ * se dibuja el mapa de patrones de Evans, y hace visible lo que una rejilla
+ * esconde: qué es el núcleo del modelo y qué cuelga de qué.
+ *
+ * Reglas del algoritmo (todas determinísticas, sin azar):
+ *  - centro = mayor grado; a igual grado gana el declarado primero.
+ *  - anillo k = distancia en saltos al centro (BFS sobre aristas sin dirección).
+ *  - lo que no alcanza el centro (islas) va al anillo exterior.
+ *  - dentro de un anillo mandan, en ese orden, el contenedor —para que un
+ *    Contexto Delimitado ocupe un sector CONTIGUO y no se intercale con el
+ *    vecino— y después el ángulo del padre, que deja a cada hijo cerca de quien
+ *    lo trajo y evita que las líneas se crucen. Ojo: contiguo no quiere decir
+ *    disjunto; la caja de un blob se infla ×√2 y dos sectores opuestos pueden
+ *    llegar a tocarse.
+ *  - el radio crece con el anillo, pero nunca menos de lo que exige el perímetro
+ *    para que quepan sus nodos sin tocarse.
+ */
+function layoutRadial(model: DiagramModel, preset: LayoutPreset): DiagramModel {
+  const containers = model.nodes.filter(isContainerNode);
+  const nodes = model.nodes.filter((n) => !isContainerNode(n));
+  if (!nodes.length) return layoutPorRol(model, preset);
+  const sz = nodeSizeForNotation(model.meta.notation);
+
+  // 1 · Adyacencia sin dirección (una relación acerca, apunte donde apunte).
+  const vecinos = new Map<string, string[]>();
+  for (const n of nodes) vecinos.set(n.id, []);
+  for (const e of model.edges) {
+    if (!vecinos.has(e.fuente) || !vecinos.has(e.destino)) continue;
+    vecinos.get(e.fuente)!.push(e.destino);
+    vecinos.get(e.destino)!.push(e.fuente);
+  }
+  const grado = (id: string) => vecinos.get(id)?.length ?? 0;
+
+  // 2 · Centro y anillos por BFS.
+  const centro = nodes.reduce((mejor, n) => (grado(n.id) > grado(mejor.id) ? n : mejor), nodes[0]);
+  const anillo = new Map<string, number>([[centro.id, 0]]);
+  const padre = new Map<string, string>();
+  const cola = [centro.id];
+  while (cola.length) {
+    const id = cola.shift()!;
+    for (const v of vecinos.get(id)!) {
+      if (anillo.has(v)) continue;
+      anillo.set(v, anillo.get(id)! + 1);
+      padre.set(v, id);
+      cola.push(v);
+    }
+  }
+  const ultimoConectado = Math.max(0, ...anillo.values());
+  for (const n of nodes) if (!anillo.has(n.id)) anillo.set(n.id, ultimoConectado + 1);
+
+  // 3 · Ángulo por nodo, anillo por anillo, heredando el del padre.
+  const orden = new Map(nodes.map((n, i) => [n.id, i]));
+  const angulo = new Map<string, number>([[centro.id, 0]]);
+  const radio = new Map<number, number>([[0, 0]]);
+  const paso = sz.w + preset.hGap;
+  const arcoMin = sz.w + preset.vGap;
+  const maxAnillo = Math.max(...anillo.values());
+
+  for (let k = 1; k <= maxAnillo; k++) {
+    const enAnillo = nodes
+      .filter((n) => anillo.get(n.id) === k)
+      .sort((a, b) => {
+        // El CONTENEDOR ordena primero: su caja se calcula por los extremos de
+        // sus hijos, así que si dos se intercalan en el mismo anillo cada elipse
+        // termina envolviendo nodos del vecino. Dentro de un mismo contenedor manda el ángulo del
+        // padre, que es lo que evita que las líneas se crucen.
+        const ca = a.container ?? "";
+        const cb = b.container ?? "";
+        if (ca !== cb) return ca < cb ? -1 : 1;
+        const pa = angulo.get(padre.get(a.id) ?? "") ?? 0;
+        const pb = angulo.get(padre.get(b.id) ?? "") ?? 0;
+        if (pa !== pb) return pa - pb;
+        return orden.get(a.id)! - orden.get(b.id)!;
+      });
+    if (!enAnillo.length) continue;
+    // El perímetro manda: con muchos nodos el anillo se abre en vez de apretarlos.
+    radio.set(k, Math.max(k * paso, (enAnillo.length * arcoMin) / (2 * Math.PI)));
+    enAnillo.forEach((n, i) => angulo.set(n.id, (2 * Math.PI * i) / enAnillo.length));
+  }
+
+  // 4 · A coordenadas. El centro del lienzo se normaliza después.
+  const puestos: BuilderNode[] = nodes.map((n) => {
+    const r = radio.get(anillo.get(n.id)!) ?? 0;
+    const a = angulo.get(n.id) ?? 0;
+    return {
+      ...n,
+      x: Math.round(r * Math.cos(a) - sz.w / 2),
+      y: Math.round(r * Math.sin(a) - sz.h / 2),
+      width: sz.w,
+      height: sz.h,
+    };
+  });
+
+  // 5 · Los contenedores envuelven a sus hijos (su sector es contiguo por el
+  // orden del anillo). Sin hijos no hay caja que calcular: van a un lado.
+  const cajas: BuilderNode[] = [];
+  const bajoTodo = Math.max(...puestos.map((n) => n.y! + sz.h)) + preset.laneGap;
+  let sinHijosX = Math.min(...puestos.map((n) => n.x!));
+  for (const c of containers) {
+    const dentro = puestos.filter((n) => n.container === c.nombre);
+    if (!dentro.length) {
+      cajas.push({ ...c, x: sinHijosX, y: bajoTodo, width: sz.w, height: sz.h });
+      sinHijosX += sz.w + preset.hGap;
+      continue;
+    }
+    let x0 = Math.min(...dentro.map((n) => n.x!)) - preset.lanePadX;
+    let y0 = Math.min(...dentro.map((n) => n.y!)) - preset.lanePadTop;
+    let x1 = Math.max(...dentro.map((n) => n.x! + sz.w)) + preset.lanePadX;
+    let y1 = Math.max(...dentro.map((n) => n.y! + sz.h)) + preset.lanePadBottom;
+    if (isBlobContainer(c.tipo_elemento)) {
+      // Una elipse INSCRITA en la caja de sus hijos los deja afuera por las
+      // esquinas. La elipse mínima que contiene un rectángulo mide √2 veces sus
+      // semiejes: se agranda la caja en esa proporción, alrededor de su centro.
+      const cx = (x0 + x1) / 2;
+      const cy = (y0 + y1) / 2;
+      const rx = ((x1 - x0) / 2) * Math.SQRT2;
+      const ry = ((y1 - y0) / 2) * Math.SQRT2 + ETIQUETA_BLOB;
+      x0 = cx - rx;
+      x1 = cx + rx;
+      y0 = cy - ry;
+      y1 = cy + ry;
+    }
+    cajas.push({ ...c, x: Math.round(x0), y: Math.round(y0), width: Math.round(x1 - x0), height: Math.round(y1 - y0) });
+  }
+
+  // 6 · Normalizar: el lienzo no dibuja coordenadas negativas.
+  const todos = [...cajas, ...puestos];
+  const minX = Math.min(...todos.map((n) => n.x!));
+  const minY = Math.min(...todos.map((n) => n.y!));
+  const movidos = todos.map((n) => ({ ...n, x: n.x! - minX + X0, y: n.y! - minY + Y0 }));
+
+  // `movidos` conserva el orden contenedores→nodos: el lienzo pinta las cajas
+  // debajo de sus hijos.
+  return { ...model, nodes: movidos };
 }
 
 /**
@@ -864,9 +1023,15 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): DiagramMo
   );
   if (allPlaced) return model;
 
-  const preset = getPreset(opts.density);
+  // El aire se escala al tamaño de nodo de la notación (ver `scalePreset`).
+  const preset = scalePreset(getPreset(opts.density), nodeSizeForNotation(model.meta.notation));
   const strategy = resolveStrategy(opts.strategy, model.meta.notation);
-  const dispuesto = strategy === "flujo" ? layoutPorFlujo(model, preset) : layoutPorRol(model, preset);
+  const dispuesto =
+    strategy === "flujo"
+      ? layoutPorFlujo(model, preset)
+      : strategy === "radial"
+        ? layoutRadial(model, preset)
+        : layoutPorRol(model, preset);
   // El modelo recuerda cómo se dibujó: el menú marca el actual y el agente puede
   // repetir por MCP exactamente la disposición que ve el humano.
   return { ...dispuesto, meta: { ...dispuesto.meta, layout: { density: preset.id, strategy } } };
