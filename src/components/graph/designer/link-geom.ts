@@ -139,6 +139,84 @@ export function simplifyPath(pts: Array<[number, number]>): Array<[number, numbe
   return clean;
 }
 
+type Punto = { x: number; y: number };
+
+/**
+ * Punto a mitad de RECORRIDO de una poli-línea (no la mitad de la cuerda). La
+ * etiqueta del enrutado escalonado se colocaba en el medio de la recta
+ * imaginaria entre extremos, que en una L cae fuera del trazo: se veía suelta,
+ * lejos de la línea que describe.
+ */
+export function polylineMidpoint(pts: Array<[number, number]>): Punto {
+  if (!pts.length) return { x: 0, y: 0 };
+  const segs: number[] = [];
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const d = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+    segs.push(d);
+    total += d;
+  }
+  if (total === 0) return { x: pts[0][0], y: pts[0][1] };
+  let resto = total / 2;
+  for (let i = 0; i < segs.length; i++) {
+    if (resto <= segs[i]) {
+      const t = segs[i] === 0 ? 0 : resto / segs[i];
+      return {
+        x: pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t,
+        y: pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t,
+      };
+    }
+    resto -= segs[i];
+  }
+  const last = pts[pts.length - 1];
+  return { x: last[0], y: last[1] };
+}
+
+/**
+ * Vértice del arco por defecto: el punto medio desplazado sobre la perpendicular
+ * de la cuerda. Es el arco de siempre — ahora explícito, porque el humano puede
+ * moverlo o espejarlo y hay que saber de dónde parte.
+ */
+export function defaultCurveApex(start: Punto, end: Punto): Punto {
+  const len = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+  const bow = Math.min(80, len * 0.25);
+  return {
+    x: (start.x + end.x) / 2 + (-(end.y - start.y) / len) * bow,
+    y: (start.y + end.y) / 2 + ((end.x - start.x) / len) * bow,
+  };
+}
+
+/** Espeja el vértice respecto de la cuerda: la comba pasa al otro lado. */
+export function mirrorCurveApex(start: Punto, end: Punto, apex: Punto): Punto {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const len2 = dx * dx + dy * dy || 1;
+  // Proyección de `apex` sobre la recta start→end; el reflejo es 2·proyección − apex.
+  const t = ((apex.x - start.x) * dx + (apex.y - start.y) * dy) / len2;
+  const px = start.x + t * dx;
+  const py = start.y + t * dy;
+  return { x: 2 * px - apex.x, y: 2 * py - apex.y };
+}
+
+/** Vértice guardado del arco (comparte campo con los quiebres de la escalonada). */
+export const curveApexOf = (link: DesignerLink): Punto | null =>
+  link.midpoints?.[0] ?? link.midpoint ?? null;
+
+/**
+ * Vértice invertido de un enlace curvo: lo que escribe el botón «Invertir
+ * curva». Devuelve `null` si el enlace no tiene geometría (nodo faltante).
+ */
+export function flipCurveApex(
+  link: DesignerLink,
+  nodes: Map<string, DesignerNode>,
+  notation?: NotationId
+): Punto | null {
+  const ep = linkEndpoints(link, nodes, notation);
+  if (!ep) return null;
+  const apex = curveApexOf(link) ?? defaultCurveApex(ep.start, ep.end);
+  return mirrorCurveApex(ep.start, ep.end, apex);
+}
+
 /**
  * Geometría completa del enlace: extremos + trazo SVG + posición de la etiqueta.
  * En enrutado escalonado expone el doblez automático (`bend`, cuando no hay
@@ -159,19 +237,23 @@ export function linkGeometry(
   let labelX = (start.x + end.x) / 2;
   let labelY = (start.y + end.y) / 2;
   let bend: { x: number; y: number } | null = null;
+  /** Qué es la manija `bend`: vértice del arco (curva) o esquina (escalonada). */
+  let bendKind: "curve" | "corner" = "corner";
   let waypoints: { x: number; y: number }[] = [];
 
   if (routing === "curved") {
-    const len = Math.hypot(end.x - start.x, end.y - start.y) || 1;
-    const px = -(end.y - start.y) / len;
-    const py = (end.x - start.x) / len;
-    const bow = Math.min(80, len * 0.25);
-    const cx = labelX + px * bow;
-    const cy = labelY + py * bow;
+    // El vértice guardado manda; sin él, el arco por defecto. Guardarlo es lo
+    // que permite invertir la comba: antes la perpendicular tenía un solo signo
+    // y toda curva se combaba al mismo lado, tapando al nodo vecino.
+    const apex = curveApexOf(link) ?? defaultCurveApex(start, end);
+    // Control de la cuadrática tal que la curva pase por `apex` en t=0.5.
+    const cx = 2 * apex.x - labelX;
+    const cy = 2 * apex.y - labelY;
     path = `M${start.x},${start.y} Q${cx},${cy} ${end.x},${end.y}`;
-    // Vértice de la Bézier cuadrática en t=0.5 (para la etiqueta).
-    labelX = 0.25 * start.x + 0.5 * cx + 0.25 * end.x;
-    labelY = 0.25 * start.y + 0.5 * cy + 0.25 * end.y;
+    labelX = apex.x;
+    labelY = apex.y;
+    bend = apex;
+    bendKind = "curve";
   } else if (routing === "orthogonal") {
     // Compat: grafos viejos usaban un único `midpoint`.
     const ways =
@@ -228,10 +310,25 @@ export function linkGeometry(
       ];
       waypoints = ways;
     }
-    path = "M" + simplifyPath(pts).map((p) => `${p[0]},${p[1]}`).join(" L");
+    const limpio = simplifyPath(pts);
+    // La etiqueta va SOBRE el trazo, a mitad de recorrido: en una L la mitad de
+    // la cuerda cae en el vacío y la etiqueta se lee desprendida de la línea.
+    const medio = polylineMidpoint(limpio);
+    labelX = medio.x;
+    labelY = medio.y;
+    path = "M" + limpio.map((p) => `${p[0]},${p[1]}`).join(" L");
   } else {
     path = `M${start.x},${start.y} L${end.x},${end.y}`;
   }
 
-  return { start, end, path, labelX, labelY, bend, waypoints };
+  // Sitio "natural" de la etiqueta sobre el trazo; el desplazamiento del humano
+  // se aplica encima. Se devuelve también sin desplazar (`labelAnchor`) porque
+  // arrastrar la etiqueta necesita saber respecto de qué se mide el offset.
+  const labelAnchor = { x: labelX, y: labelY };
+  if (link.labelOffset) {
+    labelX += link.labelOffset.x;
+    labelY += link.labelOffset.y;
+  }
+
+  return { start, end, path, labelX, labelY, labelAnchor, bend, bendKind, waypoints };
 }

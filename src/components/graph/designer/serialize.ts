@@ -73,6 +73,12 @@ export interface DesignerLink {
   midpoint?: { x: number; y: number };
   /** Puntos de quiebre (esquinas) del enrutado escalonado, en orden. */
   midpoints?: { x: number; y: number }[];
+  /**
+   * Desplazamiento de la etiqueta respecto de su sitio natural sobre el trazo
+   * (px del lienzo). Sin esto la etiqueta era inamovible y se solapaba con
+   * nodos o con otras líneas sin salida posible.
+   */
+  labelOffset?: { x: number; y: number };
 }
 
 // Contenedor según el registro GLOBAL de notaciones (DDD, BPMN, C4, UML).
@@ -160,6 +166,7 @@ export function canvasToGraphData(
       sourceAnchor: l.sourceAnchor,
       targetAnchor: l.targetAnchor,
       midpoints: l.midpoints,
+      labelOffset: l.labelOffset,
     };
     // Sólo cuenta como "dentro de un agregado" si el agregado EXISTE como contenedor
     // (un nodo puede referenciar un agregado ya borrado → su enlace va al Big Picture).
@@ -347,6 +354,7 @@ function addLink(
     targetAnchor?: DesignerLink["targetAnchor"];
     midpoint?: DesignerLink["midpoint"];
     midpoints?: DesignerLink["midpoints"];
+    labelOffset?: DesignerLink["labelOffset"];
   }
 ) {
   const id = `link-${a.fuente}-${a.destino}-${crypto.randomUUID()}`;
@@ -363,6 +371,7 @@ function addLink(
     targetAnchor: a.targetAnchor,
     // Compat: grafos viejos guardaban un único `midpoint`.
     midpoints: a.midpoints ?? (a.midpoint ? [a.midpoint] : undefined),
+    labelOffset: a.labelOffset,
   });
 }
 

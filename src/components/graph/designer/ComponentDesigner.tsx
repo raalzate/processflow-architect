@@ -77,6 +77,7 @@ import {
 import {
   getNotation,
   sizeOfType,
+  defaultRoutingFor,
   DEFAULT_NOTATION_ID,
   type NotationId,
 } from "@/lib/notations";
@@ -103,6 +104,8 @@ import {
 } from "./DesignerCanvas";
 import {
   linkEndpoints,
+  linkGeometry,
+  flipCurveApex,
   nodeBox,
   AGGREGATE_DEFAULT_WIDTH,
   AGGREGATE_DEFAULT_HEIGHT,
@@ -712,6 +715,42 @@ const EditLinkDialog: React.FC<{
                 </button>
               ))}
             </div>
+            {(draft.routing ?? defaultRoutingFor(notation)) === "curved" && (
+              // La comba tenía un solo signo: si el arco tapaba un nodo no había
+              // forma de mandarlo al otro lado sin mover los nodos.
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const apex = flipCurveApex(draft, nodes, notation);
+                    if (apex) setDraft((d) => (d ? { ...d, midpoint: undefined, midpoints: [apex] } : d));
+                  }}
+                  className="rounded-md border bg-muted px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Invertir curva
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraft((d) => (d ? { ...d, midpoint: undefined, midpoints: undefined } : d))
+                  }
+                  className="rounded-md border bg-muted px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Arco por defecto
+                </button>
+              </div>
+            )}
+            {draft.labelOffset && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setDraft((d) => (d ? { ...d, labelOffset: undefined } : d))}
+                  className="rounded-md border bg-muted px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Centrar etiqueta
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="mt-4 space-y-1.5">
@@ -1230,7 +1269,7 @@ export const ComponentDesigner: React.FC<{
   const marqueeRef = useRef(marquee);
   // Sesión de arrastre de: punta (reanclado), doblez auto o punto de quiebre (índice).
   const endpointDragRef = useRef<
-    { linkId: string; kind: "source" | "target" | "bend" | "wp"; index?: number } | null
+    { linkId: string; kind: "source" | "target" | "bend" | "wp" | "label"; index?: number } | null
   >(null);
   useEffect(() => {
     nodesRef.current = nodes;
@@ -1644,6 +1683,25 @@ export const ComponentDesigner: React.FC<{
         const p = toSvgPoint(e.clientX, e.clientY);
         const link = linksRef.current.get(ep.linkId);
         if (!link) return;
+        // Etiqueta: se guarda cuánto se separó de su sitio sobre el trazo, así
+        // sigue a la línea cuando los nodos se mueven.
+        if (ep.kind === "label") {
+          const geo = linkGeometry(link, nodesRef.current, notationId);
+          if (!geo) return;
+          setLinks((prev) => {
+            const l = new Map(prev);
+            const cur = l.get(ep.linkId);
+            if (cur) {
+              l.set(ep.linkId, {
+                ...cur,
+                labelOffset: { x: p.x - geo.labelAnchor.x, y: p.y - geo.labelAnchor.y },
+              });
+            }
+            linksRef.current = l;
+            return l;
+          });
+          return;
+        }
         // Doblez auto → crea el primer punto de quiebre; wp → mueve el de su índice.
         if (ep.kind === "bend" || ep.kind === "wp") {
           setLinks((prev) => {
@@ -1825,6 +1883,17 @@ export const ComponentDesigner: React.FC<{
     [selectOnly]
   );
 
+  // Arrastre de la etiqueta de un enlace: la separa del trazo sin tocar la línea.
+  const startLabelDrag = useCallback(
+    (e: React.MouseEvent, linkId: string) => {
+      e.stopPropagation();
+      e.preventDefault();
+      endpointDragRef.current = { linkId, kind: "label" };
+      selectOnly(linkId);
+    },
+    [selectOnly]
+  );
+
   // Añade un punto de quiebre donde se hace doble clic en la línea (enrutado
   // escalonado), insertándolo en el segmento más cercano.
   const addWaypoint = useCallback(
@@ -1881,6 +1950,21 @@ export const ComponentDesigner: React.FC<{
           : [];
         const next = ways.filter((_, i) => i !== index);
         l.set(linkId, { ...cur, midpoint: undefined, midpoints: next.length ? next : undefined });
+        return l;
+      });
+    },
+    [updateLinks]
+  );
+
+  // Vuelve a la comba por defecto (doble clic en la manija del arco): sin
+  // vértice guardado, `linkGeometry` recalcula el arco estándar.
+  const resetCurve = useCallback(
+    (linkId: string) => {
+      updateLinks((prev) => {
+        const l = new Map(prev);
+        const cur = l.get(linkId);
+        if (!cur) return prev;
+        l.set(linkId, { ...cur, midpoint: undefined, midpoints: undefined });
         return l;
       });
     },
@@ -2467,6 +2551,7 @@ export const ComponentDesigner: React.FC<{
                   onClick={(e) => handleLinkClick(e, link.id)}
                   onDoubleClick={() => setEditingLink(link)}
                   onLineDoubleClick={(e) => addWaypoint(e, link.id)}
+                  onLabelMouseDown={(e) => startLabelDrag(e, link.id)}
                 />
               ))}
             </g>
@@ -2527,6 +2612,7 @@ export const ComponentDesigner: React.FC<{
                     onEndpointMouseDown={(e, which) => startEndpointDrag(e, link.id, which)}
                     onWaypointMouseDown={(e, i) => startWaypointDrag(e, link.id, i)}
                     onWaypointDoubleClick={(i) => removeWaypoint(link.id, i)}
+                    onBendDoubleClick={() => resetCurve(link.id)}
                   />
                 ))}
             </g>

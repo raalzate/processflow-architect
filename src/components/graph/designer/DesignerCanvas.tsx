@@ -1069,6 +1069,8 @@ interface LinkComponentProps {
   onDoubleClick: () => void;
   /** Doble clic sobre la LÍNEA (no la etiqueta): añade un punto de quiebre ahí. */
   onLineDoubleClick?: (e: React.MouseEvent) => void;
+  /** Arrastre de la ETIQUETA: la separa del trazo cuando tapa algo. */
+  onLabelMouseDown?: (e: React.MouseEvent) => void;
 }
 
 
@@ -1080,6 +1082,7 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   onClick,
   onDoubleClick,
   onLineDoubleClick,
+  onLabelMouseDown,
 }) => {
   const geo = linkGeometry(link, nodes, notation);
   if (!geo) return null;
@@ -1126,7 +1129,11 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
         // Color de línea personalizado (prevalece sobre el gris por defecto).
         style={!isSelected && link.color ? { stroke: link.color } : undefined}
       />
-      <g onDoubleClick={onDoubleClick} className="cursor-text">
+      <g
+        onDoubleClick={onDoubleClick}
+        onMouseDown={onLabelMouseDown}
+        className={onLabelMouseDown ? "cursor-move" : "cursor-text"}
+      >
         {/* El halo se dimensiona con el texto. Antes era un rect fijo de 80×20 y
             una etiqueta larga («cotiza y diligencia su solicitud [navegador web]»,
             ~240 px) se desbordaba sin fondo, cruzando líneas, nodos y títulos de
@@ -1187,26 +1194,47 @@ export const LinkEndpointHandles: React.FC<{
   onEndpointMouseDown: (e: React.MouseEvent, which: "source" | "target" | "bend") => void;
   onWaypointMouseDown: (e: React.MouseEvent, index: number) => void;
   onWaypointDoubleClick: (index: number) => void;
-}> = ({ link, nodes, notation, onEndpointMouseDown, onWaypointMouseDown, onWaypointDoubleClick }) => {
+  /** Doble clic en la manija del arco: vuelve a la comba por defecto. */
+  onBendDoubleClick?: () => void;
+}> = ({
+  link,
+  nodes,
+  notation,
+  onEndpointMouseDown,
+  onWaypointMouseDown,
+  onWaypointDoubleClick,
+  onBendDoubleClick,
+}) => {
   const geo = linkGeometry(link, nodes, notation);
   if (!geo) return null;
-  const { start, end, bend, waypoints } = geo;
+  const { start, end, bend, bendKind, waypoints } = geo;
+  const esArco = bendKind === "curve";
   return (
     <g>
-      {/* Doblez automático (sin puntos de quiebre aún): arrástralo para crear el primero. */}
+      {/* Manija del doblez: en curva es el VÉRTICE del arco (arrástralo al otro
+          lado para invertir la comba); en escalonada, la esquina sugerida. */}
       {bend && (
         <rect
           x={bend.x - 6}
           y={bend.y - 6}
           width={12}
           height={12}
-          rx={2}
+          rx={esArco ? 6 : 2}
           className="fill-white stroke-blue-400 cursor-move hover:fill-blue-100"
           strokeWidth={2}
           strokeDasharray="3 2"
           onMouseDown={(e) => onEndpointMouseDown(e, "bend")}
+          onDoubleClick={(e) => {
+            if (!esArco || !onBendDoubleClick) return;
+            e.stopPropagation();
+            onBendDoubleClick();
+          }}
         >
-          <title>Arrastra para crear un punto de quiebre</title>
+          <title>
+            {esArco
+              ? "Arrastra para curvar (al otro lado invierte la comba) · doble clic para restablecer"
+              : "Arrastra para crear un punto de quiebre"}
+          </title>
         </rect>
       )}
       {/* Puntos de quiebre del usuario: arrastrar para mover, doble clic para quitar. */}

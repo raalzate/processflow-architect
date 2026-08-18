@@ -17,7 +17,7 @@ lo que se supone va en "deuda conocida".
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
 | Typecheck | `npm run typecheck` | verde (renderer + electron) |
-| Tests | `npm run test:coverage` | verde — 61 archivos, 885 pruebas (cobertura `src/lib` 98,1 % stmts; `artifacts/versioning.ts` 99,3 %) |
+| Tests | `npm run test:coverage` | verde — 62 archivos, 903 pruebas (cobertura `src/lib` 98,1 % stmts; `artifacts/versioning.ts` 99,3 %) |
 | E2E del MCP (stdio) | script manual contra `mcp-server/index.ts` | verde — 20 tools; arnés completo (ingesta → citas → ambigüedades → calidad → revisión → export → install_skill) |
 | Build de producción | `npm run build` | verde |
 

@@ -102,6 +102,8 @@ export interface GraphLink extends SimulationLinkDatum<GraphNode> {
   midpoint?: { x: number; y: number };
   /** Puntos de quiebre (esquinas) del enrutado escalonado, en orden, coords del lienzo. */
   midpoints?: { x: number; y: number }[];
+  /** Desplazamiento de la etiqueta respecto de su sitio sobre el trazo (px del lienzo). */
+  labelOffset?: { x: number; y: number };
 }
 
 export interface Agregado {

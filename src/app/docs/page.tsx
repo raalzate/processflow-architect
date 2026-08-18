@@ -248,7 +248,10 @@ export default function DocsPage() {
                     aparecen 4 puertos azules; arrastra desde uno hasta otro elemento para crear la
                     relación. Doble clic sobre la línea añade un punto de quiebre y doble clic
                     sobre su etiqueta la edita (en compuertas y decisiones, etiqueta cada rama con
-                    su condición: Sí / No / la guarda).
+                    su condición: Sí / No / la guarda). En enrutado curvo la manija redonda es el
+                    vértice del arco: arrástrala al otro lado de la línea para invertir la comba
+                    (doble clic la restablece), o usa «Invertir curva» en la ficha del enlace. La
+                    etiqueta se arrastra cuando tapa algo y «Centrar etiqueta» la devuelve al trazo.
                   </p>
                   <p>
                     <b className="text-foreground">Editar:</b> doble clic en un elemento abre su
