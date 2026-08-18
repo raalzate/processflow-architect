@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   makeFinalStreamer,
+  salvageReply,
   hasGenerationIntent,
   sanitizeMermaid,
   buildReasoningFrame,
@@ -199,5 +200,72 @@ describe("makeFinalStreamer", () => {
 
   it("tolera `final` con espacios alrededor de los dos puntos", () => {
     expect(run([`{"final"  :  "ok"}`])).toBe("ok");
+  });
+});
+
+/**
+ * Incidente: el modelo local cerraba con `{"response":"…"}` en vez de
+ * `{"final":"…"}`. El turno caía al crudo y el chat mostraba el JSON envuelto
+ * —una caja de código con `{ "response": … }`— seguido de la mitad de la
+ * explicación. La respuesta estaba ahí; el agente no la sabía leer.
+ */
+describe("salvageReply · turnos que ignoran el contrato", () => {
+  it("desenvuelve `response` en vez de mostrar el JSON", () => {
+    const raw = '{\n  "response": "El resultado de la solicitud de arquitectura."\n}';
+    expect(salvageReply(raw, JSON.parse(raw))).toBe("El resultado de la solicitud de arquitectura.");
+  });
+
+  it("acepta las otras claves con las que el modelo nombra su respuesta", () => {
+    for (const clave of ["respuesta", "answer", "reply", "message", "text", "content", "output"]) {
+      const raw = `{"${clave}":"hola"}`;
+      expect(salvageReply(raw, JSON.parse(raw))).toBe("hola");
+    }
+  });
+
+  it("suma la prosa que quedó FUERA del JSON (el caso del incidente)", () => {
+    const raw = [
+      '{ "response": "Los drivers salen del documento." }',
+      "",
+      "**Nota:** «restricción» acá significa límite técnico.",
+    ].join("\n");
+    const out = salvageReply(raw, JSON.parse('{ "response": "Los drivers salen del documento." }'));
+    expect(out).toContain("Los drivers salen del documento.");
+    expect(out).toContain("**Nota:**");
+    // Y NADA del envoltorio: ni la llave ni el nombre del campo.
+    expect(out).not.toContain('"response"');
+    expect(out).not.toContain("{");
+  });
+
+  it("ignora el fence que envolvía el JSON", () => {
+    const raw = '```json\n{"response":"ok"}\n```\n\nY un cierre en prosa.';
+    const out = salvageReply(raw, JSON.parse('{"response":"ok"}'));
+    expect(out).toBe("ok\n\nY un cierre en prosa.");
+  });
+
+  it("prefiere `final` cuando el objeto trae varias claves", () => {
+    const raw = '{"response":"borrador","final":"definitiva"}';
+    expect(salvageReply(raw, JSON.parse(raw))).toBe("definitiva");
+  });
+
+  it("sin nada rescatable devuelve el crudo (mejor que vacío)", () => {
+    const raw = '{"total":3}';
+    expect(salvageReply(raw, JSON.parse(raw))).toBe(raw);
+  });
+});
+
+describe("makeFinalStreamer · claves off-contract", () => {
+  const run = (chunks: string[]) => {
+    const out: string[] = [];
+    const feed = makeFinalStreamer((c) => out.push(c));
+    chunks.forEach(feed);
+    return out.join("");
+  };
+
+  it("streamea `response` como si fuera `final`", () => {
+    expect(run(['{"response":"en vivo"}'])).toBe("en vivo");
+  });
+
+  it("no streamea claves genéricas (podrían ser argumentos de una herramienta)", () => {
+    expect(run(['{"action":"generate_document","args":{"instructions":"x","content":"y"}}'])).toBe("");
   });
 });

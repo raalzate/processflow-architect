@@ -144,6 +144,18 @@ describe("runLitertAgent — bucle ReAct (con intención de generar)", () => {
     expect(res.reply).toBe("hola\\q");
   });
 
+  it("turno con `response` en vez de `final` → responde el texto, no el JSON", async () => {
+    // El caso real: Gemma cerró con {"response": …} y el chat mostraba el JSON
+    // envuelto seguido de la mitad de la explicación.
+    scriptConvo([
+      '{ "response": "Los drivers salen del documento." }\n\n**Nota:** «restricción» = límite técnico.',
+    ]);
+    const res = await runLitertAgent({ modelFile: "m", message: "genera un diagrama" });
+    expect(res.reply).toContain("Los drivers salen del documento.");
+    expect(res.reply).toContain("**Nota:**");
+    expect(res.reply).not.toContain('"response"');
+  });
+
   it("texto plano sin JSON → usa el texto crudo", async () => {
     scriptConvo(["solo prosa sin json"]);
     const res = await runLitertAgent({ modelFile: "m", message: "genera un diagrama" });

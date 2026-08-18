@@ -134,3 +134,16 @@ Mecanismo: sólo prosa: ningún comando del repo puede ver lo que el token del h
          sí se arregló es el ruido que llevó al diagnóstico equivocado — los tres jobs de la matriz
          creaban y borraban borradores duplicados del mismo tag; ahora publica un job único
          (`release`) después de la matriz.
+
+### GOTCHA: la burbuja del chat se sale del panel y corta el texto
+
+Síntoma: una respuesta del agente con un bloque de código (o cualquier línea larga) se ve cortada
+         a la derecha: los párrafos siguen fuera del panel y no hay scroll horizontal.
+Causa:   la burbuja es un ítem flex con `max-w-[85%]`, pero un ítem flex arranca con
+         `min-width:auto` = el ancho de su contenido más terco (la línea del `<pre>`), y en CSS
+         **`min-width` gana sobre `max-width`**. La burbuja crecía más que el panel y el panel,
+         con `overflow-y-auto`, recortaba en horizontal.
+Regla:   toda burbuja/tarjeta con `max-w-*` dentro de un flex lleva `min-w-0`, y el `<pre>` de
+         Markdown envuelve (`whitespace-pre-wrap break-words`) porque vive en paneles angostos.
+Mecanismo: prosa + el ejemplo en `AgentChatPanel.tsx` (comentario en la burbuja). No hay test de
+         layout en el repo; se verifica a ojo con `npm run electron-dev`.

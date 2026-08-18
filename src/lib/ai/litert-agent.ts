@@ -93,6 +93,63 @@ function parseJson(text: string): any {
 }
 
 /**
+ * Claves con las que un modelo local nombra su respuesta cuando ignora el
+ * contrato `{"thought","final"}`. Gemma devuelve seguido `{"response":"…"}`, y
+ * sin esta lista el turno caía al crudo: el usuario veía el JSON envuelto (una
+ * caja de código con `{ "response": "…" }`) en vez de la respuesta.
+ */
+export const CLAVES_DE_RESPUESTA = [
+  "final",
+  "respuesta",
+  "response",
+  "answer",
+  "reply",
+  "message",
+  "text",
+  "content",
+  "output",
+] as const;
+
+/** Primer valor de texto útil del objeto, probando las claves conocidas en orden. */
+function campoDeRespuesta(parsed: Record<string, unknown>): string | null {
+  for (const clave of CLAVES_DE_RESPUESTA) {
+    const v = parsed[clave];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+/**
+ * Prosa que el modelo escribió FUERA del objeto JSON (antes o después). Cuando el
+ * turno viene off-contract suele traer la mitad de la explicación acá; tirarla
+ * dejaba respuestas mutiladas.
+ */
+function prosaFueraDelJson(raw: string): string {
+  const m = raw.match(/[[{][\s\S]*[\]}]/);
+  if (!m || m.index === undefined) return "";
+  const fuera = (raw.slice(0, m.index) + "\n" + raw.slice(m.index + m[0].length))
+    // Restos de un fence que envolvía el JSON: no son prosa.
+    .replace(/```(?:json)?/gi, "")
+    .trim();
+  return fuera;
+}
+
+/**
+ * Respuesta a mostrar cuando el turno NO respeta el contrato: se toma el campo de
+ * texto que traiga el objeto (`response`, `answer`, …) y se le une la prosa que
+ * quedó fuera del JSON. Sólo si no hay nada de eso se cae al crudo — que es lo
+ * que el usuario veía siempre antes.
+ */
+export function salvageReply(raw: string, parsed: unknown): string {
+  const obj = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  const campo = obj ? campoDeRespuesta(obj) : null;
+  const fuera = prosaFueraDelJson(raw);
+  const partes = [campo, fuera && fuera !== campo ? fuera : ""].filter(Boolean) as string[];
+  // Nada rescatable (JSON sin texto y sin prosa): el crudo es mejor que el vacío.
+  return partes.join("\n\n").trim() || raw.trim();
+}
+
+/**
  * Fallback robusto: extrae el valor de "final" (o "thought") aunque el JSON esté
  * malformado (p.ej. coma colgante + `"}`). Devuelve la cadena desescapada o null.
  */
@@ -123,7 +180,12 @@ export function makeFinalStreamer(emit: (chunk: string) => void): (chunk: string
   return (chunk: string) => {
     buf += chunk;
     if (start < 0) {
-      const m = buf.match(/"final"\s*:\s*"/);
+      // También las claves off-contract con las que el modelo nombra su respuesta
+      // (`response`, `answer`…): sin esto el turno no streameaba nada y la
+      // respuesta aparecía de golpe al final. Se excluyen las genéricas
+      // (`text`, `content`, `message`) porque pueden ser argumentos de una
+      // herramienta y arrancarían un streaming que no es la respuesta.
+      const m = buf.match(/"(?:final|respuesta|response|answer|reply)"\s*:\s*"/);
       if (!m) return;
       start = m.index! + m[0].length;
     }
@@ -438,7 +500,7 @@ Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."
       reply =
         String(parsed.final ?? "").trim() ||
         extractField(raw, "final") ||
-        raw.trim();
+        salvageReply(raw, parsed);
       break;
     }
 

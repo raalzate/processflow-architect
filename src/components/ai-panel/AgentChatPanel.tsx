@@ -260,8 +260,12 @@ export function AgentChatPanel() {
               {m.role === "user" ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
             </div>
             <div
+              // `min-w-0`: el ítem flex arranca con `min-width:auto` = ancho de su
+              // contenido más terco (una línea larga dentro de un <pre>), y eso GANA
+              // sobre `max-w`. La burbuja se salía del panel y el texto quedaba
+              // cortado a la derecha; con min-w-0 el <pre> scrollea solo.
               className={cn(
-                "max-w-[85%] rounded-lg px-3 py-2 text-sm",
+                "min-w-0 max-w-[85%] overflow-hidden rounded-lg px-3 py-2 text-sm",
                 m.role === "user"
                   ? "bg-primary text-primary-foreground"
                   : m.error
