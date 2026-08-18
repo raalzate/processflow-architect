@@ -36,6 +36,20 @@ Al terminar en verde borra `.git/gate-dirty`, que es lo que mira el hook `Stop`.
 
 **Test verde ≠ compila ≠ entregable.** Reportar "listo" sin un gate verde es una violación, no un descuido.
 
+### Fuera del gate: las capturas del README
+
+```bash
+npm run screenshots                              # levanta next dev, captura y lo apaga
+BASE=http://localhost:3000 npm run screenshots   # contra un servidor ya vivo
+```
+
+`scripts/screenshots.ts` rehace `docs/screenshots/*` contra el renderer real (Puppeteer,
+1440×900 @2x) con `window.electronAPI` simulado —contrato de `preload.ts`— y un proyecto
+de ejemplo construido con el constructor del MCP (`src/lib/mcp/diagram-builder.ts`), no a mano.
+Existe porque las capturas envejecen en silencio: estuvieron un mes mostrando una UI
+anterior al rediseño. **No está en el gate**: ninguna máquina juzga si una captura se ve
+bien; se corre cuando la UI cambia y el humano mira el diff.
+
 ## Hooks del ciclo del agente (`.claude/settings.json`)
 
 Los hooks son genéricos: **todo lo específico del repo** (rutas protegidas, reglas de bash,

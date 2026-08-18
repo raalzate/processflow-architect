@@ -25,6 +25,7 @@
     "lint": "node scripts/repo-lint.mjs",
     "harness:selftest": "node scripts/harness-selftest.mjs",
     "docs:linkcheck": "node scripts/docs-linkcheck.mjs",
+    "screenshots": "tsx scripts/screenshots.ts",
     "skills:sync": "node scripts/sync-skills.mjs",
     "skills:check": "node scripts/sync-skills.mjs --check",
     "gate": "bash scripts/gate.sh",
