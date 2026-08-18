@@ -5,7 +5,7 @@ Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verifi
 lo que se supone va en "deuda conocida".
 
 - **Fecha del último gate completo:** 2026-08-18
-- **Rama:** `feat/bpmn-notation-layout`
+- **Rama:** `main` (fusionada `feat/bpmn-notation-layout` en `a261f54`)
 - **Veredicto:** VERDE (`npm run gate`)
 
 ## Señales
