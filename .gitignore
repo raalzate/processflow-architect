@@ -56,3 +56,7 @@ dist/
 
 # Workspace del servidor MCP (modelos de diagramas en curso)
 .processflow/
+
+# Temporal del self-test: prueba que el link-check caza rutas gitignored.
+# Va acá (y no en src/) porque el watcher de Next no lo mira; se borra al terminar.
+.claude/__selftest-ignorado.md

@@ -218,6 +218,41 @@ frenoDelLint(
   "PLATAFORMA",
 );
 
+// El link-check mide contra `git ls-files`, no contra el disco: un puntero a un
+// archivo gitignored existe en TU máquina y no en el clon de CI. Ese fue el gate
+// verde local y rojo en CI de `.tessl/RULES.md`.
+{
+  const linkcheckVirtual = (contenido) => {
+    const res = spawnSync(
+      "node",
+      [abs("scripts/docs-linkcheck.mjs"), "--file", "docs/__virtual.md", "--stdin"],
+      { cwd: REPO_ROOT, encoding: "utf8", input: contenido },
+    );
+    return { status: res.status, salida: `${res.stderr}${res.stdout}` };
+  };
+
+  const cebo = abs(".claude/__selftest-ignorado.md");
+  try {
+    fs.writeFileSync(cebo, "# temporal del self-test\n");
+    const { status, salida } = linkcheckVirtual("ver `.claude/__selftest-ignorado.md`\n");
+    if (status === 1 && salida.includes("gitignored")) {
+      ok("docs-linkcheck: caza un puntero a un archivo gitignored");
+    } else {
+      bad("docs-linkcheck: caza un puntero a un archivo gitignored", `exit ${status}: ${salida.trim().slice(0, 240)}`);
+    }
+  } finally {
+    fs.rmSync(cebo, { force: true });
+  }
+
+  // Y lo declarado como externo (lo genera una herramienta fuera del repo) no molesta.
+  const externos = JSON.parse(fs.readFileSync(abs(".claude/harness.config.json"), "utf8")).docs.externalPaths ?? [];
+  if (externos.length) {
+    const { status } = linkcheckVirtual(`ver \`${externos[0]}RULES.md\`\n`);
+    if (status === 0) ok("docs-linkcheck: respeta docs.externalPaths");
+    else bad("docs-linkcheck: respeta docs.externalPaths", `exit ${status} para ${externos[0]}`);
+  }
+}
+
 // El self-test no deja rastro en el árbol de fuentes: si algún freno vuelve a
 // escribir un temporal en `src/`, esto lo caza (era el ENOENT del build con dev vivo).
 {

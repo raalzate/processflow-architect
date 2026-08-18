@@ -187,7 +187,7 @@
     ]
   },
   "docs": {
-    "$comment": "`.tessl/plugins` es documentación vendorizada de terceros: se reinstala con `tessl install`, no la mantenemos nosotros. buenas-practicas.md es la guía agnóstica: sus rutas son ejemplos, no punteros de este repo.",
+    "$comment": "`.tessl/` la genera `tessl install` y está gitignored: se declara en externalPaths porque ninguna máquina puede verificarla en el clon. El resto de las rutas se miden contra `git ls-files` (no contra el disco), o el gate sale verde local y rojo en CI. buenas-practicas.md es la guía agnóstica: sus rutas son ejemplos, no punteros de este repo.",
     "ignore": [
       "node_modules",
       ".next",
@@ -201,6 +201,9 @@
     ],
     "ignoreFiles": [
       "docs/harness/buenas-practicas.md"
+    ],
+    "externalPaths": [
+      ".tessl/"
     ]
   },
   "status": {

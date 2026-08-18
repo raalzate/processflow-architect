@@ -100,3 +100,19 @@ Regla:   el arnés no escribe nunca en el árbol de fuentes. Para probar un fren
 Mecanismo: `--stdin` en `scripts/repo-lint.mjs` + el helper `lintVirtual`/`frenoDelLint` del
          self-test, y un caso del propio self-test que falla si vuelve a quedar un
          `__selftest*` dentro de `src/`.
+
+### GOTCHA: gate verde en local, rojo en CI por el link-check de docs
+
+Síntoma: `npm run gate` verde en la máquina y `GATE ROJO — señales fallidas: link-check de docs`
+         en GitHub Actions, con `AGENTS.md: enlace rota → .tessl/RULES.md` y cuatro punteros más.
+Causa:   `docs-linkcheck.mjs` medía la existencia contra el **disco** (`fs.existsSync`). `.tessl/`
+         la genera `tessl install` y está gitignored: existe acá y no en el clon del runner. La
+         señal dependía de la máquina, que es la peor variante de señal.
+Regla:   una ruta citada "existe" si la tiene el CLON, no si la tiene tu disco. Lo que produce una
+         herramienta externa fuera del control de versiones se **declara** en
+         `.claude/harness.config.json` → `docs.externalPaths`; no se tapa el error.
+Mecanismo: `docs-linkcheck.mjs` mide contra `git ls-files` (un archivo nuevo sin `git add` vale;
+         uno gitignored, no, y el mensaje lo dice), más dos casos del self-test: uno que escribe un
+         cebo gitignored y exige que el link-check lo cace, y otro que exige que `externalPaths`
+         se respete. Modo virtual para probarlo sin escribir en fuentes:
+         `node scripts/docs-linkcheck.mjs --file <ruta virtual> --stdin`.
