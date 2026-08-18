@@ -5,9 +5,9 @@ Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verifi
 lo que se supone va en "deuda conocida".
 
 - **Fecha del último gate completo:** 2026-08-18
-- **Rama:** `005-contexto-react-hitl` (feature en curso; `main` publicada en `v0.2.0`)
+- **Rama:** `main` (fusionada `005-contexto-react-hitl`)
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.2.0 (tag `v0.2.0` → instaladores por `release-build.yml`)
+- **Versión publicada:** 0.3.0 (tag `v0.3.0` → instaladores por `release-build.yml`)
 
 ## Señales
 
@@ -39,12 +39,12 @@ Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
 
 ## Trabajo en curso
 
-**005 · El agente recupera el contexto por partes y consulta al humano** (`specs/005-contexto-react-hitl/`).
-Ciclo SDD completo (spec · checklist · plan · testify · tasks · analyze) y el código en verde:
-herramientas de lectura (`agent-retrieval.ts`, 98,3 % stmts), corrida reanudable con plan aprobable y
-preguntas (`agent-run.ts`, 97,9 %), bucle explorador en `litert-agent.ts`, `resumeRun`/`cancelRun` en
-`AgentContext` y las tarjetas de decisión en el chat. Falta: medir el comportamiento con Gemma real
-(cuántos turnos hasta un plan usable) y probar el ciclo en modo `hybrid`/`remote`. Sale en `v0.3.0`.
+Nada abierto. **005** (el agente recupera el contexto por partes y consulta al humano) entró en
+`main` y salió en `v0.3.0`; sus artefactos quedan en `specs/005-contexto-react-hitl/`.
+
+Pendiente de medición, no de código (declarado en `analyze.md` §Deuda):
+cuántos turnos gasta un **Gemma real** hasta proponer un plan usable, y el ciclo completo en modo
+`hybrid`/`remote` (es agnóstico del motor y no se tocó el ruteo, pero nadie lo corrió contra nube).
 
 **Artefactos versionados (spec 004) — CON ruta SDD, ciclo completo.**
 `specs/004-artefactos-versionados/` tiene las seis fases (`spec` · `plan` · `checklist` ·
