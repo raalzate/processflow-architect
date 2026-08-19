@@ -64,6 +64,7 @@ export function resetLitertEngine(): void {
   const prev = enginePromise;
   enginePromise = null;
   currentModelFile = "";
+  activeConversation = null; // muere con el engine
   prev?.then((e) => e?.delete?.()).catch(() => {});
 }
 
@@ -119,24 +120,123 @@ export async function getEngine(modelFile: string): Promise<any> {
  */
 export interface LitertConversation {
   send(userText: string, onToken?: (chunk: string) => void): Promise<string>;
+  /** Libera la conversación (deja el engine listo para otro contexto). */
+  close(): Promise<void>;
+}
+
+/**
+ * UNA conversación viva por engine. El runtime C++ guarda el contexto procesado
+ * (el preface prefillado) en un único slot del engine: abrir una segunda
+ * conversación sin cerrar la primera muere con
+ * `RET_CHECK failure (context_handler.h) !HasProcessedContext()`. Eso pasaba al
+ * lanzar una tarea suelta (p.ej. «Extrae los drivers de arquitectura») mientras
+ * el chat del agente seguía con su conversación abierta.
+ */
+let activeConversation: any = null;
+
+/**
+ * Cola en serie para crear/liberar conversaciones. Sin ella, dos llamadas
+ * concurrentes liberan y crean intercaladas y vuelve la misma carrera.
+ */
+let convoQueue: Promise<unknown> = Promise.resolve();
+function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+  const run = convoQueue.then(fn, fn); // corre igual si la anterior falló
+  convoQueue = run.catch(() => {});
+  return run;
+}
+
+/** El error del RET_CHECK del context handler, por si delete() no alcanzó. */
+const CONTEXT_TAKEN = /HasProcessedContext|processed context is already set/i;
+
+async function disposeActiveConversation(): Promise<void> {
+  const prev = activeConversation;
+  activeConversation = null;
+  if (!prev) return;
+  try {
+    prev.cancel?.(); // corta una generación en vuelo antes de liberar
+  } catch {
+    /* cancelar es best-effort */
+  }
+  try {
+    await prev.delete?.();
+  } catch {
+    /* si ya estaba liberada, seguir */
+  }
+}
+
+/**
+ * Libera la conversación viva sin tocar el engine (el modelo sigue cargado).
+ * Lo usa «Limpiar» del chat: si no, el contexto procesado del turno anterior
+ * seguía tomado y el próximo envío arrancaba con historia que ya no se ve.
+ */
+export function releaseLitertContext(): void {
+  void enqueue(disposeActiveConversation);
+}
+
+/** Abre una conversación nueva liberando la que tenga el slot del engine. */
+async function openConversation(modelFile: string, config: any): Promise<any> {
+  return enqueue(async () => {
+    await disposeActiveConversation();
+    const engine = await getEngine(modelFile);
+    try {
+      return await engine.createConversation(config);
+    } catch (err: any) {
+      if (!CONTEXT_TAKEN.test(String(err?.message ?? err))) throw err;
+      // El contexto quedó pegado en el engine y liberar la conversación no lo
+      // suelta: recrear el engine es la única salida (cuesta recargar el modelo,
+      // pero es preferible a dejar la IA muerta hasta reiniciar la app).
+      resetLitertEngine();
+      const fresh = await getEngine(modelFile);
+      return fresh.createConversation(config);
+    }
+  });
+}
+
+/**
+ * Historia previa como UN mensaje de usuario. Es lo que se manda cuando otra
+ * tarea de IA se quedó con el slot del engine y hay que reabrir la conversación:
+ * el KV-cache se perdió, pero el hilo no. No genera turnos extra (va pegado al
+ * mensaje nuevo), así que el costo es un prefill, no otra inferencia.
+ */
+function transcriptPrefix(history: LitertMessage[]): string {
+  if (history.length === 0) return "";
+  const lineas = history.map(
+    (m) => `${m.role === "user" ? "Usuario" : "Vos"}: ${m.content}`
+  );
+  return `Historial de esta conversación (retomá el contexto, no lo repitas):\n${lineas.join(
+    "\n"
+  )}\n\n`;
 }
 
 /**
  * Crea una conversación reutilizable sobre el engine (singleton) del modelo. Pasa
- * `system` para fijar la persona/contexto como preface una sola vez.
+ * `system` para fijar la persona/contexto como preface una sola vez. Cierra la
+ * conversación anterior: el engine sólo admite un contexto procesado a la vez.
  */
 export async function createLitertConversation(
   modelFile: string,
   system?: string
 ): Promise<LitertConversation> {
-  const engine = await getEngine(modelFile);
-  const conversation = await engine.createConversation(
-    system ? { preface: { messages: [{ role: "system", content: system }] } } : undefined
-  );
+  const config = system
+    ? { preface: { messages: [{ role: "system", content: system }] } }
+    : undefined;
+
+  let current = await openConversation(modelFile, config);
+  activeConversation = current;
+  // Hilo hablado, en JS: sirve para reabrir la conversación si otra tarea de IA
+  // (una generación suelta, p.ej.) se queda con el slot del engine en el medio.
+  const history: LitertMessage[] = [];
+
   return {
     async send(userText, onToken) {
+      let prefix = "";
+      if (activeConversation !== current) {
+        current = await openConversation(modelFile, config);
+        activeConversation = current;
+        prefix = transcriptPrefix(history);
+      }
       let full = "";
-      const stream = conversation.sendMessageStreaming(userText);
+      const stream = current.sendMessageStreaming(prefix + userText);
       for await (const chunk of stream) {
         for (const item of chunk?.content ?? []) {
           if (item?.type === "text" && item.text) {
@@ -145,7 +245,13 @@ export async function createLitertConversation(
           }
         }
       }
-      return full.trim();
+      const reply = full.trim();
+      history.push({ role: "user", content: userText }, { role: "assistant", content: reply });
+      return reply;
+    },
+    async close() {
+      if (activeConversation !== current) return; // ya la reemplazaron
+      await enqueue(disposeActiveConversation);
     },
   };
 }
@@ -166,5 +272,11 @@ export async function litertGenerate(
   const lastUser = [...turns].reverse().find((m) => m.role === "user")?.content ?? "";
 
   const convo = await createLitertConversation(modelFile, system);
-  return convo.send(lastUser, onToken);
+  try {
+    return await convo.send(lastUser, onToken);
+  } finally {
+    // Tarea suelta: cerrar libera el contexto del engine para la próxima. Si no,
+    // el siguiente chat del agente arrancaba contra un contexto ya ocupado.
+    await convo.close();
+  }
 }

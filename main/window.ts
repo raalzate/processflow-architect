@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
+import { BrowserWindow, Menu, MenuItemConstructorOptions, shell } from 'electron';
 import path from 'path';
 import { isDev, appServe } from './config';
 
@@ -26,7 +26,14 @@ export function createMainWindow() {
         });
     }
 
-    win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    // Nunca se abre una segunda ventana de la app; pero un enlace externo
+    // (créditos de Sofka, docs de un proveedor de IA) sí debe llegar al
+    // navegador del sistema. Antes se denegaba todo y el clic no hacía nada.
+    // Sólo http(s): cualquier otro scheme (file:, etc.) se sigue negando.
+    win.webContents.setWindowOpenHandler(({ url }) => {
+        if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+        return { action: "deny" };
+    });
     setupMenu(win);
     return win;
 }

@@ -20,6 +20,7 @@ import {
   documentDefinitions,
   diagramDefinitions,
 } from "@/lib/artifacts/registry";
+import { artifactRequestDirective, resolveArtifactRequest } from "@/lib/artifacts/request";
 import type { AgentRunState, AgentStep } from "@/lib/agent-types";
 import { formatInventory, listViews, type Catalog } from "./agent-retrieval";
 import {
@@ -34,8 +35,13 @@ import {
   mustConsolidate,
   needsPlan,
   registerPlan,
+  fallbackPlan,
   registerQuestion,
   startRun,
+  budgetFromWindow,
+  memoryBlock,
+  hasCitations,
+  looksLikeNodeDump,
   stripInvalidCitations,
   validateCitations,
   READ_TOOLS,
@@ -81,6 +87,12 @@ export interface LitertAgentInput {
   /** System/persona base (de Configuraciones). */
   systemPrompt?: string;
   /**
+   * Artefacto pedido EXPLÍCITAMENTE por el usuario (menú «+» del chat). Cuando
+   * viene, se saltea el gate de intención: «Identifica riesgos y restricciones»
+   * no tiene verbo de generación y terminaba en pura conversación.
+   */
+  requestedKind?: string;
+  /**
    * Catálogo de vistas para las herramientas de LECTURA. Con catálogo, el agente
    * recupera el contexto por partes (explorar → plan → consolidar); sin catálogo
    * se comporta como antes (un solo paquete de contexto), que es lo que necesitan
@@ -91,6 +103,14 @@ export interface LitertAgentInput {
   run?: AgentRunState;
   /** Presupuesto de contexto de la corrida, en caracteres. */
   budget?: number;
+  /** Ventana del modelo (Ajustes → «Máx. tokens»): acota el system y el presupuesto. */
+  maxTokens?: number;
+  /**
+   * Progreso EN VIVO: se llama con cada paso apenas ocurre. Sin esto el chat
+   * mostraba una burbuja vacía durante toda la exploración (cada turno del modelo
+   * local tarda) y no había forma de saber si leía, planificaba o estaba colgado.
+   */
+  onStep?: (step: AgentStepOut) => void;
   /**
    * Callback de streaming: recibe fragmentos del texto de la respuesta FINAL a
    * medida que el modelo la genera (ya desenvuelto del JSON `{"final":"..."}`).
@@ -111,13 +131,67 @@ function stripTrailingCommas(s: string): string {
   return s.replace(/,(\s*[}\]])/g, "$1");
 }
 
+/**
+ * Escapa las comillas que el modelo dejó SUELTAS dentro de un string, y los
+ * saltos de línea crudos. Es EL fallo repetido del modelo local: escribe
+ * `{"thought":"la vista "Ventas" no aplica","action":...}` y `JSON.parse` muere
+ * con cualquier forma de turno (plan, question, args), no sólo con las que el
+ * rescate por clave sabía reconstruir — por eso el bucle moría con «formato
+ * inválido tres veces» al pedir una propuesta técnica (el turno del plan es el
+ * más largo y el que más comillas trae).
+ *
+ * Regla: una comilla dentro de un string CIERRA el string sólo si lo que sigue
+ * (salteando espacios) es `,` `:` `}` `]` o el fin del texto; si no, se escapa.
+ */
+export function escapeStrayQuotes(raw: string): string {
+  if (!raw) return raw;
+  let out = "";
+  let inString = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (!inString) {
+      out += ch;
+      if (ch === '"') inString = true;
+      continue;
+    }
+    if (ch === "\\") {
+      out += ch + (raw[i + 1] ?? ""); // par de escape: pasa tal cual
+      i++;
+      continue;
+    }
+    // Saltos y tabs crudos dentro de un string: JSON no los admite literales.
+    if (ch === "\n" || ch === "\r") {
+      out += "\\n";
+      continue;
+    }
+    if (ch === "\t") {
+      out += "\\t";
+      continue;
+    }
+    if (ch === '"') {
+      const siguiente = raw.slice(i + 1).match(/^\s*(\S)/)?.[1];
+      if (siguiente === undefined || [",", ":", "}", "]"].includes(siguiente)) {
+        out += ch; // cierra el string
+        inString = false;
+      } else {
+        out += '\\"'; // comilla suelta del modelo
+      }
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
 /** Extrae un objeto JSON de un texto (tolerante a prosa, fences y comas colgantes). */
 function parseJson(text: string): any {
   if (!text) return null;
   const candidates = [text, text.match(/[[{][\s\S]*[\]}]/)?.[0] ?? ""];
   for (const c of candidates) {
     if (!c) continue;
-    for (const variant of [c, stripTrailingCommas(c)]) {
+    // El saneado va último: primero se intenta el texto tal cual (si ya es JSON
+    // válido, tocarlo sólo puede empeorarlo).
+    for (const variant of [c, stripTrailingCommas(c), escapeStrayQuotes(c), stripTrailingCommas(escapeStrayQuotes(c))]) {
       try {
         return JSON.parse(variant);
       } catch {
@@ -183,6 +257,25 @@ export function salvageReply(raw: string, parsed: unknown): string {
   const partes = [campo, fuera && fuera !== campo ? fuera : ""].filter(Boolean) as string[];
   // Nada rescatable (JSON sin texto y sin prosa): el crudo es mejor que el vacío.
   return partes.join("\n\n").trim() || raw.trim();
+}
+
+/**
+ * ¿La respuesta se degeneró? Con un modelo local chico, el turno de cierre a veces
+ * sale como un JSON ajeno al protocolo o directamente en otro alfabeto (pasó: un
+ * `{"description": …, "status": "تم"}` impreso en el chat después de generar bien
+ * el artefacto). No se puede evitar que el modelo divague; sí evitar mostrarlo.
+ */
+export function looksDegenerate(text: string): boolean {
+  const t = (text || "").trim();
+  if (!t) return true;
+  // Sin letras no hay respuesta: el rescate de un turno roto puede devolver «…».
+  if ((t.match(/\p{L}/gu) ?? []).length < 3) return true;
+  // Un objeto JSON que no habla el protocolo no es una respuesta para el humano.
+  if (/^\{[\s\S]*\}$/.test(t) && !looksLikeProtocol(t)) return true;
+  // Alfabeto ajeno: se cuenta lo que NO es latino, número, puntuación ni espacio.
+  const total = [...t].length;
+  const ajenos = [...t].filter((c) => !/[\p{Script=Latin}\p{N}\p{P}\p{S}\s]/u.test(c)).length;
+  return total > 20 && ajenos / total > 0.15;
 }
 
 /** Claves del protocolo: si el crudo trae una, es un turno de protocolo, no prosa. */
@@ -530,7 +623,13 @@ export function buildReasoningFrame(opts: {
   return { persona, vocabRule, dddActive };
 }
 
-export async function runLitertAgent(input: LitertAgentInput): Promise<LitertAgentResult> {
+export async function runLitertAgent(entrada: LitertAgentInput): Promise<LitertAgentResult> {
+  // Pedido explícito del menú «+»: la orden (con kind y herramienta exactos) va
+  // al frente del mensaje, así el resto del bucle no necesita saber de esto.
+  const pedido = resolveArtifactRequest(entrada.requestedKind);
+  const input: LitertAgentInput = pedido
+    ? { ...entrada, message: artifactRequestDirective(pedido, entrada.message) }
+    : entrada;
   const ctx = buildContext(input);
   // Notación dominante: rige la persona de los artefactos que se generen.
   const notationId = primaryNotation(input).id;
@@ -554,10 +653,17 @@ export async function runLitertAgent(input: LitertAgentInput): Promise<LitertAge
   // prosa directa (sin exponer herramientas ni protocolo ReAct). Esto evita que el
   // modelo produzca artefactos por su cuenta, reduce el prefill (más rápido) y hace
   // el streaming limpio (no hay que desenvolver `{"final":...}`, es texto crudo).
-  if (!hasGenerationIntent(input.message)) {
+  if (!pedido && !hasGenerationIntent(input.message)) {
     const chatSystem = `${persona}${vocabRule}\n\nResponde de forma directa, clara y en español. NO generes documentos ni diagramas ni ningún artefacto; solo conversa, responde y explica.${ctx}`;
     const convo = await createLitertConversation(input.modelFile, chatSystem);
-    const reply = (await convo.send(input.message, input.onReplyToken)).trim();
+    let reply: string;
+    try {
+      reply = (await convo.send(input.message, input.onReplyToken)).trim();
+    } finally {
+      // Liberar el slot de contexto del engine: si queda tomado, la próxima
+      // tarea suelta (generar un artefacto) tiene que reabrir y re-prefillar.
+      await convo.close();
+    }
     return { reply: reply || "Listo.", artifacts, steps };
   }
 
@@ -567,11 +673,21 @@ export async function runLitertAgent(input: LitertAgentInput): Promise<LitertAge
   // los llamadores viejos.
   if (input.catalog) {
     return exploreLoop(input, input.catalog, {
-      ctx,
+      // Sin el grafo entero: en exploración, «Modelo» es una vista más del
+      // inventario y el agente la lee si la necesita. Inyectarlo de entrada
+      // gastaba media ventana del modelo local antes del primer turno.
+      ctx: buildContext({ ...input, graphData: undefined }),
       notationId,
       persona,
       vocabRule,
-      state: input.run ?? startRun({ uid: newRunId }, input.message, input.budget ?? RUN_BUDGET),
+      state:
+        input.run ??
+        startRun(
+          { uid: newRunId },
+          input.message,
+          input.budget ?? budgetFromWindow(input.maxTokens)
+        ),
+      
       steps,
       artifacts,
     });
@@ -655,6 +771,7 @@ Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."
   if (!reply) {
     reply = artifacts.length ? `Generé ${artifacts.length} artefacto(s).` : "Listo.";
   }
+  await convo.close(); // libera el slot de contexto del engine
   return { reply, artifacts, steps };
 }
 
@@ -666,6 +783,27 @@ Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."
 const MAX_EXPLORE_TURNS = 12;
 /** Turnos que puede gastar LEYENDO antes de que se le exija consolidar. */
 const MAX_TOOL_TURNS = 8;
+
+/**
+ * ¿El motor cortó por ventana llena? LiteRT lo dice de dos formas y ninguna es
+ * una excepción tipada: «Too many tokens requested» y «Cannot rewind to time_step
+ * 0 from 4376. Ringbuffer size is 4096 with sliding window of 512».
+ */
+export function esDesbordeDeVentana(e: unknown): boolean {
+  const msg = String((e as { message?: string })?.message ?? e ?? "");
+  return /too many tokens|max.*tokens|context (window|length)|rewind to time_step|ringbuffer/i.test(msg);
+}
+
+/**
+ * Techo de caracteres del system del bucle explorador, derivado de la ventana del
+ * modelo. El system lleva persona + protocolo + menú + inventario + contexto; con
+ * 4 096 tokens de ring buffer, pasarse ahí rompe el PRIMER turno (fue el caso:
+ * «Cannot rewind to time_step 0 from 4376»).
+ */
+export function systemBudget(maxTokens: number | undefined): number {
+  const ventana = Math.max(512, maxTokens || 4096);
+  return Math.max(1200, Math.round(ventana * 3.5 * 0.45));
+}
 
 const newRunId = (): string =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -719,6 +857,7 @@ export async function resumeLitertAgent(
     case "approve": {
       state = approvePlan(state);
       steps.push({ type: "decision", content: "El humano aprobó el plan." });
+      input.onStep?.(steps[steps.length - 1]);
       seed = "Observación: el humano APROBÓ el plan. Generá el artefacto con la herramienta correspondiente.";
       break;
     }
@@ -726,6 +865,7 @@ export async function resumeLitertAgent(
       const r = adjustPlan(state, input.resume.feedback);
       state = r.state;
       steps.push({ type: "decision", content: `Ajuste del plan: ${input.resume.feedback}` });
+      input.onStep?.(steps[steps.length - 1]);
       seed = `Observación: ${r.observation}`;
       break;
     }
@@ -736,6 +876,7 @@ export async function resumeLitertAgent(
         type: "decision",
         content: d ? `${d.question} → ${d.answer}${d.assumed ? " (supuesto)" : ""}` : "Respuesta registrada.",
       });
+      input.onStep?.(steps[steps.length - 1]);
       seed = `Observación: el humano respondió "${d?.answer ?? ""}"${
         d?.assumed ? " (era un supuesto por defecto, declaralo en el artefacto)" : ""
       }. Seguí.`;
@@ -765,11 +906,12 @@ export async function resumeLitertAgent(
 }
 
 /** Menú de herramientas del bucle explorador (lectura + generación). */
-function exploreToolMenu(cat: Catalog): string {
+function exploreToolMenu(cat: Catalog, invMax = 1200): string {
   return `Herramientas de LECTURA (usalas antes de generar; el contexto NO viene dado):
-- "list_views" {} — qué vistas hay, con su notación y cuántos elementos tiene cada una.
-- "read_view" {"name":"<nombre exacto de la vista>"} — el grafo de esa vista.
+- "read_views" {"names":["<vista>","<vista>","<vista>"]} — lee HASTA 3 VISTAS DE UNA VEZ. Es la que conviene: cada turno tuyo tarda, leer de a una cuesta minutos.
+- "read_view" {"name":"<nombre exacto>"} — una sola vista.
 - "search_model" {"term":"<palabra>"} — dónde aparece un concepto (dice en qué vista vive).
+- "list_views" {} — refrescar el inventario (ya lo tenés abajo: normalmente NO hace falta).
 
 Herramientas de GENERACIÓN (sólo con el plan aprobado):
 - "generate_document" {"kind":"<kind>","title":"...","instructions":"qué contener"}
@@ -777,7 +919,7 @@ Herramientas de GENERACIÓN (sólo con el plan aprobado):
 ${toolMenu()}
 
 Inventario inicial:
-${formatInventory(listViews(cat))}`;
+${clamp(formatInventory(listViews(cat)), invMax)}`;
 }
 
 function planFromJson(raw: any): { kind: "plan"; title: string; artifactKind: string; sections: { title: string; sources: string[] }[] } | null {
@@ -829,6 +971,18 @@ function withCoverageFooter(markdown: string, state: AgentRunState): string {
       ? `- Sin revisar: ${cob.skippedViews.join(", ")}${cob.reason ? ` (${cob.reason})` : ""}.`
       : "- Sin vistas pendientes.",
   ];
+  // Sin citas el documento no es auditable. Se dice acá: inventarlas desde el
+  // código sería peor —parecerían verificadas sin serlo—.
+  if (!hasCitations(markdown)) {
+    lineas.push(
+      "- ⚠ El modelo no citó el origen de cada punto: contrastá el contenido contra las vistas revisadas antes de usarlo."
+    );
+  }
+  if (looksLikeNodeDump(markdown, state)) {
+    lineas.push(
+      "- ⚠ El documento repite elementos del modelo en vez de analizarlos: pedí regenerarlo, o usá un modelo más grande."
+    );
+  }
   const supuestos = state.decisions.filter((d) => d.assumed);
   if (supuestos.length) {
     lineas.push(
@@ -849,6 +1003,16 @@ async function exploreLoop(
 ): Promise<LitertAgentResult> {
   const { ctx, notationId, persona, vocabRule, steps, artifacts } = deps;
   let state = deps.state;
+  /** Empuja el paso a la traza y lo anuncia en vivo (mismo dato, dos usos). */
+  const paso = (step: AgentStepOut) => {
+    steps.push(step);
+    input.onStep?.(step);
+  };
+  // El system tiene que caber en la ventana: se reparte entre el inventario de
+  // vistas (que crece con el proyecto) y el contexto adjunto.
+  const techo = systemBudget(input.maxTokens);
+  const invMax = Math.round(techo * 0.4);
+  const ctxMax = Math.round(techo * 0.6);
 
   const system = `${persona}${vocabRule}
 
@@ -859,10 +1023,10 @@ En CADA turno respondés con UN ÚNICO objeto JSON, sin texto fuera de él y sin
 - Preguntar al humano SÓLO si la respuesta cambia el resultado: {"thought":"...","question":{"id":"<corto>","text":"...","options":["opción por defecto","alternativa"]}}
 - Cerrar conversando: {"thought":"...","final":"<respuesta>"}
 
-Reglas: leé lo que necesites antes de planificar; no inventes nombres de vistas (usá los del inventario); no repitas una pregunta ya respondida; cuando te digan que no hay presupuesto, consolidá con lo anotado.
+Reglas: el campo thought va en UNA frase corta (máximo 15 palabras): lo que escribís de más son segundos de espera para el humano. Ya tenés el inventario abajo, así que empezá leyendo en lote lo que te sirva. Un proyecto suele tener vistas de VARIAS notaciones (DDD, BPMN, C4, UML) y cada una aporta algo distinto: mirá el inventario completo y no planifiques con la primera vista que abriste. Si descartás vistas, decí en el plan por qué. No inventes nombres de vistas (usá los del inventario); no repitas una pregunta ya respondida; cuando te digan que no hay presupuesto, consolidá con lo anotado.
 IMPORTANTE sobre el JSON: dentro de los textos NO uses comillas dobles (usá 'simples' si necesitás citar). Una comilla sin escapar rompe el turno.
 
-${exploreToolMenu(cat)}${ctx}`;
+${exploreToolMenu(cat, invMax)}${clamp(ctx, ctxMax)}${memoryBlock(state, Math.round(techo * 0.5))}`;
 
   const convo = await createLitertConversation(input.modelFile, system);
   const NEXT = `\n\nResponde con el JSON del próximo paso.`;
@@ -877,8 +1041,10 @@ ${exploreToolMenu(cat)}${ctx}`;
     const title = a?.title || state.plan?.title || getDefinition(kind, tipo).label;
     const instrucciones = String(a?.instructions ?? "");
     state = { ...state, coverage: coverageOf(state, cat) };
-    steps.push({ type: "consolidate", content: `Consolidando "${title}" con ${state.notes.length} nota(s).` });
-    const consolidado = `\n\n${consolidationPrompt(state)}`;
+    paso({ type: "consolidate", content: `Consolidando "${title}" con ${state.notes.length} nota(s).` });
+    // También se acota: el turno de consolidación abre su propia conversación y
+    // tiene que caber en la misma ventana que todo lo demás.
+    const consolidado = `\n\n${clamp(consolidationPrompt(state), techo)}`;
 
     if (action === "generate_diagram") {
       const code = await genDiagram(input.modelFile, kind, title, instrucciones, consolidado, notationId);
@@ -886,6 +1052,21 @@ ${exploreToolMenu(cat)}${ctx}`;
       return;
     }
     let md = await genDocument(input.modelFile, kind, title, instrucciones, consolidado, notationId);
+
+    // Un documento que sólo repite los nodos del lienzo no sirve para nada: se
+    // pide UNA reescritura con la regla al frente. Si insiste, se avisa abajo.
+    if (looksLikeNodeDump(md, state)) {
+      steps.push({ type: "observation", content: "El borrador repetía los elementos del modelo: pido reescritura." });
+      md = await genDocument(
+        input.modelFile,
+        kind,
+        title,
+        `${instrucciones}\n\nEl borrador anterior era un VOLCADO: listaba los nombres de los elementos del diagrama como si fueran hallazgos. Reescribilo: cada punto es una afirmación sobre el sistema con su consecuencia, y los elementos van SÓLO en la cita.`,
+        consolidado,
+        notationId
+      );
+    }
+
     let v = validateCitations(md, state);
     if (!v.ok) {
       // Un intento de corrección: citar una fuente que no se leyó hace que la
@@ -903,7 +1084,18 @@ ${exploreToolMenu(cat)}${ctx}`;
   for (let turn = 0; turn < MAX_EXPLORE_TURNS; turn++) {
     state = { ...state, turn: state.turn + 1 };
     const onToken = input.onReplyToken ? makeFinalStreamer(input.onReplyToken) : undefined;
-    const raw = await convo.send(nextUser, onToken);
+    let raw: string;
+    try {
+      raw = await convo.send(nextUser, onToken);
+    } catch (e: any) {
+      // La ventana del modelo local se llenó (LiteRT: «Too many tokens
+      // requested»). No es un error del usuario ni algo que reintentar igual:
+      // se cierra la exploración y se consolida con lo anotado.
+      if (!esDesbordeDeVentana(e)) throw e;
+      paso({ type: "observation", content: "Se llenó la ventana del modelo: consolido con lo leído." });
+      state = { ...state, budgetLeft: 0 };
+      break;
+    }
     const parsed = parseJson(raw) ?? repairProtocolJson(raw);
 
     if (!parsed || typeof parsed !== "object") {
@@ -912,16 +1104,47 @@ ${exploreToolMenu(cat)}${ctx}`;
       if (looksLikeProtocol(raw)) {
         malformados++;
         if (malformados <= 2) {
-          nextUser = `Observación: tu respuesta no era un JSON válido (revisá las comillas dentro de los textos: se escriben \\"). Repetí el paso con UN objeto JSON válido.${NEXT}`;
+          // El segundo aviso trae el molde exacto: repetir el mismo reproche no
+          // corrige a un modelo chico, mostrarle la forma sí.
+          nextUser =
+            malformados === 1
+              ? `Observación: tu respuesta no era un JSON válido (revisá las comillas dentro de los textos: se escriben \\"). Repetí el paso con UN objeto JSON válido.${NEXT}`
+              : `Observación: seguís devolviendo JSON inválido. Copiá EXACTAMENTE esta forma, sin comillas dobles dentro de los textos y sin nada antes ni después: {"thought":"una frase corta","action":"read_views","args":{"names":["<vista del inventario>"]}}${NEXT}`;
           continue;
         }
-        reply = "No pude seguir: el modelo devolvió un formato inválido tres veces. Probá de nuevo o con un modelo más grande.";
+        // Calle sin salida antes: se cortaba sin ofrecer nada. Si ya se leyó algo,
+        // se propone un plan armado con eso y decide el humano; el modelo sólo
+        // tenía que redactarlo, y eso es lo que falló.
+        const rescate = needsPlan(state)
+          ? fallbackPlan(state, { artifactKind: state.plan?.artifactKind ?? input.requestedKind })
+          : null;
+        if (rescate) {
+          const r = registerPlan(state, rescate, cat);
+          if (!r.observation) {
+            state = r.state;
+            paso({
+              type: "plan",
+              content: state.plan!.sections.map((sec) => `${sec.title} ← ${sec.sources.join(", ")}`).join(" · "),
+            });
+            await convo.close();
+            return {
+              reply: `El modelo no logró escribir un paso válido tres veces. Armé el plan con lo que ya leí (${state.read.join(
+                ", "
+              )}): revisalo y aprobalo para que genere el artefacto.`,
+              artifacts,
+              steps,
+              run: state,
+            };
+          }
+        }
+        reply =
+          "No pude seguir: el modelo devolvió un formato inválido tres veces y todavía no había leído nada. Probá de nuevo, con menos vistas en el pedido, o con un modelo más grande.";
         break;
       }
       reply = extractField(raw, "final") ?? raw.trim();
       break;
     }
-    if (parsed.thought) steps.push({ type: "thought", content: String(parsed.thought) });
+    if (parsed.thought) paso({ type: "thought", content: String(parsed.thought) });
 
     // --- Plan: el primer punto donde decide el humano ---
     if (parsed.plan) {
@@ -932,7 +1155,7 @@ ${exploreToolMenu(cat)}${ctx}`;
         nextUser = `Observación: ${r.observation}${NEXT}`;
         continue;
       }
-      steps.push({
+      paso({
         type: "plan",
         content: state.plan!.sections.map((sec) => `${sec.title} ← ${sec.sources.join(", ")}`).join(" · "),
       });
@@ -953,7 +1176,10 @@ ${exploreToolMenu(cat)}${ctx}`;
         nextUser = `Observación: ${r.observation}${NEXT}`;
         continue;
       }
-      steps.push({ type: "question", content: q!.text });
+      paso({ type: "question", content: q!.text });
+      // La pausa puede durar minutos: no tiene sentido retener el contexto del
+      // engine mientras se espera al humano (el resume abre conversación nueva).
+      await convo.close();
       return { reply: q!.text, artifacts, steps, run: state };
     }
 
@@ -968,17 +1194,31 @@ ${exploreToolMenu(cat)}${ctx}`;
     // --- Lecturas ---
     if ((READ_TOOLS as readonly string[]).includes(action)) {
       const call =
-        action === "read_view"
+        action === "read_views"
+          ? ({
+              tool: "read_views",
+              names: (Array.isArray(a.names) ? a.names : String(a.names ?? a.name ?? "").split(","))
+                .map((x: unknown) => String(x).trim())
+                .filter(Boolean),
+            } as ToolCall)
+          : action === "read_view"
           ? ({ tool: "read_view", name: String(a.name ?? a.view ?? "") } as ToolCall)
           : action === "search_model"
             ? ({ tool: "search_model", term: String(a.term ?? a.query ?? "") } as ToolCall)
             : ({ tool: "list_views" } as ToolCall);
       const r = applyToolCall(state, call, cat);
       state = r.state;
-      steps.push({
+      paso({
         type: action === "search_model" ? "search" : "read",
         tool: action,
-        source: call.tool === "read_view" ? call.name : call.tool === "search_model" ? call.term : undefined,
+        source:
+          call.tool === "read_view"
+            ? call.name
+            : call.tool === "read_views"
+              ? call.names.join(", ")
+              : call.tool === "search_model"
+                ? call.term
+                : undefined,
         content: r.note ? r.note.facts.join(" ") : clamp(r.observation, 200),
       });
       nextUser = mustConsolidate(state, { maxToolTurns: MAX_TOOL_TURNS })
@@ -994,14 +1234,14 @@ ${exploreToolMenu(cat)}${ctx}`;
         continue;
       }
       const title = a?.title || state.plan?.title || "artefacto";
-      steps.push({ type: "action", tool: action, content: String(title) });
+      paso({ type: "action", tool: action, content: String(title) });
       try {
         await generar(action, a);
         nextUser = `Observación: "${title}" generado y puesto en el lienzo. Cerrá con {"final":"..."} resumiendo qué hiciste.${NEXT}`;
-        steps.push({ type: "observation", content: `"${title}" generado.` });
+        paso({ type: "observation", content: `"${title}" generado.` });
       } catch (e: any) {
         nextUser = `Observación: ERROR generando: ${String(e?.message ?? e)}${NEXT}`;
-        steps.push({ type: "observation", content: `Error generando: ${String(e?.message ?? e)}` });
+        paso({ type: "observation", content: `Error generando: ${String(e?.message ?? e)}` });
       }
       continue;
     }
@@ -1021,10 +1261,17 @@ ${exploreToolMenu(cat)}${ctx}`;
     }
   }
 
-  if (!reply) {
+  // El turno de cierre es lo primero que degenera en un modelo chico. Si salió
+  // basura, se descarta y se cuenta lo que realmente pasó: el artefacto ya está
+  // en el lienzo y el humano necesita saber de dónde salió, no ver el descarte.
+  if (!reply || looksDegenerate(reply)) {
+    const vistas = state.read.length ? ` leyendo ${state.read.join(", ")}` : "";
     reply = artifacts.length
-      ? `Generé ${artifacts.length} artefacto(s) con lo leído en ${state.read.length} vista(s).`
-      : "No llegué a generar nada: probá pidiéndolo de nuevo con más detalle.";
+      ? `Listo: «${artifacts[artifacts.length - 1].title}» está en el lienzo${vistas}.`
+      : state.budgetLeft <= 0 && !state.read.length
+        ? "Se llenó la ventana del modelo antes de poder leer nada. Subí «Máx. tokens» en Ajustes → Modelo de IA, o pedí el artefacto sobre menos vistas."
+        : "No llegué a generar nada: probá pidiéndolo de nuevo con más detalle.";
   }
+  await convo.close(); // libera el slot de contexto del engine
   return { reply, artifacts, steps, run: { ...state, pause: undefined } };
 }

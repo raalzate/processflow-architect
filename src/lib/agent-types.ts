@@ -174,6 +174,8 @@ export interface AgentRunState {
   planApproved?: boolean;
   /** Motivo del cierre cuando la corrida se cancela. */
   cancelledReason?: string;
+  /** Veces que se devolvió el plan por cobertura pobre (freno con techo). */
+  planRejections?: number;
   coverage?: AgentCoverage;
 }
 

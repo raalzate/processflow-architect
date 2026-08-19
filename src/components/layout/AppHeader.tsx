@@ -53,6 +53,8 @@ import { iconForType } from "@/components/graph/designer/DesignerCanvas";
 import { Badge } from "@/components/ui/badge";
 import { useGraphContext } from "@/context/GraphContext"; // Importa el hook
 import { useToast } from "@/hooks/use-toast";
+import { BetaBadge, SofkaLogo } from "@/components/layout/SofkaCredits";
+import { CREDIT_LINE, CREDIT_LINKS } from "@/lib/credits";
 import { parseDiagramJson } from "@/lib/import-diagram";
 import {
   INITIAL_NOTATION_ID,
@@ -442,19 +444,33 @@ const AppHeader: React.FC<AppHeaderProps> = ({
     } = useGraphContext();
 
   return (
-    <header className="bg-card border-b shadow-sm p-4 z-10">
-      <div className="flex justify-between items-center gap-4 flex-wrap">
+    <header className="z-10 min-w-0 border-b bg-card p-4 shadow-sm">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           {/* Disparador del Sidebar para móviles */}
           <SidebarTrigger className="md:hidden">
             <PanelLeft />
           </SidebarTrigger>
-          <h1 className="text-xl font-bold text-foreground font-headline">
-            ProcessFlow Architect
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-foreground font-headline">
+              ProcessFlow Architect
+            </h1>
+            <BetaBadge />
+          </div>
+          {/* Sólo el logo: el crédito completo vive en el pie del sidebar y en
+              «Acerca de». Con el texto al lado, la barra quedaba cargada. */}
+          <a
+            href={CREDIT_LINKS[0].href}
+            target="_blank"
+            rel="noreferrer"
+            title={CREDIT_LINE}
+            className="hidden opacity-70 transition-opacity hover:opacity-100 md:block"
+          >
+            <SofkaLogo className="h-4" />
+          </a>
         </div>
 
-        <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
           {/* Búsqueda Global */}
           {mounted ? (
             <GlobalSearch

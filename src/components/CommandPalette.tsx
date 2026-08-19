@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import {
   Search, Undo2, Redo2, Settings2, Library, Download, Maximize, Trash,
   HelpCircle, Layers, Plus, GitGraph, Plug, FileDown, ArrowRight, PanelLeft,
-  FilePlus2, Sparkles,
+  FilePlus2,
 } from "lucide-react";
 import { useViews } from "@/context/ViewsContext";
 import { useGraphContext } from "@/context/GraphContext";
@@ -20,6 +20,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useAgent } from "@/context/AgentContext";
 import { hasPlatformModifier } from "@/lib/platform";
 import { getDefinition } from "@/lib/artifacts/registry";
+import { iconForArtifact } from "@/components/ai-panel/artifact-icon";
 import { NOTATION_LIST } from "@/lib/notations";
 
 /** Acción del lienzo: se despacha a ComponentDesigner por un evento de ventana. */
@@ -96,7 +97,8 @@ export function CommandPalette() {
         label: `Ver artefacto: ${a.title}`,
         hint: getDefinition(a.kind).label,
         group: "Artefactos",
-        icon: Sparkles,
+        icon: iconForArtifact(a), // el icono del tipo, no uno genérico para todos
+
         keywords: `artefacto ${a.title} ${a.kind} ${a.render}`,
         run: () => {
           setSidebarOpen(true);

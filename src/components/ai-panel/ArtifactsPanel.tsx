@@ -6,14 +6,11 @@ import { useGraphContext } from "@/context/GraphContext";
 import { getDefinition } from "@/lib/artifacts/registry";
 import { artifactBodyMarkdown } from "@/lib/artifacts/to-markdown";
 import { Markdown } from "./Markdown";
+import { ArtifactViewerDialog, revisionLabel } from "./ArtifactViewerDialog";
+import { iconForArtifact } from "./artifact-icon";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sparkles, FileText, Workflow, Trash2, History, RotateCcw } from "lucide-react";
 import type { Artifact } from "@/lib/agent-types";
-
-/** Sufijo de revisión: la v1 no lo lleva (ruido para el caso normal). */
-function revisionLabel(a: Artifact): string {
-  return a.revision && a.revision > 1 ? `v${a.revision}` : "";
-}
 
 /**
  * Lista de artefactos generados por la IA, DEBAJO del chat del agente.
@@ -75,7 +72,8 @@ export function ArtifactsPanel() {
       <ul className="max-h-48 space-y-0.5 overflow-y-auto p-1.5">
         {visibleArtifacts.map((a) => {
           const def = getDefinition(a.kind, a.render === "mermaid" ? "diagram" : "document");
-          const Icon = a.render === "mermaid" ? Workflow : FileText;
+          // Icono del propio tipo (drivers ≠ riesgos ≠ roadmap), no el genérico.
+          const Icon = iconForArtifact(a);
           const rev = revisionLabel(a);
           return (
             <li key={a.id}>
@@ -121,33 +119,17 @@ export function ArtifactsPanel() {
       </ul>
 
       {/* Modal con el contenido del artefacto */}
-      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden p-0 gap-0">
-          <DialogHeader className="border-b px-4 py-3">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="h-4 w-4 text-primary" /> {selected?.title}
-              {selected && revisionLabel(selected) && (
-                <span className="rounded bg-primary/15 px-1.5 text-xs font-semibold text-primary">
-                  {revisionLabel(selected)}
-                </span>
-              )}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="overflow-auto p-4">
-            {selected && <Markdown content={artifactBodyMarkdown(selected, allNodes)} />}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ArtifactViewerDialog artifact={selected} onClose={() => setSelected(null)} />
 
       {/* Histórico del linaje: append-only. Restaurar crea una revisión nueva. */}
       <Dialog open={!!historyFor} onOpenChange={(o) => !o && setHistoryFor(null)}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden p-0 gap-0">
+        <DialogContent className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden p-0 gap-0">
           <DialogHeader className="border-b px-4 py-3">
             <DialogTitle className="flex items-center gap-2 text-base">
               <History className="h-4 w-4 text-primary" /> Histórico de versiones
             </DialogTitle>
           </DialogHeader>
-          <ul className="divide-y overflow-auto">
+          <ul className="min-h-0 flex-1 divide-y overflow-y-auto overscroll-contain">
             {[...history].reverse().map((rev, i) => (
               <li key={rev.id} className="flex items-center gap-2 px-4 py-2.5">
                 <span className="w-8 shrink-0 text-xs font-semibold text-primary">v{rev.revision ?? 1}</span>

@@ -23,7 +23,8 @@ function scriptConvo(responses: string[]) {
     onToken?.(r); // alimenta el streamer (por si trae "final")
     return r;
   });
-  mockConvo.mockResolvedValue({ send });
+  // `close` la usa el agente al terminar el run: libera el contexto del engine.
+  mockConvo.mockResolvedValue({ send, close: vi.fn(async () => {}) });
   return send;
 }
 
@@ -422,5 +423,321 @@ describe("runLitertAgent — contexto por partes + human-in-the-loop", () => {
     const md = (res.artifacts[0].payload as { markdown: string }).markdown;
     expect(md).not.toContain("Ventas");
     expect(md).toContain("Latencia baja.");
+  });
+});
+
+describe("runLitertAgent — lectura en lote (menos turnos)", () => {
+  const nodo2 = (nombre: string) => ({
+    id: nombre.toLowerCase().replace(/\s+/g, "-"),
+    nombre,
+    tipo_elemento: "Evento",
+    descripcion: "",
+    estado_comparativo: "nuevo" as const,
+  });
+  const grafo2 = (nombres: string[]) =>
+    ({
+      nombre_proyecto: "P",
+      version: "1.0.0",
+      fecha_analisis: "2026-08-18",
+      big_picture: { descripcion: "", hotspots: [], nodos: nombres.map(nodo2), aristas: [] },
+      agregados: [],
+    }) as any;
+  const cat3 = {
+    views: [
+      { name: "DDD · Dominio", notation: "ddd", kind: "graph" as const, graph: grafo2(["Producto creado"]) },
+      { name: "C4 N2 · Contenedores", notation: "c4", kind: "graph" as const, graph: grafo2(["API"]) },
+      { name: "BPMN · Gestión", notation: "bpmn", kind: "graph" as const, graph: grafo2(["Alta de producto"]) },
+    ],
+  };
+
+  it("un solo turno cubre las tres vistas y habilita el plan", async () => {
+    scriptConvo([
+      '{"thought":"leo todo","action":"read_views","args":{"names":["DDD · Dominio","C4 N2 · Contenedores","BPMN · Gestión"]}}',
+      JSON.stringify({
+        thought: "listo",
+        plan: {
+          title: "Drivers",
+          artifactKind: "drivers",
+          sections: [
+            { title: "Dominio", sources: ["DDD · Dominio"] },
+            { title: "Arquitectura", sources: ["C4 N2 · Contenedores"] },
+            { title: "Procesos", sources: ["BPMN · Gestión"] },
+          ],
+        },
+      }),
+    ]);
+    const res = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog: cat3 });
+    expect(res.run?.read).toEqual(["DDD · Dominio", "C4 N2 · Contenedores", "BPMN · Gestión"]);
+    // Dos turnos: uno para leer las tres, otro para el plan.
+    expect(res.steps.filter((s) => s.type === "read")).toHaveLength(1);
+    expect(res.run?.pause?.kind).toBe("plan");
+  });
+});
+
+describe("runLitertAgent — el cierre degenerado no llega al chat", () => {
+  it("con el artefacto ya generado, el resumen lo escribe el código", async () => {
+    const catalog2 = {
+      views: [
+        {
+          name: "Pagos",
+          notation: "ddd",
+          kind: "graph" as const,
+          graph: {
+            nombre_proyecto: "P",
+            version: "1.0.0",
+            fecha_analisis: "2026-08-18",
+            big_picture: { descripcion: "", hotspots: [], nodos: [{ id: "a", nombre: "Cobrar", tipo_elemento: "Comando", descripcion: "", estado_comparativo: "nuevo" }], aristas: [] },
+            agregados: [],
+          } as any,
+        },
+      ],
+    };
+    scriptConvo([
+      '{"thought":"leo","action":"read_view","args":{"name":"Pagos"}}',
+      JSON.stringify({ plan: { title: "Drivers", artifactKind: "drivers", sections: [{ title: "S", sources: ["Pagos"] }] } }),
+    ]);
+    const parada = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog: catalog2 });
+
+    scriptConvo([
+      '{"action":"generate_document","args":{"kind":"drivers","title":"Drivers"}}',
+      // Cierre degenerado, tal cual salió en la app.
+      '{"description":"…","status":"تم","details":"تحديد المتطلبات الأساسية للمشروع"}',
+    ]);
+    const res = await resumeLitertAgent({
+      modelFile: "m",
+      message: "generá los drivers",
+      catalog: catalog2,
+      run: parada.run!,
+      resume: { kind: "approve" },
+    });
+    expect(res.artifacts).toHaveLength(1);
+    expect(res.reply).toContain("Drivers");
+    expect(res.reply).toContain("Pagos"); // dice de dónde salió
+    expect(res.reply).not.toContain("status");
+    expect(res.reply).not.toMatch(/[؀-ۿ]/); // ni un carácter del descarte
+  });
+});
+
+describe("runLitertAgent — el artefacto declara si no es auditable", () => {
+  const cat4 = {
+    views: [
+      {
+        name: "Pagos",
+        notation: "ddd",
+        kind: "graph" as const,
+        graph: {
+          nombre_proyecto: "P",
+          version: "1.0.0",
+          fecha_analisis: "2026-08-18",
+          big_picture: {
+            descripcion: "",
+            hotspots: [],
+            nodos: [{ id: "a", nombre: "Cobrar prima", tipo_elemento: "Comando", descripcion: "", estado_comparativo: "nuevo" }],
+            aristas: [],
+          },
+          agregados: [],
+        } as any,
+      },
+    ],
+  };
+  const PLAN4 = JSON.stringify({
+    plan: { title: "Drivers", artifactKind: "drivers", sections: [{ title: "S", sources: ["Pagos"] }] },
+  });
+
+  const generar = async (markdown: string) => {
+    scriptConvo(['{"action":"read_view","args":{"name":"Pagos"}}', PLAN4]);
+    const parada = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog: cat4 });
+    mockGen.mockResolvedValue(markdown);
+    scriptConvo(['{"action":"generate_document","args":{"kind":"drivers","title":"Drivers"}}', '{"final":"listo"}']);
+    const res = await resumeLitertAgent({
+      modelFile: "m",
+      message: "generá los drivers",
+      catalog: cat4,
+      run: parada.run!,
+      resume: { kind: "approve" },
+    });
+    return (res.artifacts[0].payload as { markdown: string }).markdown;
+  };
+
+  it("sin citas, la cobertura lo advierte en vez de disimularlo", async () => {
+    const md = await generar("## Drivers\n- El sistema debe ser escalable.");
+    expect(md).toContain("## Cobertura");
+    expect(md).toMatch(/no citó el origen/);
+  });
+
+  it("con citas válidas no hay advertencia", async () => {
+    const md = await generar("## Drivers\n- Cobro en línea.\n  ↳ Pagos › Cobrar prima");
+    expect(md).toContain("↳ Pagos › Cobrar prima");
+    expect(md).not.toMatch(/no citó el origen/);
+  });
+});
+
+/**
+ * Pedido EXPLÍCITO del menú «+» del chat. Nació de un caso real: «Identifica
+ * riesgos y restricciones» no tiene verbo de generación, así que el gate de
+ * intención mandaba la corrida a la ruta conversacional y nunca había artefacto.
+ */
+describe("runLitertAgent — artefacto pedido con el «+»", () => {
+  const catalog = {
+    views: [
+      {
+        name: "Pagos",
+        notation: "ddd",
+        kind: "graph" as const,
+        graph: {
+          nombre_proyecto: "P",
+          version: "1.0.0",
+          fecha_analisis: "2026-08-18",
+          big_picture: {
+            descripcion: "d",
+            hotspots: [],
+            nodos: [
+              {
+                id: "cobrar",
+                nombre: "Cobrar prima",
+                tipo_elemento: "Comando",
+                descripcion: "",
+                estado_comparativo: "nuevo" as const,
+              },
+            ],
+            aristas: [],
+          },
+          agregados: [],
+        } as any,
+      },
+    ],
+  };
+
+  it("con requestedKind entra al bucle ReAct aunque la frase no pida generar", async () => {
+    const send = scriptConvo([
+      '{"thought":"leo pagos","action":"read_view","args":{"name":"Pagos"}}',
+      JSON.stringify({
+        thought: "listo",
+        plan: {
+          title: "Riesgos y Restricciones",
+          artifactKind: "constraints",
+          sections: [{ title: "Riesgos", sources: ["Pagos"] }],
+        },
+      }),
+    ]);
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "Identifica riesgos y restricciones",
+      requestedKind: "constraints",
+      catalog,
+    });
+    // No conversó: exploró y se detuvo en el plan (el checkpoint del humano).
+    expect(res.run?.pause?.kind).toBe("plan");
+    // La orden viaja en el primer mensaje, con kind y herramienta exactos.
+    const primerEnvio = send.mock.calls[0][0] as string;
+    expect(primerEnvio).toContain('"kind":"constraints"');
+    expect(primerEnvio).toContain("generate_document");
+    expect(primerEnvio).toContain("Identifica riesgos y restricciones");
+  });
+
+  it("sin requestedKind, la misma frase sólo conversa", async () => {
+    scriptConvo(["Los riesgos principales son…"]);
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "Identifica riesgos y restricciones",
+      catalog,
+    });
+    expect(res.run).toBeUndefined(); // no hubo corrida: fue charla
+    expect(res.artifacts).toHaveLength(0);
+  });
+
+  it("el pedido de un diagrama usa la herramienta de diagramas", async () => {
+    const send = scriptConvo(['{"thought":"leo","action":"read_view","args":{"name":"Pagos"}}']);
+    await runLitertAgent({
+      modelFile: "m",
+      message: "",
+      requestedKind: "c4-container",
+      catalog,
+    });
+    expect(send.mock.calls[0][0] as string).toContain("generate_diagram");
+  });
+});
+
+/**
+ * Turnos con comillas sueltas dentro de los textos: el fallo repetido del modelo
+ * local. Antes moría en «formato inválido tres veces» con cualquier forma que el
+ * rescate por clave no supiera reconstruir (el plan, sobre todo).
+ */
+describe("runLitertAgent — JSON con comillas sueltas y plan de rescate", () => {
+  const catalog = {
+    views: [
+      {
+        name: "Pagos",
+        notation: "ddd",
+        kind: "graph" as const,
+        graph: {
+          nombre_proyecto: "P",
+          version: "1.0.0",
+          fecha_analisis: "2026-08-18",
+          big_picture: {
+            descripcion: "d",
+            hotspots: [],
+            nodos: [
+              {
+                id: "cobrar",
+                nombre: "Cobrar prima",
+                tipo_elemento: "Comando",
+                descripcion: "",
+                estado_comparativo: "nuevo" as const,
+              },
+            ],
+            aristas: [],
+          },
+          agregados: [],
+        } as any,
+      },
+    ],
+  };
+
+  it("un plan con comillas sin escapar se sanea y vale como plan", async () => {
+    scriptConvo([
+      '{"thought":"leo","action":"read_view","args":{"name":"Pagos"}}',
+      // El modelo cita la vista con comillas dobles dentro del string:
+      '{"thought":"la vista "Pagos" alcanza","plan":{"title":"Propuesta tecnica","artifactKind":"proposal","sections":[{"title":"Contexto","sources":["Pagos"]}]}}',
+    ]);
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "generá la propuesta técnica",
+      catalog,
+    });
+    expect(res.run?.pause?.kind).toBe("plan");
+    expect(res.run?.plan?.title).toBe("Propuesta tecnica");
+  });
+
+  it("tres turnos irrecuperables ⇒ propone un plan armado con lo leído", async () => {
+    // 1ª: lee. 2ª-4ª: protocolo roto de forma no saneable (llave sin cerrar).
+    const roto = '{"thought":"pienso","plan":{"title":"X","sections":[{"title":"A","sources":[';
+    scriptConvo([
+      '{"thought":"leo","action":"read_view","args":{"name":"Pagos"}}',
+      roto,
+      roto,
+      roto,
+    ]);
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "generá la propuesta técnica",
+      catalog,
+    });
+    // No es calle sin salida: hay plan para aprobar, con la vista realmente leída.
+    expect(res.run?.pause?.kind).toBe("plan");
+    expect(res.run?.plan?.sections.flatMap((s) => s.sources)).toEqual(["Pagos"]);
+    expect(res.reply).toContain("Pagos");
+  });
+
+  it("si no leyó nada, avisa en vez de inventar un plan", async () => {
+    const roto = '{"thought":"pienso","plan":{"title":"X","sections":[{"title":"A","sources":[';
+    scriptConvo([roto, roto, roto]);
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "generá la propuesta técnica",
+      catalog,
+    });
+    expect(res.run?.pause).toBeUndefined();
+    expect(res.reply).toContain("no había leído nada");
   });
 });

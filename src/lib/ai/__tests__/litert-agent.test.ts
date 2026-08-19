@@ -4,12 +4,17 @@ import {
   salvageReply,
   repairProtocolJson,
   looksLikeProtocol,
+  esDesbordeDeVentana,
+  systemBudget,
+  looksDegenerate,
   hasGenerationIntent,
   sanitizeMermaid,
   buildReasoningFrame,
   resolveNotations,
   buildContext,
+  escapeStrayQuotes,
 } from "../litert-agent";
+import { budgetFromWindow } from "../agent-run";
 
 describe("resolveNotations", () => {
   it("vistas pineadas mandan", () => {
@@ -321,5 +326,115 @@ describe("repairProtocolJson · turnos de protocolo con JSON roto", () => {
     for (const clave of ["action", "plan", "question", "final"]) {
       expect(looksLikeProtocol(`{"${clave}": "x"}`)).toBe(true);
     }
+  });
+});
+
+describe("esDesbordeDeVentana · el motor local no lanza errores tipados", () => {
+  it("reconoce las dos formas reales de LiteRT", () => {
+    expect(esDesbordeDeVentana(new Error("Too many tokens requested."))).toBe(true);
+    expect(
+      esDesbordeDeVentana(
+        new Error("Cannot rewind to time_step 0 from 4376. Ringbuffer size is 4096 with sliding window of 512")
+      )
+    ).toBe(true);
+  });
+
+  it("no confunde otros errores", () => {
+    expect(esDesbordeDeVentana(new Error("WebGPU no disponible"))).toBe(false);
+    expect(esDesbordeDeVentana(undefined)).toBe(false);
+  });
+});
+
+describe("presupuestos derivados de la ventana", () => {
+  it("el system y la lectura se reparten la ventana real", () => {
+    // 4 096 tokens (default de Ajustes) ≈ 14 336 caracteres.
+    expect(systemBudget(4096)).toBe(6451);
+    expect(budgetFromWindow(4096)).toBe(5018);
+    // Juntos no pasan la ventana: queda aire para observaciones y respuesta.
+    expect(systemBudget(4096) + budgetFromWindow(4096)).toBeLessThan(4096 * 3.5);
+  });
+
+  it("una ventana grande da más margen, una chica no baja de un piso usable", () => {
+    expect(budgetFromWindow(16384)).toBeGreaterThan(budgetFromWindow(4096));
+    expect(budgetFromWindow(512)).toBeGreaterThanOrEqual(1500);
+    expect(systemBudget(undefined)).toBe(systemBudget(4096));
+  });
+});
+
+/**
+ * Incidente (la app): el artefacto se generó bien y el turno de CIERRE salió como
+ * `{"description":"…","status":"تم","details":"…"}` — JSON ajeno al protocolo, en
+ * árabe. Se imprimió tal cual. Un modelo chico degenera; lo que no puede pasar es
+ * que su descarte sea lo que el humano lee.
+ */
+describe("looksDegenerate · cuándo el cierre no sirve", () => {
+  it("un JSON que no habla el protocolo no es una respuesta", () => {
+    expect(looksDegenerate('{"description":"algo","status":"ok"}')).toBe(true);
+    // …pero uno del protocolo sí se entiende (lo desenvuelve `salvageReply`).
+    expect(looksDegenerate('{"final":"listo"}')).toBe(false);
+  });
+
+  it("detecta el cambio de alfabeto", () => {
+    expect(looksDegenerate("استخلاص المتطلبات الأساسية للمنظومة، هذا يعني تحديد المتطلبات")).toBe(true);
+  });
+
+  it("el español con acentos, ñ y comillas NO es degeneración", () => {
+    expect(
+      looksDegenerate("Listo: «Drivers de arquitectura» está en el lienzo, leyendo C4 y BPMN.")
+    ).toBe(false);
+    expect(looksDegenerate("Añadí la sección de cumplimiento (PCI-DSS) al análisis.")).toBe(false);
+  });
+
+  it("una respuesta vacía cuenta como degenerada", () => {
+    expect(looksDegenerate("")).toBe(true);
+    expect(looksDegenerate("   ")).toBe(true);
+  });
+
+  it("un texto corto con algún símbolo raro no se descarta por poco", () => {
+    expect(looksDegenerate("Listo ✓")).toBe(false);
+  });
+});
+
+describe("looksDegenerate · rescates vacíos", () => {
+  it("un texto sin letras (puntos suspensivos, símbolos) no es una respuesta", () => {
+    expect(looksDegenerate("…")).toBe(true);
+    expect(looksDegenerate("...")).toBe(true);
+    expect(looksDegenerate("— — —")).toBe(true);
+  });
+
+  it("pero una respuesta cortísima con palabras sí lo es", () => {
+    expect(looksDegenerate("Listo.")).toBe(false);
+  });
+});
+
+/**
+ * Comillas sueltas dentro de un string: el fallo más repetido del modelo local.
+ * Sanearlas rescata CUALQUIER forma de turno (plan, question, args), no sólo las
+ * que el rescate por clave sabía reconstruir.
+ */
+describe("escapeStrayQuotes", () => {
+  it("escapa las comillas internas y deja parseable el turno", () => {
+    const roto = '{"thought":"la vista "Pagos" no aplica","action":"read_view","args":{"name":"Pedidos"}}';
+    const obj = JSON.parse(escapeStrayQuotes(roto));
+    expect(obj.thought).toBe('la vista "Pagos" no aplica');
+    expect(obj.action).toBe("read_view");
+    expect(obj.args.name).toBe("Pedidos");
+  });
+
+  it("no toca un JSON que ya era válido", () => {
+    const ok = '{"a":"b","c":["d","e"],"f":{"g":1}}';
+    expect(escapeStrayQuotes(ok)).toBe(ok);
+  });
+
+  it("respeta los escapes que ya venían y convierte saltos crudos", () => {
+    const conSalto = '{"final":"línea uno\nlínea dos","x":"ya \"escapado\""}';
+    const obj = JSON.parse(escapeStrayQuotes(conSalto));
+    expect(obj.final).toContain("línea dos");
+    expect(obj.x).toBe('ya "escapado"');
+  });
+
+  it("un salto de línea literal dentro del string no rompe el parseo", () => {
+    const crudo = '{"final":"uno\ndos"}'.replace("\\n", "\n");
+    expect(() => JSON.parse(escapeStrayQuotes(crudo))).not.toThrow();
   });
 });

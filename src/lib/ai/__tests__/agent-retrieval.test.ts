@@ -13,6 +13,7 @@ import {
   searchModel,
   resolveViewName,
   normalizeName,
+  viewDigest,
   VIEW_READ_MAX,
   type Catalog,
   type ViewEntry,
@@ -244,5 +245,47 @@ describe("searchModel · encontrar sin leer todo", () => {
     const r = searchModel(cat, "comando");
     if (!r.ok) throw new Error("debía buscar");
     expect(r.text).toContain("Cobrar prima");
+  });
+});
+
+/**
+ * Incidente (la app, con Gemma real): «Too many tokens requested» y «Cannot rewind
+ * to time_step 0 from 4376. Ringbuffer size is 4096». El motor local tiene una
+ * ventana de 4 096 tokens y la lectura le mandaba el TOON entero de cada vista
+ * (~6 000 caracteres). Ahora lee un DIGEST: nombres, tipos y relaciones.
+ */
+describe("viewDigest · lo que cabe en la ventana del modelo local", () => {
+  const g = grafo(
+    [nodo("Cobrar prima", "Comando", "Cargo a la tarjeta"), nodo("Prima cobrada", "Evento")],
+    ["Cobro"]
+  );
+
+  it("trae nombres, tipos, contenedores y relaciones", () => {
+    const d = viewDigest(g, "ddd");
+    expect(d).toContain("Notación ddd");
+    expect(d).toContain("Contenedores: Cobro");
+    expect(d).toContain("- Cobrar prima [Comando]");
+    expect(d).toContain("Cargo a la tarjeta");
+  });
+
+  it("es mucho más corto que el grafo serializado completo", () => {
+    const grande = grafo(Array.from({ length: 60 }, (_, i) => nodo(`Elemento ${i}`, "Evento", "x".repeat(60))));
+    const d = viewDigest(grande, "ddd", 2000);
+    expect(d.length).toBeLessThanOrEqual(2000 + 20);
+    expect(JSON.stringify(grande).length).toBeGreaterThan(d.length * 2);
+  });
+
+  it("una vista sin nada devuelve sólo la notación", () => {
+    expect(viewDigest(grafo([]), "bpmn")).toBe("Notación bpmn.");
+  });
+
+  it("readView entrega el digest, no el TOON", () => {
+    const cat = catalogo(vista({ name: "Pagos", graph: g }));
+    const r = readView(cat, "Pagos", 10_000);
+    if (!r.ok) throw new Error("debía leer");
+    expect(r.text).toContain("- Cobrar prima [Comando]");
+    // La leyenda tabular del TOON ya no viaja en la observación.
+    expect(r.text).not.toContain("#nodos");
+    expect(r.cost).toBeLessThan(1500);
   });
 });

@@ -17,10 +17,14 @@ import type { AgentNote } from "../agent-types";
 import type { GraphData, GraphNode } from "../types";
 import { collectGraphNodes } from "../view-nodes";
 import { countGraph } from "../mcp/app-state";
-import { graphToToon } from "./graph-toon";
 
-/** Techo de una sola lectura: una vista enorme no se come el presupuesto entero. */
-export const VIEW_READ_MAX = 6000;
+/**
+ * Techo de una sola lectura. Bajó de 6 000 a 2 000 caracteres cuando el motor
+ * local empezó a tirar «Too many tokens requested»: la ventana por defecto es de
+ * 4 096 tokens (contexto + salida) y dos lecturas de 6 000 caracteres ya la
+ * revientan. Lo que se lee ahora es un DIGEST, no el grafo entero.
+ */
+export const VIEW_READ_MAX = 2000;
 /** Tope de resultados de una búsqueda (más que esto no se lee, se hojea). */
 export const SEARCH_LIMIT = 12;
 /** Nodos citables que se recuerdan por vista leída (los que puede citar el artefacto). */
@@ -177,6 +181,57 @@ export function formatInventory(items: ViewInventoryItem[]): string {
 const containerNames = (graph: GraphData | undefined): string[] =>
   (graph?.agregados ?? []).map((a) => a.nombre_agregado).filter(Boolean);
 
+/** Todas las aristas del grafo (big picture + políticas + internas de contenedor). */
+function collectEdges(graph: GraphData | undefined): { fuente: string; destino: string; descripcion?: string }[] {
+  if (!graph) return [];
+  return [
+    ...(graph.big_picture?.aristas ?? []),
+    ...((graph as { politicas_inter_agregados?: unknown[] }).politicas_inter_agregados ?? []),
+    ...(graph.agregados ?? []).flatMap((a) => a.aristas ?? []),
+  ] as { fuente: string; destino: string; descripcion?: string }[];
+}
+
+/**
+ * Retrato COMPACTO de una vista: elementos con su tipo y contenedor, y relaciones
+ * con su etiqueta. Reemplaza al TOON completo en la observación que recibe el
+ * modelo — el TOON de una vista mediana son ~6 000 caracteres y con una ventana
+ * de 4 096 tokens dos lecturas rompían la corrida («Too many tokens requested»).
+ * Un digest de la misma vista cabe en ~600, y lo que un artefacto necesita son
+ * los nombres, los tipos y quién habla con quién.
+ */
+export function viewDigest(
+  graph: GraphData | undefined,
+  notation: string,
+  limit = VIEW_READ_MAX
+): string {
+  const nodos = collectGraphNodes(graph);
+  const aristas = collectEdges(graph);
+  const porNombre = new Map(nodos.map((n) => [n.id, n.nombre]));
+  const lineas: string[] = [];
+
+  const conts = containerNames(graph);
+  if (conts.length) lineas.push(`Contenedores: ${conts.join(", ")}.`);
+
+  if (nodos.length) {
+    lineas.push("Elementos:");
+    for (const n of nodos) {
+      const agg = n.agregado ? ` @${n.agregado}` : "";
+      const desc = n.descripcion ? ` — ${n.descripcion.slice(0, 90)}` : "";
+      lineas.push(`- ${n.nombre} [${n.tipo_elemento}]${agg}${desc}`);
+    }
+  }
+  if (aristas.length) {
+    lineas.push("Relaciones:");
+    for (const a of aristas) {
+      const de = porNombre.get(a.fuente) ?? a.fuente;
+      const al = porNombre.get(a.destino) ?? a.destino;
+      lineas.push(`- ${de} → ${al}${a.descripcion ? ` (${a.descripcion})` : ""}`);
+    }
+  }
+  const texto = `Notación ${notation}.\n${lineas.join("\n")}`.trim();
+  return texto.length > limit ? `${texto.slice(0, limit)}\n…(recortado)` : texto;
+}
+
 /**
  * Devuelve el grafo de la vista en TOON (o su código Mermaid), recortado al
  * presupuesto, más la nota atribuida que la corrida recordará de ella.
@@ -211,7 +266,8 @@ export function readView(cat: Catalog, name: string, budget: number): ToolResult
     const c = countGraph(view.graph);
     const nodos: GraphNode[] = collectGraphNodes(view.graph);
     nodes = nodos.map((n) => n.nombre).filter(Boolean).slice(0, MAX_CITABLE_NODES);
-    cuerpo = view.graph ? graphToToon(view.graph) : "(vista vacía)";
+    // Digest, no TOON: ver `viewDigest` (la ventana del modelo local es chica).
+    cuerpo = view.graph ? viewDigest(view.graph, view.notation, limit) : "(vista vacía)";
     facts.push(`${c.nodes} nodos y ${c.edges} aristas (notación ${view.notation}).`);
     const conts = containerNames(view.graph);
     if (conts.length) facts.push(`Contenedores: ${conts.join(", ")}.`);

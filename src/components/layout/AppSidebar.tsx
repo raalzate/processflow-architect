@@ -7,6 +7,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupLabel,
+  SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { SheetTitle, SheetDescription } from "@/components/ui/sheet";
@@ -22,7 +23,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -35,9 +35,13 @@ import {
   Workflow,
   Component,
   Layers,
+  Sparkles as SparklesIcon,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useGraphContext } from "@/context/GraphContext";
 import { useViews } from "@/context/ViewsContext";
+import { useAgent } from "@/context/AgentContext";
+import type { Artifact } from "@/lib/agent-types";
 import { getNotation, DEFAULT_NOTATION_ID, notationBadgeClass } from "@/lib/notations";
 import { collectGraphNodes } from "@/lib/view-nodes";
 import { nodeTypeColor } from "@/lib/graph-constants";
@@ -46,6 +50,9 @@ import {
   formatTaskListToMarkdown,
 } from "@/lib/markdown-utils";
 import { AiAgentsPanel } from "@/components/ai-panel/AiAgentsPanel"; 
+import { ArtifactViewerDialog } from "@/components/ai-panel/ArtifactViewerDialog";
+import { iconForArtifact, iconForArtifactKind } from "@/components/ai-panel/artifact-icon";
+import { SofkaCredits } from "@/components/layout/SofkaCredits";
 import { AiGenerationModal } from "@/components/modals/AiGenerationModal";
 import { Sparkles, Loader2 } from "lucide-react";
 import { useState } from "react"; 
@@ -89,12 +96,18 @@ function AppSidebarHeader() {
                   className="h-7 w-7"
                   onClick={toggleSidebar}
                 >
-                  <PanelLeftClose className="w-5 h-5 z-100" />
-                  <span className="sr-only">Ocultar menú</span>
+                  {/* Colapsado, el mismo botón sirve para volver a abrir: dos
+                      botones de plegado en la barra eran redundancia. */}
+                  {open ? (
+                    <PanelLeftClose className="w-5 h-5 z-100" />
+                  ) : (
+                    <PanelLeftOpen className="w-5 h-5 z-100" />
+                  )}
+                  <span className="sr-only">{open ? "Ocultar menú" : "Mostrar menú"}</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="left" className="z-100">
-                <p>Ocultar menú</p>
+              <TooltipContent side={open ? "left" : "right"} className="z-100">
+                <p>{open ? "Ocultar menú" : "Mostrar menú"}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -256,7 +269,7 @@ function TaskListPanel() {
               Cambios nuevos ({taskListNodes.new.length + viewNew.length})
             </AccordionTrigger>
             <AccordionContent className="pt-1">
-              <ul className="pl-4 py-1 text-xs space-y-1">
+              <ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain py-1 pl-4 pr-1 text-xs">
                 {taskListNodes.new.map((node) => (
                   <li key={node.id}>
                     <div
@@ -288,7 +301,7 @@ function TaskListPanel() {
               Modificados ({taskListNodes.modified.length + viewModified.length})
             </AccordionTrigger>
             <AccordionContent className="pt-1">
-              <ul className="pl-4 py-1 text-xs space-y-1">
+              <ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain py-1 pl-4 pr-1 text-xs">
                 {taskListNodes.modified.map((node) => (
                   <li key={node.id}>
                     <div
@@ -320,7 +333,7 @@ function TaskListPanel() {
               Eliminados ({taskListNodes.deleted.length + viewDeleted.length})
             </AccordionTrigger>
             <AccordionContent className="pt-1">
-              <ul className="pl-4 py-1 text-xs space-y-1">
+              <ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain py-1 pl-4 pr-1 text-xs">
                 {taskListNodes.deleted.map((node) => (
                   <li key={node.id}>
                     <div
@@ -424,7 +437,7 @@ function DomainModelPanel() {
                     <h4 className="text-xs px-2 py-1 font-semibold">
                       {type} ({nodes.length})
                     </h4>
-                    <ul className="pl-4 py-1 text-xs space-y-1">
+                    <ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain py-1 pl-4 pr-1 text-xs">
                       {nodes.map((node) => (
                         <li
                           key={node.id}
@@ -471,7 +484,7 @@ function TechnologiesPanel() {
       <SidebarGroupLabel className="flex items-center gap-2">
         <Cpu className="w-5 h-5" /> Tecnologías
       </SidebarGroupLabel>
-      <div className="p-2 flex flex-wrap gap-2">
+      <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto overscroll-contain p-2">
         {technologies.map((tech) => (
           <Badge key={tech} variant="secondary">
             {tech}
@@ -501,7 +514,7 @@ function ResponsablesPanel() {
       <SidebarGroupLabel className="flex items-center gap-2">
         <Component className="w-5 h-5" /> Responsables
       </SidebarGroupLabel>
-      <div className="p-2 flex flex-wrap gap-2">
+      <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto overscroll-contain p-2">
         {responsables.map((resp) => (
           <Badge key={resp} variant="secondary">
             {resp}
@@ -599,7 +612,7 @@ function DesignViewsPanel() {
                     Sin elementos todavía.
                   </p>
                 ) : (
-                  <ul className="pl-4 py-1 text-xs space-y-1">
+                  <ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain py-1 pl-4 pr-1 text-xs">
                     {nodes.map((node) => (
                       <li key={`${v.id}-${node.id}`}>
                         <div
@@ -645,6 +658,76 @@ function DesignViewsPanel() {
   );
 }
 
+
+// ====================================================================
+// --- Riel de artefactos (panel colapsado) ---
+// ====================================================================
+/**
+ * Con el panel colapsado la barra quedaba VACÍA. Ahora lista los ARTEFACTOS
+ * generados —uno por linaje, la revisión vigente— como iconos, con el nombre en
+ * el tooltip. El clic abre el artefacto ahí mismo: expandir el panel para leerlo
+ * era un paso de más.
+ *
+ * El botón de expandir no se repite acá: ya está en la cabecera del panel.
+ */
+function SidebarArtifactRail() {
+  const { visibleArtifacts } = useAgent();
+  const { setOpen } = useSidebar();
+  // El artefacto se lee SIN expandir el panel: la modal es la misma que usa
+  // `ArtifactsPanel` (componente compartido, una sola implementación).
+  const [selected, setSelected] = useState<Artifact | null>(null);
+
+  return (
+    <TooltipProvider delayDuration={0}>
+      <div className="flex flex-col items-center gap-1 py-1">
+        {visibleArtifacts.length === 0 ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground"
+                onClick={() => setOpen(true)}
+              >
+                <SparklesIcon className="h-5 w-5" />
+                <span className="sr-only">Artefactos</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              Sin artefactos todavía — pedíselos al agente
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          visibleArtifacts.map((a) => {
+            const Icon = iconForArtifact(a);
+            const rev = a.revision && a.revision > 1 ? ` · v${a.revision}` : "";
+            return (
+              <Tooltip key={a.id}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                    onClick={() => setSelected(a)}
+                  >
+                    <Icon className="h-5 w-5" />
+                    <span className="sr-only">{a.title}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {a.title}
+                  {rev}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })
+        )}
+      </div>
+      <ArtifactViewerDialog artifact={selected} onClose={() => setSelected(null)} />
+    </TooltipProvider>
+  );
+}
+
 // ====================================================================
 /**
  * Componente principal del Sidebar.
@@ -657,25 +740,38 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <AppSidebarHeader /> 
+      {/* UN solo scroll: el de `SidebarContent`. Antes había además un ScrollArea
+          envolviendo todo, y con el chat (que ya scrollea por dentro) quedaban
+          tres contenedores anidados: mover la rueda en cualquier lado corría el
+          panel entero y el diseño se descuadraba. Ahora cada lista larga scrollea
+          en su propia caja (ver `max-h-64` en las listas de cada sección). */}
       <SidebarContent>
         <TooltipProvider>
-          <ScrollArea className="h-full">
-            {/* Decide qué conjunto de componentes mostrar */}
-            {open && graphData ? (
-              <div className="p-1 space-y-4">
-                <AiAgentsPanel />
-                <DomainModelPanel />
-                <DesignViewsPanel />
-                <TaskListPanel />
-                <TechnologiesPanel />
-                <ResponsablesPanel />
-              </div>
-            ) : (
-              open && <EmptyGraphState /> 
-            )}
-          </ScrollArea>
+          {/* Decide qué conjunto de componentes mostrar */}
+          {!open ? (
+            // Colapsado: riel de iconos (antes: una barra vacía).
+            <SidebarArtifactRail />
+          ) : graphData ? (
+            <div className="space-y-4 p-1">
+              <AiAgentsPanel />
+              <DomainModelPanel />
+              <DesignViewsPanel />
+              <TaskListPanel />
+              <TechnologiesPanel />
+              <ResponsablesPanel />
+            </div>
+          ) : (
+            <EmptyGraphState />
+          )}
         </TooltipProvider>
       </SidebarContent>
+      {/* Crédito al pie: sólo con el panel abierto (colapsado no hay ancho para
+          el logo ni los enlaces). */}
+      {open && (
+        <SidebarFooter className="border-t">
+          <SofkaCredits />
+        </SidebarFooter>
+      )}
     </Sidebar>
   );
 }

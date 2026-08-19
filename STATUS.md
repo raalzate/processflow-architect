@@ -5,9 +5,9 @@ Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verifi
 lo que se supone va en "deuda conocida".
 
 - **Fecha del último gate completo:** 2026-08-18
-- **Rama:** `main` (fusionada `005-contexto-react-hitl`)
+- **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.3.0 (tag `v0.3.0` → instaladores por `release-build.yml`)
+- **Versión publicada:** 0.4.0 (tag `v0.4.0` → instaladores por `release-build.yml`)
 
 ## Señales
 
@@ -18,7 +18,7 @@ lo que se supone va en "deuda conocida".
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
 | Typecheck | `npm run typecheck` | verde (renderer + electron) |
-| Tests | `npm run test:coverage` | verde — 64 archivos, 1003 pruebas (cobertura `src/lib` 97,6 % stmts; `ai/agent-retrieval.ts` 98,3 %, `ai/agent-run.ts` 97,9 %) |
+| Tests | `npm run test:coverage` | verde — 68 archivos, 1094 pruebas (cobertura `src/lib` 97,3 % stmts; `ai/agent-run.ts` 98,8 %, `ai/litert-engine.ts` 98,2 %, `ai/litert-agent.ts` 93,2 %) |
 | E2E del MCP (stdio) | script manual contra `mcp-server/index.ts` | verde — 20 tools; arnés completo (ingesta → citas → ambigüedades → calidad → revisión → export → install_skill) |
 | Build de producción | `npm run build` | verde |
 
@@ -40,7 +40,10 @@ Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
 ## Trabajo en curso
 
 Nada abierto. **005** (el agente recupera el contexto por partes y consulta al humano) entró en
-`main` y salió en `v0.3.0`; sus artefactos quedan en `specs/005-contexto-react-hitl/`.
+`main` y salió en `v0.3.0`. En `v0.4.0` salieron los créditos de Sofka + marca beta, el pedido
+explícito de artefacto (menú «+»), el riel de artefactos del panel colapsado con iconos por tipo,
+y los arreglos del motor local (una sola conversación viva por engine, JSON con comillas sueltas,
+plan de rescate).
 
 Pendiente de medición, no de código (declarado en `analyze.md` §Deuda):
 cuántos turnos gasta un **Gemma real** hasta proponer un plan usable, y el ciclo completo en modo

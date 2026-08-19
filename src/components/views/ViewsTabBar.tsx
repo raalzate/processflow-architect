@@ -59,6 +59,14 @@ export function ViewsTabBar() {
     canCreate,
   } = useViews();
 
+  // La pestaña activa siempre visible: al cambiar de vista (o al abrir el
+  // proyecto) la tira se desplaza sola en vez de dejarla fuera de cuadro.
+  const tiraRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const activa = tiraRef.current?.querySelector<HTMLElement>('[data-activa="true"]');
+    activa?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeViewId, views.length]);
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [pendingDelete, setPendingDelete] = useState<DesignView | null>(null);
@@ -80,14 +88,25 @@ export function ViewsTabBar() {
   };
 
   return (
-    <div className="flex items-center gap-2 border-t bg-card/80 px-2 py-1.5 backdrop-blur">
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+    <div className="relative flex items-center gap-2 border-t bg-card/80 px-2 py-1.5 backdrop-blur">
+      {/* Degradados: dicen que la tira sigue, sin mostrar un corte seco. */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-gradient-to-r from-card to-transparent" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-gradient-to-l from-card to-transparent" />
+      {/* La tira scrollea, pero sin cortar pestañas a la mitad: `snap` alinea la
+          pestaña al borde y los degradados laterales avisan que hay más. Antes,
+          con muchas vistas, se veía una pestaña partida («…elo») pegada al panel
+          y parecía un error de layout. */}
+      <div
+        ref={tiraRef}
+        className="flex min-w-0 flex-1 snap-x snap-mandatory items-center gap-1 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {views.map((v) => {
           const active = v.id === activeViewId;
           const editing = editingId === v.id;
           return (
             <div
               key={v.id}
+              data-activa={active ? "true" : undefined}
               draggable={!v.builtin && !editing}
               onDragStart={() => !v.builtin && setDragId(v.id)}
               onDragEnd={() => {
@@ -106,7 +125,9 @@ export function ViewsTabBar() {
                 setDragId(null);
                 setDropTargetId(null);
               }}
+              // `snap-start`: la pestaña queda alineada, nunca cortada.
               className={cn(
+                "snap-start",
                 "group flex shrink-0 items-center gap-1 rounded-lg border py-1 pl-2.5 pr-1 text-xs transition-colors",
                 !v.builtin && "cursor-grab active:cursor-grabbing",
                 dropTargetId === v.id && "ring-2 ring-primary/50",

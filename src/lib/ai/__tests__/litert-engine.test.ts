@@ -18,6 +18,7 @@ import {
   getEngine,
   createLitertConversation,
   litertGenerate,
+  releaseLitertContext,
 } from "../litert-engine";
 
 /** Stream falso: emite chunks con la forma { content: [{type:"text", text}] }. */
@@ -162,5 +163,93 @@ describe("createLitertConversation / litertGenerate", () => {
     expect(createConversation).toHaveBeenCalledWith(
       expect.objectContaining({ preface: { messages: [{ role: "system", content: "SYS" }] } })
     );
+  });
+});
+
+/**
+ * El engine C++ guarda UN solo contexto procesado: abrir una conversación sin
+ * cerrar la anterior moría con `RET_CHECK ... !HasProcessedContext()`. Pasaba al
+ * lanzar una tarea suelta (p.ej. «Extrae los drivers») con el chat del agente
+ * abierto. Estas pruebas son el freno de ese incidente.
+ */
+describe("un solo contexto vivo por engine", () => {
+  /** Conversación falsa: cuenta sus delete y responde algo fijo. */
+  const fakeConvo = (text = "ok") => ({
+    sendMessageStreaming: vi.fn((_msg: string) => fakeStream([text])),
+    cancel: vi.fn(),
+    delete: vi.fn(async () => {}),
+  });
+
+  it("crear una conversación libera la anterior", async () => {
+    const primera = fakeConvo();
+    const segunda = fakeConvo();
+    createConversation.mockResolvedValueOnce(primera).mockResolvedValueOnce(segunda);
+
+    await createLitertConversation("m.litertlm", "SYS A");
+    await createLitertConversation("m.litertlm", "SYS B");
+
+    expect(primera.delete).toHaveBeenCalledTimes(1);
+    expect(segunda.delete).not.toHaveBeenCalled();
+  });
+
+  it("una tarea suelta (litertGenerate) cierra su conversación al terminar", async () => {
+    const suelta = fakeConvo("resp");
+    createConversation.mockResolvedValue(suelta);
+    await litertGenerate("m.litertlm", [{ role: "user", content: "hola" }]);
+    expect(suelta.delete).toHaveBeenCalledTimes(1);
+  });
+
+  it("si le roban el slot, la conversación se reabre y reenvía el historial", async () => {
+    const chat1 = fakeConvo("primera respuesta");
+    const suelta = fakeConvo("artefacto");
+    const chat2 = fakeConvo("segunda respuesta");
+    createConversation
+      .mockResolvedValueOnce(chat1)
+      .mockResolvedValueOnce(suelta)
+      .mockResolvedValueOnce(chat2);
+
+    const convo = await createLitertConversation("m.litertlm", "SYS");
+    expect(await convo.send("primer turno")).toBe("primera respuesta");
+
+    // En medio del bucle, una generación suelta toma el engine.
+    await litertGenerate("m.litertlm", [{ role: "user", content: "generá" }]);
+
+    // El siguiente envío NO explota: reabre con el mismo preface y lleva el hilo.
+    expect(await convo.send("segundo turno")).toBe("segunda respuesta");
+    expect(createConversation).toHaveBeenLastCalledWith(
+      expect.objectContaining({ preface: { messages: [{ role: "system", content: "SYS" }] } })
+    );
+    const enviado = chat2.sendMessageStreaming.mock.calls[0][0];
+    expect(enviado).toContain("primer turno");
+    expect(enviado).toContain("primera respuesta");
+    expect(enviado.endsWith("segundo turno")).toBe(true);
+  });
+
+  it("releaseLitertContext libera la conversación viva sin recrear el engine", async () => {
+    const viva = fakeConvo();
+    createConversation.mockResolvedValue(viva);
+    await createLitertConversation("m.litertlm", "SYS");
+    releaseLitertContext();
+    await new Promise((r) => setTimeout(r, 0)); // la cola es asíncrona
+    expect(viva.delete).toHaveBeenCalledTimes(1);
+    expect(EngineCreate).toHaveBeenCalledTimes(1); // el modelo sigue cargado
+  });
+
+  it("si el RET_CHECK del contexto igual salta, recrea el engine y reintenta", async () => {
+    const buena = fakeConvo();
+    createConversation
+      .mockRejectedValueOnce(
+        new Error("RET_CHECK failure (context_handler.h:182) !HasProcessedContext()")
+      )
+      .mockResolvedValueOnce(buena);
+
+    const convo = await createLitertConversation("m.litertlm", "SYS");
+    expect(await convo.send("hola")).toBe("ok");
+    expect(EngineCreate).toHaveBeenCalledTimes(2); // engine recreado tras el RET_CHECK
+  });
+
+  it("un error de creación que NO es del contexto se propaga", async () => {
+    createConversation.mockRejectedValueOnce(new Error("out of memory"));
+    await expect(createLitertConversation("m.litertlm")).rejects.toThrow("out of memory");
   });
 });

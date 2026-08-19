@@ -32,15 +32,39 @@ import {
  * tokenizador en el renderer, una cuenta de tokens sería una mentira precisa.
  * Es la misma unidad que ya usan los recortes del contexto.
  */
-export const RUN_BUDGET = 24_000;
+export const RUN_BUDGET = 6_000;
+
+/** Caracteres por token que se asumen al traducir la ventana del modelo (español ≈ 3,5). */
+const CHARS_POR_TOKEN = 3.5;
+/**
+ * Parte de la ventana que puede gastarse LEYENDO. El resto queda para el system,
+ * el protocolo, las observaciones y la respuesta: si se reparte todo a lecturas,
+ * el motor corta con «Too many tokens requested» a la segunda vista.
+ */
+const FRACCION_LECTURA = 0.35;
+
+/**
+ * Presupuesto derivado de la ventana REAL del modelo (Ajustes → maxTokens, 4 096
+ * por defecto). Antes era un número fijo de 24 000 caracteres —cómodo para la
+ * nube, imposible para el motor local— y la corrida moría a mitad de camino.
+ */
+export function budgetFromWindow(maxTokens: number | undefined): number {
+  const ventana = Math.max(512, maxTokens || 4096);
+  return Math.max(1500, Math.round(ventana * CHARS_POR_TOKEN * FRACCION_LECTURA));
+}
 
 /** Herramientas de lectura que el agente puede pedir. */
 export type ToolCall =
   | { tool: "list_views" }
   | { tool: "read_view"; name: string }
+  /** Varias vistas en UN turno: cada turno del modelo local cuesta ~35 s. */
+  | { tool: "read_views"; names: string[] }
   | { tool: "search_model"; term: string };
 
-export const READ_TOOLS = ["list_views", "read_view", "search_model"] as const;
+export const READ_TOOLS = ["list_views", "read_view", "read_views", "search_model"] as const;
+
+/** Vistas que se pueden leer de una sola vez (más no entra en la ventana). */
+export const MAX_LECTURAS_POR_LOTE = 3;
 
 export interface RunDeps {
   uid: () => string;
@@ -83,6 +107,23 @@ export function applyToolCall(
   if (call.tool === "list_views") {
     const inv = listViews(cat);
     return { state, observation: `Vistas del proyecto:\n${formatInventory(inv)}` };
+  }
+
+  if (call.tool === "read_views") {
+    // Lote: mismo efecto que N `read_view` seguidos, pero en UN turno del modelo.
+    // Con ~35 s por turno, leer tres vistas de a una cuesta dos minutos de reloj.
+    const nombres = call.names.slice(0, MAX_LECTURAS_POR_LOTE);
+    if (!nombres.length) {
+      return { state, observation: "read_views necesita al menos un nombre en `names`." };
+    }
+    let acc = state;
+    const partes: string[] = [];
+    for (const nombre of nombres) {
+      const r = applyToolCall(acc, { tool: "read_view", name: nombre }, cat);
+      acc = r.state;
+      partes.push(r.observation);
+    }
+    return { state: acc, observation: partes.join("\n\n") };
   }
 
   if (call.tool === "read_view") {
@@ -180,9 +221,72 @@ export function unknownPlanSources(plan: PlanPause, cat: Catalog): string[] {
 }
 
 /**
- * Registra el plan propuesto y deja la corrida esperando al humano. Las fuentes
- * se validan contra el catálogo ANTES de molestar a nadie: un plan que cita una
- * vista inexistente es un error del modelo, no una decisión del humano.
+ * Vistas con contenido que la corrida todavía NO miró (ni leyó ni tenía pineadas).
+ * Es la medida del sesgo: un plan cuyas secciones salen todas de una vista cuando
+ * había otras cinco sin abrir no es un plan, es lo primero que encontró.
+ */
+export function unreadViews(state: AgentRunState, cat: Catalog): string[] {
+  const vistos = new Set(state.read.map(normalizeName));
+  return listViews(cat)
+    .filter((v) => !v.empty && !v.pinned && !vistos.has(normalizeName(v.name)))
+    .map((v) => v.name);
+}
+
+/**
+ * Cuántas vistas conviene haber mirado antes de planificar: hasta 3, o las que
+ * haya si son menos. Más que eso es tiranía sobre proyectos chicos; menos, el
+ * sesgo de la primera vista.
+ */
+export function readTarget(cat: Catalog): number {
+  const conContenido = listViews(cat).filter((v) => !v.empty).length;
+  return Math.min(3, conContenido);
+}
+
+/** Veces que se le puede devolver el plan por cobertura antes de aceptarlo igual. */
+export const MAX_RECHAZOS_POR_COBERTURA = 2;
+
+/**
+ * Vistas que el plan CITA pero la corrida nunca abrió. Es la contradicción que
+ * vio el humano en la app: el plan prometía «C4 · Contenedores» y «BPMN · Gestión»
+ * como fuentes de dos secciones, y la cobertura decía que sólo se había leído la
+ * vista DDD. Una fuente sin nota detrás no se puede citar: al consolidar, esa
+ * sección se escribiría de memoria (o sea, inventada).
+ *
+ * Las pineadas no cuentan: ya están en el contexto del turno.
+ */
+export function unreadPlanSources(
+  plan: PlanPause,
+  state: AgentRunState,
+  cat: Catalog
+): string[] {
+  const leidas = new Set(state.read.map(normalizeName));
+  const pineadas = new Set(
+    cat.views.filter((v) => v.pinned).map((v) => normalizeName(v.name))
+  );
+  const vistas = new Map(cat.views.map((v) => [normalizeName(v.name), v.name]));
+  const citadas = new Set(plan.sections.flatMap((sec) => sec.sources));
+  const faltan: string[] = [];
+  for (const fuente of citadas) {
+    const n = normalizeName(fuente);
+    // Sólo se exige para VISTAS: un documento adjunto o «Modelo» genérico no se
+    // lee con `read_view`.
+    const real = vistas.get(n) ?? [...vistas.keys()].find((k) => k.includes(n) || n.includes(k));
+    if (!real) continue;
+    const clave = normalizeName(vistas.get(real as string) ?? (real as string));
+    if (!leidas.has(clave) && !pineadas.has(clave)) {
+      faltan.push(vistas.get(clave) ?? fuente);
+    }
+  }
+  return Array.from(new Set(faltan));
+}
+
+/**
+ * Registra el plan propuesto y deja la corrida esperando al humano. Dos
+ * validaciones ANTES de molestar a nadie: que las fuentes existan (un plan que
+ * cita una vista inexistente es un error del modelo) y que el agente haya mirado
+ * lo suficiente — si queda presupuesto y hay vistas sin abrir, se le devuelve el
+ * plan una vez o dos con la lista de lo que se está perdiendo. Después se acepta:
+ * el humano decide, y para eso la tarjeta le muestra la cobertura.
  */
 export function registerPlan(
   state: AgentRunState,
@@ -202,7 +306,59 @@ export function registerPlan(
   if (!plan.sections.length) {
     return { state, observation: "El plan no tiene secciones: proponé al menos una." };
   }
+
+  const rechazos = state.planRejections ?? 0;
+
+  // 1) El plan no puede citar lo que no leyó: eso no es un plan, es una promesa.
+  const citadasSinLeer = unreadPlanSources(plan, state, cat);
+  if (citadasSinLeer.length && state.budgetLeft > 0 && rechazos < MAX_RECHAZOS_POR_COBERTURA) {
+    return {
+      state: { ...state, planRejections: rechazos + 1 },
+      observation: `El plan cita ${citadasSinLeer
+        .map((v) => `"${v}"`)
+        .join(", ")} pero no las leíste. Leelas con read_view y después proponé el plan (o sacá esas secciones).`,
+    };
+  }
+
+  // 2) Y no se planifica con la primera vista que se abrió habiendo otras.
+  const sinLeer = unreadViews(state, cat);
+  const faltaMirar =
+    state.read.length < readTarget(cat) &&
+    sinLeer.length > 0 &&
+    state.budgetLeft > 0 &&
+    rechazos < MAX_RECHAZOS_POR_COBERTURA;
+  if (faltaMirar) {
+    return {
+      state: { ...state, planRejections: rechazos + 1 },
+      observation: `Todavía no miraste ${sinLeer.slice(0, 5).map((v) => `"${v}"`).join(", ")}${
+        sinLeer.length > 5 ? ` y ${sinLeer.length - 5} más` : ""
+      }. Leé al menos una de esas antes de planificar, o proponé el plan de nuevo diciendo en una sección por qué no aplican.`,
+    };
+  }
   return { state: { ...state, plan, pause: plan } };
+}
+
+/**
+ * Plan de rescate cuando el modelo NO logra escribir un plan válido (turnos con
+ * JSON roto). Se arma con lo que la corrida YA leyó —nunca con vistas sin abrir:
+ * un plan que cita lo que no se leyó miente— una sección por fuente. Devuelve
+ * null si no hay nada leído: ahí no hay plan honesto posible y se corta.
+ *
+ * No se auto-aprueba: sigue pasando por el humano (spec 005). Lo que evita es la
+ * calle sin salida «formato inválido tres veces» sin ofrecer nada.
+ */
+export function fallbackPlan(
+  state: AgentRunState,
+  opts?: { title?: string; artifactKind?: string }
+): PlanPause | null {
+  const fuentes = Array.from(new Set(state.read)).filter(Boolean);
+  if (!fuentes.length) return null;
+  return {
+    kind: "plan",
+    title: opts?.title?.trim() || state.plan?.title || state.goal || "Artefacto",
+    artifactKind: opts?.artifactKind || state.plan?.artifactKind || "markdown",
+    sections: fuentes.map((f) => ({ title: `Qué aporta ${f}`, sources: [f] })),
+  };
 }
 
 export function approvePlan(state: AgentRunState): AgentRunState {
@@ -337,7 +493,7 @@ export function consolidationPrompt(state: AgentRunState): string {
     return [
       `### ${nombre}`,
       ...hechos,
-      nodos.length ? `  - Elementos citables: ${nodos.join(", ")}.` : "",
+      nodos.length ? `  - Evidencia disponible para citar (NO son hallazgos, no los copies como viñetas): ${nodos.join(", ")}.` : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -378,7 +534,17 @@ export function consolidationPrompt(state: AgentRunState): string {
     ...decisiones,
     ...cobertura,
     "",
-    'Cita cada afirmación con una línea "  ↳ Fuente › Elemento1, Elemento2" usando SOLO las fuentes y elementos de arriba. Un hecho que aparece en varias fuentes va UNA vez, con todas sus fuentes.',
+    "REGLAS DE ESCRITURA (esto es lo que separa un documento útil de un volcado):",
+    "1. PROHIBIDO listar los elementos del modelo. 'Registrar producto', 'Ajustar precio' son NODOS del diagrama, no hallazgos: el humano ya los ve en el lienzo. Copiarlos como viñetas convierte el documento en basura.",
+    "2. Cada punto es una AFIRMACIÓN sobre el sistema —una exigencia, un riesgo, una restricción, una decisión— redactada en una frase completa, con su consecuencia. Los elementos son la EVIDENCIA que la sostiene, y van en la cita.",
+    "3. Forma exacta de cada punto (viñeta + cita en su propia línea):",
+    "   - **Latencia de cobro ≤ 200 ms** — el cobro es sincrónico contra la pasarela, así que el usuario espera en pantalla; por encima de ese umbral se pierde la venta.",
+    "     ↳ Pagos › Cobrar prima, Prima cobrada",
+    "4. Si un punto se puede reemplazar por el nombre de un nodo sin perder información, NO es un punto: borralo.",
+    "5. Usá SOLO las fuentes y los elementos listados arriba; nombralos igual (con sus tildes).",
+    "6. Un hecho que aparece en varias fuentes va UNA vez, con todas sus fuentes en la misma cita.",
+    "7. Nada de generalidades de manual ('el sistema debe ser escalable') sin evidencia que las sostenga.",
+    "8. Mejor 5 puntos con sustancia que 20 nombres sueltos.",
   ].join("\n");
 }
 
@@ -440,4 +606,107 @@ export function stripInvalidCitations(markdown: string, invalid: string[]): stri
       return !nodos.some((n) => malas.has(normalizeName(`${(m[1] ?? "").trim()} › ${n}`)) || malas.has(n));
     })
     .join("\n");
+}
+
+/**
+ * Memoria de la corrida para el system de un turno REANUDADO: qué leyó, qué anotó,
+ * qué plan propuso y qué decidió el humano.
+ *
+ * Reanudar abre una conversación nueva (la del modelo no es serializable y el
+ * usuario pudo recargar). Sin este bloque el modelo arrancaba en blanco —«no
+ * tengo el plan anterior ni el contexto de la revisión», dijo en una corrida
+ * real— y volvía a leer lo que ya había leído, gastando el presupuesto dos veces.
+ */
+export function memoryBlock(state: AgentRunState, limit = 2500): string {
+  if (!state.notes.length && !state.plan && !state.decisions.length) return "";
+  const bloques: string[] = ["\n\n### Lo que YA hiciste en esta corrida (no lo repitas)"];
+
+  if (state.read.length) {
+    bloques.push(`Vistas ya leídas: ${state.read.map((v) => `"${v}"`).join(", ")}.`);
+  }
+  for (const n of state.notes) {
+    const nodos = n.nodes?.length ? ` Elementos: ${n.nodes.slice(0, 25).join(", ")}.` : "";
+    bloques.push(`- ${n.source.name}: ${n.facts.join(" ")}${nodos}`);
+  }
+  if (state.plan) {
+    bloques.push(
+      `Plan propuesto: «${state.plan.title}» — ${state.plan.sections
+        .map((sec) => `${sec.title} ← ${sec.sources.join(", ")}`)
+        .join(" · ")}.`
+    );
+  }
+  for (const d of state.decisions) {
+    bloques.push(`Decisión del humano: ${d.question} → ${d.answer}${d.assumed ? " (supuesto)" : ""}.`);
+  }
+  const texto = bloques.join("\n");
+  return texto.length > limit ? `${texto.slice(0, limit)}\n…(memoria recortada)` : texto;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Progreso legible                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Una línea humana para un paso de la corrida. Existe porque con el modelo local
+ * cada turno tarda y el chat mostraba una burbuja vacía con «El agente está
+ * razonando…» durante minutos: el usuario no sabía si estaba leyendo, planificando
+ * o colgado. El mismo dato que alimenta la traza sirve para decirlo en vivo.
+ */
+export function describeStep(step: { type: string; tool?: string; source?: string; content: string }): string {
+  switch (step.type) {
+    case "read":
+      if (step.tool === "list_views") return "Mirando qué vistas tiene el proyecto…";
+      if (step.tool === "read_views" && step.source) {
+        const n = step.source.split(",").length;
+        return `Leyendo ${n} vistas: ${step.source}…`;
+      }
+      return step.source ? `Leyendo «${step.source}»…` : "Leyendo una vista…";
+    case "search":
+      return step.source ? `Buscando «${step.source}» en el modelo…` : "Buscando en el modelo…";
+    case "plan":
+      return "Preparando el plan del artefacto…";
+    case "question":
+      return "Tiene una duda para vos…";
+    case "decision":
+      return step.content;
+    case "consolidate":
+      return "Consolidando lo leído y citando fuentes…";
+    case "action":
+      return step.tool?.startsWith("generate") ? "Escribiendo el artefacto…" : `Ejecutando ${step.tool ?? "una acción"}…`;
+    case "thought":
+      return "Pensando…";
+    default:
+      return step.content || "Trabajando…";
+  }
+}
+
+/**
+ * ¿El artefacto trae citas? Si el modelo no emitió ninguna, el documento no es
+ * auditable — y eso se DICE, no se disimula: inventar las citas desde el código
+ * sería peor que no tenerlas (parecerían verificadas sin serlo).
+ */
+export function hasCitations(markdown: string): boolean {
+  return /↳\s*\S/.test(markdown || "");
+}
+
+/**
+ * ¿El artefacto es un volcado de nombres del modelo? Pasó en la app: «Registrar
+ * producto», «Ajustar precio», «Retirar producto»… veinte viñetas que son los
+ * nodos del diagrama, no hallazgos. El humano ya los ve en el lienzo; repetirlos
+ * en un documento no aporta nada y lo hace parecer serio sin serlo.
+ *
+ * Heurística deliberadamente conservadora: sólo grita cuando la mayoría de las
+ * viñetas cortas coinciden con nombres de elementos ya conocidos.
+ */
+export function looksLikeNodeDump(markdown: string, state: AgentRunState): boolean {
+  const nombres = new Set(
+    state.notes.flatMap((n) => (n.nodes ?? []).map((x) => normalizeName(x))).filter(Boolean)
+  );
+  if (nombres.size < 3) return false;
+  const vinetas = (markdown.match(/^\s*[-*]\s+.+$/gm) ?? []).map((l) =>
+    normalizeName(l.replace(/^\s*[-*]\s+/, "").replace(/\*\*/g, "").split(/[—:.]/)[0])
+  );
+  if (vinetas.length < 4) return false;
+  const copiadas = vinetas.filter((v) => v && nombres.has(v)).length;
+  return copiadas / vinetas.length > 0.5;
 }

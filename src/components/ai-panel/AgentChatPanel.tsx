@@ -34,10 +34,20 @@ import {
   HelpCircle,
   CheckCheck,
   Layers,
+  Plus,
 } from "lucide-react";
-import { getDefinition } from "@/lib/artifacts/registry";
+import { documentDefinitions, getDefinition } from "@/lib/artifacts/registry";
 import { resolveContextRevisions } from "@/lib/artifacts/versioning";
+import { iconForArtifact, iconForArtifactKind } from "./artifact-icon";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Markdown } from "./Markdown";
+import { formatElapsed } from "@/lib/duration";
 import type { AgentStep, AgentDocument, Artifact, ChatMessage } from "@/lib/agent-types";
 
 /**
@@ -87,17 +97,31 @@ function StepIcon({ type }: { type: AgentStep["type"] }) {
 function RunPauseCard({
   message,
   busy,
+  viewNames,
   onDecide,
   onCancel,
 }: {
   message: ChatMessage;
   busy: boolean;
+  /** Vistas del proyecto: para contrastar contra lo que el agente leyó. */
+  viewNames: string[];
   onDecide: (d: { kind: "approve" } | { kind: "adjust"; feedback: string } | { kind: "answer"; answer: string }) => void;
   onCancel: () => void;
 }) {
   const [feedback, setFeedback] = useState("");
   const [ajustando, setAjustando] = useState(false);
   const pause = message.run?.pause;
+  const leidas = message.run?.read ?? [];
+  const norm = (t: string) => t.trim().toLowerCase();
+  const pendientes = viewNames.filter((v) => !leidas.some((r) => norm(r) === norm(v)));
+  const citadasSinAbrir =
+    pause?.kind === "plan"
+      ? Array.from(new Set(pause.sections.flatMap((sec) => sec.sources))).filter(
+          (f) =>
+            viewNames.some((v) => norm(v) === norm(f)) &&
+            !leidas.some((r) => norm(r) === norm(f))
+        )
+      : [];
   if (!pause) return null;
 
   if (pause.kind === "plan") {
@@ -116,6 +140,28 @@ function RunPauseCard({
             </li>
           ))}
         </ul>
+        {/* La cobertura, ANTES de aprobar: un plan monofuente sobre un proyecto de
+            ocho vistas se ve acá, no cuando el artefacto ya está en el lienzo. */}
+        <div className="mt-1.5 space-y-1 text-2xs text-muted-foreground">
+          <p>
+            <span className="text-foreground/80">Vistas que abrió:</span>{" "}
+            {leidas.length ? leidas.join(", ") : "ninguna todavía"}.
+          </p>
+          {pendientes.length > 0 && (
+            <p>
+              <span className="text-foreground/80">Sin abrir:</span> {pendientes.join(", ")}. Si el
+              artefacto las necesita, pedíselas con «Ajustar…».
+            </p>
+          )}
+          {/* Contradicción posible: el plan promete una fuente que nunca abrió.
+              El agente ya lo tiene prohibido, pero si insiste se dice acá. */}
+          {citadasSinAbrir.length > 0 && (
+            <p className="text-destructive">
+              Ojo: el plan cita {citadasSinAbrir.join(", ")} y no las leyó — esas secciones saldrían
+              de memoria, no del modelo.
+            </p>
+          )}
+        </div>
         {ajustando ? (
           <div className="mt-2 space-y-1.5">
             <Textarea
@@ -236,7 +282,22 @@ export function AgentChatPanel() {
     removeAttachment,
   } = useAgent();
   const { views, injectedViews, injectedViewIds, toggleInject } = useViews();
+
+  // Cronómetro de la corrida: arranca cuando el agente se pone a trabajar y se
+  // reinicia en cada turno nuevo.
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!busy) return;
+    const desde = Date.now();
+    setElapsed(0);
+    const t = setInterval(() => setElapsed(Date.now() - desde), 1000);
+    return () => clearInterval(t);
+  }, [busy]);
   const [input, setInput] = useState("");
+  // Artefacto pedido con el menú «+». Sin esto el agente dependía de que la frase
+  // tuviera un verbo de generación: «Identifica riesgos y restricciones» sólo
+  // conversaba y nunca ponía nada en el lienzo.
+  const [requestedKind, setRequestedKind] = useState<string | null>(null);
   // Menú de mención "@" para incluir vistas como contexto.
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const MENTION_RE = /(^|\s)@([\p{L}\d_-]*)$/u;
@@ -310,15 +371,21 @@ export function AgentChatPanel() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
 
-  const canSend = !busy && (!!input.trim() || attachments.length > 0);
+  const canSend = !busy && (!!input.trim() || attachments.length > 0 || !!requestedKind);
 
   const submit = async () => {
     if (!canSend) return;
+    // Con el artefacto elegido, el texto es opcional (son instrucciones extra).
     // Si solo hay adjuntos sin texto, da una instrucción por defecto.
     const text =
-      input.trim() || "Analiza los documentos adjuntos y genera el artefacto correspondiente.";
+      input.trim() ||
+      (requestedKind
+        ? ""
+        : "Analiza los documentos adjuntos y genera el artefacto correspondiente.");
+    const kind = requestedKind ?? undefined;
     setInput("");
-    await sendMessage(text);
+    setRequestedKind(null);
+    await sendMessage(text, kind);
   };
 
   // Los chips muestran lo que de verdad se va a inyectar: la revisión vigente
@@ -338,7 +405,11 @@ export function AgentChatPanel() {
   return (
     <div
       className={cn(
-        "relative flex h-[60vh] w-full min-w-0 flex-col rounded-md transition-colors",
+        // Sin conversación el chat no necesita 60vh: reservaba media pantalla en
+        // blanco y empujaba «Modelo de Dominio» y «Elementos» fuera de la vista,
+        // obligando a scrollear el panel entero para llegar a ellos.
+        "relative flex w-full min-w-0 flex-col rounded-md transition-colors",
+        messages.length ? "h-[60vh]" : "h-[38vh]",
         dragOver && "ring-2 ring-primary ring-offset-1"
       )}
       onDragOver={onDragOver}
@@ -422,6 +493,7 @@ export function AgentChatPanel() {
                 <RunPauseCard
                   message={m}
                   busy={busy}
+                  viewNames={views.map((v) => v.name)}
                   onDecide={(d) => resumeRun(m.id, d)}
                   onCancel={() => cancelRun(m.id)}
                 />
@@ -438,7 +510,11 @@ export function AgentChatPanel() {
 
         {busy && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> El agente está razonando...
+            <Loader2 className="h-4 w-4 animate-spin" />
+            El agente está razonando…
+            {/* El cronómetro es la diferencia entre «va lento» y «se colgó»: con el
+                modelo local una corrida de varias lecturas pasa del minuto. */}
+            <span className="font-mono tabular-nums text-foreground/70">{formatElapsed(elapsed)}</span>
           </div>
         )}
       </div>
@@ -449,8 +525,10 @@ export function AgentChatPanel() {
           <span className="text-2xs text-muted-foreground">Contexto:</span>
           {contextArtifacts.map((a) => {
             const def = getDefinition(a.kind);
+            const Icon = iconForArtifact(a);
             return (
               <Badge key={a.id} variant="outline" className="gap-1 text-2xs">
+                <Icon className="h-3 w-3 text-primary" />
                 {def.label}
                 {a.revision && a.revision > 1 && (
                   <span className="font-semibold text-primary">v{a.revision}</span>
@@ -544,6 +622,30 @@ export function AgentChatPanel() {
               )}
             </div>
           )}
+          {/* Pedido explícito: el chip dice qué va a generar y se saca con la X. */}
+          {requestedKind && (
+            <div className="flex flex-wrap items-center gap-1 px-2 pt-2">
+              <Badge
+                variant="outline"
+                className="gap-1 border-primary/50 bg-primary/10 text-2xs text-primary"
+              >
+                {React.createElement(iconForArtifactKind(requestedKind), {
+                  className: "h-3 w-3",
+                })}
+                Generar: {getDefinition(requestedKind).label}
+                <button
+                  onClick={() => setRequestedKind(null)}
+                  className="ml-1 opacity-70 hover:opacity-100"
+                  title="Cancelar el pedido"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+              <span className="text-2xs text-muted-foreground">
+                el texto es opcional: son instrucciones extra
+              </span>
+            </div>
+          )}
           <Textarea
             value={input}
             onChange={(e) => onInputChange(e.target.value)}
@@ -562,13 +664,49 @@ export function AgentChatPanel() {
                 submit();
               }
             }}
-            placeholder="Pregunta, conversa o pide que diseñe/analice…  (escribe @ para incluir una vista)"
+            placeholder="Pregunta, conversa o pide que diseñe/analice…  (@ para incluir una vista · + para pedir un artefacto)"
             className="min-h-[52px] max-h-36 w-full resize-none border-0 bg-transparent px-3 py-2.5 text-sm shadow-none outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
             disabled={busy}
           />
 
-          {/* Barra inferior: adjuntar · opciones · enviar */}
+          {/* Barra inferior: pedir artefacto · adjuntar · enviar */}
           <div className="flex items-center gap-1 px-2 pb-2">
+            {/* «+»: elegir el artefacto en vez de esperar que la frase lo delate. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                  disabled={busy}
+                  title="Pedir un artefacto (documento o diagrama)"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              {/* Sólo documentos: los diagramas se diseñan en el lienzo o llegan
+                  por MCP, no hacía falta pedirlos desde acá. */}
+              <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
+                <DropdownMenuLabel className="flex items-center gap-2">
+                  <FileText className="h-3.5 w-3.5" /> Documentos
+                </DropdownMenuLabel>
+                {documentDefinitions().map((d) => {
+                  const Icon = iconForArtifactKind(d.kind, d.family);
+                  return (
+                    <DropdownMenuItem
+                      key={d.kind}
+                      onClick={() => setRequestedKind(d.kind)}
+                      title={d.description}
+                      className="gap-2"
+                    >
+                      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                      {d.label}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button
               variant="ghost"
               size="icon"

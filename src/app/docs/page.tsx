@@ -21,6 +21,8 @@ import {
   Boxes,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BetaBadge, SofkaCredits } from "@/components/layout/SofkaCredits";
+import { versionLabel } from "@/lib/credits";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -349,6 +351,20 @@ export default function DocsPage() {
                 <NotationSection notation={n} />
               </section>
             ))}
+
+            {/* ===== Acerca de: versión, canal y crédito de autoría ===== */}
+            <section id="acerca-de" className="scroll-mt-4 border-t pt-6">
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-lg font-semibold">Acerca de ProcessFlow Architect</h2>
+                <BetaBadge />
+              </div>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                Versión <code>{versionLabel()}</code>: el modelo, las vistas y el agente de
+                IA local siguen en evolución y el formato de los proyectos puede cambiar
+                entre versiones.
+              </p>
+              <SofkaCredits className="mt-4" />
+            </section>
           </div>
         </main>
       </div>

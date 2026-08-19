@@ -24,8 +24,10 @@ import {
   resolveNotations,
   type ResumeDecision,
 } from "@/lib/ai/litert-agent";
+import { releaseLitertContext } from "@/lib/ai/litert-engine";
+import { resolveArtifactRequest } from "@/lib/artifacts/request";
 import type { Catalog } from "@/lib/ai/agent-retrieval";
-import { unknownPlanSources } from "@/lib/ai/agent-run";
+import { unknownPlanSources, describeStep } from "@/lib/ai/agent-run";
 import { safeGraphToToon } from "@/lib/ai/graph-toon";
 import { extractDocumentText } from "@/lib/ai/document-extract";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
@@ -140,7 +142,8 @@ export interface AgentContextType {
   contextArtifactIds: string[];
   attachments: AgentDocument[];
 
-  sendMessage: (text: string) => Promise<void>;
+  /** `requestedKind`: artefacto elegido en el menú «+» (salta el gate de intención). */
+  sendMessage: (text: string, requestedKind?: string) => Promise<void>;
   /** Reanuda la corrida del mensaje con la decisión del humano (spec 005). */
   resumeRun: (messageId: string, decision: ResumeDecision) => Promise<void>;
   /** Descarta una corrida en espera sin generar nada. */
@@ -381,12 +384,21 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
 
   const clearContextArtifacts = useCallback(() => setContextArtifactIds([]), []);
 
-  const clearChat = useCallback(() => setMessages([]), []);
+  // Limpiar = arrancar de cero: se van los mensajes (y con ellos la corrida
+  // pausada, que viaja en `msg.run`), los adjuntos del próximo envío y el
+  // contexto que el motor local todavía tenía prefillado.
+  const clearChat = useCallback(() => {
+    setMessages([]);
+    setAttachments([]);
+    releaseLitertContext();
+  }, []);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, requestedKind?: string) => {
       const trimmed = text.trim();
-      if (!trimmed || busy) return;
+      // Con un artefacto pedido del menú «+» el texto puede ir vacío: el pedido
+      // ya dice qué generar.
+      if ((!trimmed && !requestedKind) || busy) return;
 
       const api = (window as any).electronAPI;
       // El motor LiteRT-LM corre en el renderer (WebGPU) y carga el modelo .litertlm
@@ -400,12 +412,17 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      // Con pedido del «+» y sin texto, la burbuja del usuario dice qué pidió
+      // (una burbuja vacía no cuenta nada en el historial).
+      const pedido = resolveArtifactRequest(requestedKind);
+      const visible = trimmed || (pedido ? `Generá «${pedido.label}»` : "");
+
       const usedContextIds = [...contextArtifactIds];
       const usedDocs = [...attachments];
       const userMsg: ChatMessage = {
         id: uid(),
         role: "user",
-        content: trimmed,
+        content: visible,
         createdAt: nowIso(),
         contextArtifactIds: usedContextIds.length ? usedContextIds : undefined,
         attachments: usedDocs.length
@@ -461,11 +478,31 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         const data = await runLitertAgent({
           modelFile: getSelectedLitertModelFile(),
           message: trimmed,
+          // Pedido explícito del menú «+»: el agente genera ese kind sí o sí.
+          requestedKind,
           history,
           graphData: graphData ?? undefined,
           views: views.map((v) => ({ name: v.name, kind: v.kind, notation: v.notation ?? DEFAULT_NOTATION_ID })),
           // Con catálogo el agente explora por partes y pide aprobación del plan.
           catalog,
+          // La ventana del modelo acota el system y el presupuesto de lectura:
+          // sin esto, el bucle llenaba el ring buffer y la corrida moría.
+          maxTokens: getGenerationConfig().maxTokens,
+          // Progreso en vivo: cada paso se pinta apenas ocurre. Con el modelo
+          // local un turno tarda, y la burbuja vacía no distingue «leyendo» de
+          // «colgado».
+          onStep: (step) =>
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      steps: [...(m.steps ?? []), step],
+                      content: streamed || describeStep(step),
+                    }
+                  : m
+              )
+            ),
           notations: notations.length ? notations : undefined,
           contextArtifacts: contextArtifacts.length ? contextArtifacts : undefined,
           documents: documents.length ? documents : undefined,
@@ -604,9 +641,21 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       }
 
       setBusy(true);
-      // La pausa se quita YA: la tarjeta desaparece del chat en cuanto se decide.
+      // La pausa se quita YA (la tarjeta desaparece en cuanto se decide) pero se
+      // deja escrito QUÉ se decidió: si no, el mensaje queda diciendo «revisá el
+      // plan» sin plan ni rastro, y no se entiende de dónde salió lo que sigue.
+      const rastro =
+        decision.kind === "approve"
+          ? "_(plan aprobado)_"
+          : decision.kind === "adjust"
+            ? `_(ajuste pedido: ${decision.feedback.trim()})_`
+            : decision.kind === "answer"
+              ? `_(respondiste: ${decision.answer === "__no-se__" ? "no sé" : decision.answer})_`
+              : `_(cancelado)_`;
       setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, run: undefined } : m))
+        prev.map((m) =>
+          m.id === messageId ? { ...m, run: undefined, content: `${m.content}\n\n${rastro}` } : m
+        )
       );
       const assistantId = uid();
       try {
@@ -620,6 +669,22 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           message: msg.run.goal,
           graphData: graphData ?? undefined,
           catalog,
+          maxTokens: getGenerationConfig().maxTokens,
+          // Progreso en vivo: cada paso se pinta apenas ocurre. Con el modelo
+          // local un turno tarda, y la burbuja vacía no distingue «leyendo» de
+          // «colgado».
+          onStep: (step) =>
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      steps: [...(m.steps ?? []), step],
+                      content: streamed || describeStep(step),
+                    }
+                  : m
+              )
+            ),
           run: msg.run,
           resume: decision,
           notations: resolveNotations({

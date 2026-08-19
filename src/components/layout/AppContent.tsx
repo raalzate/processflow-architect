@@ -360,8 +360,12 @@ export function AppContent() {
   }
     
   return (
-    <SidebarInset>
-      <div className="flex flex-col h-screen bg-background font-body">
+    // `min-w-0`: sin esto la columna de la app no puede encogerse (es un ítem flex
+    // al lado del panel), el header la empuja más ancha que la pantalla y aparece
+    // un scroll horizontal de TODA la app. `overflow-x-hidden` es el cinturón:
+    // ningún hijo puede volver a arrastrar la pantalla entera.
+    <SidebarInset className="min-w-0 overflow-x-hidden">
+      <div className="flex h-screen min-w-0 flex-col overflow-x-hidden bg-background font-body">
         <McpImportBridge />
         <CommandPalette />
         <MemoizedAppHeader />
