@@ -4,10 +4,10 @@ Lo imprime el hook `SessionStart`. Sirve para no releer el repo entero para resp
 Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verificado con un comando**;
 lo que se supone va en "deuda conocida".
 
-- **Fecha del último gate completo:** 2026-08-18
+- **Fecha del último gate completo:** 2026-08-19
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.4.1 (tag `v0.4.1` → instaladores por `release-build.yml`)
+- **Versión publicada:** 0.5.0 (tag `v0.5.0` → instaladores por `release-build.yml`)
 
 ## Señales
 
@@ -18,8 +18,10 @@ lo que se supone va en "deuda conocida".
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
 | Typecheck | `npm run typecheck` | verde (renderer + electron) |
-| Tests | `npm run test:coverage` | verde — 68 archivos, 1094 pruebas (cobertura `src/lib` 97,3 % stmts; `ai/agent-run.ts` 98,8 %, `ai/litert-engine.ts` 98,2 %, `ai/litert-agent.ts` 93,2 %) |
-| E2E del MCP (stdio) | script manual contra `mcp-server/index.ts` | verde — 20 tools; arnés completo (ingesta → citas → ambigüedades → calidad → revisión → export → install_skill) |
+| Tests | `npm run test:coverage` | verde — 71 archivos, 1193 pruebas (cobertura `src/lib` 97,3 % stmts) |
+| E2E del MCP (stdio) | script manual contra `mcp-server/index.ts` | verde — arnés completo (ingesta → citas → ambigüedades → calidad → revisión → export → install_skill) |
+| Lectura de la app por MCP (modo app) | script manual por CDP contra la app viva | verde — 30 tools registradas; `list_artifacts`, `get_artifact` (con revisión), `list_views`, `get_view` (+`importAs`) y sus errores con opciones, también contra OTRO proyecto |
+| Editor de artefactos con documento largo | script manual por CDP contra la app viva | verde — 11 021 caracteres: índice de 49 encabezados con salto, buscar/reemplazar (72 coincidencias), stats, borrador recuperable |
 | Build de producción | `npm run build` | verde |
 
 Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
@@ -33,7 +35,8 @@ Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
 | El lienzo se verifica a ojo | — | no hay test de render; la simbología se cubre por el registro (`notation-symbols`, `notation-contrast`) y la geometría por `link-geom` |
 | Sin test de frontera de red | — | nada prueba que los tests no hagan llamadas externas |
 | Sin dobles de prueba para LiteRT ni E2E del lienzo | — | la UI se verifica a mano (`npm run electron-dev`) |
-| Modo app del MCP sin probar end-to-end | `main/services/mcp-http.ts` | el arnés está probado por stdio y por unidad; `get_app_state` con la app viva, `export_as_view` y la banda vacía en el lienzo se verifican a mano |
+| Transporte HTTP del MCP sin probar end-to-end | `main/services/mcp-http.ts` | el registro y la LECTURA ya se probaron contra la app viva por el transporte en memoria (playground); el puerto HTTP, `export_as_view` y la banda vacía en el lienzo se verifican a mano |
+| El puente IPC de lectura no se prueba con Electron vivo | `main/services/mcp-app-read.ts` | timeout y ventana cerrada están cubiertos por unidad con un `readApp` falso |
 | `onnxruntime-node` sigue en `overrides` | `package.json` | no se usa para generar (crash nativo con Gemma); ver `docs/harness/gotchas.md` |
 | Cobertura acotada a `src/lib/**` | `vitest.config.ts` | `main/`, `mcp-server/` y la UI no tienen cobertura exigida |
 
