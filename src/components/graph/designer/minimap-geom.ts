@@ -48,6 +48,27 @@ export function canvasWorldSize(
   };
 }
 
+/**
+ * Tamaño en px del `<svg>` del lienzo y su `viewBox`.
+ *
+ * El lienzo nunca puede ser MÁS CHICO que el viewport: si lo es, queda una
+ * franja del fondo de la app a la derecha (o abajo) que se ve como un lienzo
+ * partido en dos tonos, y encima no acepta que se suelte nada. Vive acá —y no
+ * dentro del componente— porque el mismo cálculo se aplica dos veces: al
+ * renderizar y en el `ResizeObserver`, que escribe los atributos del SVG en el
+ * mismo frame del resize para que no haya un cuadro con el hueco.
+ */
+export function canvasPixelSize(
+  world: { width: number; height: number },
+  zoom: number,
+  viewport: { w: number; h: number }
+): { w: number; h: number; viewBox: string } {
+  const z = zoom > 0 ? zoom : 1;
+  const w = Math.max(world.width * z, viewport.w || 0);
+  const h = Math.max(world.height * z, viewport.h || 0);
+  return { w, h, viewBox: `0 0 ${w / z} ${h / z}` };
+}
+
 /** Punto del minimapa (px) → coordenadas del lienzo (deshace la escala). */
 export function miniPointToCanvas(
   mx: number,

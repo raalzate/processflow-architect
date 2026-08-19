@@ -64,7 +64,7 @@ import {
   type LayoutStrategy,
 } from "@/lib/mcp/layout-presets";
 import { ArrangeMenu } from "./ArrangeMenu";
-import { canvasWorldSize } from "./minimap-geom";
+import { canvasWorldSize, canvasPixelSize } from "./minimap-geom";
 import {
   describeNodeTask,
   linkLabelTask,
@@ -1207,12 +1207,33 @@ export const ComponentDesigner: React.FC<{
     [nodes, notationId]
   );
   // Lado del lienzo en px: nunca menor que el viewport (ver CANVAS_SIZE).
-  const canvasPxW = Math.max(world.width * zoom, viewport.w);
-  const canvasPxH = Math.max(world.height * zoom, viewport.h);
+  const px = canvasPixelSize(world, zoom, viewport);
+  const canvasPxW = px.w;
+  const canvasPxH = px.h;
   const syncViewport = useCallback(() => {
     const w = canvasWrapperRef.current;
     if (!w) return;
     setViewport({ left: w.scrollLeft, top: w.scrollTop, w: w.clientWidth, h: w.clientHeight });
+  }, []);
+  // El resize se ve ANTES de que React re-renderice con el viewport nuevo, y en
+  // ese cuadro el SVG queda corto: se ve el fondo de la app al costado, como un
+  // lienzo partido en dos tonos. Así que en el propio callback del observer se
+  // escriben los atributos del SVG con la medida ya buena; el estado va detrás.
+  const worldRef = useRef(world);
+  worldRef.current = world;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const stretchSvgNow = useCallback(() => {
+    const wrapper = canvasWrapperRef.current;
+    const svg = svgRef.current;
+    if (!wrapper || !svg) return;
+    const r = canvasPixelSize(worldRef.current, zoomRef.current, {
+      w: wrapper.clientWidth,
+      h: wrapper.clientHeight,
+    });
+    svg.setAttribute("width", String(r.w));
+    svg.setAttribute("height", String(r.h));
+    svg.setAttribute("viewBox", r.viewBox);
   }, []);
 
   // Centra el viewport en un punto del lienzo (coordenadas del viewBox). Lo usa el
@@ -1261,7 +1282,7 @@ export const ComponentDesigner: React.FC<{
   const bump = useCallback(() => setRevision((r) => r + 1), []);
 
   const svgRef = useRef<SVGSVGElement>(null);
-  const canvasWrapperRef = useRef<HTMLDivElement>(null);
+  const canvasWrapperRef = useRef<HTMLDivElement | null>(null);
   const nodesRef = useRef(nodes);
   const linksRef = useRef(links);
   const connectFromRef = useRef<string | null>(null);
@@ -1287,48 +1308,65 @@ export const ComponentDesigner: React.FC<{
     marqueeRef.current = marquee;
   }, [marquee]);
 
-  // Zoom con Ctrl/⌘ + rueda (mantiene el punto bajo el cursor). Se registra como
-  // listener nativo NO pasivo para poder hacer preventDefault del scroll del navegador.
-  useEffect(() => {
+  // Zoom con Ctrl/⌘ + rueda (mantiene el punto bajo el cursor). Es listener nativo
+  // NO pasivo: hace falta `preventDefault` para que el navegador no scrollee.
+  const onWheelNative = useCallback((e: WheelEvent) => {
     const wrapper = canvasWrapperRef.current;
     if (!wrapper) return;
-    const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return; // rueda normal = scroll/pan
-      e.preventDefault();
-      setZoom((prev) => {
-        const next = clampZoom(prev * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
-        if (next === prev) return prev;
-        // Mantén el punto del cursor anclado al hacer zoom.
-        const rect = wrapper.getBoundingClientRect();
-        const cx = e.clientX - rect.left + wrapper.scrollLeft;
-        const cy = e.clientY - rect.top + wrapper.scrollTop;
-        const ratio = next / prev;
-        requestAnimationFrame(() => {
-          wrapper.scrollLeft = cx * ratio - (e.clientX - rect.left);
-          wrapper.scrollTop = cy * ratio - (e.clientY - rect.top);
-        });
-        return next;
+    if (!e.ctrlKey && !e.metaKey) return; // rueda normal = scroll/pan
+    e.preventDefault();
+    setZoom((prev) => {
+      const next = clampZoom(prev * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+      if (next === prev) return prev;
+      // Mantén el punto del cursor anclado al hacer zoom.
+      const rect = wrapper.getBoundingClientRect();
+      const cx = e.clientX - rect.left + wrapper.scrollLeft;
+      const cy = e.clientY - rect.top + wrapper.scrollTop;
+      const ratio = next / prev;
+      requestAnimationFrame(() => {
+        wrapper.scrollLeft = cx * ratio - (e.clientX - rect.left);
+        wrapper.scrollTop = cy * ratio - (e.clientY - rect.top);
       });
-    };
-    wrapper.addEventListener("wheel", onWheel, { passive: false });
-    return () => wrapper.removeEventListener("wheel", onWheel);
+      return next;
+    });
   }, []);
+
+  /**
+   * Ref CALLBACK, no `useEffect`: el lienzo no está montado en el primer commit
+   * (el proyecto se carga después), así que un efecto con dependencias estables
+   * corría una sola vez con `canvasWrapperRef.current === null` y se iba sin
+   * observar nada. Resultado: al agrandar la ventana el SVG quedaba corto y se
+   * veía una franja del fondo al costado hasta el siguiente scroll. Enganchando
+   * el observador cuando el nodo APARECE, el resize siempre llega.
+   */
+  const roRef = useRef<ResizeObserver | null>(null);
+  const attachCanvasWrapper = useCallback(
+    (node: HTMLDivElement | null) => {
+      const previo = canvasWrapperRef.current;
+      if (previo) previo.removeEventListener("wheel", onWheelNative);
+      roRef.current?.disconnect();
+      roRef.current = null;
+      canvasWrapperRef.current = node;
+      if (!node) return;
+      node.addEventListener("wheel", onWheelNative, { passive: false });
+      if (typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(() => {
+          stretchSvgNow();
+          syncViewport();
+        });
+        ro.observe(node);
+        roRef.current = ro;
+      }
+      syncViewport(); // medir en cuanto aparece, sin esperar un scroll
+    },
+    [onWheelNative, stretchSvgNow, syncViewport]
+  );
 
   // El viewport del minimapa depende del zoom y del tamaño del contenido: lo
   // resincronizamos cuando cambia el zoom o hay un commit en el historial.
   useEffect(() => {
     syncViewport();
   }, [zoom, revision, syncViewport]);
-
-  // El lado del lienzo depende del tamaño del wrapper: remedir al redimensionar
-  // (sin esto, agrandar la ventana deja el lienzo corto hasta el próximo cambio).
-  useEffect(() => {
-    const wrapper = canvasWrapperRef.current;
-    if (!wrapper || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => syncViewport());
-    ro.observe(wrapper);
-    return () => ro.disconnect();
-  }, [syncViewport]);
 
   // --- Historial (deshacer / rehacer) ---
   const historyRef = useRef<{
@@ -2438,8 +2476,10 @@ export const ComponentDesigner: React.FC<{
 
         <div className="flex-grow h-full relative overflow-hidden">
         <div
-          ref={canvasWrapperRef}
-          className="absolute inset-0 overflow-auto bg-background"
+          ref={attachCanvasWrapper}
+          // `bg-canvas` (no `bg-background`): el hueco de un cuadro durante el
+          // resize se ve del color del lienzo en vez de un tajo de otro tono.
+          className="absolute inset-0 overflow-auto bg-canvas"
           onScroll={syncViewport}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
@@ -2511,12 +2551,9 @@ export const ComponentDesigner: React.FC<{
 
             {/* Fondo con cuadrícula. pointerEvents none → los clics en vacío llegan
                 al <svg> y siguen deseleccionando. */}
-            <rect
-              width={canvasPxW / zoom}
-              height={canvasPxH / zoom}
-              fill="url(#grid-major)"
-              pointerEvents="none"
-            />
+            {/* 100 % del viewBox, no una medida en estado: durante un resize el
+                fondo con cuadrícula cubre el lienzo entero en el mismo cuadro. */}
+            <rect width="100%" height="100%" fill="url(#grid-major)" pointerEvents="none" />
 
             {/* Capa 0-2: Contenedores (cualquier notación), de mayor a menor área */}
             <g>

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { minimapScale, viewportRect, miniPointToCanvas, canvasWorldSize } from "../minimap-geom";
+import {
+  minimapScale,
+  viewportRect,
+  miniPointToCanvas,
+  canvasWorldSize,
+  canvasPixelSize,
+} from "../minimap-geom";
 import { croppedViewBox } from "../export-canvas";
 
 describe("minimapScale", () => {
@@ -59,5 +65,35 @@ describe("canvasWorldSize", () => {
       expect(w.width).toBeGreaterThanOrEqual(maxX);
       expect(w.height).toBeGreaterThanOrEqual(maxY);
     }
+  });
+});
+
+describe("canvasPixelSize", () => {
+  it("el lienzo nunca es más chico que el viewport (la franja partida en dos tonos)", () => {
+    // Mundo 2000 al 25 % = 500 px, pero la ventana mide 1400: manda la ventana.
+    const r = canvasPixelSize({ width: 2000, height: 2000 }, 0.25, { w: 1400, h: 900 });
+    expect(r.w).toBe(1400);
+    expect(r.h).toBe(900);
+  });
+
+  it("con el mundo más grande que el viewport manda el mundo (hay scroll)", () => {
+    const r = canvasPixelSize({ width: 3000, height: 2000 }, 1, { w: 1400, h: 900 });
+    expect(r.w).toBe(3000);
+    expect(r.h).toBe(2000);
+  });
+
+  it("el viewBox deshace el zoom: las coordenadas del lienzo no se estiran", () => {
+    const r = canvasPixelSize({ width: 2000, height: 1000 }, 2, { w: 800, h: 600 });
+    expect(r.w).toBe(4000);
+    expect(r.viewBox).toBe("0 0 2000 1000");
+  });
+
+  it("un viewport sin medir (0) no rompe el cálculo", () => {
+    const r = canvasPixelSize({ width: 1000, height: 800 }, 1, { w: 0, h: 0 });
+    expect([r.w, r.h]).toEqual([1000, 800]);
+  });
+
+  it("zoom inválido cae a 1 en vez de producir Infinity en el viewBox", () => {
+    expect(canvasPixelSize({ width: 100, height: 100 }, 0, { w: 0, h: 0 }).viewBox).toBe("0 0 100 100");
   });
 });
