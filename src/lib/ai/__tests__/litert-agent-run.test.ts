@@ -181,12 +181,14 @@ describe("runLitertAgent — bucle ReAct (con intención de generar)", () => {
     expect(res.reply).toBe("Listo.");
   });
 
-  it("se agota MAX_TURNS generando artefactos → reply por defecto", async () => {
-    // Siempre pide generar, nunca cierra con final → 5 turnos, 5 artefactos.
-    scriptConvo([`{"action":"generate_document","args":{"kind":"nota","title":"N"}}`]);
+  it("un pedido = UN artefacto: aunque insista, no salen cinco", async () => {
+    // Siempre pide generar y nunca cierra con final: el segundo generate_* y los
+    // que siguen se rechazan con observación (antes salían 5 documentos).
+    const send = scriptConvo([`{"action":"generate_document","args":{"kind":"nota","title":"N"}}`]);
     const res = await runLitertAgent({ modelFile: "m", message: "genera documentos sin parar" });
-    expect(res.artifacts.length).toBeGreaterThan(0);
-    expect(res.reply).toMatch(/Generé \d+ artefacto/);
+    expect(res.artifacts).toHaveLength(1);
+    expect(res.reply).toBe("Generé «N».");
+    expect(send.mock.calls.some((c) => String(c[0]).includes("cubre UN artefacto"))).toBe(true);
   });
 });
 
@@ -739,5 +741,56 @@ describe("runLitertAgent — JSON con comillas sueltas y plan de rescate", () =>
     });
     expect(res.run?.pause).toBeUndefined();
     expect(res.reply).toContain("no había leído nada");
+  });
+});
+
+describe("runLitertAgent — un plan aprobado autoriza UN artefacto", () => {
+  const cat5 = {
+    views: [
+      {
+        name: "Modelo",
+        notation: "c4",
+        kind: "graph" as const,
+        graph: {
+          nombre_proyecto: "P",
+          version: "1.0.0",
+          fecha_analisis: "2026-08-18",
+          big_picture: {
+            descripcion: "",
+            hotspots: [],
+            nodos: [{ id: "a", nombre: "Cobrar", tipo_elemento: "Comando", descripcion: "", estado_comparativo: "nuevo" }],
+            aristas: [],
+          },
+          agregados: [],
+        } as any,
+      },
+    ],
+  };
+  const PLAN5 = JSON.stringify({
+    plan: { title: "Drivers", artifactKind: "drivers", sections: [{ title: "S", sources: ["Modelo"] }] },
+  });
+
+  it("la segunda generación se rechaza con observación, no sale un segundo artefacto", async () => {
+    scriptConvo(['{"action":"read_view","args":{"name":"Modelo"}}', PLAN5]);
+    const parada = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog: cat5 });
+    mockGen.mockResolvedValue("# Doc");
+    const send = scriptConvo([
+      '{"action":"generate_document","args":{"kind":"drivers","title":"Drivers"}}',
+      '{"action":"generate_document","args":{"kind":"nfr","title":"NFRs"}}',
+      '{"final":"listo"}',
+    ]);
+    const res = await resumeLitertAgent({
+      modelFile: "m",
+      message: "generá los drivers",
+      catalog: cat5,
+      run: parada.run!,
+      resume: { kind: "approve" },
+    });
+    expect(res.artifacts).toHaveLength(1);
+    expect(res.artifacts[0].title).toBe("Drivers");
+    // El rechazo llega como observación y empuja al cierre: no corta la corrida.
+    const enviados = send.mock.calls.map((c) => String(c[0]));
+    expect(enviados.some((o) => o.includes("cubre UN artefacto"))).toBe(true);
+    expect(res.reply).toBe("listo");
   });
 });

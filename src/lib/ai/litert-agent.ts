@@ -745,6 +745,12 @@ Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."
 
     const action = String(parsed.action);
     const a = parsed.args || {};
+    // Un pedido = UN artefacto. Sin este freno el modelo encadenaba generate_*
+    // y salían cinco documentos donde el humano pidió uno.
+    if (artifacts.length && (action === "generate_document" || action === "generate_diagram")) {
+      nextUser = `Observación: «${artifacts[artifacts.length - 1].title}» ya está generado y un pedido cubre UN artefacto. Cerrá con {"final":"..."}; si hace falta otro, el humano lo pide.${NEXT}`;
+      continue;
+    }
     const kind = (a.kind && String(a.kind)) || (action === "generate_diagram" ? "diagram" : "document");
     const title = a.title || getDefinition(kind, action === "generate_diagram" ? "diagram" : "document").label;
     steps.push({ type: "action", tool: action, content: `${title} (${kind})` });
@@ -769,7 +775,7 @@ Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."
   }
 
   if (!reply) {
-    reply = artifacts.length ? `Generé ${artifacts.length} artefacto(s).` : "Listo.";
+    reply = artifacts.length ? `Generé «${artifacts[0].title}».` : "Listo.";
   }
   await convo.close(); // libera el slot de contexto del engine
   return { reply, artifacts, steps };
@@ -1231,6 +1237,15 @@ ${exploreToolMenu(cat, invMax)}${clamp(ctx, ctxMax)}${memoryBlock(state, Math.ro
     if (action === "generate_document" || action === "generate_diagram") {
       if (needsPlan(state)) {
         nextUser = `Observación: antes de generar tenés que proponer el plan (secciones y de qué vista sale cada una) y esperar la aprobación del humano.${NEXT}`;
+        continue;
+      }
+      // Un plan aprobado autoriza UN artefacto (título + kind + secciones). Sin este
+      // freno el modelo seguía llamando a generate_* y salían cinco artefactos que el
+      // humano nunca aprobó, narrándose a sí mismo que "fueron aprobados".
+      if (artifacts.length) {
+        nextUser = `Observación: el plan aprobado cubre UN artefacto y «${
+          artifacts[artifacts.length - 1].title
+        }» ya está en el lienzo. Cerrá con {"final":"..."}; si hace falta otro artefacto, el humano lo pide y se aprueba un plan nuevo.${NEXT}`;
         continue;
       }
       const title = a?.title || state.plan?.title || "artefacto";
