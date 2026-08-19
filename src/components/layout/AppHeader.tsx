@@ -52,6 +52,8 @@ import type { SavedFile, GraphNode, GraphData } from "@/lib/types";
 import { iconForType } from "@/components/graph/designer/DesignerCanvas";
 import { Badge } from "@/components/ui/badge";
 import { useGraphContext } from "@/context/GraphContext"; // Importa el hook
+import { useViews } from "@/context/ViewsContext";
+import { isChecked } from "@/lib/graph-filters";
 import { useToast } from "@/hooks/use-toast";
 import { BetaBadge, SofkaLogo } from "@/components/layout/SofkaCredits";
 import { CREDIT_LINE, CREDIT_LINKS } from "@/lib/credits";
@@ -430,18 +432,17 @@ const AppHeader: React.FC<AppHeaderProps> = ({
     setMounted(true);
   }, []);
 
+   const { setSearchQuery, searchResults, searchQuery } = useGraphContext();
+   // Los filtros son de la VISTA activa, no del proyecto: en una pestaña BPMN el
+   // menú ofrecía los tipos del C4 del modelo y rotulaba «Límite de Sistema».
    const {
-      setSearchQuery,
-      handleFilterChange,
-      handleNodeTypeFilterChange,
-      aggregates,
-      visibleAggregates,
-      nodeTypes,
-      visibleNodeTypes,
-      searchResults,
-      searchQuery,
-      graphData,
-    } = useGraphContext();
+      filterOptions: opciones,
+      filters,
+      filtersActive,
+      setContainerVisible,
+      setTypeVisible,
+      clearFilters,
+    } = useViews();
 
   return (
     <header className="z-10 min-w-0 border-b bg-card p-4 shadow-sm">
@@ -484,65 +485,81 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             <div className="w-48 md:w-64 h-10 bg-muted rounded-md" />
           )}
 
-          {/* Menú de Filtros */}
-          {(aggregates.length > 0 || nodeTypes.length > 0) && (
+          {/* Menú de Filtros — opciones y etiqueta de la VISTA activa */}
+          {(opciones.containers.length > 0 || opciones.types.length > 0) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline">
+                <Button variant={filtersActive ? "secondary" : "outline"}>
                   <Filter className="w-4 h-4 mr-2" />
                   Filtros
+                  {filtersActive && (
+                    <span className="ml-2 rounded-full bg-primary/20 px-1.5 text-2xs font-semibold text-primary">
+                      {filters.hiddenContainers.length + filters.hiddenTypes.length}
+                    </span>
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-64" align="end">
-                {/* El rótulo sigue a la notación: "Agregado" en DDD, "Pool" en
-                    BPMN, "Límite de Sistema" en C4, "Paquete" en UML. */}
-                <DropdownMenuLabel>
-                  Filtrar por {notationContainerLabel(graphData?.notation)}
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <div className="p-2 space-y-2">
-                  {aggregates.map((aggName) => (
-                    <div key={aggName} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`filter-${aggName}`}
-                        checked={visibleAggregates.has(aggName)}
-                        onCheckedChange={(checked) =>
-                          handleFilterChange(aggName, !!checked)
-                        }
-                      />
-                      <Label
-                        htmlFor={`filter-${aggName}`}
-                        className="text-sm font-normal leading-none cursor-pointer"
-                      >
-                        {aggName.split(" - ")[0]}
-                      </Label>
+                {opciones.containers.length > 0 && (
+                  <>
+                    {/* El rótulo sigue a la notación de la VISTA: Agregado en DDD,
+                        Pool en BPMN, Límite de Sistema en C4, Paquete en UML. */}
+                    <DropdownMenuLabel>Filtrar por {opciones.containerLabel}</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <div className="p-2 space-y-2">
+                      {opciones.containers.map((name) => (
+                        <div key={name} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`filter-${name}`}
+                            checked={isChecked(filters.hiddenContainers, name)}
+                            onCheckedChange={(checked) => setContainerVisible(name, !!checked)}
+                          />
+                          <Label
+                            htmlFor={`filter-${name}`}
+                            className="text-sm font-normal leading-none cursor-pointer"
+                          >
+                            {name.split(" - ")[0]}
+                          </Label>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
 
-                <DropdownMenuLabel>
-                  Filtrar por Tipo de Elemento
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <div className="p-2 grid grid-cols-2 gap-2">
-                  {nodeTypes.map((nodeType) => (
-                    <div key={nodeType} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`filter-type-${nodeType}`}
-                        checked={visibleNodeTypes.has(nodeType)}
-                        onCheckedChange={(checked) =>
-                          handleNodeTypeFilterChange(nodeType, !!checked)
-                        }
-                      />
-                      <Label
-                        htmlFor={`filter-type-${nodeType}`}
-                        className="text-sm font-normal leading-none cursor-pointer"
-                      >
-                        {nodeType}
-                      </Label>
+                {opciones.types.length > 0 && (
+                  <>
+                    <DropdownMenuLabel>Filtrar por Tipo de Elemento</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <div className="p-2 grid grid-cols-2 gap-2">
+                      {opciones.types.map((nodeType) => (
+                        <div key={nodeType} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`filter-type-${nodeType}`}
+                            checked={isChecked(filters.hiddenTypes, nodeType)}
+                            onCheckedChange={(checked) => setTypeVisible(nodeType, !!checked)}
+                          />
+                          <Label
+                            htmlFor={`filter-type-${nodeType}`}
+                            className="text-sm font-normal leading-none cursor-pointer"
+                          >
+                            {nodeType}
+                          </Label>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
+
+                {filtersActive && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <div className="p-2">
+                      <Button variant="ghost" size="sm" className="h-7 w-full text-xs" onClick={clearFilters}>
+                        Mostrar todo
+                      </Button>
+                    </div>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}

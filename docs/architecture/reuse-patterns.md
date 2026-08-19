@@ -14,6 +14,7 @@ marcadas con 🔒; el resto es criterio.
 | Elegir motor local vs. nube | `src/lib/ai/remote-settings.ts` (`local` · `hybrid` · `remote`) | condicionales de proveedor esparcidos |
 | Meter el grafo en un prompt | `src/lib/ai/graph-toon.ts` (poda geometría, tabula arrays) | serializar `GraphData` a JSON crudo |
 | Filtrar/preparar el grafo para el lienzo | `src/lib/graph-processor.ts` (con sus redes de seguridad) | filtrar nodos en el componente |
+| Ocultar/mostrar elementos del lienzo (menú «Filtros») | `src/lib/graph-filters.ts` — opciones por notación de la VISTA, conjunto de OCULTOS, `applyGraphFilters` al dibujar | recalcular visibles en el componente, o guardar "visibles" (resucita lo oculto al aparecer un tipo nuevo) |
 | Construir/validar un diagrama programáticamente | `src/lib/mcp/diagram-builder.ts` + `src/lib/mcp/to-mermaid.ts` | armar el objeto `GraphData` a mano |
 | Renderizar Mermaid | `src/lib/mermaid-diagram.ts` | invocar mermaid-cli desde un componente |
 | Prompt de plantilla para la IA | `src/lib/template-prompt.ts` | concatenar strings de prompt en el llamador |

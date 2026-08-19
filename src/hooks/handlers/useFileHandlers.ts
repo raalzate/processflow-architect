@@ -13,8 +13,6 @@ type FileHandlersDeps = {
     loadFile: (file: SavedFile) => any;
     graphData: GraphData | null; // graphData can be null initially
     toast: (opts: any) => void;
-    setVisibleAggregates: (s: Set<string>) => void;
-    setVisibleNodeTypes: (s: Set<string>) => void;
     setDriversResult: (r: ArchitectureDriversOutput | null) => void;
     setConstraintsResult: (r: ConstraintsRisksOutput | null) => void;
     setRoadmapResult: (r: RoadmapOutput | null) => void;
@@ -32,8 +30,6 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         loadFile,
         graphData,
         toast,
-        setVisibleAggregates,
-        setVisibleNodeTypes,
         setDriversResult,
         setConstraintsResult,
         setRoadmapResult,
@@ -51,8 +47,6 @@ export function useFileHandlers(deps: FileHandlersDeps) {
             const content = emptyGraphData(name, fecha, notation);
             const newFile: SavedFile = { id: `${name}-${new Date().getTime()}`, name: `${name}.json`, content };
             const res = loadFile(newFile);
-            setVisibleAggregates(new Set(res.aggregates));
-            setVisibleNodeTypes(new Set(res.nodes.map((n: any) => n.tipo_elemento)));
             addFile(newFile);
             setDriversResult(null); setConstraintsResult(null); setRoadmapResult(null); setProposalResult(null);
             toast({ title: "Proyecto creado", description: `"${name}" está listo. Diséñalo en la pestaña Design.` });
@@ -60,7 +54,7 @@ export function useFileHandlers(deps: FileHandlersDeps) {
             console.error("Error creating project:", error);
             toast({ variant: "destructive", title: "No se pudo crear el proyecto", description: error.message || "Error inesperado." });
         }
-    }, [addFile, loadFile, setVisibleAggregates, setVisibleNodeTypes, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
+    }, [addFile, loadFile, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
 
     // Crea un proyecto NUEVO a partir de contenido ya generado (ej. el modelo de
     // dominio que produce la IA desde documentos) y lo carga en el lienzo.
@@ -92,8 +86,6 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         const newFile: SavedFile = { id: `${name}-${new Date().getTime()}`, name: `${name}.json`, content: fullContent };
         try {
             const res = loadFile(newFile);
-            setVisibleAggregates(new Set(res.aggregates));
-            setVisibleNodeTypes(new Set(res.nodes.map((n: any) => n.tipo_elemento)));
             addFile(newFile);
             setCurrentFileId(newFile.id);
             setDriversResult(null); setConstraintsResult(null); setRoadmapResult(null); setProposalResult(null);
@@ -104,7 +96,7 @@ export function useFileHandlers(deps: FileHandlersDeps) {
             toast({ variant: "destructive", title: "No se pudo cargar el modelo generado", description: error.message || "Formato inválido." });
             return null;
         }
-    }, [addFile, loadFile, setCurrentFileId, setVisibleAggregates, setVisibleNodeTypes, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
+    }, [addFile, loadFile, setCurrentFileId, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
 
     // Persiste el GraphData generado por el diseñador en el SavedFile actual
     // y refresca las vistas derivadas (Big Picture, Read Model, Data Flow).
@@ -115,21 +107,17 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         if (target) {
             try {
                 const res = loadFile(target);
-                setVisibleAggregates(new Set(res.aggregates));
-                setVisibleNodeTypes(new Set(res.nodes.map((n: any) => n.tipo_elemento)));
             } catch (e) {
                 console.error("Error refreshing views from design:", e);
             }
         }
-    }, [savedFiles, setSavedFiles, loadFile, setVisibleAggregates, setVisibleNodeTypes]);
+    }, [savedFiles, setSavedFiles, loadFile]);
 
     const handleFileSelect = useCallback((id: string) => {
         const file = savedFiles.find(f => f.id === id);
         if (!file) return;
         try {
             const res = loadFile(file);
-            setVisibleAggregates(new Set(res.aggregates));
-            setVisibleNodeTypes(new Set(res.nodes.map((n: any) => n.tipo_elemento)));
             setCurrentFileId(id);
             // restore persisted results if any
             const saved = file as any;
@@ -142,7 +130,7 @@ export function useFileHandlers(deps: FileHandlersDeps) {
             console.error("Error loading selected file:", error);
             toast({ variant: "destructive", title: "Error al Cargar Archivo", description: "El archivo guardado parece estar corrupto o tener un formato inválido." });
         }
-    }, [savedFiles, loadFile, setCurrentFileId, toast, setVisibleAggregates, setVisibleNodeTypes, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
+    }, [savedFiles, loadFile, setCurrentFileId, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
 
     const handleFileDelete = useCallback((id: string) => {
         const fileToDel = savedFiles.find(f => f.id === id);
@@ -150,12 +138,10 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         deleteFileHook(id);
         if (currentFileId === id) {
             setCurrentFileId(null);
-            setVisibleAggregates(new Set());
-            setVisibleNodeTypes(new Set());
             setDriversResult(null); setConstraintsResult(null); setRoadmapResult(null); setProposalResult(null);
         }
         toast({ title: "Archivo eliminado", description: `"${fileToDel.name}" ha sido eliminado.` });
-    }, [savedFiles, currentFileId, deleteFileHook, setCurrentFileId, setVisibleAggregates, setVisibleNodeTypes, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
+    }, [savedFiles, currentFileId, deleteFileHook, setCurrentFileId, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
 
     const handleDownloadJson = useCallback(() => {
         if (!graphData || !currentFileId) { toast({ variant: "destructive", title: "No hay archivo para descargar", description: "Carga o selecciona un archivo primero." }); return; }

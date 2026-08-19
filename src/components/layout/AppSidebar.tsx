@@ -134,7 +134,7 @@ function TaskListPanel() {
     copiedStates,
     handleNodeSelectFromSidebar,
   } = useGraphContext();
-  const { views, setActiveView } = useViews();
+  const { views, setActiveView, revealNode } = useViews();
 
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiContent, setAiContent] = useState("");
@@ -273,7 +273,7 @@ function TaskListPanel() {
                 {taskListNodes.new.map((node) => (
                   <li key={node.id}>
                     <div
-                      onClick={() => handleNodeSelectFromSidebar(node)}
+                      onClick={() => { revealNode(node.agregado, node.tipo_elemento); handleNodeSelectFromSidebar(node); }}
                       className="flex items-center gap-2 p-1 rounded-md cursor-pointer hover:bg-muted"
                     >
                       <span
@@ -305,7 +305,7 @@ function TaskListPanel() {
                 {taskListNodes.modified.map((node) => (
                   <li key={node.id}>
                     <div
-                      onClick={() => handleNodeSelectFromSidebar(node)}
+                      onClick={() => { revealNode(node.agregado, node.tipo_elemento); handleNodeSelectFromSidebar(node); }}
                       className="flex items-center gap-2 p-1 rounded-md cursor-pointer hover:bg-muted"
                     >
                       <span
@@ -337,7 +337,7 @@ function TaskListPanel() {
                 {taskListNodes.deleted.map((node) => (
                   <li key={node.id}>
                     <div
-                      onClick={() => handleNodeSelectFromSidebar(node)}
+                      onClick={() => { revealNode(node.agregado, node.tipo_elemento); handleNodeSelectFromSidebar(node); }}
                       className="flex items-center gap-2 p-1 rounded-md cursor-pointer hover:bg-muted"
                     >
                       <span
@@ -390,6 +390,7 @@ function DomainModelPanel() {
     graphData,
     handleNodeSelectFromSidebar,
   } = useGraphContext();
+  const { revealNode } = useViews();
 
   if (Object.keys(sidebarNodeTree).length === 0 || !graphData) {
     return null; // No renderizar si el árbol está vacío o no hay datos
@@ -441,7 +442,7 @@ function DomainModelPanel() {
                       {nodes.map((node) => (
                         <li
                           key={node.id}
-                          onDoubleClick={() => handleNodeSelectFromSidebar(node)}
+                          onDoubleClick={() => { revealNode(node.agregado, node.tipo_elemento); handleNodeSelectFromSidebar(node); }}
                           className="flex items-center gap-2 p-1 rounded-md cursor-pointer hover:bg-muted"
                         >
                           <span

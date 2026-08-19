@@ -18,6 +18,17 @@ import React, {
 import { useGraphContext } from "@/context/GraphContext";
 import { useToast } from "@/hooks/use-toast";
 import {
+  NO_FILTERS,
+  filterOptions,
+  hasActiveFilters,
+  reconcileFilters,
+  toggleHidden,
+  type FilterOptions,
+  type GraphFilters,
+} from "@/lib/graph-filters";
+import { isNotationContainer } from "@/lib/notations";
+import { processGraphData } from "@/lib/graph-processor";
+import {
   BUILTIN_VIEWS,
   MAX_CUSTOM_VIEWS,
   MAX_INJECTED_VIEWS,
@@ -93,6 +104,24 @@ export interface ViewsContextType {
   moveCustomView: (draggedId: string, targetId: string) => void;
   toggleInject: (id: string) => void;
   clearInjected: () => void;
+
+  /* --- Filtros del lienzo (por VISTA, en memoria) ------------------------ */
+  /** Opciones del menú: salen del grafo DIBUJADO y de la notación de la vista. */
+  filterOptions: FilterOptions;
+  /** Qué está oculto en la vista activa. */
+  filters: GraphFilters;
+  /** ¿Hay algo oculto ahora mismo? */
+  filtersActive: boolean;
+  setContainerVisible: (name: string, visible: boolean) => void;
+  setTypeVisible: (type: string, visible: boolean) => void;
+  /** Muestra todo en la vista activa. */
+  clearFilters: () => void;
+  /**
+   * Destapa lo necesario para que un elemento sea visible. Lo usa el sidebar: si
+   * hacés clic en un nodo que el filtro escondía, el lienzo tiene que mostrarlo
+   * en vez de no reaccionar.
+   */
+  revealNode: (container: string | undefined, type: string | undefined) => void;
 }
 
 const ViewsContext = createContext<ViewsContextType | undefined>(undefined);
@@ -360,6 +389,84 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
 
   const clearInjected = useCallback(() => setInjectedViewIds([]), []);
 
+  /* ---------------------------------------------------------------------- */
+  /* Filtros del lienzo                                                     */
+  /* ---------------------------------------------------------------------- */
+  // Por VISTA: el menú de una vista BPMN no puede ofrecer los tipos del C4 del
+  // proyecto, y cambiar de pestaña no debe arrastrar lo que ocultaste en otra.
+  // En memoria a propósito: un filtro persistido reabre la app con el lienzo
+  // "vacío" y nadie recuerda por qué.
+  const [filtersByView, setFiltersByView] = useState<Record<string, GraphFilters>>({});
+
+  /** Grafo que se está dibujando: el del proyecto en «Modelo», el de la vista si no. */
+  const activeGraph: GraphData | undefined =
+    activeView?.kind === "design" ? graphData ?? undefined : activeView?.graph;
+
+  const optionsForActive = useMemo<FilterOptions>(() => {
+    // Las vistas Mermaid son código: no hay nodos que filtrar.
+    if (!activeGraph || activeView?.kind === "mermaid") {
+      return { containers: [], types: [], containerLabel: "Grupo" };
+    }
+    let nodes: { agregado?: string; tipo_elemento?: string }[] = [];
+    try {
+      nodes = processGraphData(activeGraph).nodes;
+    } catch {
+      nodes = []; // un grafo a medio escribir no rompe el menú
+    }
+    return filterOptions(nodes, activeView?.notation ?? activeGraph.notation, isNotationContainer);
+  }, [activeGraph, activeView?.kind, activeView?.notation]);
+
+  const filters = useMemo(
+    () => reconcileFilters(filtersByView[activeViewId] ?? NO_FILTERS, optionsForActive),
+    [filtersByView, activeViewId, optionsForActive]
+  );
+
+  const setContainerVisible = useCallback(
+    (name: string, visible: boolean) =>
+      setFiltersByView((prev) => {
+        const actual = prev[activeViewId] ?? NO_FILTERS;
+        return {
+          ...prev,
+          [activeViewId]: { ...actual, hiddenContainers: toggleHidden(actual.hiddenContainers, name, visible) },
+        };
+      }),
+    [activeViewId]
+  );
+
+  const setTypeVisible = useCallback(
+    (type: string, visible: boolean) =>
+      setFiltersByView((prev) => {
+        const actual = prev[activeViewId] ?? NO_FILTERS;
+        return {
+          ...prev,
+          [activeViewId]: { ...actual, hiddenTypes: toggleHidden(actual.hiddenTypes, type, visible) },
+        };
+      }),
+    [activeViewId]
+  );
+
+  const revealNode = useCallback(
+    (container: string | undefined, type: string | undefined) =>
+      setFiltersByView((prev) => {
+        const actual = prev[activeViewId] ?? NO_FILTERS;
+        return {
+          ...prev,
+          [activeViewId]: {
+            hiddenContainers: container
+              ? toggleHidden(actual.hiddenContainers, container, true)
+              : actual.hiddenContainers,
+            hiddenTypes: type ? toggleHidden(actual.hiddenTypes, type, true) : actual.hiddenTypes,
+          },
+        };
+      }),
+    [activeViewId]
+  );
+
+  const clearFilters = useCallback(
+    () => setFiltersByView((prev) => ({ ...prev, [activeViewId]: NO_FILTERS })),
+    [activeViewId]
+  );
+
   const value: ViewsContextType = {
     views,
     customViews,
@@ -383,6 +490,13 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     moveCustomView,
     toggleInject,
     clearInjected,
+    filterOptions: optionsForActive,
+    filters,
+    filtersActive: hasActiveFilters(filters),
+    setContainerVisible,
+    setTypeVisible,
+    clearFilters,
+    revealNode,
   };
 
   return <ViewsContext.Provider value={value}>{children}</ViewsContext.Provider>;

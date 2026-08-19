@@ -18,8 +18,6 @@ type UIHandlersDeps = {
     roadmapResult: RoadmapOutput | null;
     proposalResult: TechnicalElementsOutput | null;
     taskListNodes: { new: GraphNode[]; modified: GraphNode[] };
-    setVisibleAggregates: (s: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
-    setVisibleNodeTypes: (s: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
     openNodeModalExternal: (node: GraphNode | null, clearHistory?: boolean) => void;
     setSelectedNode: (n: GraphNode | null) => void;
     currentFileId: string | null;
@@ -38,8 +36,6 @@ export function useUIHandlers(deps: UIHandlersDeps) {
         roadmapResult,
         proposalResult,
         taskListNodes,
-        setVisibleAggregates,
-        setVisibleNodeTypes,
         openNodeModalExternal,
         setSelectedNode,
         currentFileId,
@@ -83,31 +79,16 @@ export function useUIHandlers(deps: UIHandlersDeps) {
         handleCopy(fullMarkdown, 'all');
     }, [graphData, driversResult, constraintsResult, proposalResult, roadmapResult, taskListNodes, allNodes, handleCopy]);
 
-    const handleFilterChange = useCallback((aggregateName: string, isVisible: boolean) => {
-        setVisibleAggregates((prev) => {
-            const newSet = new Set(prev);
-            if (isVisible) newSet.add(aggregateName); else newSet.delete(aggregateName);
-            return newSet;
-        });
-    }, [setVisibleAggregates]);
-
-    const handleNodeTypeFilterChange = useCallback((nodeType: string, isVisible: boolean) => {
-        setVisibleNodeTypes(prev => {
-            const newSet = new Set(prev);
-            if (isVisible) newSet.add(nodeType); else newSet.delete(nodeType);
-            return newSet;
-        });
-    }, [setVisibleNodeTypes]);
-
     const openNodeModal = useCallback((node: GraphNode | null, clearHistory: boolean = false) => {
         openNodeModalExternal(node, clearHistory);
     }, [openNodeModalExternal]);
 
     const handleNodeSelectFromSidebar = useCallback((node: GraphNode) => {
+        // Destapar lo que el filtro esconde es del consumidor (AppSidebar →
+        // `revealNode` de ViewsContext): los filtros son de la VISTA y este hook
+        // vive por encima de ese provider.
         openNodeModal(node, true);
-        if (node.agregado) setVisibleAggregates(prev => new Set(prev).add(node.agregado!));
-        setVisibleNodeTypes(prev => new Set(prev).add(node.tipo_elemento));
-    }, [openNodeModal, setVisibleAggregates, setVisibleNodeTypes]);
+    }, [openNodeModal]);
 
     const handleNodeSelectById = useCallback((nodeId: string) => {
         const node = allNodes.find(n => n.id === nodeId);
@@ -194,8 +175,6 @@ export function useUIHandlers(deps: UIHandlersDeps) {
     return {
         handleCopy,
         handleCopyAll,
-        handleFilterChange,
-        handleNodeTypeFilterChange,
         openNodeModal,
         handleNodeSelectFromSidebar,
         handleNodeSelectById,

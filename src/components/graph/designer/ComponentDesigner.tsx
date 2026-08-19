@@ -26,6 +26,7 @@ import {
   ChevronRight,
   Library,
   Download,
+  Filter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,6 +90,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useGraphContext } from "@/context/GraphContext";
+import { applyGraphFilters, hasActiveFilters } from "@/lib/graph-filters";
 import { useViews } from "@/context/ViewsContext";
 import { useReference } from "@/context/ReferenceContext";
 import { buildEmbedMap, wouldCreateCycle } from "@/lib/view-embeds";
@@ -1040,7 +1042,8 @@ export const ComponentDesigner: React.FC<{
   onNotationChange?: (n: NotationId) => void;
 }> = ({ value, onChange, sourceId, notation, onNotationChange }) => {
   const { currentFileId, savedFiles, handleDesignUpdate, graphData } = useGraphContext();
-  const { views, activeViewId, drillStack, enterView, goToDrill, createView } = useViews();
+  const { views, activeViewId, drillStack, enterView, goToDrill, createView, filters, filtersActive, clearFilters } =
+    useViews();
   const { referenceText } = useReference();
   const { toast } = useToast();
   // IA del lienzo: hoy sólo la usa «Organizar → Sugerir con IA», que pide ORDEN
@@ -2236,14 +2239,31 @@ export const ComponentDesigner: React.FC<{
   // Contenedores de CUALQUIER notación (DDD: Subdominio/Contexto/Agregado; BPMN: Pool/Carril;
   // C4: Límites; UML: Paquete). Se dibujan de mayor a menor área para que los anidados
   // queden encima del que los contiene (visión de jerarquía independiente de la notación).
-  const containerNodes = Array.from(nodes.values())
+  // Filtros del menú «Filtros»: son de la VISTA y son SÓLO VISUALES. Se aplican
+  // acá, al dibujar — el estado (`nodes`/`links`) y lo que se guarda quedan
+  // completos, así que ocultar nunca borra. Antes esto no estaba cableado a nada
+  // y destildar casillas no hacía absolutamente nada en el lienzo.
+  const visto = useMemo(
+    () =>
+      applyGraphFilters(
+        Array.from(nodes.values()),
+        Array.from(links.values()),
+        filters,
+        isContainerType
+      ),
+    [nodes, links, filters]
+  );
+  const visibleIds = useMemo(() => new Set(visto.nodes.map((n) => n.id)), [visto.nodes]);
+  const ocultos = visto.hidden;
+
+  const containerNodes = visto.nodes
     .filter((n) => isContainerType(n.tipo_elemento))
     .sort(
       (a, b) =>
         (b.width || AGGREGATE_DEFAULT_WIDTH) * (b.height || AGGREGATE_DEFAULT_HEIGHT) -
         (a.width || AGGREGATE_DEFAULT_WIDTH) * (a.height || AGGREGATE_DEFAULT_HEIGHT)
     );
-  const plainNodes = Array.from(nodes.values()).filter((n) => !isContainerType(n.tipo_elemento));
+  const plainNodes = visto.nodes.filter((n) => !isContainerType(n.tipo_elemento));
 
   // Resumen textual del diseño (para la sugerencia del Big Picture con IA local).
   const designSummary = useMemo(() => {
@@ -2578,7 +2598,7 @@ export const ComponentDesigner: React.FC<{
             </g>
             {/* Capa 3: Enlaces */}
             <g>
-              {Array.from(links.values()).map((link) => (
+              {visto.links.map((link) => (
                 <DesignerLinkComponent
                   key={link.id}
                   link={link}
@@ -2638,7 +2658,7 @@ export const ComponentDesigner: React.FC<{
             {/* Capa superior: manijas de reanclado de los enlaces seleccionados
                 (encima de los nodos para que no queden tapadas). */}
             <g>
-              {Array.from(links.values())
+              {visto.links
                 .filter((l) => selectedIds.has(l.id))
                 .map((link) => (
                   <LinkEndpointHandles
@@ -2750,6 +2770,24 @@ export const ComponentDesigner: React.FC<{
               />
               <NotationLegend notation={notationId} />
             </>
+          )}
+
+          {/* Filtro activo: se DICE cuántos elementos están ocultos. Un lienzo al
+              que le faltan cosas sin explicación se lee como pérdida de datos. */}
+          {filtersActive && ocultos > 0 && (
+            <div className="pointer-events-auto absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-card/95 px-3 py-1 text-xs shadow-sm backdrop-blur">
+              <Filter className="h-3.5 w-3.5 text-primary" />
+              <span>
+                {ocultos} elemento{ocultos === 1 ? "" : "s"} oculto{ocultos === 1 ? "" : "s"} por el filtro
+              </span>
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="rounded px-1.5 py-0.5 font-medium text-primary hover:bg-primary/10"
+              >
+                Mostrar todo
+              </button>
+            </div>
           )}
         </div>
       </div>

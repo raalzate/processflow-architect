@@ -35,10 +35,6 @@ export interface GraphContextType {
   sidebarNodeTree: NodeTree;
   
   // Estado de Filtros
-  visibleAggregates: Set<string>;
-  visibleNodeTypes: Set<string>;
-  filteredNodes: GraphNode[];
-  filteredLinks: GraphLink[];
 
   // Estado de Selección y Modal
   selectedNode: GraphNode | null;
@@ -81,8 +77,6 @@ export interface GraphContextType {
   handleFileSelect: (id: string) => void;
   handleFileDelete: (id: string) => void;
   handleDownloadJson: () => void;
-  handleFilterChange: (aggregateName: string, isVisible: boolean) => void;
-  handleNodeTypeFilterChange: (nodeType: string, isVisible: boolean) => void;
   openNodeModal: (node: GraphNode | null, clearHistory?: boolean) => void;
   handleNodeSelectFromSidebar: (node: GraphNode) => void;
   handleNodeSelectById: (nodeId: string) => void;

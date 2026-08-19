@@ -87,15 +87,7 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     useState<TechnicalElementsOutput | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-  // Estado de UI (Filtros, Selección, Modal)
-  const [visibleAggregates, setVisibleAggregates] = useState<Set<string>>(
-    new Set()
-  );
-  // Semilla del filtro de tipos: TODAS las notaciones, no solo las etiquetas DDD.
-  // Con la semilla DDD, un modelo BPMN/C4 abría con sus tipos desmarcados.
-  const [visibleNodeTypes, setVisibleNodeTypes] = useState<Set<string>>(
-    new Set(ALL_NODE_TYPES)
-  );
+  // Estado de UI (Selección, Modal)
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [modalHistory, setModalHistory] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -143,31 +135,10 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     return { new: newNodes, modified: modifiedNodes, deleted: deletedNodes };
   }, [allNodes]);
 
-  // Nodos a renderizar en el grafo, según los filtros
-  const filteredNodes = useMemo(() => {
-    if (!graphData) return [];
-    return allNodes.filter((node) => {
-      if (!node.agregado) return false;
-      const aggMatch = visibleAggregates.has(node.agregado);
-      const typeMatch = visibleNodeTypes.has(node.tipo_elemento);
-      return aggMatch && typeMatch;
-    });
-  }, [allNodes, visibleAggregates, visibleNodeTypes, graphData]);
-
-  // Links a renderizar, basados en los nodos filtrados
-  const filteredLinks = useMemo(() => {
-    if (!graphData) return [];
-    const filteredNodeIds = new Set(filteredNodes.map((n) => n.id));
-    return allLinks.filter(
-      (link) =>
-        filteredNodeIds.has(
-          typeof link.source === "string" ? link.source : link.source.id
-        ) &&
-        filteredNodeIds.has(
-          typeof link.target === "string" ? link.target : link.target.id
-        )
-    );
-  }, [allLinks, filteredNodes, graphData]);
+  // Los filtros del lienzo NO viven acá: son de la VISTA activa y se aplican al
+  // dibujar (`ViewsContext` + `src/lib/graph-filters.ts`). Antes este provider
+  // calculaba `filteredNodes`/`filteredLinks` que NADIE consumía: el menú de
+  // filtros parecía funcionar y el lienzo nunca cambiaba.
 
   // --- Core Callbacks (useCallback) ---
   // Callbacks definidos en este componente
@@ -213,8 +184,6 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     loadFile,
     graphData,
     toast,
-    setVisibleAggregates,
-    setVisibleNodeTypes,
     setDriversResult,
     setConstraintsResult,
     setRoadmapResult,
@@ -261,8 +230,6 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     roadmapResult,
     proposalResult,
     taskListNodes,
-    setVisibleAggregates,
-    setVisibleNodeTypes,
     openNodeModalExternal,
     setSelectedNode,
     currentFileId,
@@ -341,16 +308,6 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
               saved.proposalResult ?? contentSaved.proposalResult ?? null
             );
 
-            // Restaurar filtros
-            if (res && res.aggregates) {
-              setVisibleAggregates(new Set(res.aggregates));
-            }
-            if (res && res.nodes) {
-              const types = Array.from(
-                new Set(res.nodes.map((n) => n.tipo_elemento))
-              );
-              setVisibleNodeTypes(new Set(types));
-            }
           }
         }
       }
@@ -392,16 +349,6 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
           setProposalResult(
             saved.proposalResult ?? contentSaved.proposalResult ?? null
           );
-          // Restaurar filtros
-          if (res && res.aggregates) {
-            setVisibleAggregates(new Set(res.aggregates));
-          }
-          if (res && res.nodes) {
-            const types = Array.from(
-              new Set(res.nodes.map((n) => n.tipo_elemento))
-            );
-            setVisibleNodeTypes(new Set(types));
-          }
         }
       }
     } catch (e) {
@@ -431,10 +378,6 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     taskListNodes,
 
     // Estado de Filtros
-    visibleAggregates,
-    visibleNodeTypes,
-    filteredNodes,
-    filteredLinks,
 
     // Estado de UI
     selectedNode,
