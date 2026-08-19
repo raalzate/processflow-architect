@@ -31,10 +31,13 @@ Event Storming · DDD · BPMN · C4 · UML · agente ReAct local · exporta a Me
 
 ---
 
+> **Versión beta.** El modelo, las vistas y el agente local siguen en evolución: el formato de
+> los proyectos puede cambiar entre versiones. La app lo dice en su cabecera y en «Acerca de».
+
 ## Qué hace
 
 - **Event Storming Big Picture** — lienzo con eventos, comandos, agregados, políticas, read models y sistemas externos.
-- **Agente de IA local (ReAct)** — chatéale a tu dominio; genera artefactos versionados y editables en el lienzo: drivers, riesgos, propuesta técnica, roadmap, ADRs y diagramas.
+- **Agente de IA local (ReAct)** — chatéale a tu dominio; genera artefactos versionados y editables en el lienzo: drivers, riesgos, propuesta técnica, roadmap, ADRs y diagramas. El menú **«+»** del chat elige el artefacto sin depender de cómo esté escrita la frase, y con el panel colapsado la barra lateral los lista con el icono de su tipo.
 - **Cuatro notaciones** — DDD / BPMN / C4 / UML por vista; la IA respeta la notación de cada vista.
 - **Vistas DDD** — vistas por agregado (deterministas) + Big Picture estratégica, CQRS Data Flow y Read Model Graph. Hasta 50 vistas, inyectables al chat del agente.
 - **Puente MCP** — Claude Code / Codex diseñan diagramas desde tus documentos y los exportan directo al lienzo.
@@ -203,3 +206,11 @@ npm run electron-build:win   # genera instalador .exe
 ## Licencia
 
 Apache 2.0 — see [LICENSE](LICENSE).
+
+---
+
+## Créditos
+
+Desarrollado por **[Sofka Technologies](https://sofka.com.co)** ·
+[LinkedIn](https://www.linkedin.com/company/sofka-technologies) ·
+[Blog](https://sofka.com.co/blog/)

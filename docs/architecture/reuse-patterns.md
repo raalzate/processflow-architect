@@ -19,6 +19,10 @@ marcadas con 🔒; el resto es criterio.
 | Prompt de plantilla para la IA | `src/lib/template-prompt.ts` | concatenar strings de prompt en el llamador |
 | Tipos del dominio (nodos, aristas, vistas) | `src/lib/types.ts`, `src/lib/views-types.ts` | redeclarar interfaces parecidas |
 | Utilidades de markdown / artefactos | `src/lib/markdown-utils.ts`, `src/lib/artifacts/` | parsear markdown a mano |
+| Icono de un artefacto | `src/components/ai-panel/artifact-icon.tsx` (`iconForArtifact`, mapa nombre→lucide) | poner `FileText`/`Workflow` fijo, o un `switch` por `kind` |
+| Ver un artefacto en modal | `src/components/ai-panel/ArtifactViewerDialog.tsx` | duplicar el `Dialog` con el markdown del artefacto |
+| Pedir un artefacto concreto al agente | `src/lib/artifacts/request.ts` + `requestedKind` de `runLitertAgent` | inyectar la orden a mano en el mensaje del usuario |
+| Versión, canal beta, crédito y enlaces | `src/lib/credits.ts` | escribir la versión o los links de Sofka en un componente |
 | Componentes de UI base | `src/components/ui/` (shadcn) | escribir un botón/diálogo desde cero |
 
 ## Cómo se agrega una fila

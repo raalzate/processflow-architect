@@ -464,7 +464,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             target="_blank"
             rel="noreferrer"
             title={CREDIT_LINE}
-            className="hidden opacity-70 transition-opacity hover:opacity-100 md:block"
+            className="hidden opacity-90 transition-opacity hover:opacity-100 md:block"
           >
             <SofkaLogo className="h-4" />
           </a>

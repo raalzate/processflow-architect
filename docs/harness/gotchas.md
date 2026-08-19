@@ -163,3 +163,30 @@ Mecanismo: `repairProtocolJson` + `looksLikeProtocol` en `src/lib/ai/litert-agen
          `litert-agent-run.test.ts`: rescata y sigue · irrecuperable no se imprime · la prosa sí).
          Además el prompt pide comillas simples dentro de los textos: baja la frecuencia del fallo,
          no lo elimina — el freno es el rescate.
+
+### GOTCHA: `RET_CHECK !HasProcessedContext()` al lanzar una segunda tarea de IA
+
+Síntoma: con el chat del agente abierto, pedir un artefacto (o cualquier tarea suelta) muere con
+         `RET_CHECK failure (…/context_handler.h:182) !HasProcessedContext() The processed context
+         is already set`. Después de eso, la IA local queda muerta hasta reiniciar la app.
+Causa:   el engine de LiteRT-LM guarda el contexto procesado (el preface prefillado) en **un solo
+         slot**. Se abría una conversación por tarea sin cerrar la anterior, así que la segunda
+         chocaba contra el slot ocupado.
+Regla:   UNA conversación viva por engine. Crear una libera la anterior (`cancel()` + `delete()`),
+         las creaciones van en serie, y una tarea suelta cierra la suya al terminar. Si a alguien le
+         roban el slot en el medio, la conversación se reabre con el mismo preface y reenvía su hilo
+         (el KV-cache se pierde, la conversación no).
+Mecanismo: `activeConversation` + cola en `src/lib/ai/litert-engine.ts`, con `litert-engine.test.ts`
+         cubriendo los cinco casos (libera la anterior · la tarea suelta cierra · reapertura con
+         historial · retry recreando el engine si el RET_CHECK igual salta · error ajeno se propaga).
+         «Limpiar» del chat llama `releaseLitertContext()`.
+
+### GOTCHA: el tooltip queda por debajo del panel (Radix sin Portal)
+
+Síntoma: en el riel del sidebar colapsado el globo del tooltip no se lee: aparece recortado o
+         tapado por la barra.
+Causa:   `TooltipContent` se renderizaba DENTRO del trigger, y `SidebarContent` oculta el desborde
+         en modo icono (`group-data-[collapsible=icon]:overflow-hidden`). No era z-index: era clipping.
+Regla:   todo contenido flotante de Radix va en su `Portal` (al `body`), no dentro del trigger.
+Mecanismo: `TooltipPrimitive.Portal` en `src/components/ui/tooltip.tsx` (+ `z-[60]`). Vale para
+         cualquier tooltip dentro de un contenedor con desborde oculto.

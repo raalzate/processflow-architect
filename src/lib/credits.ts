@@ -8,7 +8,7 @@
  * falla si ambos números difieren, así que la duplicación no puede quedar vieja.
  */
 
-export const APP_VERSION = "0.4.0";
+export const APP_VERSION = "0.4.1";
 
 /** La app aún no es estable: se anuncia como beta en la UI. */
 export const RELEASE_CHANNEL = "beta" as const;
@@ -18,7 +18,11 @@ export const versionLabel = () => `v${APP_VERSION} · ${RELEASE_CHANNEL}`;
 
 export const CREDIT_ORG = "Sofka Technologies";
 export const CREDIT_LINE = `Desarrollado por ${CREDIT_ORG}`;
-/** Ruta del logo dentro de `public/` (sirve en dev y bajo el scheme `app://`). */
+/**
+ * Ruta del logo dentro de `public/` (sirve en dev y bajo el scheme `app://`).
+ * Es la versión NEGATIVA —wordmark blanco, acento naranja— porque la app se
+ * muestra siempre en oscuro: el logo negro quedaba casi invisible en el header.
+ */
 export const CREDIT_LOGO = "/sofka.png";
 
 export interface CreditLink {

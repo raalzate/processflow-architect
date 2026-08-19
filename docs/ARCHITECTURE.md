@@ -78,7 +78,15 @@ componente / hook (useAi)
   por compatibilidad histórica, pero **ambos corren localmente**: `remote` es la
   orquestación Genkit estructurada en el proceso main, no la nube.
 - **`litert-engine.ts` / `litert-agent.ts`** — motor de inferencia (one-shot) y agente
-  ReAct sobre el modelo local.
+  ReAct sobre el modelo local. El engine mantiene **una sola conversación viva**: el
+  contexto procesado del runtime es un slot único, así que abrir una conversación cierra
+  la anterior y las creaciones van en serie (ver `gotchas.md`).
+- **`agent-run.ts`** — estado puro de una corrida del agente: lecturas, notas, plan,
+  preguntas al humano, cobertura y citas. Incluye `fallbackPlan`, el plan de rescate con
+  lo ya leído para cuando el modelo no logra redactar uno válido.
+- **`../artifacts/request.ts`** — pedido EXPLÍCITO de artefacto (menú «+» del chat):
+  resuelve familia, etiqueta y herramienta desde el registro y arma la orden que ve el
+  modelo. Es lo que evita depender del gate de intención sobre la frase del usuario.
 - **`graph-toon.ts`** — comprime el grafo antes de inyectarlo como contexto: poda la
   geometría/colores del lienzo y codifica en TOON (tablas CSV en vez de JSON repetido).
   Ejemplo con salida real y métricas en [compresion-toon.md](compresion-toon.md).
@@ -107,6 +115,18 @@ no-array se degrada a `[]` (no lanza).
 - **`GraphContext` / `GraphDataProvider`** — modelo de dominio cargado y derivados.
 - **`AgentContext`** — estado del agente de IA y los artefactos del canvas.
 - **`ViewsContext`** — vistas DDD (por agregado + estratégicas), notación por vista.
+
+## Identidad de la app (`src/lib/credits.ts`)
+
+Versión, canal (`beta`), crédito de autoría y enlaces salen de un solo módulo puro; la UI
+(cabecera, pie del panel, «Acerca de» en `/docs`) lo consume. `APP_VERSION` se duplica a
+mano desde `package.json` porque el renderer se exporta estático, y
+`__tests__/credits.test.ts` falla si los dos números se separan.
+
+El mapa **nombre de icono → componente lucide** de los artefactos vive en
+`src/components/ai-panel/artifact-icon.tsx` (la UI resuelve lo que el registro nombra como
+string, que es puro). Agregar un `kind` con un icono no mapeado falla en
+`__tests__/artifact-icon.test.tsx`.
 
 ## Pruebas
 
