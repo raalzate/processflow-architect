@@ -26,6 +26,7 @@ import {
 } from "@/lib/ai/litert-agent";
 import { releaseLitertContext } from "@/lib/ai/litert-engine";
 import { resolveArtifactRequest } from "@/lib/artifacts/request";
+import { editedArtifactPayload } from "@/lib/artifacts/editing";
 import type { Catalog } from "@/lib/ai/agent-retrieval";
 import { unknownPlanSources, describeStep } from "@/lib/ai/agent-run";
 import { safeGraphToToon } from "@/lib/ai/graph-toon";
@@ -38,6 +39,7 @@ import {
   attachToLineage,
   detachArtifact,
   ingestArtifacts,
+  reviseArtifact,
   lineageHistory,
   lineageOf,
   migrateState,
@@ -99,6 +101,16 @@ function loadState(fileId: string): AgentState {
   return { versions: [v], lineages: [], artifacts: [], messages: [] };
 }
 
+/**
+ * Artefactos persistidos de CUALQUIER proyecto (no sólo el abierto). Lo usa el
+ * puente MCP para responder `list_artifacts` / `get_artifact` sobre otro
+ * proyecto sin obligar al usuario a cambiar de proyecto en el lienzo.
+ */
+export function readStoredArtifacts(fileId: string): Artifact[] {
+  if (!fileId) return [];
+  return loadState(fileId).artifacts ?? [];
+}
+
 /** Serializa un artefacto a texto plano para inyectarlo como contexto. */
 export function artifactToText(a: Artifact): string {
   if (a.render === "markdown") return a.payload?.markdown ?? "";
@@ -152,6 +164,8 @@ export interface AgentContextType {
   historyOf: (artifactId: string) => Artifact[];
   /** Restaurar = crear una revisión nueva con el contenido de la elegida. */
   restoreArtifactRevision: (artifactId: string) => void;
+  /** Edición manual: nueva revisión con el Markdown que escribió el humano. */
+  editArtifact: (artifactId: string, markdown: string, title?: string) => void;
   /** Borrado definitivo del linaje entero: lo único que destruye histórico. */
   purgeArtifact: (artifactId: string) => void;
   /** Mueve una revisión al linaje de otro artefacto (título cambiado). */
@@ -345,6 +359,22 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const restoreArtifactRevision = useCallback(
     (artifactId: string) => {
       const next = restoreRevision({ lineages, artifacts }, artifactId, versioningDeps);
+      setLineages(next.lineages);
+      setArtifacts(next.artifacts);
+    },
+    [lineages, artifacts]
+  );
+
+  /**
+   * Guarda la edición manual del visor. La traducción texto → payload vive en
+   * `lib/artifacts/editing.ts`: acá sólo se persiste la revisión nueva.
+   */
+  const editArtifact = useCallback(
+    (artifactId: string, markdown: string, title?: string) => {
+      const art = artifacts.find((a) => a.id === artifactId);
+      if (!art) return;
+      const patch = editedArtifactPayload(art, markdown);
+      const next = reviseArtifact({ lineages, artifacts }, artifactId, { ...patch, title }, versioningDeps);
       setLineages(next.lineages);
       setArtifacts(next.artifacts);
     },
@@ -767,6 +797,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     cancelRun,
     historyOf,
     restoreArtifactRevision,
+    editArtifact,
     purgeArtifact,
     attachArtifactTo,
     detachArtifactRevision,

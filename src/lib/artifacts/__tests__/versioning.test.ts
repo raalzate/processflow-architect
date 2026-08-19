@@ -20,6 +20,7 @@ import {
   purgeLineage,
   resolveContextRevisions,
   restoreRevision,
+  reviseArtifact,
   unarchiveLineage,
   visibleArtifacts,
   type VersionedState,
@@ -307,6 +308,62 @@ describe("restoreRevision", () => {
       ],
     };
     expect(restoreRevision(s, "suelto", deps())).toBe(s);
+  });
+});
+
+describe("reviseArtifact — edición manual del humano", () => {
+  it("crea revisión nueva con el texto editado y deja rastro en editedFrom", () => {
+    const d = deps();
+    const { state, created } = ingest(empty(), [agentArtifact("drivers", "Drivers", "original")], d);
+    const r = reviseArtifact(state, created[0].id, {
+      render: "markdown",
+      payload: { markdown: "editado a mano" },
+    }, d);
+
+    expect(r.created!.revision).toBe(2);
+    expect(r.created!.payload).toEqual({ markdown: "editado a mano" });
+    expect(r.created!.editedFrom).toBe(created[0].id);
+    expect(r.created!.supersededBy).toBeUndefined();
+    // Append-only: la v1 sigue ahí, con su payload intacto y apuntando a la v2.
+    const historia = lineageHistory(r.artifacts, state.lineages[0].id);
+    expect(historia.map((a) => a.revision)).toEqual([1, 2]);
+    expect(historia[0].payload).toEqual({ markdown: "original" });
+    expect(historia[0].supersededBy).toBe(r.created!.id);
+    expect(currentRevision(r.artifacts, state.lineages[0].id)!.id).toBe(r.created!.id);
+  });
+
+  it("editar puede cambiar el render (un diagrama que pasó a prosa)", () => {
+    const d = deps();
+    const { state, created } = ingest(
+      empty(),
+      [{ kind: "c4-context", render: "mermaid", title: "C4", payload: { code: "A-->B" } }],
+      d
+    );
+    const r = reviseArtifact(state, created[0].id, { render: "markdown", payload: { markdown: "prosa" } }, d);
+    expect(r.created!.render).toBe("markdown");
+  });
+
+  it("un título nuevo se aplica; uno vacío conserva el anterior", () => {
+    const d = deps();
+    const { state, created } = ingest(empty(), [agentArtifact("adr", "ADR 1")], d);
+    const conTitulo = reviseArtifact(state, created[0].id, { render: "markdown", payload: {}, title: " ADR 2 " }, d);
+    expect(conTitulo.created!.title).toBe("ADR 2");
+    const sinTitulo = reviseArtifact(state, created[0].id, { render: "markdown", payload: {}, title: "  " }, d);
+    expect(sinTitulo.created!.title).toBe("ADR 1");
+  });
+
+  it("editar un linaje archivado lo revive", () => {
+    const d = deps();
+    const { state, created } = ingest(empty(), [agentArtifact("drivers", "D")], d);
+    const archivado = archiveLineage(state, state.lineages[0].id, d);
+    const r = reviseArtifact(archivado, created[0].id, { render: "markdown", payload: { markdown: "z" } }, d);
+    expect(r.lineages[0].archivedAt).toBeUndefined();
+  });
+
+  it("un id inexistente devuelve el estado sin cambios", () => {
+    const d = deps();
+    const { state } = ingest(empty(), [agentArtifact("drivers", "D")], d);
+    expect(reviseArtifact(state, "no-existe", { render: "markdown", payload: {} }, d)).toBe(state);
   });
 });
 

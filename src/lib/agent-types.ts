@@ -110,6 +110,7 @@ export interface Artifact {
   revision?: number; // 1, 2, 3… entero ≥ 1
   supersededBy?: string; // revisión que la reemplazó (rastro de la cadena)
   restoredFrom?: string; // revisión que se restauró para crear esta
+  editedFrom?: string; // revisión que el humano editó para crear esta
 }
 
 /**

@@ -236,6 +236,44 @@ export function restoreRevision(
   return { lineages, artifacts, created: art };
 }
 
+/**
+ * Edición manual: crea una revisión nueva con el contenido que escribió el
+ * humano. Es append-only como todo lo demás —la revisión editada NO se
+ * sobreescribe— y deja rastro en `editedFrom`: al ver v3 hay que poder saber
+ * que no la escribió el agente.
+ */
+export function reviseArtifact(
+  state: VersionedState,
+  artifactId: string,
+  patch: { render: Artifact["render"]; payload: unknown; title?: string },
+  deps: VersioningDeps
+): VersionedState & { created?: Artifact } {
+  const source = state.artifacts.find((a) => a.id === artifactId);
+  if (!source || !source.lineageId) return state;
+
+  const previous = currentRevision(state.artifacts, source.lineageId);
+  const art: Artifact = {
+    ...source,
+    id: deps.uid(),
+    createdAt: deps.now(),
+    render: patch.render,
+    payload: patch.payload,
+    title: patch.title?.trim() ? patch.title.trim() : source.title,
+    revision: previous ? revisionOf(previous) + 1 : 1,
+    supersededBy: undefined,
+    restoredFrom: undefined,
+    editedFrom: source.id,
+  };
+  const artifacts = previous
+    ? supersede([...state.artifacts, art], previous.id, art.id)
+    : [...state.artifacts, art];
+  // Editar un linaje archivado también lo revive: se está trabajando en él.
+  const lineages = state.lineages.map((l) =>
+    l.id === source.lineageId && l.archivedAt ? { ...l, archivedAt: undefined } : l
+  );
+  return { lineages, artifacts, created: art };
+}
+
 /** Archiva un linaje: sale de la lista, sigue en el estado (FR-009). */
 export function archiveLineage(
   state: VersionedState,
