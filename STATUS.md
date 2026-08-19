@@ -7,7 +7,7 @@ lo que se supone va en "deuda conocida".
 - **Fecha del último gate completo:** 2026-08-19
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.5.0 (tag `v0.5.0` → instaladores por `release-build.yml`)
+- **Versión publicada:** 0.5.1 (tag `v0.5.1` → instaladores por `release-build.yml`)
 
 ## Señales
 
@@ -18,10 +18,11 @@ lo que se supone va en "deuda conocida".
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
 | Typecheck | `npm run typecheck` | verde (renderer + electron) |
-| Tests | `npm run test:coverage` | verde — 71 archivos, 1193 pruebas (cobertura `src/lib` 97,3 % stmts) |
+| Tests | `npm run test:coverage` | verde — 72 archivos, 1212 pruebas (cobertura `src/lib` 97,3 % stmts) |
 | E2E del MCP (stdio) | script manual contra `mcp-server/index.ts` | verde — arnés completo (ingesta → citas → ambigüedades → calidad → revisión → export → install_skill) |
 | Lectura de la app por MCP (modo app) | script manual por CDP contra la app viva | verde — 30 tools registradas; `list_artifacts`, `get_artifact` (con revisión), `list_views`, `get_view` (+`importAs`) y sus errores con opciones, también contra OTRO proyecto |
 | Editor de artefactos con documento largo | script manual por CDP contra la app viva | verde — 11 021 caracteres: índice de 49 encabezados con salto, buscar/reemplazar (72 coincidencias), stats, borrador recuperable |
+| Filtros del lienzo | script manual (Puppeteer) sobre el renderer | verde — ocultan nodos y sus aristas con aviso del conteo; el menú sigue la notación de la VISTA (Pool en BPMN, Límite de Sistema en C4) y el filtro es por vista |
 | Build de producción | `npm run build` | verde |
 
 Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
