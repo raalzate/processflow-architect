@@ -28,6 +28,7 @@ ningún otro `.md`— apunte a la nada.
 |---|---|
 | `docs/ARCHITECTURE.md` | estructura de la app (Electron + Next + IA local) |
 | `docs/architecture/reuse-patterns.md` | catálogo de abstracciones ya existentes (consultar antes de escribir) |
+| `docs/architecture/mcp.md` | el servidor MCP por dentro: las 26 herramientas, los tres transportes, cómo se extiende |
 | `docs/compresion-toon.md` | por qué el grafo viaja en TOON hacia la IA |
 | `docs/decisions/` | ADRs: por qué se decidió, no qué se hizo |
 
