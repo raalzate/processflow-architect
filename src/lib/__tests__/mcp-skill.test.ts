@@ -65,7 +65,16 @@ describe("configuración inyectada", () => {
       transport: "http",
       url: "http://127.0.0.1:7331/mcp",
       workspace: "/tmp/ws",
-      tools: ["get_app_state", "export_as_view", "review_diagram", "export_to_app"],
+      tools: [
+        "get_app_state",
+        "export_as_view",
+        "review_diagram",
+        "export_to_app",
+        "list_artifacts",
+        "get_artifact",
+        "list_views",
+        "get_view",
+      ],
       defaultNotation: "ddd",
       maxNodes: 40,
       viewsLimit: 50,
@@ -74,6 +83,19 @@ describe("configuración inyectada", () => {
     expect(block).toContain("DIRECTO");
     expect(block).toContain("/tmp/ws");
     expect(block).not.toContain("No disponibles aquí");
+  });
+
+  it("declara ausentes las herramientas de LECTURA de la app cuando el transporte no las expone", () => {
+    // Un skill que hable de leer artefactos por stdio manda al agente a intentar
+    // algo que no existe: la config lo dice antes de que lo intente.
+    const block = skillConfigBlock({
+      transport: "stdio",
+      tools: ["list_notations", "create_diagram", "export_to_app"],
+    });
+    expect(block).toContain("No disponibles aquí");
+    for (const t of ["list_artifacts", "get_artifact", "list_views", "get_view"]) {
+      expect(block).toContain(t);
+    }
   });
 
   it("en modo stdio avisa de que no hay vistas y lista lo que falta", () => {
@@ -110,6 +132,11 @@ describe("contrato del arnés dentro del skill", () => {
   // agente vuelve a subir diagramas sin trazabilidad ni revisión.
   const pasos = [
     "get_app_state",
+    // Leer antes de escribir: sin estos pasos el agente rehace lo que la app ya
+    // tiene (vistas, artefactos) y crea una segunda versión de la verdad.
+    "list_views",
+    "list_artifacts",
+    "get_artifact",
     "source",
     "record_ambiguity",
     "resolve_ambiguity",

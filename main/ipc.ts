@@ -16,6 +16,7 @@ import {
 } from './services/ai-remote';
 import { startMcpHttp, stopMcpHttp, mcpHttpStatus } from './services/mcp-http';
 import { setAppState } from './services/mcp-app-state';
+import { initAppReadBridge } from './services/mcp-app-read';
 import type { AppState } from '../src/lib/mcp/app-state';
 import { getSystemInfo } from './services/system-info';
 import { playgroundListTools, playgroundCallTool } from './services/mcp-playground';
@@ -55,6 +56,8 @@ export function registerIpcHandlers() {
   // el agente externo no diseñe ni exporte a ciegas. Es `on` (fire-and-forget):
   // publicar no debe bloquear el render.
   ipcMain.on('mcp-app-state', (_e, state: AppState | null) => setAppState(state));
+  // Canal de respuesta del renderer para la lectura bajo demanda (artefactos, vistas).
+  initAppReadBridge();
 
   // --- Playground MCP (guía /mcp): ejecutar herramientas por transporte en memoria ---
   ipcMain.handle('mcp-playground-list-tools', async () => playgroundListTools());

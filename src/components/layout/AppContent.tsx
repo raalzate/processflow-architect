@@ -12,6 +12,11 @@ import { useToast } from "@/hooks/use-toast";
 import { parseDiagramJson, isJsonFile } from "@/lib/import-diagram";
 import { readMcpPrefs } from "@/lib/mcp-settings";
 import { describeAppState } from "@/lib/mcp/app-state";
+import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
+import { artifactBodyMarkdown } from "@/lib/artifacts/to-markdown";
+import { readStoredArtifacts } from "@/context/AgentContext";
+import { readStoredCustomViews } from "@/context/ViewsContext";
+import { BUILTIN_VIEWS } from "@/lib/views-types";
 import { MAX_CUSTOM_VIEWS } from "@/lib/views-types";
 import { cn } from "@/lib/utils";
 import { useGraphContext } from "@/context/GraphContext";
@@ -64,7 +69,7 @@ const MemoizedAppHeader = React.memo(() => {
 //    `get_app_state` lo sirva al agente: sin esa ingesta previa, el agente
 //    exporta a ciegas y duplica o pisa el trabajo del humano.
 const McpImportBridge = () => {
-  const { handleCreateProjectFromContent, currentFileId, graphData, savedFiles } =
+  const { handleCreateProjectFromContent, currentFileId, graphData, savedFiles, allNodes } =
     useGraphContext();
   const { createView, views } = useViews();
   const { toast } = useToast();
@@ -82,6 +87,81 @@ const McpImportBridge = () => {
       })
     );
   }, [graphData, views, savedFiles]);
+
+  // Lectura bajo demanda (`list_artifacts`, `get_artifact`, `list_views`,
+  // `get_view`): el main pregunta y este efecto contesta. El proyecto activo sale
+  // de los contextos; los demás, de localStorage — leerlos NO cambia el lienzo.
+  useEffect(() => {
+    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    if (!electron?.onMcpAppRead) return;
+
+    const proyectos = savedFiles.map((f) => ({ id: f.id, name: f.name }));
+    const activo =
+      currentFileId && graphData
+        ? { id: currentFileId, name: graphData.nombre_proyecto ?? "sin nombre" }
+        : null;
+
+    const ctx: AppReadContext = {
+      active: activo,
+      projects: proyectos,
+      viewsOf: (projectId) => {
+        // El proyecto activo ya tiene sus vistas resueltas en el contexto (con el
+        // grafo vivo del lienzo, que puede diferir de lo persistido).
+        if (projectId === currentFileId) {
+          return views.map((v) => ({
+            name: v.name,
+            kind: v.kind,
+            notation: v.notation,
+            builtin: v.builtin,
+            description: v.description,
+            graph: v.kind === "design" ? graphData ?? undefined : v.graph,
+            mermaidCode: v.mermaidCode,
+          }));
+        }
+        const archivo = savedFiles.find((f) => f.id === projectId);
+        const builtin = BUILTIN_VIEWS.map((v) => ({
+          name: v.name,
+          kind: v.kind,
+          notation: archivo?.content?.notation ?? v.notation,
+          builtin: true,
+          graph: archivo?.content,
+        }));
+        const custom = readStoredCustomViews(projectId).map((v) => ({
+          name: v.name,
+          kind: v.kind,
+          notation: v.notation,
+          description: v.description,
+          graph: v.graph,
+          mermaidCode: v.mermaidCode,
+        }));
+        return [...builtin, ...custom];
+      },
+      artifactsOf: (projectId) =>
+        readStoredArtifacts(projectId).map((a) => ({
+          title: a.title,
+          kind: a.kind,
+          render: a.render,
+          revision: a.revision,
+          createdAt: a.createdAt,
+          lineageId: a.lineageId,
+          // `allNodes` sólo aplica al proyecto abierto: en otro proyecto las citas
+          // de nodos no se resuelven y el cuerpo llega sin ellas (mejor que nada).
+          markdown: artifactBodyMarkdown(a, projectId === currentFileId ? allNodes : []),
+        })),
+    };
+
+    const off = electron.onMcpAppRead(({ id, request }) => {
+      try {
+        electron.mcpAppReadReply?.(id, resolveAppRead(request, ctx));
+      } catch (e: any) {
+        electron.mcpAppReadReply?.(id, {
+          ok: false,
+          error: `La app no pudo leer eso: ${String(e?.message ?? e)}`,
+        });
+      }
+    });
+    return off;
+  }, [currentFileId, graphData, savedFiles, views, allNodes]);
 
   useEffect(() => {
     const electron = typeof window !== "undefined" ? window.electronAPI : undefined;

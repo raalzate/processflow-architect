@@ -379,3 +379,151 @@ describe("list_skills / install_skill", () => {
     expect(res.content[0].text).toContain("projectDir");
   });
 });
+
+// -----------------------------------------------------------------------------
+// Lectura de la app: artefactos, vistas y otro proyecto (sólo modo app).
+// -----------------------------------------------------------------------------
+
+describe("lectura de la app (list_artifacts · get_artifact · list_views · get_view)", () => {
+  const graph = (nombre: string, nodos: number) => ({
+    nombre_proyecto: nombre,
+    version: "1.0.0",
+    fecha_analisis: "2026-08-19",
+    notation: "ddd",
+    big_picture: {
+      descripcion: "",
+      hotspots: [],
+      nodos: Array.from({ length: nodos }, (_, i) => ({
+        id: `n${i}`,
+        nombre: `Nodo ${i}`,
+        tipo_elemento: tipo("ddd", "command"),
+        descripcion: "",
+        estado_comparativo: "nuevo",
+      })),
+      aristas: [],
+    },
+    agregados: [],
+  });
+
+  /** Puente falso: contesta como lo haría el renderer. */
+  const readApp = async (req: any) => {
+    if (req.project && req.project !== "Otro") {
+      return { ok: false, error: `No hay un proyecto que resuelva a "${req.project}".`, options: ["Seguros", "Otro"] };
+    }
+    const project = req.project === "Otro" ? "Otro" : "Seguros";
+    if (req.kind === "artifacts") {
+      return {
+        ok: true,
+        project,
+        kind: "artifacts",
+        artifacts: [
+          { title: "Drivers de Arquitectura", kind: "drivers", render: "markdown", revision: 2, createdAt: "2026-08-19T00:00:00.000Z", chars: 120, revisions: [1, 2] },
+        ],
+      };
+    }
+    if (req.kind === "artifact") {
+      if (req.title === "roadmap") {
+        return { ok: false, error: "no resuelve", options: ["Drivers de Arquitectura (v2)"] };
+      }
+      return {
+        ok: true,
+        project,
+        kind: "artifact",
+        artifact: {
+          title: "Drivers de Arquitectura",
+          kind: "drivers",
+          render: "markdown",
+          revision: 2,
+          createdAt: "2026-08-19T00:00:00.000Z",
+          chars: 20,
+          revisions: [1, 2],
+          markdown: "## Contexto\ncuerpo del artefacto",
+        },
+      };
+    }
+    if (req.kind === "views") {
+      return {
+        ok: true,
+        project,
+        kind: "views",
+        views: [{ name: "Modelo", kind: "design", notation: "ddd", builtin: true, elements: 3 }],
+      };
+    }
+    if (req.name === "Secuencia") {
+      return { ok: true, project, kind: "view", view: { name: "Secuencia", kind: "mermaid", elements: 0, mermaidCode: "sequenceDiagram\n  U->>S: hola" } };
+    }
+    return {
+      ok: true,
+      project,
+      kind: "view",
+      view: { name: "Modelo", kind: "design", notation: "ddd", builtin: true, elements: 2, graph: graph(project, 2) },
+    };
+  };
+
+  it("sin readApp (modo stdio) las herramientas NO se registran", () => {
+    const { tools } = toolsFor();
+    for (const t of ["list_artifacts", "get_artifact", "list_views", "get_view"]) {
+      expect(tools.has(t)).toBe(false);
+    }
+  });
+
+  it("lista los artefactos del proyecto activo con su revisión", async () => {
+    const { textOf } = toolsFor({ readApp });
+    const t = await textOf("list_artifacts");
+    expect(t).toContain('Artefactos de "Seguros"');
+    expect(t).toContain("Drivers de Arquitectura");
+    expect(t).toContain("v2 (de 2)");
+  });
+
+  it("devuelve el Markdown del artefacto", async () => {
+    const { textOf } = toolsFor({ readApp });
+    const t = await textOf("get_artifact", { title: "drivers" });
+    expect(t).toContain("# Drivers de Arquitectura (v2)");
+    expect(t).toContain("cuerpo del artefacto");
+  });
+
+  it("un título que no resuelve devuelve isError con las opciones", async () => {
+    const { call } = toolsFor({ readApp });
+    const res = await call("get_artifact", { title: "roadmap" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("Disponibles: Drivers de Arquitectura (v2)");
+  });
+
+  it("un proyecto inexistente propone los que hay", async () => {
+    const { call } = toolsFor({ readApp });
+    const res = await call("list_artifacts", { project: "Aurora" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("Disponibles: Seguros · Otro");
+  });
+
+  it("lista vistas y llega a otro proyecto", async () => {
+    const { textOf } = toolsFor({ readApp });
+    expect(await textOf("list_views")).toContain('Vistas de "Seguros"');
+    expect(await textOf("list_views", { project: "Otro" })).toContain('Vistas de "Otro"');
+  });
+
+  it("get_view devuelve Mermaid de la vista y NO crea diagrama sin importAs", async () => {
+    const { textOf } = toolsFor({ readApp });
+    const t = await textOf("get_view", { name: "Modelo" });
+    expect(t).toContain('Vista "Modelo" de "Seguros"');
+    expect(t).toContain("```mermaid");
+    expect(t).not.toContain("diagramId");
+  });
+
+  it("una vista Mermaid devuelve su código tal cual", async () => {
+    const { textOf } = toolsFor({ readApp });
+    expect(await textOf("get_view", { name: "Secuencia" })).toContain("sequenceDiagram");
+  });
+
+  it("con importAs deja un diagrama EDITABLE en el workspace", async () => {
+    const { textOf, call } = toolsFor({ readApp });
+    const t = await textOf("get_view", { name: "Modelo", importAs: true });
+    const id = /diagramId="([^"]+)"/.exec(t)?.[1];
+    expect(id).toBeTruthy();
+    // El diagrama existe de verdad: get_diagram lo encuentra y trae sus elementos.
+    const resumen = (await call("get_diagram", { diagramId: id })).content[0].text as string;
+    expect(resumen).toContain("Elementos: 2");
+    // Y se llama como la VISTA, no como el proyecto que venía en su GraphData.
+    expect(resumen).toContain("Modelo");
+  });
+});

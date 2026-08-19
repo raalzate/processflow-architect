@@ -17,6 +17,7 @@ import {
   CopyCheck,
   Wrench,
   ListChecks,
+  BookOpen,
   Workflow,
   FileUp,
   Terminal,
@@ -102,9 +103,10 @@ const STEPS: { icon: React.ElementType; title: string; body: string }[] = [
   { icon: Plug, title: "1 · Conectar", body: "Activa el servidor en Ajustes → Servidor MCP y añade el bloque HTTP en tu cliente (Claude Code / Codex). Alternativa dev: abrir el repo, que trae el modo stdio en .mcp.json." },
   { icon: Sparkles, title: "2 · Instalar el skill", body: "Pídele «instala el skill de Processflow en este proyecto» (install_skill) o descárgalo aquí abajo. Llega con la configuración de tu servidor inyectada." },
   { icon: Wrench, title: "3 · Ingesta", body: "El agente llama get_app_state y describe_notation: sabe qué proyecto tienes abierto y qué tipos son válidos antes de construir nada." },
-  { icon: Workflow, title: "4 · Diseñar con trazabilidad", body: "create_diagram + add_container/add_node/add_edge, cada elemento con su cita de la fuente; lo que el documento no decide se registra como ambigüedad y te lo pregunta una sola vez." },
-  { icon: ListChecks, title: "5 · Revisar", body: "validate_diagram (validez + calidad de modelado) y review_diagram: recibes la historia, la tabla elemento ← fuente, las decisiones, los pendientes y un veredicto." },
-  { icon: FileUp, title: "6 · Exportar", body: "Con tu aprobación: export_to_app carga el modelo en el lienzo y export_as_view suma pestañas al proyecto activo. En modo stdio genera un .json que importas." },
+  { icon: BookOpen, title: "4 · Leer lo que ya hiciste", body: "list_views / get_view traen tus vistas (incluso de otro proyecto guardado) y list_artifacts / get_artifact los documentos que generó la IA local: el agente continúa y cita tu trabajo en vez de rehacerlo." },
+  { icon: Workflow, title: "5 · Diseñar con trazabilidad", body: "create_diagram + add_container/add_node/add_edge, cada elemento con su cita de la fuente; lo que el documento no decide se registra como ambigüedad y te lo pregunta una sola vez." },
+  { icon: ListChecks, title: "6 · Revisar", body: "validate_diagram (validez + calidad de modelado) y review_diagram: recibes la historia, la tabla elemento ← fuente, las decisiones, los pendientes y un veredicto." },
+  { icon: FileUp, title: "7 · Exportar", body: "Con tu aprobación: export_to_app carga el modelo en el lienzo y export_as_view suma pestañas al proyecto activo. En modo stdio genera un .json que importas." },
 ];
 
 /**

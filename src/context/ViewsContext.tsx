@@ -56,6 +56,16 @@ function loadViews(fileId: string): PersistedViews {
   return { customViews: [], activeViewId: "design", injectedViewIds: [] };
 }
 
+/**
+ * Vistas custom persistidas de CUALQUIER proyecto. Lo usa el puente MCP para
+ * `list_views` / `get_view` sobre un proyecto que no es el activo: abrirlo para
+ * leerlo le cambiaría el lienzo al usuario.
+ */
+export function readStoredCustomViews(fileId: string): DesignView[] {
+  if (!fileId) return [];
+  return loadViews(fileId).customViews ?? [];
+}
+
 export interface ViewsContextType {
   views: DesignView[]; // built-in + custom (en orden)
   customViews: DesignView[];

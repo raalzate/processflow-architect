@@ -10,6 +10,7 @@ export interface LitertModelStatus {
 }
 
 import type { AppState } from "@/lib/mcp/app-state";
+import type { AppReadRequest, AppReadResult } from "@/lib/mcp/app-read";
 
 export interface McpServerStatus {
   running: boolean;
@@ -83,6 +84,11 @@ export interface ElectronAPI {
    * herramienta MCP `get_app_state` lo sirva al agente externo. Fire-and-forget.
    */
   mcpPublishAppState: (state: AppState | null) => void;
+  /** El main pide contenido de la app (artefactos, vistas, otro proyecto). */
+  onMcpAppRead: (
+    handler: (payload: { id: number; request: AppReadRequest }) => void
+  ) => () => void;
+  mcpAppReadReply: (id: number, result: AppReadResult) => void;
 
   // Playground MCP (guía /mcp): probar herramientas sin cliente externo.
   mcpPlaygroundListTools: () => Promise<PlaygroundTool[]>;

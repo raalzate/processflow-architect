@@ -47,6 +47,13 @@ import { reviewPacket } from "../../src/lib/mcp/review";
 import { suggestViews, formatViewPlan } from "../../src/lib/mcp/view-plan";
 import { formatAppState, type AppState } from "../../src/lib/mcp/app-state";
 import {
+  formatArtifact,
+  formatArtifactList,
+  formatViewList,
+  type AppReadRequest,
+  type AppReadResult,
+} from "../../src/lib/mcp/app-read";
+import {
   listSkills,
   renderSkillFiles,
   skillInstallPath,
@@ -85,6 +92,13 @@ export interface McpToolsOptions {
    * `get_app_state`: es la INGESTA que evita que el agente exporte a ciegas.
    */
   getAppState?: () => AppState | null;
+  /**
+   * Presente sólo en el modo app: LEE contenido de la app bajo demanda
+   * (artefactos del agente local, vistas, otro proyecto guardado). Es lo que
+   * convierte al agente externo en lector del trabajo del humano y no sólo en
+   * escritor. Nunca rechaza: el fallo viaja como `{ ok: false, error }`.
+   */
+  readApp?: (request: AppReadRequest) => Promise<AppReadResult>;
   /** Transporte por el que llegó el cliente (se inyecta en el skill instalado). */
   transport?: "http" | "stdio";
   /** URL del servidor cuando el transporte es HTTP. */
@@ -649,6 +663,124 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     },
     async () => text(formatAppState(opts.getAppState?.() ?? null))
   );
+
+  // -- 4c-bis. Lectura del trabajo del humano (sólo modo app) --------------------
+  // Sin esto el agente externo sólo escribe: no puede leer los artefactos que
+  // generó la IA local ni continuar una vista que ya existe, y termina rehaciendo
+  // (o contradiciendo) trabajo que ya estaba hecho.
+  if (opts.readApp) {
+    /** Traduce el fallo del puente a una respuesta MCP con las opciones que sí hay. */
+    const noSePudo = (r: Extract<AppReadResult, { ok: false }>) =>
+      fail(r.options?.length ? `${r.error}\nDisponibles: ${r.options.join(" · ")}` : r.error);
+
+    server.registerTool(
+      "list_artifacts",
+      {
+        title: "Listar artefactos de la app",
+        description:
+          "Artefactos que la IA local de Processflow ya generó en un proyecto (drivers, riesgos, propuesta, roadmap, ADRs, mapas…): título, tipo, revisión vigente y tamaño. Úsala antes de escribir cualquier documento: si ya existe uno, se continúa o se cita, no se duplica. Sin `project` responde sobre el proyecto ACTIVO.",
+        inputSchema: {
+          project: z
+            .string()
+            .optional()
+            .describe("Nombre de otro proyecto guardado (por defecto, el activo). Leerlo NO cambia el lienzo del usuario."),
+        },
+      },
+      async ({ project }) => {
+        const r = await opts.readApp!({ kind: "artifacts", project });
+        if (!r.ok) return noSePudo(r);
+        return text(formatArtifactList(r.project, r.kind === "artifacts" ? r.artifacts : []));
+      }
+    );
+
+    server.registerTool(
+      "get_artifact",
+      {
+        title: "Leer un artefacto",
+        description:
+          "Devuelve el Markdown de un artefacto de la app (el mismo que ve el humano en el visor), con su revisión y el histórico declarado. Úsalo para trabajar SOBRE lo que ya existe: citarlo, criticarlo o extenderlo. El título admite forma corta si resuelve a uno solo; si es ambiguo, la respuesta lista los títulos.",
+        inputSchema: {
+          title: z.string().describe("Título del artefacto (ver list_artifacts)."),
+          project: z.string().optional().describe("Otro proyecto guardado (por defecto, el activo)."),
+          revision: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe("Revisión concreta. Por defecto, la vigente."),
+        },
+      },
+      async ({ title, project, revision }) => {
+        const r = await opts.readApp!({ kind: "artifact", title, project, revision });
+        if (!r.ok) return noSePudo(r);
+        return r.kind === "artifact" ? text(formatArtifact(r.project, r.artifact)) : fail("Respuesta inesperada.");
+      }
+    );
+
+    server.registerTool(
+      "list_views",
+      {
+        title: "Listar vistas de la app",
+        description:
+          "Vistas (pestañas) de un proyecto de la app con su notación, origen (sistema/custom) y cuántos elementos tiene cada una. `get_app_state` da esto del proyecto activo; esta herramienta además llega a OTRO proyecto guardado, que es como se reutiliza un modelo ya hecho.",
+        inputSchema: {
+          project: z.string().optional().describe("Otro proyecto guardado (por defecto, el activo)."),
+        },
+      },
+      async ({ project }) => {
+        const r = await opts.readApp!({ kind: "views", project });
+        if (!r.ok) return noSePudo(r);
+        return text(formatViewList(r.project, r.kind === "views" ? r.views : []));
+      }
+    );
+
+    server.registerTool(
+      "get_view",
+      {
+        title: "Leer una vista (y opcionalmente traerla como diagrama)",
+        description:
+          "Contenido de una vista de la app: resumen, Mermaid de lo que dibuja y —con `importAs`— el mismo modelo como diagrama EDITABLE en el workspace, para continuarlo con add_node/add_edge y devolverlo con export_as_view. Es la forma de no rehacer lo que el humano ya modeló. Las vistas Mermaid devuelven su código.",
+        inputSchema: {
+          name: z.string().describe("Nombre de la vista (ver list_views)."),
+          project: z.string().optional().describe("Otro proyecto guardado (por defecto, el activo)."),
+          importAs: z
+            .boolean()
+            .default(false)
+            .describe("true = además crea un diagrama editable con ese contenido y devuelve su diagramId."),
+        },
+      },
+      async ({ name, project, importAs }) => {
+        const r = await opts.readApp!({ kind: "view", name, project });
+        if (!r.ok) return noSePudo(r);
+        if (r.kind !== "view") return fail("Respuesta inesperada.");
+        const v = r.view;
+        const cabecera = `Vista "${v.name}" de "${r.project}" — ${v.kind}${
+          v.notation ? ` / ${v.notation}` : ""
+        }, ${v.elements} elemento(s)${v.builtin ? " (vista del sistema)" : ""}.`;
+
+        if (v.mermaidCode) {
+          return text([cabecera, "", "```mermaid", v.mermaidCode.trim(), "```"].join("\n"));
+        }
+        if (!v.graph) return fail(`La vista "${v.name}" no trae contenido legible.`);
+
+        // El modelo se nombra por la VISTA, no por el `nombre_proyecto` que traiga
+        // su GraphData: una vista importada de "Cobros BPMN" que se llame como el
+        // proyecto de origen confunde al devolverla con export_as_view.
+        const importado = fromGraphData(v.graph, (v.notation as NotationId) || "ddd");
+        const model: DiagramModel = { ...importado, meta: { ...importado.meta, nombre_proyecto: v.name } };
+        const partes = [cabecera, "", "```mermaid", toMermaid(model).trim(), "```"];
+        if (importAs) {
+          const id = await freshId(slugify(`${r.project}-${v.name}`));
+          await saveModel(id, model);
+          partes.push(
+            "",
+            `Importada como diagramId="${id}" (${model.nodes.length} elementos, ${model.edges.length} aristas): editala y devolvela con export_as_view para no duplicar la pestaña.`
+          );
+        }
+        return text(partes.join("\n"));
+      }
+    );
+  }
 
   // -- 4d. Skills: el arnés del agente externo -----------------------------------
 

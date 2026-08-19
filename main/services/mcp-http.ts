@@ -24,6 +24,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerProcessflowTools } from "./mcp-tools";
 import { getAppState } from "./mcp-app-state";
+import { readFromApp } from "./mcp-app-read";
 import type { GraphData } from "../../src/lib/types";
 import type { NotationId } from "../../src/lib/notations";
 
@@ -77,6 +78,7 @@ function buildMcpServer(): McpServer {
     exportViewToApp,
     exportMermaidToApp,
     getAppState,
+    readApp: readFromApp,
     // El skill que instale el agente debe describir ESTE transporte, no el del repo.
     transport: "http",
     serverUrl: () => `http://127.0.0.1:${currentPort}/mcp`,

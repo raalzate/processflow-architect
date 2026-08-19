@@ -97,12 +97,26 @@ En este orden, siempre:
    PROYECTO (\`export_to_app\`, reemplaza el activo) o como VISTA
    (\`export_as_view\`, suma una pestaña). Sin esta llamada estarías pisando
    trabajo del usuario a ciegas.
-3. \`list_diagrams\` — ¿hay un diseño en curso que retomar (\`get_diagram\`) en vez
+3. **\`list_views\`** — las pestañas que ya existen, con su notación y tamaño. Con
+   \`project\` mira OTRO proyecto guardado sin abrirlo: así reutilizas un modelo ya
+   hecho (p. ej. el paisaje C4 de otro producto) en vez de inventarlo de nuevo.
+   \`get_view\` con \`importAs: true\` trae esa vista como diagrama EDITABLE.
+4. **\`list_artifacts\`** — documentos que la IA local del usuario ya generó
+   (drivers, riesgos, propuesta, roadmap, ADRs). \`get_artifact\` te da el
+   Markdown: es fuente citable de PRIMERA mano sobre lo que el usuario decidió,
+   y contradecirla sin decirlo es el error más caro que puedes cometer acá.
+5. \`list_diagrams\` — ¿hay un diseño en curso que retomar (\`get_diagram\`) en vez
    de empezar de cero?
-4. \`describe_notation\` de cada notación que vayas a usar — los \`type\` válidos
+6. \`describe_notation\` de cada notación que vayas a usar — los \`type\` válidos
    salen SOLO de ahí.
 
 No sigas sin conexión y sin haber leído el estado.
+
+**Qué hacer con lo que leas:** si un artefacto o una vista ya cubre parte del
+material, dilo en el plan («el BPMN de Cobros ya existe: lo extiendo, no lo
+recreo») y cita el artefacto en la columna «cita» de la ficha igual que citas el
+documento. Un diagrama que contradice un ADR aprobado se declara como
+ambigüedad (\`record_ambiguity\`), no se resuelve por tu cuenta.
 
 ## 1 · Leer la fuente y extraer CON CITA
 
@@ -433,8 +447,19 @@ revisión → exportar\`.
    Decide con eso si el diagrama va como PROYECTO (\`export_to_app\`, reemplaza el
    activo) o como VISTA (\`export_as_view\`, suma pestaña). Sin esta llamada,
    exportar es pisar trabajo del usuario a ciegas.
-3. \`list_diagrams\` / \`get_diagram\` — ¿hay un diseño en curso que retomar?
+3. **\`list_views\`** — qué vistas tiene el proyecto (y \`list_views\` con \`project\`
+   para mirar OTRO proyecto guardado sin abrirlo). Si tu diagrama ya existe como
+   vista, \`get_view\` con \`importAs: true\` te lo trae como diagrama EDITABLE:
+   continúas ese modelo en vez de rehacerlo y devolverlo duplicado.
+4. **\`list_artifacts\`** — documentos que la IA local ya generó (drivers, riesgos,
+   propuesta, roadmap, ADRs). Si hay uno que describe lo que vas a modelar,
+   \`get_artifact\` y trátalo como FUENTE citable: \`source: "Drivers v2 §NFR"\`.
+5. \`list_diagrams\` / \`get_diagram\` — ¿hay un diseño en curso que retomar?
    \`import_diagram\` si el usuario trae un \`.json\` exportado.
+
+Reutilizar es la regla: rehacer a mano algo que ya está en la app es trabajo
+duplicado y, peor, una segunda versión de la verdad que el humano tiene que
+reconciliar.
 
 ## 1 · Elegir notación
 
@@ -597,7 +622,17 @@ export function skillConfigBlock(config: SkillConfig): string {
   if (config.workspace) lines.push(`- **Workspace del servidor:** \`${config.workspace}\``);
   if (config.tools?.length) {
     lines.push(`- **Herramientas disponibles:** ${config.tools.join(", ")}.`);
-    const faltan = ["get_app_state", "export_as_view", "review_diagram"].filter(
+    const faltan = [
+      "get_app_state",
+      "export_as_view",
+      "review_diagram",
+      // Lectura de la app: existen sólo en el modo app. Un skill que las
+      // mencione en stdio manda al agente a intentar algo que no está.
+      "list_artifacts",
+      "get_artifact",
+      "list_views",
+      "get_view",
+    ].filter(
       (t) => !config.tools!.includes(t)
     );
     if (faltan.length) {

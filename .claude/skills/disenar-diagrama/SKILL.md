@@ -23,8 +23,19 @@ revisión → exportar`.
    Decide con eso si el diagrama va como PROYECTO (`export_to_app`, reemplaza el
    activo) o como VISTA (`export_as_view`, suma pestaña). Sin esta llamada,
    exportar es pisar trabajo del usuario a ciegas.
-3. `list_diagrams` / `get_diagram` — ¿hay un diseño en curso que retomar?
+3. **`list_views`** — qué vistas tiene el proyecto (y `list_views` con `project`
+   para mirar OTRO proyecto guardado sin abrirlo). Si tu diagrama ya existe como
+   vista, `get_view` con `importAs: true` te lo trae como diagrama EDITABLE:
+   continúas ese modelo en vez de rehacerlo y devolverlo duplicado.
+4. **`list_artifacts`** — documentos que la IA local ya generó (drivers, riesgos,
+   propuesta, roadmap, ADRs). Si hay uno que describe lo que vas a modelar,
+   `get_artifact` y trátalo como FUENTE citable: `source: "Drivers v2 §NFR"`.
+5. `list_diagrams` / `get_diagram` — ¿hay un diseño en curso que retomar?
    `import_diagram` si el usuario trae un `.json` exportado.
+
+Reutilizar es la regla: rehacer a mano algo que ya está en la app es trabajo
+duplicado y, peor, una segunda versión de la verdad que el humano tiene que
+reconciliar.
 
 ## 1 · Elegir notación
 

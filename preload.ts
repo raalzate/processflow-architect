@@ -50,6 +50,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('mcp-import-diagram', listener);
   },
 
+  // Lectura bajo demanda: el main pide contenido (artefactos, vistas, otro
+  // proyecto) y el renderer contesta por el canal de respuesta con el mismo id.
+  onMcpAppRead: (
+    handler: (payload: { id: number; request: any }) => void
+  ) => {
+    const listener = (_e: any, payload: any) => handler(payload);
+    ipcRenderer.on('mcp-app-read', listener);
+    return () => ipcRenderer.removeListener('mcp-app-read', listener);
+  },
+  mcpAppReadReply: (id: number, result: unknown): void => {
+    ipcRenderer.send('mcp-app-read-reply', { id, result });
+  },
+
   // Publica el estado del lienzo (proyecto activo, notación, vistas) para que las
   // herramientas MCP lo lean. Fire-and-forget: nunca debe frenar el render.
   mcpPublishAppState: (state: unknown): void => {
