@@ -56,7 +56,7 @@ describe("tokens del tema", () => {
   });
 
   it("existen los tokens de estado y de código que exige la spec", () => {
-    for (const t of ["success", "warning", "info", "code", "destructive"]) {
+    for (const t of ["success", "warning", "info", "code", "destructive", "ai"]) {
       expect(pedidas, `falta el token ${t}`).toContain(t);
     }
   });

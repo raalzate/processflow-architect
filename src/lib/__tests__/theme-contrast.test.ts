@@ -69,6 +69,7 @@ const TEXTO_NORMAL: Array<[string, string, string]> = [
   ["success-foreground", "success-surface", "texto sobre superficie de éxito"],
   ["warning-foreground", "warning-surface", "texto sobre superficie de aviso"],
   ["info-foreground", "info-surface", "texto sobre superficie informativa"],
+  ["ai-foreground", "ai-surface", "texto sobre superficie de IA"],
   ["code-foreground", "code", "código"],
   ["sidebar-foreground", "sidebar-background", "texto de la barra lateral"],
 ];
@@ -80,6 +81,8 @@ const ACENTO_COMO_TEXTO: Array<[string, string, string]> = [
   ["info", "background", "«información» en texto e iconos"],
   ["destructive", "background", "«error» en texto e iconos"],
   ["primary", "background", "enlaces y acentos"],
+  ["ai", "background", "acciones asistidas por IA (botones «Sugerir»)"],
+  ["ai", "card", "«Sugerir» dentro del inspector (que es una tarjeta)"],
 ];
 
 describe("contraste WCAG del tema", () => {

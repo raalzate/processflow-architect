@@ -77,6 +77,27 @@ function setupMenu(win: BrowserWindow) {
                     label: 'Eliminar selección (Supr)',
                     click: () => designerAction('delete')
                 },
+                { type: 'separator' },
+                {
+                    label: 'Copiar (Ctrl+C)',
+                    click: () => designerAction('copy')
+                },
+                {
+                    label: 'Cortar (Ctrl+X)',
+                    click: () => designerAction('cut')
+                },
+                {
+                    label: 'Pegar (Ctrl+V)',
+                    click: () => designerAction('paste')
+                },
+                {
+                    label: 'Duplicar (Ctrl+D)',
+                    click: () => designerAction('duplicate')
+                },
+                {
+                    label: 'Seleccionar todo (Ctrl+A)',
+                    click: () => designerAction('select-all')
+                },
                 {
                     label: 'Cancelar / deseleccionar (Esc)',
                     click: () => designerAction('cancel')

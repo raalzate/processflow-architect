@@ -53,6 +53,14 @@
     --info-surface: 210 70% 95%;
     --info-border: 210 45% 80%;
 
+    /* IA: las acciones asistidas (los botones "Sugerir", "Siguiente paso") se
+       distinguen del resto con violeta. Estaba cableado como `purple-600`, que
+       sobre el fondo oscuro daba 2,4:1 y no se leía. */
+    --ai: 268 55% 44%;
+    --ai-foreground: 268 45% 28%;
+    --ai-surface: 268 60% 95%;
+    --ai-border: 268 45% 80%;
+
     --code: 222 18% 14%;
     --code-foreground: 210 14% 88%;
 
@@ -124,6 +132,13 @@
     --info-foreground: 210 45% 90%;
     --info-surface: 214 30% 20%;
     --info-border: 214 30% 34%;
+
+    /* IA: violeta claro (6,2:1 sobre el fondo). El acento de lo asistido no
+       puede depender de un color crudo de Tailwind pensado para fondo blanco. */
+    --ai: 268 65% 76%;
+    --ai-foreground: 268 40% 90%;
+    --ai-surface: 268 30% 20%;
+    --ai-border: 268 32% 38%;
 
     /* Superficie de CÓDIGO: un escalón por debajo del fondo, para que el
        bloque se lea como "otra cosa" sin ser un agujero negro. */

@@ -259,13 +259,39 @@ export default function DocsPage() {
                     <b className="text-foreground">Editar:</b> doble clic en un elemento abre su
                     ficha: nombre, descripción, tipo, estado del cambio, tecnologías (se muestran
                     como <i>[java, spring]</i> bajo el nombre), colores personalizados y la vista
-                    embebida.
+                    embebida. <b className="text-foreground">No hay botón «Guardar»:</b> lo que
+                    escribís se guarda solo y la ficha se cierra con <i>Esc</i> o con «Cerrar»
+                    (Deshacer, <i>Ctrl/⌘+Z</i>, revierte). Tampoco es modal: con ella abierta,
+                    hacer clic en otro elemento pasa a editar ESE.
+                  </p>
+                  <p>
+                    <b className="text-foreground">Copiar y pegar:</b> clic derecho sobre un
+                    elemento abre el menú contextual (editar, copiar, cortar, duplicar, pegar aquí,
+                    eliminar); sobre el vacío, ofrece pegar en ese punto y seleccionar todo. Con el
+                    teclado: <i>Ctrl/⌘+C · X · V</i>, <i>Ctrl/⌘+D</i> duplica y <i>Ctrl/⌘+A</i>
+                    selecciona todo lo visible. Copiar un contenedor se lleva su contenido y los
+                    enlaces internos; lo pegado llega con nombre libre y queda seleccionado.
                   </p>
                   <p>
                     <b className="text-foreground">Vista embebida (subproceso):</b> un elemento
                     puede enlazar otra vista para detallarlo (estilo «call activity» BPMN). El nodo
                     muestra una marca <b>⊞</b> apoyada en su borde inferior; clic en ella para
-                    entrar y darle profundidad.
+                    entrar y darle profundidad. El menú de clic derecho trae «Crear subproceso» y
+                    «Abrir subproceso» (deshabilitado si el elemento todavía no tiene vista).
+                  </p>
+                  <p>
+                    <b className="text-foreground">Tipo de relación (UML):</b> en la ficha del
+                    enlace se elige qué relación es, y la PUNTA lo dice: flecha (asociación),
+                    triángulo hueco (herencia), triángulo hueco punteado (realización/implementa),
+                    rombo relleno del lado del todo (composición), rombo hueco (agregación) y
+                    punteada con flecha (dependencia).
+                  </p>
+                  <p>
+                    <b className="text-foreground">Secuencia UML:</b> arrastra una
+                    <i> Línea de Vida</i> por participante — es un contenedor y el tiempo baja por
+                    su línea punteada. Las <i>Activaciones</i> van dentro, los <i>Fragmentos</i>
+                    encierran lo condicional (alt · opt · loop · par) y los mensajes son aristas:
+                    continua la llamada, punteada el retorno.
                   </p>
                   <p>
                     <b className="text-foreground">Símbolos compactos:</b> eventos, compuertas y

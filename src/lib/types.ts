@@ -1,5 +1,6 @@
 
 import type { SimulationNodeDatum, SimulationLinkDatum } from "d3";
+import type { EdgeRelationKind } from "./edge-relations";
 import type { NotationId } from "./notations";
 import { z } from "zod";
 
@@ -94,6 +95,12 @@ export interface GraphLink extends SimulationLinkDatum<GraphNode> {
   routing?: "straight" | "curved" | "orthogonal";
   /** Dirección de la(s) flecha(s): al destino (por defecto), ambos extremos, o ninguna. */
   arrow?: "end" | "both" | "none";
+  /**
+   * Relación que representa la arista (UML: herencia, realización, composición,
+   * agregación, dependencia). Decide la MARCA de cada punta y si el trazo va
+   * punteado — ver `src/lib/edge-relations.ts`. Si falta, es una asociación.
+   */
+  relation?: EdgeRelationKind;
   /** Ancla de la punta en el nodo ORIGEN (x/y normalizados 0..1 de su caja). Si falta, se ancla automático al borde. */
   sourceAnchor?: { x: number; y: number };
   /** Ancla de la punta en el nodo DESTINO (x/y normalizados 0..1 de su caja). */

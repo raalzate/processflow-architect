@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import {
   Search, Undo2, Redo2, Settings2, Library, Download, Maximize, Trash,
   HelpCircle, Layers, Plus, GitGraph, Plug, FileDown, ArrowRight, PanelLeft,
-  FilePlus2,
+  FilePlus2, Copy, Scissors, ClipboardPaste, CopyPlus, BoxSelect,
 } from "lucide-react";
 import { useViews } from "@/context/ViewsContext";
 import { useGraphContext } from "@/context/GraphContext";
@@ -148,6 +148,11 @@ export function CommandPalette() {
     const canvas: Array<[string, string, React.ElementType, string]> = [
       ["undo", "Deshacer", Undo2, "deshacer undo"],
       ["redo", "Rehacer", Redo2, "rehacer redo"],
+      ["copy", "Copiar la selección", Copy, "copiar copy portapapeles"],
+      ["cut", "Cortar la selección", Scissors, "cortar cut portapapeles"],
+      ["paste", "Pegar", ClipboardPaste, "pegar paste portapapeles"],
+      ["duplicate", "Duplicar la selección", CopyPlus, "duplicar duplicate copia"],
+      ["select-all", "Seleccionar todo", BoxSelect, "seleccionar todo select all"],
       ["fit", "Ajustar a contenido", Maximize, "ajustar zoom fit encuadrar"],
       ["export", "Exportar diagrama (SVG)", Download, "exportar svg imagen"],
       ["metadata", "Abrir metadatos del proyecto", Settings2, "metadatos read models"],

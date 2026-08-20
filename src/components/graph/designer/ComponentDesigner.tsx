@@ -27,6 +27,11 @@ import {
   Library,
   Download,
   Filter,
+  Copy,
+  Scissors,
+  ClipboardPaste,
+  CopyPlus,
+  BoxSelect,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +59,12 @@ import {
 import * as DrawerPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
 import { hasPlatformModifier, modifierLabel } from "@/lib/platform";
+import {
+  EDGE_RELATIONS,
+  EDGE_RELATION_LIST,
+  relationStyle,
+  type EdgeRelationKind,
+} from "@/lib/edge-relations";
 import { useToast } from "@/hooks/use-toast";
 import { useAi } from "@/hooks/useAi";
 import { orderLanesTask } from "@/lib/ai/tasks";
@@ -95,6 +106,15 @@ import { useViews } from "@/context/ViewsContext";
 import { useReference } from "@/context/ReferenceContext";
 import { buildEmbedMap, wouldCreateCycle } from "@/lib/view-embeds";
 import { ReferenceContextDialog } from "./ReferenceContextDialog";
+import { CanvasContextMenu, type CanvasMenuItem } from "./CanvasContextMenu";
+import { draftPatch, hasDraftChanges, parseTagList } from "./inspector-draft";
+import {
+  copySelection,
+  getSharedClipboard,
+  pasteClipboard,
+  setSharedClipboard,
+  type CanvasClipboard,
+} from "./clipboard";
 import { AiProvenanceBadge } from "@/components/ai-panel/AiProvenanceBadge";
 import type { GraphData, ReadModel } from "@/lib/types";
 import {
@@ -193,6 +213,59 @@ const COLOR_PRESETS = [
   "#3b82f6", "#8b5cf6", "#ec4899", "#64748b", "#1f2937",
 ];
 
+/**
+ * Campo «Tecnologías / etiquetas».
+ *
+ * Tiene su propio texto a propósito. Antes el value era `tags.join(", ")` y cada
+ * tecla re-parseaba: al escribir la coma que separa la SEGUNDA etiqueta, el
+ * elemento vacío se filtraba y la coma desaparecía del input — no había forma de
+ * agregar más de una. Acá se escribe libre y la lista se deriva al vuelo.
+ */
+const TagsField: React.FC<{
+  /** Etiquetas del borrador (las puede cambiar la IA con "Sugerir"). */
+  value?: string[] | null;
+  onChange: (tags: string[]) => void;
+  children?: React.ReactNode;
+}> = ({ value, onChange, children }) => {
+  const lista = value || [];
+  const [texto, setTexto] = useState(lista.join(", "));
+  // Cambio venido de AFUERA (sugerencia de IA, otro elemento): se adopta. Se
+  // compara la LISTA, no el texto, para no pisar la coma que se está tecleando.
+  useEffect(() => {
+    const externo = (value || []).join(", ");
+    if (parseTagList(texto).join(", ") !== externo) setTexto(externo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <Label htmlFor="node-tags">Tecnologías / etiquetas</Label>
+        {children}
+      </div>
+      <Input
+        id="node-tags"
+        value={texto}
+        onChange={(e) => {
+          setTexto(e.target.value);
+          onChange(parseTagList(e.target.value));
+        }}
+        placeholder="Angular, PostgreSQL, Kafka…"
+      />
+      {/* Se muestra cómo quedó la lista: separar por coma es la única regla, y
+          verla evita el «¿lo tomó como una etiqueta o como dos?». */}
+      {lista.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {lista.map((t) => (
+            <span key={t} className="rounded-full border bg-muted px-2 py-0.5 text-2xs text-muted-foreground">
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ColorField: React.FC<{
   label: string;
   value?: string;
@@ -262,16 +335,53 @@ const EditNodeDialog: React.FC<{
   /** Contexto de referencia del proyecto (documentos subidos) para la IA. */
   referencia: string;
   onClose: () => void;
-  onSave: (n: DesignerNode) => void;
+  /** Autoguardado: llega el PARCHE (sólo los campos editados) del elemento `id`. */
+  onSave: (id: string, cambios: Partial<DesignerNode>) => void;
   onCreateNext: (fromNode: DesignerNode, sug: { tipo: string; nombre: string; relacion: string }) => void;
 }> = ({ node, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, onClose, onSave, onCreateNext }) => {
   const [draft, setDraft] = useState<DesignerNode | null>(null);
   const { run, busy } = useAi();
   // Campo cuya sugerencia se está ejecutando: sólo ESE botón muestra el spinner.
   const [busyField, setBusyField] = useState<string | null>(null);
+  // AUTOGUARDADO: la ficha no tiene "Guardar". Cada cambio se escribe solo con
+  // un rebote de 400 ms (sin él, el historial se llenaría con una entrada por
+  // tecla) y lo pendiente se vacía al cerrar o al saltar a otro elemento. La
+  // vuelta atrás es Deshacer (⌘/Ctrl+Z), que es la del resto del lienzo.
+  // Se guarda el DIFF (ver inspector-draft.ts): si el nodo se arrastró mientras
+  // la ficha estaba abierta, guardar el borrador entero lo devolvería al sitio
+  // que tenía al abrirla.
+  const draftRef = useRef<DesignerNode | null>(null);
+  draftRef.current = draft;
+  const originalRef = useRef<DesignerNode | null>(null);
+  const nodeRef = useRef<DesignerNode | null>(null);
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+  const flush = useCallback(() => {
+    const borrador = draftRef.current;
+    const original = originalRef.current;
+    if (!borrador || !original || !hasDraftChanges(original, borrador)) return;
+    originalRef.current = { ...borrador };
+    onSaveRef.current(borrador.id, draftPatch(original, borrador));
+  }, []);
   useEffect(() => {
+    // El mismo elemento re-renderizado (p. ej. por el propio autoguardado o por
+    // un arrastre) NO reinicia el borrador: eso descartaría lo que se está
+    // tecleando. Sólo se reinicia al cambiar de elemento o al cerrar.
+    if (node && nodeRef.current && node.id === nodeRef.current.id) {
+      nodeRef.current = node;
+      return;
+    }
+    flush();
+    nodeRef.current = node;
+    originalRef.current = node ? { ...node } : null;
     setDraft(node ? { ...node } : null);
-  }, [node]);
+  }, [node, flush]);
+  useEffect(() => {
+    if (!draft || !originalRef.current || draft.id !== originalRef.current.id) return;
+    if (!hasDraftChanges(originalRef.current, draft)) return;
+    const t = setTimeout(flush, 400);
+    return () => clearTimeout(t);
+  }, [draft, flush]);
   if (!draft) return null;
 
   // El tipo del nodo puede venir de OTRA notación (p. ej. diagrama BPMN/C4
@@ -333,7 +443,7 @@ const EditNodeDialog: React.FC<{
         notation,
       });
       if (sug && sug.nombre) {
-        onSave(draft); // persiste el nodo actual antes de encadenar el siguiente
+        flush(); // el nodo actual ya se guarda solo; se vacía lo pendiente antes de encadenar
         onCreateNext(draft, sug);
         onClose();
       }
@@ -346,7 +456,7 @@ const EditNodeDialog: React.FC<{
       type="button"
       variant="ghost"
       size="sm"
-      className="h-7 text-purple-600 hover:text-purple-700"
+      className="h-7 text-ai hover:bg-ai/10 hover:text-ai"
       onClick={onClick}
       disabled={busy || disabled}
       title="Sugerir con IA (ver el motor en el badge del título)"
@@ -379,7 +489,7 @@ const EditNodeDialog: React.FC<{
                 <AiProvenanceBadge className="ml-1" />
               </DrawerPrimitive.Title>
               <DrawerPrimitive.Description className="text-sm text-muted-foreground">
-                Modifica el nombre y la descripción de este elemento.
+                Los cambios se guardan solos; cerrá cuando termines.
               </DrawerPrimitive.Description>
             </div>
             <DrawerPrimitive.Close
@@ -469,26 +579,12 @@ const EditNodeDialog: React.FC<{
               qué debe eliminarse.
             </p>
           </div>
-          <div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="node-tags">Tecnologías / etiquetas</Label>
-              <SugBtn field="tags" onClick={suggestTags} disabled={!draft.nombre.trim()} />
-            </div>
-            <Input
-              id="node-tags"
-              value={(draft.tags_tecnologia || []).join(", ")}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  tags_tecnologia: e.target.value
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                })
-              }
-              placeholder="Angular, PostgreSQL, Kafka…"
-            />
-          </div>
+          <TagsField
+            value={draft.tags_tecnologia}
+            onChange={(tags) => setDraft((d) => (d ? { ...d, tags_tecnologia: tags } : d))}
+          >
+            <SugBtn field="tags" onClick={suggestTags} disabled={!draft.nombre.trim()} />
+          </TagsField>
           <ColorField
             label="Color de fondo"
             value={draft.color}
@@ -553,7 +649,7 @@ const EditNodeDialog: React.FC<{
                 size="sm"
                 className="mt-2 gap-1.5 text-primary hover:text-primary"
                 onClick={() => {
-                  onSave(draft); // persiste el enlace antes de navegar
+                  flush(); // vacía lo pendiente antes de salir de la vista
                   onOpenSubView(draft.viewRef!);
                   onClose();
                 }}
@@ -568,7 +664,7 @@ const EditNodeDialog: React.FC<{
               type="button"
               variant="outline"
               size="sm"
-              className="gap-1.5 border-purple-200 text-purple-700 hover:bg-purple-50"
+              className="gap-1.5 border-ai-border bg-ai-surface text-ai hover:bg-ai/20 hover:text-ai"
               onClick={suggestNext}
               disabled={busy || !draft.nombre.trim()}
               title="Crea el siguiente elemento del flujo (Event Storming) conectado a este"
@@ -576,19 +672,11 @@ const EditNodeDialog: React.FC<{
               {busyField === "next" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Workflow className="h-4 w-4" />}
               Siguiente paso
             </Button>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => {
-                  onSave(draft);
-                  onClose();
-                }}
-              >
-                Guardar
-              </Button>
-            </div>
+            {/* Sin "Guardar": los cambios ya están escritos (autoguardado). El
+                único botón cierra, y Deshacer revierte si hace falta. */}
+            <Button onClick={onClose} title="Cerrar (Esc) — los cambios ya se guardaron">
+              Cerrar
+            </Button>
           </div>
         </DrawerPrimitive.Content>
       </DrawerPrimitive.Portal>
@@ -604,13 +692,44 @@ const EditLinkDialog: React.FC<{
   /** Notación de la vista: dirige la etiqueta que sugiere la IA. */
   notation: NotationId;
   onClose: () => void;
-  onSave: (l: DesignerLink) => void;
+  /** Autoguardado: llega el PARCHE (sólo los campos editados) del enlace `id`. */
+  onSave: (id: string, cambios: Partial<DesignerLink>) => void;
 }> = ({ link, nodes, referencia, notation, onClose, onSave }) => {
   const [draft, setDraft] = useState<DesignerLink | null>(null);
   const { run, busy } = useAi();
+  // Autoguardado con el mismo criterio que el inspector de nodos: rebote de
+  // 400 ms, se vacía al cerrar o al saltar a otro enlace, y se guarda el DIFF
+  // (el trazado —puntas, quiebres, etiqueta— lo edita el LIENZO mientras la
+  // ficha está abierta: guardar el borrador entero lo desharía).
+  const draftRef = useRef<DesignerLink | null>(null);
+  draftRef.current = draft;
+  const originalRef = useRef<DesignerLink | null>(null);
+  const linkRef = useRef<DesignerLink | null>(null);
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+  const flush = useCallback(() => {
+    const borrador = draftRef.current;
+    const original = originalRef.current;
+    if (!borrador || !original || !hasDraftChanges(original, borrador)) return;
+    originalRef.current = { ...borrador };
+    onSaveRef.current(borrador.id, draftPatch(original, borrador));
+  }, []);
   useEffect(() => {
+    if (link && linkRef.current && link.id === linkRef.current.id) {
+      linkRef.current = link;
+      return;
+    }
+    flush();
+    linkRef.current = link;
+    originalRef.current = link ? { ...link } : null;
     setDraft(link ? { ...link } : null);
-  }, [link]);
+  }, [link, flush]);
+  useEffect(() => {
+    if (!draft || !originalRef.current || draft.id !== originalRef.current.id) return;
+    if (!hasDraftChanges(originalRef.current, draft)) return;
+    const t = setTimeout(flush, 400);
+    return () => clearTimeout(t);
+  }, [draft, flush]);
   if (!draft) return null;
 
   const suggestLabel = async () => {
@@ -636,7 +755,7 @@ const EditLinkDialog: React.FC<{
             <Edit className="w-5 h-5" /> Editar enlace
           </DialogTitle>
           <DialogDescription>
-            Describe la relación entre los dos elementos.
+            Describe la relación entre los dos elementos. Los cambios se guardan solos.
           </DialogDescription>
         </DialogHeader>
         <div className="py-4">
@@ -646,7 +765,7 @@ const EditLinkDialog: React.FC<{
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 text-purple-600 hover:text-purple-700"
+              className="h-7 text-ai hover:bg-ai/10 hover:text-ai"
               onClick={suggestLabel}
               disabled={busy}
               title="Sugerir etiqueta con IA"
@@ -755,6 +874,31 @@ const EditLinkDialog: React.FC<{
             )}
           </div>
 
+          {/* Relación (UML): la punta de la línea es lo que dice qué relación es
+              —triángulo hueco = hereda, rombo = compone— así que se elige acá y
+              no se dibuja "una flecha" para las seis. */}
+          <div className="mt-4 space-y-1.5">
+            <Label htmlFor="link-relation">Tipo de relación</Label>
+            <Select
+              value={draft.relation ?? "asociacion"}
+              onValueChange={(v) =>
+                setDraft((d) => (d ? { ...d, relation: v as EdgeRelationKind } : d))
+              }
+            >
+              <SelectTrigger id="link-relation" title={relationStyle(draft.relation).hint}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EDGE_RELATION_LIST.map((k) => (
+                  <SelectItem key={k} value={k} title={EDGE_RELATIONS[k].hint}>
+                    {EDGE_RELATIONS[k].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{relationStyle(draft.relation).hint}</p>
+          </div>
+
           <div className="mt-4 space-y-1.5">
             <Label>Flechas</Label>
             <div className="flex flex-wrap gap-2">
@@ -807,16 +951,9 @@ const EditLinkDialog: React.FC<{
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            onClick={() => {
-              onSave(draft);
-              onClose();
-            }}
-          >
-            Guardar cambios
+          {/* Autoguardado: no hay "Guardar cambios" que pulsar. */}
+          <Button onClick={onClose} title="Cerrar (Esc) — los cambios ya se guardaron">
+            Cerrar
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -898,7 +1035,7 @@ const MetadataDialog: React.FC<{
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 text-purple-600 hover:text-purple-700"
+                className="h-7 text-ai hover:bg-ai/10 hover:text-ai"
                 onClick={suggestBigPicture}
                 disabled={busy}
                 title="Sugerir con IA a partir del diseño"
@@ -1290,6 +1427,9 @@ export const ComponentDesigner: React.FC<{
   const linksRef = useRef(links);
   const connectFromRef = useRef<string | null>(null);
   const selectedIdsRef = useRef(selectedIds);
+  // ¿Hay un inspector (nodo o enlace) abierto? Lo leen los handlers de clic para
+  // hacer que la edición SIGA a la selección sin recrearse en cada cambio.
+  const editorOpenRef = useRef(false);
   const marqueeRef = useRef(marquee);
   // Sesión de arrastre de: punta (reanclado), doblez auto o punto de quiebre (índice).
   const endpointDragRef = useRef<
@@ -1307,6 +1447,9 @@ export const ComponentDesigner: React.FC<{
   useEffect(() => {
     selectedIdsRef.current = selectedIds;
   }, [selectedIds]);
+  useEffect(() => {
+    editorOpenRef.current = !!editingNode || !!editingLink;
+  }, [editingNode, editingLink]);
   useEffect(() => {
     marqueeRef.current = marquee;
   }, [marquee]);
@@ -1455,6 +1598,145 @@ export const ComponentDesigner: React.FC<{
     clearSelection();
   }, [clearSelection]);
 
+  // --- Copiar / cortar / pegar / duplicar ---
+  // El portapapeles vive en el MÓDULO (ver clipboard.ts): así se copia en una
+  // vista y se pega en otra. `clipboardTick` sólo existe para que el menú
+  // contextual recalcule si «Pegar» va habilitado tras un copiar.
+  const [clipboardTick, setClipboardTick] = useState(0);
+  const clipboard = useMemo(() => getSharedClipboard(), [clipboardTick]);
+
+  /** Deja la selección actual en el portapapeles. Devuelve lo copiado (o null). */
+  const copySelected = useCallback((): CanvasClipboard | null => {
+    const clip = copySelection(nodesRef.current, linksRef.current, selectedIdsRef.current);
+    if (!clip) return null;
+    setSharedClipboard(clip);
+    setClipboardTick((t) => t + 1);
+    return clip;
+  }, []);
+
+  const doCopy = useCallback(() => {
+    const clip = copySelected();
+    if (!clip) return;
+    toast({
+      title: "Copiado",
+      description: `${clip.nodes.length} elemento${clip.nodes.length === 1 ? "" : "s"} en el portapapeles.`,
+    });
+  }, [copySelected, toast]);
+
+  const doCut = useCallback(() => {
+    const clip = copySelected();
+    if (!clip) return;
+    deleteSelected();
+    toast({
+      title: "Cortado",
+      description: `${clip.nodes.length} elemento${clip.nodes.length === 1 ? "" : "s"} en el portapapeles.`,
+    });
+  }, [copySelected, deleteSelected, toast]);
+
+  /**
+   * Pega el contenido dado (o el portapapeles) y deja seleccionado lo nuevo.
+   * `at` es un punto del lienzo: lo usa «Pegar aquí» del menú contextual.
+   */
+  const pasteInto = useCallback(
+    (clip: CanvasClipboard | null, at?: { x: number; y: number }) => {
+      if (!clip) return;
+      const res = pasteClipboard(nodesRef.current, linksRef.current, clip, {
+        newId: () => crypto.randomUUID(),
+        at,
+      });
+      // Un solo commit para nodos y enlaces: dos `updateX` seguidos dejarían un
+      // paso intermedio en el historial con los nodos pegados sin sus enlaces.
+      nodesRef.current = res.nodes;
+      linksRef.current = res.links;
+      setNodes(res.nodes);
+      setLinks(res.links);
+      pushSnapshot(res.nodes, res.links);
+      setSelectedIds(res.newIds);
+    },
+    [pushSnapshot]
+  );
+
+  const doPaste = useCallback(
+    (at?: { x: number; y: number }) => {
+      const clip = getSharedClipboard();
+      if (!clip) {
+        toast({ title: "Nada que pegar", description: "Copiá antes uno o más elementos." });
+        return;
+      }
+      pasteInto(clip, at);
+    },
+    [pasteInto, toast]
+  );
+
+  /** Duplicar no toca el portapapeles: es copiar+pegar en un solo gesto. */
+  const doDuplicate = useCallback(() => {
+    const clip = copySelection(nodesRef.current, linksRef.current, selectedIdsRef.current);
+    pasteInto(clip);
+  }, [pasteInto]);
+
+  // Seleccionar todo abarca sólo lo VISIBLE: con un filtro puesto, incluir lo
+  // oculto haría que un `Supr` después borrara cosas que no están en pantalla.
+  const selectAll = useCallback(() => {
+    const v = vistoRef.current;
+    setSelectedIds(new Set([...v.nodes.map((n) => n.id), ...v.links.map((l) => l.id)]));
+  }, []);
+
+  /**
+   * Crea una vista nueva y la enlaza como SUBPROCESO del nodo (lo que hace el
+   * botón «Crear» de la ficha, disponible sin abrirla). No entra a la vista: el
+   * lienzo se desmontaría antes de que el `viewRef` quede guardado.
+   */
+  const createSubViewFor = useCallback(
+    (nodeId: string) => {
+      const node = nodesRef.current.get(nodeId);
+      if (!node || subViewExists(node.viewRef)) return;
+      const id = createSubView(node.nombre?.trim() || "Subproceso");
+      if (!id) return;
+      updateNodes((prev) => {
+        const vivo = prev.get(nodeId);
+        if (!vivo) return prev;
+        const map = new Map(prev);
+        map.set(nodeId, { ...vivo, viewRef: id });
+        return map;
+      });
+      toast({
+        title: "Subproceso creado",
+        description: `Vista enlazada a «${node.nombre}». Entrá con «Abrir subproceso» o con la marca ⊞ del nodo.`,
+      });
+    },
+    [createSubView, subViewExists, updateNodes, toast]
+  );
+
+  // --- Menú contextual (clic derecho) ---
+  // `at` es el punto del LIENZO donde se abrió: es dónde cae «Pegar aquí».
+  const [contextMenu, setContextMenu] = useState<
+    | {
+        x: number;
+        y: number;
+        at: { x: number; y: number };
+        target: { kind: "node"; id: string } | { kind: "link"; id: string } | { kind: "canvas" };
+      }
+    | null
+  >(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const openContextMenu = useCallback(
+    (e: React.MouseEvent, target: { kind: "node" | "link"; id: string } | { kind: "canvas" }) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!svgRef.current) return;
+      // Clic derecho sobre algo que NO estaba seleccionado: pasa a ser la
+      // selección (como en cualquier editor), y el menú actúa sobre eso.
+      if (target.kind !== "canvas" && !selectedIdsRef.current.has(target.id)) {
+        selectOnly(target.id);
+      }
+      const p = toSvgPoint(e.clientX, e.clientY);
+      setHoverCard(null);
+      setContextMenu({ x: e.clientX, y: e.clientY, at: { x: p.x, y: p.y }, target });
+    },
+    [selectOnly]
+  );
+
   // --- Carga de la fuente (proyecto activo o grafo de la vista) ---
   const loadedFileId = useRef<string | null>(null);
   const skipFirstSave = useRef(true);
@@ -1537,13 +1819,18 @@ export const ComponentDesigner: React.FC<{
         case "redo": doRedo(); break;
         case "delete": deleteSelected(); break;
         case "cancel": cancelOrDeselect(); break;
+        case "copy": doCopy(); break;
+        case "cut": doCut(); break;
+        case "paste": doPaste(); break;
+        case "duplicate": doDuplicate(); break;
+        case "select-all": selectAll(); break;
         case "context": setReferenceOpen(true); break;
         case "metadata": setMetaOpen(true); break;
         case "help": setHelpOpen(true); break;
       }
     });
     return off;
-  }, [doUndo, doRedo, deleteSelected, cancelOrDeselect]);
+  }, [doUndo, doRedo, deleteSelected, cancelOrDeselect, doCopy, doCut, doPaste, doDuplicate, selectAll]);
 
   // --- Atajos de teclado ---
   useEffect(() => {
@@ -1556,6 +1843,13 @@ export const ComponentDesigner: React.FC<{
           target.getAttribute("contenteditable") === "true");
 
       if (e.key === "Escape") {
+        // Con la ficha abierta, Escape la CIERRA (ya no hay nada que descartar:
+        // se guarda sola). Sin ficha, cancela la conexión o deselecciona.
+        if (editorOpenRef.current) {
+          setEditingNode(null);
+          setEditingLink(null);
+          return;
+        }
         cancelOrDeselect();
         return;
       }
@@ -1577,6 +1871,39 @@ export const ComponentDesigner: React.FC<{
       } else if (mod && e.key.toLowerCase() === "y") {
         e.preventDefault();
         doRedo();
+      } else if (mod && e.key.toLowerCase() === "c") {
+        if (selectedIdsRef.current.size === 0) return;
+        e.preventDefault();
+        doCopy();
+      } else if (mod && e.key.toLowerCase() === "x") {
+        if (selectedIdsRef.current.size === 0) return;
+        e.preventDefault();
+        doCut();
+      } else if (mod && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        doPaste();
+      } else if (mod && e.key.toLowerCase() === "d") {
+        if (selectedIdsRef.current.size === 0) return;
+        e.preventDefault();
+        doDuplicate();
+      } else if (mod && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        selectAll();
+      } else if (e.key === "Enter") {
+        // Editar lo seleccionado sin soltar el teclado (equivale al doble clic).
+        if (selectedIdsRef.current.size !== 1) return;
+        const id = Array.from(selectedIdsRef.current)[0];
+        const n = nodesRef.current.get(id);
+        const l = linksRef.current.get(id);
+        if (!n && !l) return;
+        e.preventDefault();
+        if (n) {
+          setEditingLink(null);
+          setEditingNode(n);
+        } else if (l) {
+          setEditingNode(null);
+          setEditingLink(l);
+        }
       } else if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedIdsRef.current.size === 0) return;
         e.preventDefault();
@@ -1585,7 +1912,7 @@ export const ComponentDesigner: React.FC<{
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [doUndo, doRedo, deleteSelected, cancelOrDeselect]);
+  }, [doUndo, doRedo, deleteSelected, cancelOrDeselect, doCopy, doCut, doPaste, doDuplicate, selectAll]);
 
   // --- Drag & drop desde la paleta ---
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -1684,6 +2011,15 @@ export const ComponentDesigner: React.FC<{
       if (!sel.has(nodeId)) {
         sel = new Set([nodeId]);
         setSelectedIds(sel);
+      }
+      // El inspector NO es modal: si está abierto, seleccionar otro elemento
+      // pasa a editar ESE (antes había que cerrarlo y hacer doble clic).
+      if (editorOpenRef.current) {
+        const n = nodesRef.current.get(nodeId);
+        if (n) {
+          setEditingLink(null);
+          setEditingNode(n);
+        }
       }
       const p = toSvgPoint(e.clientX, e.clientY);
       const origins = new Map<string, { x: number; y: number }>();
@@ -1894,8 +2230,19 @@ export const ComponentDesigner: React.FC<{
   // Selección de enlaces (soporta alternar con Shift/⌘).
   const handleLinkClick = useCallback(
     (e: React.MouseEvent, linkId: string) => {
-      if (e.shiftKey || e.metaKey || e.ctrlKey) toggleSelect(linkId);
-      else selectOnly(linkId);
+      if (e.shiftKey || e.metaKey || e.ctrlKey) {
+        toggleSelect(linkId);
+        return;
+      }
+      selectOnly(linkId);
+      // Inspector abierto: pasa a editar el enlace recién seleccionado.
+      if (editorOpenRef.current) {
+        const l = linksRef.current.get(linkId);
+        if (l) {
+          setEditingNode(null);
+          setEditingLink(l);
+        }
+      }
     },
     [toggleSelect, selectOnly]
   );
@@ -2221,6 +2568,11 @@ export const ComponentDesigner: React.FC<{
         case "redo": doRedo(); break;
         case "delete": deleteSelected(); break;
         case "cancel": cancelOrDeselect(); break;
+        case "copy": doCopy(); break;
+        case "cut": doCut(); break;
+        case "paste": doPaste(); break;
+        case "duplicate": doDuplicate(); break;
+        case "select-all": selectAll(); break;
         case "context": setReferenceOpen(true); break;
         case "metadata": setMetaOpen(true); break;
         case "help": setHelpOpen(true); break;
@@ -2232,7 +2584,19 @@ export const ComponentDesigner: React.FC<{
     };
     window.addEventListener("designer-action", onAction);
     return () => window.removeEventListener("designer-action", onAction);
-  }, [doUndo, doRedo, deleteSelected, cancelOrDeselect, fitToContent, handleExportSvg]);
+  }, [
+    doUndo,
+    doRedo,
+    deleteSelected,
+    cancelOrDeselect,
+    fitToContent,
+    handleExportSvg,
+    doCopy,
+    doCut,
+    doPaste,
+    doDuplicate,
+    selectAll,
+  ]);
 
   const isolated = useMemo(() => findIsolatedNodes(nodes, links), [nodes, links]);
 
@@ -2254,6 +2618,9 @@ export const ComponentDesigner: React.FC<{
     [nodes, links, filters]
   );
   const visibleIds = useMemo(() => new Set(visto.nodes.map((n) => n.id)), [visto.nodes]);
+  // Lo visible, en un ref: las acciones (seleccionar todo) corren fuera del render.
+  const vistoRef = useRef(visto);
+  vistoRef.current = visto;
   const ocultos = visto.hidden;
 
   const containerNodes = visto.nodes
@@ -2286,6 +2653,99 @@ export const ComponentDesigner: React.FC<{
   const canUndo = historyRef.current.index > 0;
   const canRedo = historyRef.current.index < historyRef.current.snapshots.length - 1;
   const modKey = modifierLabel();
+
+  /** Entradas del menú contextual según sobre QUÉ se hizo clic derecho. */
+  const buildContextMenuItems = (): CanvasMenuItem[] => {
+    const cm = contextMenu;
+    if (!cm) return [];
+    const n = cm.target.kind === "node" ? nodes.get(cm.target.id) : undefined;
+    const l = cm.target.kind === "link" ? links.get(cm.target.id) : undefined;
+    const cuenta = selectedIds.size;
+    const varios = cuenta > 1;
+    const sufijo = varios ? ` ${cuenta} elementos` : "";
+    const pegar: CanvasMenuItem = {
+      id: "paste",
+      label: "Pegar aquí",
+      shortcut: `${modKey}+V`,
+      icon: ClipboardPaste,
+      disabled: !clipboard,
+      onSelect: () => doPaste(cm.at),
+    };
+
+    if (cm.target.kind === "canvas") {
+      return [
+        pegar,
+        { id: "select-all", label: "Seleccionar todo", shortcut: `${modKey}+A`, icon: BoxSelect, onSelect: selectAll },
+        { id: "fit", label: "Ajustar a contenido", icon: Maximize, onSelect: () => fitToContent(), separatorBefore: true },
+      ];
+    }
+
+    const items: CanvasMenuItem[] = [];
+    if (!varios && (n || l)) {
+      items.push({
+        id: "edit",
+        label: "Editar…",
+        shortcut: "Enter",
+        icon: Edit,
+        onSelect: () => {
+          if (n) {
+            setEditingLink(null);
+            setEditingNode(n);
+          } else if (l) {
+            setEditingNode(null);
+            setEditingLink(l);
+          }
+        },
+      });
+    }
+    // Subproceso (vista embebida): ver el que hay, o crear uno. Se muestran
+    // SIEMPRE —deshabilitado dice más que ausente: enseña que la opción existe—
+    // y sólo con un nodo seleccionado (dos nodos no comparten una sola vista).
+    if (!varios && n) {
+      const tiene = subViewExists(n.viewRef);
+      items.push(
+        {
+          id: "open-subview",
+          label: "Abrir subproceso",
+          icon: ExternalLink,
+          disabled: !tiene,
+          separatorBefore: true,
+          onSelect: () => {
+            if (n.viewRef) openSubView(n.viewRef);
+          },
+        },
+        {
+          id: "create-subview",
+          label: "Crear subproceso…",
+          icon: Workflow,
+          // Ya tiene vista enlazada: crear otra dejaría la primera huérfana.
+          disabled: tiene,
+          onSelect: () => createSubViewFor(n.id),
+        }
+      );
+    }
+    // Copiar/duplicar aplica a ELEMENTOS: un enlace suelto no se puede pegar
+    // (sus dos puntas quedarían fuera del portapapeles).
+    const hayNodos = Array.from(selectedIds).some((id) => nodes.has(id));
+    if (hayNodos) {
+      items.push(
+        { id: "copy", label: `Copiar${sufijo}`, shortcut: `${modKey}+C`, icon: Copy, separatorBefore: true, onSelect: doCopy },
+        { id: "cut", label: `Cortar${sufijo}`, shortcut: `${modKey}+X`, icon: Scissors, onSelect: doCut },
+        { id: "duplicate", label: `Duplicar${sufijo}`, shortcut: `${modKey}+D`, icon: CopyPlus, onSelect: doDuplicate },
+      );
+    }
+    items.push({ ...pegar, separatorBefore: true });
+    items.push({
+      id: "delete",
+      label: varios ? `Eliminar ${cuenta} seleccionados` : "Eliminar",
+      shortcut: "Supr",
+      icon: Trash2,
+      danger: true,
+      separatorBefore: true,
+      onSelect: deleteSelected,
+    });
+    return items;
+  };
 
   if (!meta || (!isViewMode && !currentFileId)) {
     return (
@@ -2504,6 +2964,7 @@ export const ComponentDesigner: React.FC<{
           onDragOver={handleDragOver}
           onDrop={handleDrop}
           onMouseDown={handleCanvasMouseDown}
+          onContextMenu={(e) => openContextMenu(e, { kind: "canvas" })}
           onMouseMove={handleCanvasMouseMove}
           onMouseUp={handleCanvasMouseUp}
           onMouseLeave={handleCanvasMouseUp}
@@ -2567,6 +3028,37 @@ export const ComponentDesigner: React.FC<{
               <marker id="arrow-start-selected" viewBox="0 -5 10 10" refX="10" refY="0" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                 <path d="M0,-5L10,0L0,5" className="fill-blue-600" />
               </marker>
+              {/* Marcas de RELACIÓN (UML): la punta ES el significado.
+                  · triángulo HUECO al destino = herencia / realización
+                  · rombo RELLENO en el origen = composición
+                  · rombo HUECO en el origen  = agregación
+                  El relleno de los huecos es el color del lienzo (no
+                  `transparent`): así la línea no se ve cruzando la figura. */}
+              {(["", "-selected"] as const).map((sel) => (
+                <React.Fragment key={`uml${sel}`}>
+                  <marker id={`uml-triangle${sel}`} viewBox="0 -6 12 12" refX="12" refY="0" markerWidth="7" markerHeight="7" orient="auto">
+                    <path
+                      d="M0,-6L12,0L0,6z"
+                      className={cn("fill-canvas", sel ? "stroke-blue-600" : "stroke-gray-400 dark:stroke-zinc-500")}
+                      strokeWidth={1.5}
+                    />
+                  </marker>
+                  <marker id={`uml-diamond${sel}`} viewBox="0 -5 16 10" refX="0" refY="0" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                    <path
+                      d="M0,0L8,-5L16,0L8,5z"
+                      className={cn(sel ? "fill-blue-600 stroke-blue-600" : "fill-gray-400 stroke-gray-400 dark:fill-zinc-500 dark:stroke-zinc-500")}
+                      strokeWidth={1}
+                    />
+                  </marker>
+                  <marker id={`uml-diamond-open${sel}`} viewBox="0 -5 16 10" refX="0" refY="0" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                    <path
+                      d="M0,0L8,-5L16,0L8,5z"
+                      className={cn("fill-canvas", sel ? "stroke-blue-600" : "stroke-gray-400 dark:stroke-zinc-500")}
+                      strokeWidth={1.5}
+                    />
+                  </marker>
+                </React.Fragment>
+              ))}
             </defs>
 
             {/* Fondo con cuadrícula. pointerEvents none → los clics en vacío llegan
@@ -2590,6 +3082,7 @@ export const ComponentDesigner: React.FC<{
                   onResizeMouseDown={(e) => handleNodeMouseDown(e, node.id, "resize")}
                   onClick={handleNodeClick}
                   onDoubleClick={() => setEditingNode(node)}
+                  onContextMenu={(e) => openContextMenu(e, { kind: "node", id: node.id })}
                   onOpenSubView={subViewExists(node.viewRef) ? () => openSubView(node.viewRef!) : undefined}
                   onHover={(e) => showHoverCard(e, node)}
                   onHoverEnd={hideHoverCard}
@@ -2607,6 +3100,7 @@ export const ComponentDesigner: React.FC<{
                   isSelected={isSelected(link.id)}
                   onClick={(e) => handleLinkClick(e, link.id)}
                   onDoubleClick={() => setEditingLink(link)}
+                  onContextMenu={(e) => openContextMenu(e, { kind: "link", id: link.id })}
                   onLineDoubleClick={(e) => addWaypoint(e, link.id)}
                   onLabelMouseDown={(e) => startLabelDrag(e, link.id)}
                 />
@@ -2648,6 +3142,7 @@ export const ComponentDesigner: React.FC<{
                   onResizeMouseDown={(e) => handleNodeMouseDown(e, node.id, "resize")}
                   onClick={handleNodeClick}
                   onDoubleClick={() => setEditingNode(node)}
+                  onContextMenu={(e) => openContextMenu(e, { kind: "node", id: node.id })}
                   onOpenSubView={subViewExists(node.viewRef) ? () => openSubView(node.viewRef!) : undefined}
                   onHover={(e) => showHoverCard(e, node)}
                   onHoverEnd={hideHoverCard}
@@ -2792,6 +3287,17 @@ export const ComponentDesigner: React.FC<{
         </div>
       </div>
 
+      {/* Menú contextual del lienzo (clic derecho): las mismas acciones que los
+          atajos, para quien no los conoce. */}
+      {contextMenu && (
+        <CanvasContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={closeContextMenu}
+          items={buildContextMenuItems()}
+        />
+      )}
+
       <EditNodeDialog
         node={editingNode}
         elementTypes={elementTypes}
@@ -2801,10 +3307,14 @@ export const ComponentDesigner: React.FC<{
         onCreateSubView={createSubView}
         referencia={referenceText}
         onClose={() => setEditingNode(null)}
-        onSave={(n) =>
+        // El parche se aplica sobre el nodo VIVO: si se arrastró con la ficha
+        // abierta, la posición nueva manda. Si ya no existe, no se resucita.
+        onSave={(id, cambios) =>
           updateNodes((prev) => {
+            const vivo = prev.get(id);
+            if (!vivo) return prev;
             const map = new Map(prev);
-            map.set(n.id, n);
+            map.set(id, { ...vivo, ...cambios });
             return map;
           })
         }
@@ -2816,10 +3326,12 @@ export const ComponentDesigner: React.FC<{
         referencia={referenceText}
         notation={notationId}
         onClose={() => setEditingLink(null)}
-        onSave={(l) =>
+        onSave={(id, cambios) =>
           updateLinks((prev) => {
+            const vivo = prev.get(id);
+            if (!vivo) return prev;
             const map = new Map(prev);
-            map.set(l.id, l);
+            map.set(id, { ...vivo, ...cambios });
             return map;
           })
         }
@@ -2862,6 +3374,11 @@ export const ComponentDesigner: React.FC<{
               ["Arrastrar sobre el vacío", "Seleccionar varios (marco)"],
               [`${modKey}/Shift + clic`, "Añadir o quitar de la selección"],
               ["Arrastrar un seleccionado", "Mover todo el grupo a la vez"],
+              ["Clic derecho", "Menú contextual (editar · subproceso · copiar · pegar · eliminar)"],
+              [`${modKey}+C  /  ${modKey}+X  /  ${modKey}+V`, "Copiar · cortar · pegar (pega desplazado; el menú pega en el cursor)"],
+              [`${modKey}+D`, "Duplicar lo seleccionado"],
+              [`${modKey}+A`, "Seleccionar todo lo visible"],
+              ["Enter", "Editar lo seleccionado"],
               [`${modKey}+Z`, "Deshacer"],
               [`${modKey}+Shift+Z  /  ${modKey}+Y`, "Rehacer"],
               ["Supr / Retroceso", "Eliminar lo seleccionado (uno o varios)"],

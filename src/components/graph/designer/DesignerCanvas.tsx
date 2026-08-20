@@ -71,6 +71,14 @@ import {
   Plus,
   PersonStanding,
   StickyNote,
+  Braces,
+  Tag,
+  Link2,
+  Type,
+  Smartphone,
+  Cpu,
+  FileCode2,
+  CircleDashed,
 } from "lucide-react";
 import {
   Dialog,
@@ -82,6 +90,7 @@ import {
 import { NOTATION_HELP } from "@/lib/notation-help";
 import { cn } from "@/lib/utils";
 import { splitEdgeLabel } from "@/lib/edge-label";
+import { edgeIsDashed, relationStyle, type EdgeMarker } from "@/lib/edge-relations";
 import {
   clampPanelWidth,
   isAtLimit,
@@ -101,6 +110,7 @@ import {
   getNotation,
   defaultRoutingFor,
   isBlobContainer,
+  isLifelineContainer,
   isSwimlaneContainer,
   labelLayoutOfType,
   sizeOfType,
@@ -162,6 +172,9 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Mail, Timer, AlertTriangle, Split, GitFork, Workflow, CircleDot, MessageSquare,
   ToggleLeft, Disc, Target, History, Activity, GitBranch, Minus, X, Plus,
   PersonStanding, StickyNote,
+  // UML: clases (tipo de dato, genérico, asociación, estereotipo), componentes
+  // y despliegue (puerto, interfaz requerida, artefacto, dispositivo, entorno).
+  Braces, Tag, Link2, Type, Smartphone, Cpu, FileCode2, CircleDashed,
 };
 
 export const iconForType = (type: string): React.ElementType =>
@@ -574,6 +587,8 @@ interface NodeComponentProps {
   onResizeMouseDown: (e: React.MouseEvent) => void;
   onClick: () => void;
   onDoubleClick: () => void;
+  /** Clic derecho sobre el elemento: abre el menú contextual del lienzo. */
+  onContextMenu?: (e: React.MouseEvent) => void;
   /** Una conexión está en curso (origen ya elegido); todos los nodos actúan como posible destino. */
   connecting?: boolean;
   /** Arrancar una conexión arrastrando desde un puerto de este nodo. */
@@ -708,6 +723,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   onResizeMouseDown,
   onClick,
   onDoubleClick,
+  onContextMenu,
   connecting = false,
   onStartConnect,
   onFinishConnect,
@@ -741,8 +757,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
     const swimlane = isSwimlaneContainer(node.tipo_elemento);
     // Blob (mapa de conceptos DDD): elipse punteada, nombre en el borde inferior.
     const blob = isBlobContainer(node.tipo_elemento);
+    // Línea de vida (secuencia UML): caja con el nombre ARRIBA y la línea del
+    // tiempo bajando punteada por el centro. El marco se mantiene tenue porque
+    // además es zona de SOLTAR (las activaciones y notas van dentro).
+    const lifeline = isLifelineContainer(node.tipo_elemento);
     const strokeDash = swimlane ? undefined : isContext ? "10 10" : "5 5";
-    const radius = swimlane ? 0 : 12;
+    const radius = swimlane || lifeline ? 0 : 12;
+    const HEAD = 44; // alto de la caja del participante, en coords del lienzo
     /** Silueta del contenedor: elipse en los blobs, rectángulo en el resto. */
     const BAND = 28; // ancho de la banda del nombre, en coords del lienzo
     return (
@@ -752,6 +773,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         onMouseUp={handleMouseUp}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
+        onContextMenu={onContextMenu}
         onMouseEnter={onHover}
         onMouseMove={onHover}
         onMouseLeave={onHoverEnd}
@@ -780,7 +802,48 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             ...(!isSelected && node.borderColor ? { stroke: node.borderColor } : {}),
           }}
         />
-        {swimlane ? (
+        {lifeline ? (
+          // Caja del participante + línea del tiempo. El nombre va DENTRO de la
+          // caja: en secuencia se lee de arriba abajo, no por las esquinas.
+          <>
+            <rect
+              x={0}
+              y={0}
+              width={width}
+              height={HEAD}
+              className={cn(
+                "stroke-2",
+                meta?.transparent ? "fill-canvas" : color.bg,
+                isSelected ? "stroke-blue-600" : meta?.stroke ?? color.border
+              )}
+              style={!isSelected && node.borderColor ? { stroke: node.borderColor } : undefined}
+            />
+            <line
+              x1={width / 2}
+              y1={HEAD}
+              x2={width / 2}
+              y2={height}
+              strokeDasharray="6 6"
+              strokeWidth={2}
+              className={cn(isSelected ? "stroke-blue-600" : meta?.stroke ?? color.border)}
+              style={!isSelected && node.borderColor ? { stroke: node.borderColor } : undefined}
+            />
+            <text
+              x={width / 2}
+              y={HEAD / 2}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="currentColor"
+              className={cn(
+                "text-sm font-semibold pointer-events-none select-none",
+                color.text,
+                isDeleted && "line-through"
+              )}
+            >
+              {node.nombre}
+            </text>
+          </>
+        ) : swimlane ? (
           // Banda del participante: línea divisoria + nombre rotado 90° (BPMN).
           <>
             <line
@@ -903,6 +966,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       onMouseUp={handleMouseUp}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
       onMouseEnter={onHover}
       onMouseMove={onHover}
       onMouseLeave={onHoverEnd}
@@ -1067,6 +1131,8 @@ interface LinkComponentProps {
   isSelected: boolean;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
+  /** Clic derecho sobre el enlace: abre el menú contextual del lienzo. */
+  onContextMenu?: (e: React.MouseEvent) => void;
   /** Doble clic sobre la LÍNEA (no la etiqueta): añade un punto de quiebre ahí. */
   onLineDoubleClick?: (e: React.MouseEvent) => void;
   /** Arrastre de la ETIQUETA: la separa del trazo cuando tapa algo. */
@@ -1081,6 +1147,7 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   isSelected,
   onClick,
   onDoubleClick,
+  onContextMenu,
   onLineDoubleClick,
   onLabelMouseDown,
 }) => {
@@ -1099,14 +1166,30 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
     Math.max(labelText.length, notaText.length) * EDGE_LABEL_CHAR_PX + 10;
   const labelHeight = notaText && labelText ? 30 : 20;
 
-  // Dirección de la(s) flecha(s).
+  // Dirección de la(s) flecha(s) y RELACIÓN (UML): la relación manda sobre la
+  // punta —un triángulo hueco dice "hereda" y una flecha no— pero `arrow:
+  // "none"` sigue ganando: si el usuario pidió sin puntas, es sin puntas.
   const arrow = link.arrow ?? "end";
   const sel = isSelected ? "-selected" : "";
-  const markerEnd = arrow === "none" ? undefined : `url(#arrow-end${sel})`;
-  const markerStart = arrow === "both" ? `url(#arrow-start${sel})` : undefined;
+  const rel = relationStyle(link.relation);
+  const marca = (m: EdgeMarker, punta: "end" | "start"): string | undefined => {
+    if (m === "none") return undefined;
+    if (m === "arrow") return `url(#arrow-${punta}${sel})`;
+    return `url(#uml-${m}${sel})`;
+  };
+  const markerEnd = arrow === "none" ? undefined : marca(rel.end, "end");
+  const markerStart =
+    arrow === "none"
+      ? undefined
+      : rel.start !== "none"
+        ? marca(rel.start, "start")
+        : arrow === "both"
+          ? `url(#arrow-start${sel})`
+          : undefined;
+  const dashed = edgeIsDashed(link);
 
   return (
-    <g onClick={onClick} className="cursor-pointer">
+    <g onClick={onClick} onContextMenu={onContextMenu} className="cursor-pointer">
       <path
         d={path}
         stroke="transparent"
@@ -1124,8 +1207,9 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
         markerEnd={markerEnd}
         markerStart={markerStart}
         fill="none"
-        // Línea discontinua opcional (relación punteada).
-        strokeDasharray={link.dashed ? "8 5" : undefined}
+        // Trazo discontinuo: puesto a mano, o exigido por la relación
+        // (realización y dependencia son punteadas en UML).
+        strokeDasharray={dashed ? "8 5" : undefined}
         // Color de línea personalizado (prevalece sobre el gris por defecto).
         style={!isSelected && link.color ? { stroke: link.color } : undefined}
       />

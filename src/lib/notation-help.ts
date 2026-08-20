@@ -288,4 +288,64 @@ export const NOTATION_HELP: Record<string, ElementHelp> = {
     description: "Es el nodo final que termina el flujo de la actividad: al alcanzarlo, finaliza toda la actividad (o solo el flujo, según el tipo). Se dibuja como un círculo con un anillo (ojo de buey).",
     example: "En salud, el flujo de admisión llega al fin de actividad tras la acción 'Asignar habitación', concluyendo el proceso.",
   },
+
+  // --- UML: clases (tipos que no son clases) ---
+  "Tipo de Dato": {
+    description: "Es un tipo cuyos valores no tienen identidad propia: dos instancias con los mismos datos son la misma cosa. Se usa para valores compuestos (dinero, rango de fechas, coordenada) que no merecen ser una clase con ciclo de vida. Se dibuja como un rectángulo con el estereotipo «dataType».",
+    example: "En banca, el tipo de dato Dinero con monto y moneda: 100 COP es 100 COP, sin importar cuál objeto lo represente.",
+  },
+  "Clase Plantilla": {
+    description: "Es una clase genérica parametrizada por uno o más tipos, que se concretan al usarla. Evita duplicar la misma estructura para cada tipo. Se dibuja como una clase con un recuadro punteado en la esquina superior derecha con los parámetros.",
+    example: "En un sistema de reportes, Repositorio<T> define buscarPorId(id): T y se concreta como Repositorio<Factura>.",
+  },
+  "Clase de Asociación": {
+    description: "Es una clase que representa la RELACIÓN entre dos clases cuando la relación misma tiene atributos. Sin ella habría que inventar un atributo suelto en uno de los extremos. Se dibuja unida con línea punteada a la línea de asociación.",
+    example: "En educación, la clase de asociación Matrícula une Estudiante y Curso y guarda la fecha y la nota final.",
+  },
+  "Estereotipo": {
+    description: "Es la extensión estándar de UML: marca un elemento con un significado adicional del dominio o de la tecnología, escrito entre comillas francesas. Permite adaptar UML a un dominio sin inventar notación nueva.",
+    example: "En una arquitectura hexagonal, «puerto» y «adaptador» sobre las interfaces y clases indican su papel en el diseño.",
+  },
+  // --- UML: componentes y despliegue ---
+  "Puerto": {
+    description: "Es el punto de interacción de un componente con su entorno: por él entran y salen las peticiones, y agrupa las interfaces que ofrece o consume por ese canal. Se dibuja como un cuadrado pequeño sobre el borde del componente.",
+    example: "En un servicio de pagos, el puerto HTTP público expone la interfaz de cobro y el puerto de mensajería consume eventos de la cola.",
+  },
+  "Interfaz Provista": {
+    description: "Es el contrato que un componente OFRECE a los demás: lo que se puede pedirle. Se dibuja como una paleta (lollipop): un círculo unido al componente por una línea corta.",
+    example: "En facturación, el componente Facturador provee la interfaz EmisiónDeFactura que consumen ventas y contabilidad.",
+  },
+  "Interfaz Requerida": {
+    description: "Es el contrato que un componente NECESITA de otro para funcionar: su dependencia declarada. Se dibuja como un socket (media luna) que encaja con la paleta de la interfaz provista.",
+    example: "En facturación, el Facturador requiere la interfaz ConsultaDeImpuestos, que le provee el componente Tributario.",
+  },
+  "Artefacto de Despliegue": {
+    description: "Es una pieza física y desplegable del sistema: un archivo o paquete que resulta de construir el software y que se instala en un nodo. Conecta el diseño con lo que realmente se despliega. Se dibuja como un rectángulo con el icono de documento.",
+    example: "En una app Java, el artefacto pedidos-service.jar se despliega en el entorno de ejecución Tomcat del nodo de aplicaciones.",
+  },
+  "Dispositivo": {
+    description: "Es hardware con capacidad de procesamiento donde se ejecuta software: un servidor, un teléfono, un lector de códigos. Es el nivel más concreto del diagrama de despliegue. Se dibuja como una caja tridimensional con el estereotipo «device».",
+    example: "En retail, el dispositivo Terminal de Punto de Venta ejecuta la app de caja y se comunica con el servidor central.",
+  },
+  "Entorno de Ejecución": {
+    description: "Es el software que hospeda y corre a otros: un servidor de aplicaciones, un motor de contenedores, un runtime. Se ANIDA dentro de un dispositivo o nodo y contiene los artefactos que ejecuta.",
+    example: "En la nube, el entorno de ejecución Kubernetes corre dentro del nodo del clúster y hospeda los contenedores de cada servicio.",
+  },
+  // --- UML: secuencia (interacción) ---
+  "Línea de Vida": {
+    description: "Es el participante de una interacción a lo largo del TIEMPO: una caja con su nombre arriba y una línea vertical punteada que baja. El orden de los mensajes se lee de arriba hacia abajo sobre esa línea. Es un contenedor: las activaciones y las notas del participante van dentro.",
+    example: "En un checkout, las líneas de vida Cliente, API de Pagos y Pasarela reciben en ese orden los mensajes del cobro.",
+  },
+  "Activación": {
+    description: "Es el tramo de la línea de vida en el que el participante está ejecutando algo (barra de ejecución): empieza al recibir el mensaje y termina al devolver el control. Deja ver cuánto dura cada llamada dentro de la interacción.",
+    example: "En el cobro, la activación de la Pasarela va desde 'autorizar(tarjeta)' hasta el retorno 'aprobado'.",
+  },
+  "Fragmento": {
+    description: "Es un marco que encierra una parte de la interacción y le pone un operador: alt (alternativas), opt (opcional), loop (repetición) o par (paralelo). Sin él, no se puede expresar condición ni repetición en una secuencia.",
+    example: "En el cobro, un fragmento alt separa '[tarjeta válida] → cobrar' de '[rechazada] → notificar el error'.",
+  },
+  "Mensaje Perdido": {
+    description: "Es el mensaje cuya otra punta no está en el diagrama: se envía a alguien que no se modeló (perdido) o llega de alguien de afuera (encontrado). Se dibuja como un círculo relleno en el extremo suelto de la flecha.",
+    example: "En un webhook, el mensaje encontrado 'pago.confirmado' llega desde la pasarela externa, que no es parte del diagrama.",
+  },
 };

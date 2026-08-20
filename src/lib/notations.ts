@@ -74,12 +74,15 @@ export interface NotationElement {
    *    con el nombre rotado 90°. Es la forma canónica del Pool/Carril de BPMN
    *    (participante y rol); dibujarlos punteados con etiqueta en la esquina no
    *    es notación BPMN.
+   *  - "lifeline": caja con el nombre ARRIBA y una línea vertical punteada que
+   *    baja por su centro. Es la línea de vida del diagrama de SECUENCIA de UML:
+   *    el participante es la caja y el tiempo corre hacia abajo por la línea.
    *  - "blob": ELIPSE punteada con el nombre en el borde inferior. Es la forma
    *    con que se dibujan los agrupamientos de un mapa de conceptos de DDD
    *    (Comportamiento, Ciclo de Vida, Composición): agrupan por afinidad, no
    *    delimitan un territorio, y un rectángulo los hacía leer como sistema.
    */
-  containerStyle?: "boundary" | "swimlane" | "blob";
+  containerStyle?: "boundary" | "swimlane" | "blob" | "lifeline";
   /** Clase tailwind de trazo SVG (stroke-*) que dibuja el contorno del nodo. */
   stroke?: string;
   /** Clases tailwind: relleno SVG, borde y texto. */
@@ -426,11 +429,35 @@ const UML: Notation = {
   paletteGroups: [
     {
       label: "Estructura (Clases)",
-      types: ["Clase", "Clase Abstracta", "Interfaz", "Enumeración"],
+      types: [
+        "Clase",
+        "Clase Abstracta",
+        "Interfaz",
+        "Enumeración",
+        "Tipo de Dato",
+        "Clase Plantilla",
+        "Clase de Asociación",
+        "Estereotipo",
+      ],
     },
     {
       label: "Componentes y despliegue",
-      types: ["Componente", "Nodo"],
+      types: [
+        "Componente",
+        "Puerto",
+        "Interfaz Provista",
+        "Interfaz Requerida",
+        "Artefacto de Despliegue",
+        "Nodo",
+        "Dispositivo",
+        "Entorno de Ejecución",
+      ],
+    },
+    {
+      // Diagrama de SECUENCIA: los participantes son líneas de vida y el tiempo
+      // baja. Los mensajes son ARISTAS (punteada = retorno), no elementos.
+      label: "Secuencia (interacción)",
+      types: ["Línea de Vida", "Activación", "Fragmento", "Mensaje Perdido"],
     },
     {
       label: "Casos de uso y contenedores",
@@ -452,6 +479,13 @@ const UML: Notation = {
     { type: "Clase Abstracta", icon: "BoxSelect", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     { type: "Interfaz", icon: "Plug", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     { type: "Enumeración", icon: "List", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    // Tipos que NO son clases pero viven en el diagrama de clases: el tipo de
+    // dato (valor sin identidad), la plantilla (genérico) y el estereotipo
+    // («entity», «service»), que es la extensión estándar de UML.
+    { type: "Tipo de Dato", icon: "Type", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Clase Plantilla", icon: "Braces", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Clase de Asociación", icon: "Link2", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Estereotipo", icon: "Tag", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     { type: "Componente", icon: "Component", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     { type: "Nodo", icon: "Server", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     // Actor UML: figura humana (stick figure), como en las herramientas UML clásicas.
@@ -460,6 +494,27 @@ const UML: Notation = {
     // Nota adhesiva UML (comentario anclable a cualquier elemento).
     { type: "Nota", icon: "StickyNote", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     { type: "Paquete", icon: "Folder", container: true, transparent: true, stroke: "stroke-yellow-600", bg: "fill-yellow-950/40", border: "border-yellow-500", text: "text-yellow-900 dark:text-yellow-200" },
+    // Diagrama de componentes: el puerto es el punto de conexión del componente
+    // y las interfaces son el par lollipop (provista) / socket (requerida). Van
+    // COMPACTOS: su figura es el símbolo, el nombre va debajo.
+    { type: "Puerto", icon: "Square", shape: "rect", compact: true, stroke: "stroke-zinc-400", bg: "fill-zinc-600", border: "border-zinc-500", text: "text-zinc-100" },
+    { type: "Interfaz Provista", icon: "Circle", shape: "ellipse", compact: true, stroke: "stroke-zinc-400", bg: "fill-zinc-600", border: "border-zinc-500", text: "text-zinc-100" },
+    { type: "Interfaz Requerida", icon: "CircleDashed", shape: "ellipse", compact: true, stroke: "stroke-zinc-400", bg: "fill-zinc-600", border: "border-zinc-500", text: "text-zinc-100" },
+    { type: "Artefacto de Despliegue", icon: "FileCode2", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    // Despliegue: el dispositivo es hardware; el entorno de ejecución ANIDA lo
+    // que corre dentro (servidor de aplicaciones, contenedor, runtime).
+    { type: "Dispositivo", icon: "Smartphone", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Entorno de Ejecución", icon: "Cpu", container: true, transparent: true, stroke: "stroke-teal-500", bg: "fill-teal-950/40", border: "border-teal-500", text: "text-teal-900 dark:text-teal-200" },
+    // --- Secuencia (interacción) ---
+    // La línea de vida es un CONTENEDOR: las activaciones y los mensajes se
+    // colocan dentro, y el tiempo baja por su línea punteada.
+    { type: "Línea de Vida", icon: "Rows3", container: true, containerStyle: "lifeline", transparent: true, stroke: "stroke-indigo-400", bg: "fill-indigo-950/40", border: "border-indigo-400", text: "text-indigo-900 dark:text-indigo-200" },
+    { type: "Activación", icon: "Minus", shape: "rect", stroke: "stroke-indigo-400", bg: "fill-indigo-700", border: "border-indigo-500", text: "text-white" },
+    // Fragmento combinado (alt / opt / loop / par): marco con la etiqueta del
+    // operador; lo que encierra es la parte condicional de la interacción.
+    { type: "Fragmento", icon: "Frame", container: true, transparent: true, stroke: "stroke-indigo-500", bg: "fill-indigo-950/40", border: "border-indigo-500", text: "text-indigo-900 dark:text-indigo-200" },
+    // Mensaje perdido/encontrado: la punta que no tiene participante al otro lado.
+    { type: "Mensaje Perdido", icon: "Circle", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-indigo-300", bg: "fill-indigo-300", border: "border-indigo-500", text: "text-indigo-100" },
     // --- Máquina de estados ---
     // Pseudoestado inicial CANÓNICO: punto sólido oscuro, sin icono (la figura
     // rellena ES el símbolo UML).
@@ -482,16 +537,20 @@ const UML: Notation = {
     { type: "Fin de Actividad", icon: "Target", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
   ],
   aiGuidance:
-    "Aplica UML. Diagramas de clases (Clases, Clases Abstractas, Interfaces, Enumeraciones con relaciones de herencia, implementación, asociación, agregación, composición y dependencia), de componentes y de casos de uso (Actores y Casos de Uso agrupados en Paquetes). " +
+    "Aplica UML. Diagramas de clases (Clases, Clases Abstractas, Interfaces, Enumeraciones, Tipos de Dato, Clases Plantilla —genéricas—, Clases de Asociación y Estereotipos «como este», con relaciones de herencia, implementación, asociación, agregación, composición y dependencia), de componentes (Componentes con sus Puertos e Interfaces Provista/Requerida, y Artefactos de Despliegue), de despliegue (Nodos, Dispositivos y Entornos de Ejecución que ANIDAN lo que corre dentro) y de casos de uso (Actores y Casos de Uso agrupados en Paquetes). " +
+    "Diagrama de SECUENCIA: una Línea de Vida por participante (es un contenedor y el tiempo baja por su línea punteada), Activaciones para el tramo en que el participante ejecuta, Fragmentos para lo condicional (etiquetá el operador: alt, opt, loop, par) y Mensaje Perdido cuando la punta no tiene participante al otro lado. Los mensajes son ARISTAS ordenadas de arriba hacia abajo: continua para la llamada y PUNTEADA para el retorno. " +
     "Máquina de estados (motor de estados): modela el ciclo de vida de un objeto con Estado Inicial (pseudoestado de arranque), Estados y Estados Compuestos (anidan subestados), Decisión (elige rama según guarda), Historial (recuerda el último subestado) y Estado Final; las transiciones se etiquetan 'evento [guarda] / acción'. " +
     "Diagrama de actividad (flujos de decisión): Inicio de Actividad, Acciones, Nodo de Decisión (bifurca según condición) y su unión, Bifurcación/Unión (fork/join para flujos paralelos) y Fin de Actividad. " +
-    "Los diagramas de SECUENCIA no se modelan aquí: tienen su propio editor (vista 'Diagrama de secuencia').",
+    "Para un diagrama de secuencia en CÓDIGO (sin lienzo) existe además la vista Mermaid.",
   analystRole: "modelador UML",
   modelLabel: "Modelo UML",
   flowRules:
     "- Actor → Caso de Uso (relación \"asocia\")\n" +
     "- Clase → Clase (relación \"asocia\", \"hereda\" o \"depende\")\n" +
     "- Clase → Interfaz (relación \"implementa\")\n" +
+    "- Componente → Interfaz Provista (relación \"expone\")\n" +
+    "- Interfaz Requerida → Interfaz Provista (relación \"consume\")\n" +
+    "- Línea de Vida → Línea de Vida (relación = el mensaje; punteada = retorno)\n" +
     "- Estado Inicial → Estado (relación = el evento de la transición)\n" +
     "- Acción → Nodo de Decisión → Acción (relación = la guarda de la rama)",
   defaultType: "Clase",
@@ -575,6 +634,10 @@ export function notationTypes(
 /** true → el contenedor se dibuja como swimlane BPMN (banda lateral, línea continua). */
 export const isSwimlaneContainer = (type: string): boolean =>
   ALL_ELEMENTS[type]?.containerStyle === "swimlane";
+
+/** true → el contenedor es una LÍNEA DE VIDA (caja arriba + línea de tiempo). */
+export const isLifelineContainer = (type: string): boolean =>
+  ALL_ELEMENTS[type]?.containerStyle === "lifeline";
 
 /** true si el contenedor se dibuja como ELIPSE punteada (mapa de conceptos). */
 export const isBlobContainer = (type: string): boolean =>
@@ -731,9 +794,13 @@ const ELEMENT_ROLES: Record<NotationId, Partial<Record<ElementRole, string[]>>> 
     start: ["Estado Inicial", "Inicio de Actividad"],
     end: ["Estado Final", "Fin de Actividad"],
     gateway: ["Decisión", "Nodo de Decisión"],
-    task: ["Acción", "Estado", "Caso de Uso"],
+    task: ["Acción", "Estado", "Caso de Uso", "Activación"],
     actor: ["Actor"],
-    boundary: ["Paquete", "Estado Compuesto"],
+    system: ["Componente", "Nodo", "Dispositivo", "Artefacto de Despliegue"],
+    // La línea de vida es el PARTICIPANTE de la interacción: mismo papel que el
+    // Pool de BPMN (una columna por quien participa).
+    pool: ["Línea de Vida"],
+    boundary: ["Paquete", "Estado Compuesto", "Fragmento", "Entorno de Ejecución"],
   },
 };
 

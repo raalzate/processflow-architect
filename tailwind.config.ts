@@ -77,6 +77,12 @@ export default {
         ring: 'hsl(var(--ring))',
         // Estado semántico: lo consume toda la app en vez de elegir un verde
         // por archivo (spec 003, FR-003).
+        ai: {
+          DEFAULT: 'hsl(var(--ai))',
+          foreground: 'hsl(var(--ai-foreground))',
+          surface: 'hsl(var(--ai-surface))',
+          border: 'hsl(var(--ai-border))',
+        },
         success: {
           DEFAULT: 'hsl(var(--success))',
           foreground: 'hsl(var(--success-foreground))',
