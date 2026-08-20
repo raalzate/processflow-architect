@@ -7,7 +7,7 @@ lo que se supone va en "deuda conocida".
 - **Fecha del último gate completo:** 2026-08-20
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.5.1 (tag `v0.5.1` → instaladores por `release-build.yml`)
+- **Versión publicada:** 0.6.0 (tag `v0.6.0` → instaladores por `release-build.yml`)
 
 ## Señales
 
