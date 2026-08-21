@@ -184,7 +184,7 @@ processflow-architect/
 ├── scripts/                ← el gate y sus señales (lint, self-test, link-check, capturas)
 ├── .claude/ · .githooks/   ← el arnés: hooks del agente y del repo
 ├── docs/                   ← arquitectura, arnés, gotchas, releases
-└── specs/                  ← especificaciones de features (ruta SDD)
+└── specs/                  ← sólo un README: los artefactos SDD son Issues de GitHub
 ```
 
 ---
@@ -228,6 +228,7 @@ los tres actores con el mismo comando: la persona, el agente de IA y CI.
 | [`docs/harness/gotchas.md`](docs/harness/gotchas.md) | incidentes con síntoma → causa → regla → **mecanismo**. Un gotcha sin mecanismo es gate rojo |
 | [`docs/architecture/reuse-patterns.md`](docs/architecture/reuse-patterns.md) | catálogo de abstracciones: se consulta **antes** de escribir código |
 | `graphify-out/` (local) | índice consultable del repo: `npm run graph:query "…"` devuelve un subgrafo, no el árbol |
+| [Issues `sdd:feature`](https://github.com/raalzate/processflow-architect/issues?q=label%3Asdd%3Afeature) | el plan y las tareas de cada feature: el spec en la issue madre, un issue por tarea. En el repo no van specs |
 
 Reglas de fondo: la lógica pura vive en `src/lib/` y va con prueba (TDD); la suite corre
 **offline** (un test que sale a la red falla); las funciones de IA se agregan declarando una
@@ -245,7 +246,7 @@ Reglas de fondo: la lógica pura vive en `src/lib/` y va con prueba (TDD); la su
 - → [Puente MCP: cómo Claude Code diseña y exporta al lienzo](docs/architecture/mcp.md) · [servidor](mcp-server/README.md)
 - → [Guía de releases y firma de código](docs/RELEASE.md)
 - → [Compresión del grafo para el contexto de la IA (TOON)](docs/compresion-toon.md)
-- → [Especificaciones de features](specs/README.md)
+- → [Ruta SDD: las features viven en Issues](specs/README.md)
 - → Guía MCP · **in-app** (menú Ayuda → Guía MCP)
 
 ---

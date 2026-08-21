@@ -287,6 +287,25 @@
       "sofka-07-implement"
     ],
     "specsDir": "specs",
+    "$github": "Los artefactos SDD viven en GitHub, no en el repo: la issue madre lleva el spec (plan/checklist/testify/analyze como comentarios) y cada tarea es su propio issue, asignable y cerrable. `allowedInRepo` es lo único que puede quedar bajo specs/; cualquier otro archivo ahí pone el gate en rojo (scripts/sdd-github.mjs check).",
+    "github": {
+      "repo": "raalzate/processflow-architect",
+      "featureLabel": "sdd:feature",
+      "taskLabel": "sdd:task",
+      "featureLabelPrefix": "feature:",
+      "labelColor": "5319E7",
+      "artifactOrder": [
+        "spec",
+        "plan",
+        "checklist",
+        "testify",
+        "analyze",
+        "tasks"
+      ],
+      "allowedInRepo": [
+        "specs/README.md"
+      ]
+    },
     "activeFeaturePointer": ".specify/active-feature",
     "routes": [
       {
@@ -303,7 +322,7 @@
           "\\bnuevo (endpoint|handler ipc|servicio)\\b",
           "\\bsoportar (una )?nueva notación\\b"
         ],
-        "message": "Pedido de tamaño FEATURE → ruta SDD (docs/harness/sdd.md): arrancá por `/sofka-01-specify` y no toques producción sin spec, plan y tasks. Si decidís saltarla, declaralo en una línea con el porqué."
+        "message": "Pedido de tamaño FEATURE → ruta SDD (docs/harness/sdd.md), y los artefactos van a GitHub, NO al repo: `/sofka-01-specify` escribe el markdown en el scratchpad, `npm run sdd:new <spec.md>` abre la issue madre y `npm run sdd:tasks <issue> <tasks.md>` crea un issue por tarea. No toques producción sin issue madre y tareas. Si decidís saltar la ruta, declaralo en una línea con el porqué."
       },
       {
         "route": "bugfix",
@@ -315,7 +334,7 @@
           "\\berror en\\b",
           "\\bregresi[óo]n\\b"
         ],
-        "message": "Falla sobre algo que ya existe → `/sofka-bugfix` (o test rojo primero). Reproducí con un test antes de tocar producción (TDD es BLOCKING en src/lib)."
+        "message": "Falla sobre algo que ya existe → `/sofka-bugfix` (o test rojo primero). Reproducí con un test antes de tocar producción (TDD es BLOCKING en src/lib). Si merece seguimiento, abrí el issue en GitHub, no un archivo."
       },
       {
         "route": "clarify",
@@ -358,7 +377,8 @@
         ],
         "message": ""
       }
-    ]
+    ],
+    "$activeFeaturePointer": "Número de la issue MADRE de la feature en curso (p. ej. `#25`), o vacío si no hay ninguna. Antes apuntaba a una carpeta de specs/; los artefactos ahora viven en GitHub."
   },
   "tokens": {
     "palettes": [

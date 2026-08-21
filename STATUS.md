@@ -13,6 +13,7 @@ lo que se supone va en "deuda conocida".
 
 | Señal | Comando | Resultado |
 |---|---|---|
+| Ruta SDD en GitHub | `npm run sdd:check` | verde — las 5 features migradas a issues (#1 · #25 · #45 · #62 · #79) con 89 issues de tarea (83 cerradas al migrar); `specs/` sólo tiene su README y cualquier otro archivo ahí pone el gate en rojo |
 | Frontera de red de la suite | `npx vitest run src/lib/__tests__/network-boundary.test.ts` | verde — `fetch` y `http/https.request` revientan dentro de un test (con el destino en el mensaje) y simular la red sigue siendo posible |
 | Superficie de extensión de la IA (P5) | `npx vitest run src/lib/ai/__tests__/tasks-registry.test.ts` | verde — barrido por `import *`: toda `AiTask` declarada tiene id kebab único, tier válido, forma de ejecutarse, y el router la rutea en los tres modos sin conocerla |
 | Índice del repo (graphify) | `npm run graph:check` | verde — 2 253 nodos / 5 575 aristas / 188 comunidades sobre 334 archivos (262 de código por AST + 51 docs + 8 imágenes por extracción semántica). Mide dos cosas: atraso contra HEAD y encogimiento contra `graph.baseline`; se omite donde no hay índice (CI) |
@@ -40,7 +41,7 @@ Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
 | Deuda | Dónde | Nota |
 |---|---|---|
 | 16 archivos cablean literales de notación | `.claude/harness.config.json` → `notation.allow` | la regla NOTACION bloquea lo nuevo; la lista sólo puede achicarse |
-| SDD ruteado pero no bloqueante | `docs/harness/sdd.md` §Estado | ya hay una feature con artefactos: `specs/001-layout-legible/` |
+| SDD ruteado pero no bloqueante | `docs/harness/sdd.md` §Estado | el gate protege el *dónde* (los artefactos no vuelven al repo), no el *si*: nada obliga a abrir la issue madre antes de tocar producción |
 | El lienzo se verifica a ojo | — | no hay test de render; la simbología se cubre por el registro (`notation-symbols`, `notation-contrast`) y la geometría por `link-geom` |
 | ~535 aristas colgantes en el índice de graphify | `graphify-out/GRAPH_REPORT.md` | **diagnosticado: no es corrupción.** Son imports a paquetes que graphify no nodifica (`ref_react` 83, `ref_vitest` 76, `ref_lucide_react` 45, `ref_node_path`, `ref_electron`…) más re-exports de barriles. El grafo las descarta al construir; las consultas de código no se ven afectadas |
 | Sin dobles de prueba para LiteRT ni E2E del lienzo | — | la UI se verifica a mano (`npm run electron-dev`) |
@@ -62,7 +63,7 @@ cuántos turnos gasta un **Gemma real** hasta proponer un plan usable, y el cicl
 `hybrid`/`remote` (es agnóstico del motor y no se tocó el ruteo, pero nadie lo corrió contra nube).
 
 **Artefactos versionados (spec 004) — CON ruta SDD, ciclo completo.**
-`specs/004-artefactos-versionados/` tiene las seis fases (`spec` · `plan` · `checklist` ·
+La feature ([#62](https://github.com/raalzate/processflow-architect/issues/62)) tiene las seis fases (`spec` · `plan` · `checklist` ·
 `testify` · `tasks` · `analyze`) y las 13 tareas marcadas. Cada artefacto tiene ahora su propio
 linaje: regenerar incrementa la revisión en vez de duplicar la tarjeta, el histórico es
 append-only (restaurar crea una revisión nueva), borrar en el panel archiva y el borrado
@@ -71,16 +72,16 @@ definitivo pide confirmación. Toda la lógica vive en `src/lib/artifacts/versio
 artefactos. **Pendiente:** la verificación visual M1–M5 de `testify.md` en la app de escritorio
 (no hay E2E de UI).
 
-**Una sola piel (spec 003) — CON ruta SDD.** `specs/003-ui-homogenea/` cubre el rediseño de la
+**Una sola piel (spec 003) — CON ruta SDD.** [#45](https://github.com/raalzate/processflow-architect/issues/45) cubre el rediseño de la
 piel: app siempre oscura, tokens de estado y de código, `CodeBlock` único, escala tipográfica y
 regla TOKENS en el lint. Las 11 tareas quedaron marcadas con su comando. No cambia la
 disposición de la interfaz: eso, si se quiere, es otra spec.
 
 **Simbología por notación — ruta SDD SALTADA, declarado.** El cambio no abrió una
-carpeta nueva bajo `specs/`: entra por el registro (`src/lib/notations.ts` declara tamaño de nodo,
+issue madre: entra por el registro (`src/lib/notations.ts` declara tamaño de nodo,
 rotulado, trazo y forma; el resto obedece) y queda cubierto por pruebas —
 `notation-symbols`, `notation-contrast`, `layout-radial`, `layout-node-size`,
-`edge-label` y `link-geometry`. Desborda `specs/002-layout-organizar`, que sólo cubre
+`edge-label` y `link-geometry`. Desborda [#25](https://github.com/raalzate/processflow-architect/issues/25), que sólo cubre
 densidad y estrategia: acá hay además layout radial para DDD, ficha C4, elipses y
 contenedores blob en DDD, etiquetas de relación en dos renglones, paleta homogénea y
 lienzo siempre oscuro. Si alguna de esas decisiones se discute, se abre la spec.

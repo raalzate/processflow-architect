@@ -37,6 +37,8 @@ run "link-check de docs"    node scripts/docs-linkcheck.mjs
 run "lint de convenciones"  node scripts/repo-lint.mjs
 # 3b. El skill que se entrega al agente externo debe ser el del repo, no una copia vieja.
 run "skills sincronizados"  node scripts/sync-skills.mjs --check
+# 3b-bis. Los artefactos SDD viven en GitHub: un spec/plan/tasks dentro del repo es rojo.
+run "SDD en GitHub"         node scripts/sdd-github.mjs check
 # 3c. El índice de graphify no contesta con el repo de antes del último commit.
 #     Se omite (verde) donde no hay índice: en CI el directorio no existe.
 run "índice del repo"       node scripts/graph-check.mjs

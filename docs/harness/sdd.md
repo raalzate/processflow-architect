@@ -42,11 +42,43 @@ sofka-04-testify        escenarios Gherkin con hash de integridad de aserciones 
 sofka-05-tasks          desglose en orden de dependencias
 sofka-06-analyze        consistencia: cada requisito traza a una tarea y a la constitución
 sofka-07-implement      ejecutar tasks.md verificando aserciones + gate
-sofka-08-taskstoissues  exportar tareas a GitHub Issues (opcional)
+sofka-08-taskstoissues  exportar tareas a GitHub Issues (lo hace `npm run sdd:tasks`)
 ```
 
-Artefactos en `specs/<NNN-nombre>/`; el feature activo en `.specify/active-feature`.
-`/sofka-core` inicializa, selecciona feature y muestra el estado.
+Los artefactos **no se quedan en el repo**: van a GitHub (siguiente sección). El puntero de la
+feature en curso, `.specify/active-feature`, guarda el **número de la issue madre** (`#25`) o queda
+vacío. `/sofka-core` inicializa, selecciona feature y muestra el estado.
+
+## Dónde viven los artefactos: GitHub, no el repo
+
+Una feature es un **árbol de issues** en `raalzate/processflow-architect`:
+
+```
+#N  [sdd] NNN · <título>        ← issue MADRE: spec en el cuerpo; plan · checklist ·
+ │                                testify · analyze como comentarios
+ ├─ #N+1  NNN · T1 — <tarea>    ← un issue por TAREA: asignable, cerrable, con su verificación
+ └─ …                             labels: `sdd:feature` | `sdd:task` · `feature:NNN`
+```
+
+**Por qué se movió.** Un plan versionado junto al código no se puede asignar, no tiene estado
+propio y sólo lo lee quien ya clonó. En issues cada tarea tiene dueño, historial y cierre, y el
+avance se ve sin `git pull`. Lo que sigue en el repo es lo que explica **el código**: decisiones
+(`docs/decisions/`), arnés (`docs/harness/`) e incidentes (`gotchas.md`).
+
+El flujo, de punta a punta:
+
+```bash
+/sofka-01-specify …                          # el skill escribe el markdown en el SCRATCHPAD
+npm run sdd:new <scratchpad>/spec.md         # issue madre con el spec en el cuerpo
+gh issue comment <issue> --body-file plan.md # plan · checklist · testify · analyze
+npm run sdd:tasks <issue> <tasks.md>         # un issue por tarea, enlazado a la madre
+npm run sdd:status                           # avance por feature
+```
+
+`scripts/sdd-github.mjs` es el único que habla con GitHub (`gh` con `--repo` fijo); la config
+—repo, labels, orden de artefactos, qué se permite en el repo— vive en
+`.claude/harness.config.json` → `sdd.github`. El comando `check` **no toca la red**: por eso puede
+correr en el gate y en CI.
 
 **La cadena BDD es el aporte propio del kit**: `04-testify` genera los escenarios y les calcula un
 hash de integridad; `07-implement` lo verifica. Ese hash es la versión ejecutable de "jamás se
@@ -71,15 +103,18 @@ ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
 | El kit nombrado existe de verdad | self-test: cada fase debe corresponder a una skill instalada en `sdd.skillRoots` (omitido en CI) |
 | El clasificador no se degrada | 8 casos de ruteo en `scripts/harness-selftest.mjs`, paso 4 del gate |
 | El puntero de feature activa resuelve | self-test: puntero colgado = gate rojo |
-| Los artefactos no se borran al entregar | `specs/README.md` (convención) — sin mecanismo fuerte todavía |
+| Los artefactos SDD no vuelven al repo | `node scripts/sdd-github.mjs check` en el gate: cualquier archivo bajo `specs/` fuera de `sdd.github.allowedInRepo` es rojo, y el self-test lo prueba con un cebo |
+| Los artefactos no se pierden al entregar | son issues: se cierran, no se borran, y quedan enlazadas desde el commit |
 
 ## Estado
 
-- La ruta ya se ejerció: `specs/` tiene cuatro features y `.specify/active-feature` apunta a
-  `004-artefactos-versionados`, la primera con el ciclo completo de fases
-  (`spec` · `plan` · `checklist` · `testify` · `tasks` · `analyze`). Las skills `sofka-0x` no están
-  versionadas en el repo, así que las fases se ejecutaron siguiendo su contrato con las
-  herramientas del repo (vitest en lugar de un runner de Gherkin; queda dicho en `testify.md`).
-- Deuda: nada impide entregar una feature grande sin spec — sólo el criterio del agente y el review.
-  Candidato a mecanismo fuerte: un check en el `reviewer` que marque diffs con archivos nuevos bajo
-  `src/app/`, `main/services/` o `src/lib/notations.ts` sin `specs/` asociado.
+- **Las cinco features vividas están migradas a issues** (2026-08-21): `#1` 001, `#25` 002, `#45`
+  003, `#62` 004, `#79` 005, con 89 issues de tarea (83 cerradas al migrar, según el checklist de
+  cada `tasks.md`). Las carpetas de `specs/` se borraron; el índice está en `specs/README.md`.
+  Las skills `sofka-0x` no están versionadas en el repo, así que las fases se ejecutaron siguiendo
+  su contrato con las herramientas del repo (vitest en lugar de un runner de Gherkin).
+- Deuda: nada impide entregar una feature grande **sin abrir la issue madre** — sólo el criterio del
+  agente y el review. El freno actual protege el *dónde* (los artefactos no vuelven al repo), no el
+  *si*. Candidato a mecanismo fuerte: un check en el `reviewer` que marque diffs con archivos nuevos
+  bajo `src/app/`, `main/services/` o `src/lib/notations.ts` sin issue `sdd:feature` referenciada en
+  el mensaje del commit.
