@@ -136,6 +136,7 @@ import {
   CHANGE_STATES,
 } from "./DesignerCanvas";
 import { styleLinks, styleLinksSummary, type LinkStylePatch } from "./link-style";
+import { nodeAtPoint, reconnectLink } from "./link-reconnect";
 import {
   linkEndpoints,
   linkGeometry,
@@ -1752,6 +1753,17 @@ export const ComponentDesigner: React.FC<{
    */
   const newLinkRouting = meta?.defaultRouting ?? "orthogonal";
 
+  /**
+   * Caja bajo el cursor mientras se arrastra una punta (issue #129): `nodeId` se
+   * resalta y `valid` dice si soltar ahí reapunta o no (el self-loop no). Es
+   * estado de VISTA: la arista no se toca hasta soltar.
+   */
+  const [reconnectHint, setReconnectHint] = useState<{ nodeId: string; valid: boolean } | null>(null);
+  const reconnectHintRef = useRef<{ nodeId: string; valid: boolean } | null>(null);
+  useEffect(() => {
+    reconnectHintRef.current = reconnectHint;
+  }, [reconnectHint]);
+
   /** De lo seleccionado, cuántas son RELACIONES (la selección mezcla nodos). */
   const selectedLinkCount = Array.from(selectedIds).filter((id) => links.has(id)).length;
 
@@ -2329,6 +2341,20 @@ export const ComponentDesigner: React.FC<{
         const nodeId = ep.kind === "source" ? link.sourceId : link.targetId;
         const node = nodesRef.current.get(nodeId);
         if (!node) return;
+        // ¿La punta está sobre OTRA caja? Entonces esto es un REAPUNTADO, no un
+        // reanclado: se marca el destino y el ancla no se toca hasta soltar. Sin
+        // esto la punta quedaba presa de su nodo (issue #129).
+        const bajoCursor = nodeAtPoint(nodesRef.current, p, notationId);
+        if (bajoCursor && bajoCursor.id !== nodeId) {
+          const otro = ep.kind === "source" ? link.targetId : link.sourceId;
+          const valid = bajoCursor.id !== otro; // origen = destino no se dibuja
+          const hint = reconnectHintRef.current;
+          if (!hint || hint.nodeId !== bajoCursor.id || hint.valid !== valid) {
+            setReconnectHint({ nodeId: bajoCursor.id, valid });
+          }
+          return;
+        }
+        if (reconnectHintRef.current) setReconnectHint(null);
         const { w, h } = nodeBox(node, notationId);
         const ax = Math.min(1, Math.max(0, (p.x - node.x) / w));
         const ay = Math.min(1, Math.max(0, (p.y - node.y) / h));
@@ -2388,9 +2414,33 @@ export const ComponentDesigner: React.FC<{
       setConnectCursor(null);
       return;
     }
-    // Fin del reanclado de una punta: consolida en el historial.
+    // Fin del arrastre de una punta: si quedó sobre otra caja, REAPUNTA la
+    // relación conservando todo lo demás; si no, consolida el reanclado. Soltar
+    // en el vacío o sobre el otro extremo deja la arista como estaba.
     if (endpointDragRef.current) {
+      const ep = endpointDragRef.current;
+      const hint = reconnectHintRef.current;
       endpointDragRef.current = null;
+      setReconnectHint(null);
+      if (hint && (ep.kind === "source" || ep.kind === "target")) {
+        const link = linksRef.current.get(ep.linkId);
+        const next = hint.valid && link ? reconnectLink(link, ep.kind, hint.nodeId) : null;
+        if (next && next !== link) {
+          const l = new Map(linksRef.current);
+          l.set(next.id, next);
+          setLinks(l);
+          linksRef.current = l;
+          pushSnapshot(nodesRef.current, l);
+          return;
+        }
+        if (!hint.valid) {
+          toast({
+            variant: "destructive",
+            title: "No se puede reapuntar ahí",
+            description: "Origen y destino serían el mismo elemento: esa relación no se dibuja.",
+          });
+        }
+      }
       pushSnapshot(nodesRef.current, linksRef.current);
       return;
     }
@@ -3438,6 +3488,29 @@ export const ComponentDesigner: React.FC<{
                 />
               ))}
             </g>
+
+            {/* Destino del reapuntado: aro sobre la caja bajo el cursor —verde si
+                soltar ahí reapunta, destructivo si sería un self-loop— para que
+                se vea ANTES de soltar (issue #129). */}
+            {reconnectHint && (() => {
+              const node = nodes.get(reconnectHint.nodeId);
+              if (!node) return null;
+              const { w, h } = nodeBox(node, notationId);
+              return (
+                <rect
+                  x={node.x - 4}
+                  y={node.y - 4}
+                  width={w + 8}
+                  height={h + 8}
+                  rx={10}
+                  fill="none"
+                  className={reconnectHint.valid ? "stroke-success" : "stroke-destructive"}
+                  strokeWidth={3}
+                  strokeDasharray="8 5"
+                  pointerEvents="none"
+                />
+              );
+            })()}
 
             {/* Capa superior: manijas de reanclado de los enlaces seleccionados
                 (encima de los nodos para que no queden tapadas). */}

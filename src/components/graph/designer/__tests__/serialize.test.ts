@@ -9,6 +9,7 @@ import {
   type DesignerNode,
   type DesignerLink,
 } from "@/components/graph/designer/serialize";
+import { reconnectLink } from "@/components/graph/designer/link-reconnect";
 import {
   CONTAINER_ELEMENT_TYPES,
   type GraphData,
@@ -472,6 +473,31 @@ describe("canvasToGraphData", () => {
     expect(g.agregados[0].aristas).toEqual([]);
     expect(g.agregados[1].aristas).toEqual([]);
     expect(g.big_picture.aristas).toEqual([]);
+  });
+
+  it("reapuntar una arista la reclasifica al guardar (issue #129)", () => {
+    // La arista nace interna a Pedidos; se reapunta su destino a un nodo de
+    // Pagos y al guardar tiene que salir como política entre agregados, sin que
+    // el reapuntado duplique esa regla: la decide el serializador.
+    const c1 = makeNode({ id: "c1", nombre: "Pedidos", tipo_elemento: "Agregado" });
+    const c2 = makeNode({ id: "c2", nombre: "Pagos", tipo_elemento: "Agregado" });
+    const a = makeNode({ id: "a", nombre: "A", tipo_elemento: "Comando", agregado: "Pedidos" });
+    const b = makeNode({ id: "b", nombre: "B", tipo_elemento: "Evento", agregado: "Pedidos" });
+    const c = makeNode({ id: "c", nombre: "C", tipo_elemento: "Evento", agregado: "Pagos" });
+    const nodes = nodesMap(c1, c2, a, b, c);
+    const link = makeLink({ id: "l1", sourceId: "a", targetId: "b", descripcion: "emits" });
+
+    const interna = canvasToGraphData(nodes, linksMap(link), BASE);
+    expect(interna.agregados.find((ag) => ag.nombre_agregado === "Pedidos")!.aristas).toEqual([
+      { fuente: "a", destino: "b", descripcion: "emits" },
+    ]);
+
+    const reapuntada = reconnectLink(link, "target", "c")!;
+    const cruzada = canvasToGraphData(nodes, linksMap(reapuntada), BASE);
+    expect(cruzada.politicas_inter_agregados).toEqual([
+      { fuente: "a", destino: "c", descripcion: "emits" },
+    ]);
+    expect(cruzada.agregados.every((ag) => ag.aristas.length === 0)).toBe(true);
   });
 
   it("classifies a link touching the big picture as a big_picture arista", () => {
