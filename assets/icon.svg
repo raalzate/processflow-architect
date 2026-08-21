@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Icono de la app. Mismo concepto de color que la UI (src/app/globals.css):
+    fondo slate azulado del modo oscuro, formas en gris-azul (foreground /
+    muted-foreground) y un solo acento en el azul `--primary`. No usa el
+    gradiente violeta anterior: el icono ahora se lee como la app.
+  -->
+  <defs>
+    <linearGradient id="fondo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#343a44"/>
+      <stop offset="1" stop-color="#1f232a"/>
+    </linearGradient>
+    <linearGradient id="nodo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#dfe4ea"/>
+      <stop offset="1" stop-color="#aab3c0"/>
+    </linearGradient>
+    <linearGradient id="rombo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b9c2cf"/>
+      <stop offset="1" stop-color="#8d97a5"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="256" cy="256" r="252" fill="url(#fondo)"/>
+  <circle cx="256" cy="256" r="250" fill="none" stroke="#4c515c" stroke-width="4"/>
+
+  <!-- Conectores rectos: el flujo vertical y horizontal del proceso. -->
+  <g stroke="#5b6472" stroke-width="14" stroke-linecap="round">
+    <path d="M256 150 V 214"/>
+    <path d="M256 298 V 362"/>
+    <path d="M150 256 H 176"/>
+    <path d="M336 256 H 362"/>
+  </g>
+
+  <!-- Flechas de retorno: el ciclo (arriba-derecha y abajo-izquierda). -->
+  <g fill="none" stroke="#7f8998" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M416 214 V 132 H 356"/>
+    <path d="M96 298 V 380 H 156"/>
+  </g>
+  <path d="M356 132 l 30 -22 v 44 z" fill="#7f8998"/>
+  <path d="M156 380 l -30 22 v -44 z" fill="#7f8998"/>
+
+  <!-- Eventos (círculos) y decisiones (rombos): las formas del lienzo. -->
+  <circle cx="256" cy="110" r="72" fill="url(#nodo)"/>
+  <circle cx="256" cy="402" r="72" fill="url(#nodo)"/>
+  <rect x="60" y="220" width="72" height="72" rx="16" transform="rotate(45 96 256)" fill="url(#rombo)"/>
+  <rect x="380" y="220" width="72" height="72" rx="16" transform="rotate(45 416 256)" fill="url(#rombo)"/>
+
+  <!-- Comando central: la única forma con el azul `--primary` de la app. -->
+  <rect x="166" y="212" width="180" height="88" rx="20" fill="#e8ecf1"/>
+  <rect x="192" y="240" width="128" height="32" rx="10" fill="#6f9adb"/>
+</svg>

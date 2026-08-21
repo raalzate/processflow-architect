@@ -4,7 +4,7 @@ import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CREDIT_AUTHOR, CREDIT_LINE, CREDIT_LINKS, versionLabel } from "@/lib/credits";
+import { CREDIT_LINE, CREDIT_LINKS, versionLabel } from "@/lib/credits";
 
 /**
  * Badge de estado de la release. La app es beta: se dice en la UI, no sólo en el
@@ -50,14 +50,5 @@ export function AppCredits({ className }: { className?: string }) {
         ))}
       </div>
     </div>
-  );
-}
-
-/** Nombre del autor, para cabeceras donde no cabe el crédito completo. */
-export function AuthorName({ className }: { className?: string }) {
-  return (
-    <span className={cn("truncate text-2xs text-muted-foreground", className)}>
-      {CREDIT_AUTHOR}
-    </span>
   );
 }

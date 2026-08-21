@@ -55,8 +55,7 @@ import { useGraphContext } from "@/context/GraphContext"; // Importa el hook
 import { useViews } from "@/context/ViewsContext";
 import { isChecked } from "@/lib/graph-filters";
 import { useToast } from "@/hooks/use-toast";
-import { AuthorName, BetaBadge } from "@/components/layout/AppCredits";
-import { CREDIT_LINE, CREDIT_LINKS } from "@/lib/credits";
+import { BetaBadge } from "@/components/layout/AppCredits";
 import { parseDiagramJson } from "@/lib/import-diagram";
 import {
   INITIAL_NOTATION_ID,
@@ -458,17 +457,8 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             </h1>
             <BetaBadge />
           </div>
-          {/* Sólo el nombre del autor: el crédito completo con los enlaces vive
-              en el pie del sidebar y en «Acerca de». */}
-          <a
-            href={CREDIT_LINKS[0].href}
-            target="_blank"
-            rel="noreferrer"
-            title={CREDIT_LINE}
-            className="hidden opacity-90 transition-opacity hover:opacity-100 md:block"
-          >
-            <AuthorName />
-          </a>
+          {/* El crédito de autoría vive en el pie del sidebar y en «Acerca de»:
+              en la cabecera competía con el título y no aporta a la tarea. */}
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
