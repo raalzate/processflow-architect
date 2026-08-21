@@ -13,6 +13,8 @@ lo que se supone va en "deuda conocida".
 
 | Señal | Comando | Resultado |
 |---|---|---|
+| Frontera de red de la suite | `npx vitest run src/lib/__tests__/network-boundary.test.ts` | verde — `fetch` y `http/https.request` revientan dentro de un test (con el destino en el mensaje) y simular la red sigue siendo posible |
+| Superficie de extensión de la IA (P5) | `npx vitest run src/lib/ai/__tests__/tasks-registry.test.ts` | verde — barrido por `import *`: toda `AiTask` declarada tiene id kebab único, tier válido, forma de ejecutarse, y el router la rutea en los tres modos sin conocerla |
 | Índice del repo (graphify) | `npm run graph:check` | verde — 2 253 nodos / 5 575 aristas / 188 comunidades sobre 334 archivos (262 de código por AST + 51 docs + 8 imágenes por extracción semántica). Mide dos cosas: atraso contra HEAD y encogimiento contra `graph.baseline`; se omite donde no hay índice (CI) |
 | Notas de release en el repo | `node scripts/repo-lint.mjs --release-check 0.6.1` | verde — `docs/releases/0.6.1.md` con las tres secciones; con una versión inventada el freno RELEASE muerde |
 | Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 22 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA y «no escribe temporales en `src/`»), 8 casos de ruteo |
@@ -20,7 +22,7 @@ lo que se supone va en "deuda conocida".
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
 | Typecheck | `npm run typecheck` | verde (renderer + electron) |
-| Tests | `npm run test:coverage` | verde — 76 archivos, 1254 pruebas (cobertura `src/lib` 97,3 % stmts) |
+| Tests | `npm run test:coverage` | verde — 78 archivos, 1263 pruebas, **offline** (`vitest.setup.ts` cierra la red) |
 | E2E del MCP (stdio) | script manual contra `mcp-server/index.ts` | verde — arnés completo (ingesta → citas → ambigüedades → calidad → revisión → export → install_skill) |
 | Lectura de la app por MCP (modo app) | script manual por CDP contra la app viva | verde — 30 tools registradas; `list_artifacts`, `get_artifact` (con revisión), `list_views`, `get_view` (+`importAs`) y sus errores con opciones, también contra OTRO proyecto |
 | Editor de artefactos con documento largo | script manual por CDP contra la app viva | verde — 11 021 caracteres: índice de 49 encabezados con salto, buscar/reemplazar (72 coincidencias), stats, borrador recuperable |
@@ -41,7 +43,6 @@ Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
 | SDD ruteado pero no bloqueante | `docs/harness/sdd.md` §Estado | ya hay una feature con artefactos: `specs/001-layout-legible/` |
 | El lienzo se verifica a ojo | — | no hay test de render; la simbología se cubre por el registro (`notation-symbols`, `notation-contrast`) y la geometría por `link-geom` |
 | ~535 aristas colgantes en el índice de graphify | `graphify-out/GRAPH_REPORT.md` | **diagnosticado: no es corrupción.** Son imports a paquetes que graphify no nodifica (`ref_react` 83, `ref_vitest` 76, `ref_lucide_react` 45, `ref_node_path`, `ref_electron`…) más re-exports de barriles. El grafo las descarta al construir; las consultas de código no se ven afectadas |
-| Sin test de frontera de red | — | nada prueba que los tests no hagan llamadas externas |
 | Sin dobles de prueba para LiteRT ni E2E del lienzo | — | la UI se verifica a mano (`npm run electron-dev`) |
 | Transporte HTTP del MCP sin probar end-to-end | `main/services/mcp-http.ts` | el registro y la LECTURA ya se probaron contra la app viva por el transporte en memoria (playground); el puerto HTTP, `export_as_view` y la banda vacía en el lienzo se verifican a mano |
 | El puente IPC de lectura no se prueba con Electron vivo | `main/services/mcp-app-read.ts` | timeout y ventana cerrada están cubiertos por unidad con un `readApp` falso |

@@ -19,10 +19,10 @@ Al terminar en verde borra `.git/gate-dirty`, que es lo que mira el hook `Stop`.
 |---|---|---|
 | `node scripts/harness-selftest.mjs` | que los hooks bloquean lo que dicen bloquear y que ninguna ruta del config apunta a la nada | un hook roto o un config inválido fallan en silencio: ninguna otra señal los ve |
 | `node scripts/docs-linkcheck.mjs` | que ninguna referencia a un doc o a una ruta del repo apunte a la nada | mover un archivo rompe punteros que ninguna otra señal mira |
-| `node scripts/repo-lint.mjs` | convenciones que el compilador no ve: pureza de `src/lib/`, agnosticismo de notación, invariantes de WebGPU, SDKs de nube prohibidos, `.only(` olvidado, dependencias de hook que leen la notación, tokens del tema en la UI, `fill` en los `<text>` de SVG, detección de plataforma en un solo módulo y notas de release en `docs/releases/<versión>.md` | barato, atrapa clases enteras de error; ver ADR `docs/decisions/0001-arnes-del-agente.md` sobre por qué no es ESLint |
+| `node scripts/repo-lint.mjs` | convenciones que el compilador no ve: pureza de `src/lib/`, agnosticismo de notación, invariantes de WebGPU, SDKs de nube prohibidos, `.only(` olvidado, dependencias de hook que leen la notación, tokens del tema en la UI, `fill` en los `<text>` de SVG, detección de plataforma en un solo módulo, notas de release en `docs/releases/<versión>.md` y el router sin conocer tareas de IA por nombre | barato, atrapa clases enteras de error; ver ADR `docs/decisions/0001-arnes-del-agente.md` sobre por qué no es ESLint |
 | `node scripts/graph-check.mjs` | que el índice de graphify no contesta con el repo de antes del último commit | ninguna otra señal mira los derivados; un índice viejo miente con cara de dato |
 | `npm run typecheck` | que el proyecto compila completo (renderer + electron) | vitest transpila por archivo y **no** type-checkea: un import inválido pasa los tests y rompe el build |
-| `npm run test:coverage` | comportamiento de `src/lib/` con la misma cobertura que exige CI | no ve tipos ni empaquetado |
+| `npm run test:coverage` | comportamiento de `src/lib/` con la misma cobertura que exige CI, **offline**: `vitest.setup.ts` revienta si un test sale a la red | no ve tipos ni empaquetado |
 | `npm run build` | que el artefacto publicable se genera (`next build` + `tsc` de electron + `move-out`) | dev y prod difieren (tree-shaking, resolución de módulos, asar) |
 
 > **El kit de SDD.** Las skills `sofka-0x` viven en el entorno del desarrollador, no en el repo.

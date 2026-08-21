@@ -78,6 +78,8 @@ const mustExist = [
   config.webgpu.file,
   config.status.file,
   config.lint.command[1],
+  config.aiSurface.extensionPoint,
+  ...config.aiSurface.closedFiles,
   ...config.notation.allow,
   ...(config.reuse ?? []).map((r) => r.see),
 ];
@@ -209,6 +211,15 @@ frenoDelLint(
   "src/components/__selftest-svg.tsx",
   'export const X = () => <svg><text className="text-sm">hola</text></svg>;\n',
   "SVGFILL",
+);
+
+// IATASK: P5 deja de ser sólo REVIEW. Un `task.id === "…"` en el router mata la
+// superficie de extensión: desde ahí, cada tarea nueva toca el router.
+frenoDelLint(
+  "repo-lint: detecta el router conociendo una tarea de IA por nombre",
+  config.aiSurface.closedFiles[0],
+  'import type { AiTask } from "./router";\nexport const x = (t: AiTask) => t.id === "describe-node";\n',
+  "IATASK",
 );
 
 // PLATAFORMA: la detección del SO vive en un solo módulo y sin API deprecada.

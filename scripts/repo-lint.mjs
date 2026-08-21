@@ -19,6 +19,7 @@
  *   PLATAFORMA  detectar el sistema operativo sólo en src/lib/platform.ts (y sin API deprecada).
  *   DEPS      sin SDKs de nube en package.json (las llamadas van con fetch desde el main).
  *   RELEASE   la versión de package.json tiene sus notas en docs/releases/<versión>.md.
+ *   IATASK    el router y los proveedores no conocen tareas de IA por nombre (P5).
  *   WEBGPU    main.ts conserva los switches de WebGPU y no reactiva disableHardwareAcceleration.
  */
 import fs from "node:fs";
@@ -83,6 +84,16 @@ const NOTATION_TYPES = (() => {
   return [...new Set([...src.matchAll(/type:\s*"([^"]+)"/g)].map((m) => m[1]))];
 })();
 
+/** Ids de las `AiTask` declaradas. La superficie de extensión de la IA es esa lista. */
+const AI_TASK_IDS = (() => {
+  try {
+    const src = read(config.aiSurface.extensionPoint);
+    return [...new Set([...src.matchAll(/\bid:\s*"([^"]+)"/g)].map((m) => m[1]))];
+  } catch {
+    return [];
+  }
+})();
+
 function checkFile(relPath, contenidoDado = null) {
   let content = contenidoDado;
   if (content === null) {
@@ -120,6 +131,27 @@ function checkFile(relPath, contenidoDado = null) {
           lineOf(content, idx),
           "NOTACION",
           `literal de tipo de notación (\`"${type}"\`) cableado fuera de \`${config.notation.source}\`. Derivalo del registro (notaciones, elementos, contenedores) — el arnés es agnóstico de notación.`,
+        );
+        break;
+      }
+    }
+  }
+
+  // IATASK — el router y los proveedores no conocen tareas por nombre.
+  //
+  // P5 dice que añadir una función de IA es declarar una `AiTask`. La forma en que
+  // ese principio se rompe siempre es la misma: un `if (task.id === "…")` en el
+  // router para resolver un caso particular. A partir de ahí cada tarea nueva toca
+  // el router y la superficie de extensión deja de existir.
+  if ((config.aiSurface?.closedFiles ?? []).includes(relPath)) {
+    for (const id of AI_TASK_IDS) {
+      const idx = content.indexOf(`"${id}"`);
+      if (idx !== -1) {
+        fail(
+          relPath,
+          lineOf(content, idx),
+          "IATASK",
+          `\`"${id}"\` es el id de una AiTask: el router/los proveedores no deben conocer tareas por nombre. Poné el caso particular en su entrada de \`${config.aiSurface.extensionPoint}\` (tier, structured, maxLocalChars, remoteFlow).`,
         );
         break;
       }

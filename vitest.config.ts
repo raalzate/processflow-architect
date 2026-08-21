@@ -5,6 +5,8 @@ export default defineConfig({
   plugins: [tsconfigPaths()],
   test: {
     environment: "node",
+    // La suite corre offline a propósito: el setup revienta si un test sale a la red.
+    setupFiles: ["./vitest.setup.ts"],
     include: ["**/*.{test,spec}.{ts,tsx}"],
     exclude: ["node_modules", "build", "dist", "out", ".next"],
     coverage: {

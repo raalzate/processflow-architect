@@ -186,6 +186,14 @@
       "app.disableHardwareAcceleration()"
     ]
   },
+  "aiSurface": {
+    "$comment": "P5: añadir una función de IA es declarar una AiTask. La forma en que ese principio se rompe siempre es un `if (task.id === \"…\")` en el router; la regla IATASK del lint lo bloquea. `closedFiles` son los archivos que NO pueden conocer tareas por nombre.",
+    "extensionPoint": "src/lib/ai/tasks.ts",
+    "closedFiles": [
+      "src/lib/ai/router.ts",
+      "src/lib/ai/providers.ts"
+    ]
+  },
   "graph": {
     "$comment": "graphify indexa el repo (código por AST, docs y specs por extracción semántica) y deja un grafo consultable. `graphify-out/` NO se commitea: se reconstruye solo en el post-commit y en CI no existe, así que la señal del gate se reporta como omitida en vez de fallar. El hook graph-first empuja a consultar antes de leer; la frescura la mide scripts/graph-check.mjs contra la fecha de HEAD.",
     "outDir": "graphify-out",
