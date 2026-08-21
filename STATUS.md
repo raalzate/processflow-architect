@@ -8,6 +8,7 @@ lo que se supone va en "deuda conocida".
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
 - **Versión publicada:** 0.6.1 — release **publicado** (no borrador) con los 3 instaladores
+- **Versión en el repo:** 0.6.3 — notas en `docs/releases/0.6.3.md`; 0.6.2 quedó en borrador
 
 ## Señales
 
@@ -19,12 +20,12 @@ lo que se supone va en "deuda conocida".
 | Superficie de extensión de la IA (P5) | `npx vitest run src/lib/ai/__tests__/tasks-registry.test.ts` | verde — barrido por `import *`: toda `AiTask` declarada tiene id kebab único, tier válido, forma de ejecutarse, y el router la rutea en los tres modos sin conocerla |
 | Índice del repo (graphify) | `npm run graph:check` | verde — 2 253 nodos / 5 575 aristas / 188 comunidades sobre 334 archivos (262 de código por AST + 51 docs + 8 imágenes por extracción semántica). Mide dos cosas: atraso contra HEAD y encogimiento contra `graph.baseline`; se omite donde no hay índice (CI) |
 | Notas de release en el repo | `node scripts/repo-lint.mjs --release-check 0.6.1` | verde — `docs/releases/0.6.1.md` con las tres secciones; con una versión inventada el freno RELEASE muerde |
-| Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 22 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA y «no escribe temporales en `src/`»), 8 casos de ruteo |
+| Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 23 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA, ENRUTADO y «no escribe temporales en `src/`»), 8 casos de ruteo |
 | Link-check de docs | `node scripts/docs-linkcheck.mjs` | verde |
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
 | Typecheck | `npm run typecheck` | verde (renderer + electron) |
-| Tests | `npm run test:coverage` | verde — 78 archivos, 1263 pruebas, **offline** (`vitest.setup.ts` cierra la red) |
+| Tests | `npm run test:coverage` | verde — 82 archivos, 1332 pruebas, **offline** (`vitest.setup.ts` cierra la red) |
 | E2E del MCP (stdio) | script manual contra `mcp-server/index.ts` | verde — arnés completo (ingesta → citas → ambigüedades → calidad → revisión → export → install_skill) |
 | Lectura de la app por MCP (modo app) | script manual por CDP contra la app viva | verde — 30 tools registradas; `list_artifacts`, `get_artifact` (con revisión), `list_views`, `get_view` (+`importAs`) y sus errores con opciones, también contra OTRO proyecto |
 | Editor de artefactos con documento largo | script manual por CDP contra la app viva | verde — 11 021 caracteres: índice de 49 encabezados con salto, buscar/reemplazar (72 coincidencias), stats, borrador recuperable |
@@ -33,6 +34,10 @@ lo que se supone va en "deuda conocida".
 | Autoguardado de la ficha (parche, no borrador) | `npx vitest run src/components/graph/designer/__tests__/inspector-draft.test.ts` | verde — sólo viajan los campos editados: arrastrar el nodo con la ficha abierta ya no lo devuelve a su sitio anterior |
 | Portapapeles del lienzo (copiar/pegar) | `npx vitest run src/components/graph/designer/__tests__/clipboard.test.ts` | verde — copia contenedor+contenido, sólo enlaces con ambas puntas, ids/nombres nuevos al pegar, `agregado` reapuntado |
 | Filtros del lienzo | script manual (Puppeteer) sobre el renderer | verde — ocultan nodos y sus aristas con aviso del conteo; el menú sigue la notación de la VISTA (Pool en BPMN, Límite de Sistema en C4) y el filtro es por vista |
+| Enrutado efectivo de una arista | `npx vitest run src/components/graph/designer/__tests__/link-geometry.test.ts` | verde — `routingOf` es la única función que lo resuelve: lo que resalta la ficha es lo que dibuja el lienzo (issue #112). La regla ENRUTADO del lint rechaza un `routing ??` a mano en `src/components/**` |
+| Estilo de relaciones en lote | `npx vitest run src/components/graph/designer/__tests__/link-style.test.ts` | verde — sólo viajan los campos del parche (anclas, quiebres y etiqueta corrida sobreviven) y pisar un enrutado puesto a mano se informa, no pasa en silencio |
+| Reapuntar una relación | `npx vitest run src/components/graph/designer/__tests__/link-reconnect.test.ts` | verde — cambia sólo el extremo, rechaza el self-loop, y con cajas anidadas el destino bajo el cursor es el hijo, no el contenedor |
+| Renombrar el proyecto | `npx vitest run src/lib/__tests__/project-rename.test.ts` | verde — mueve juntos `nombre_proyecto` y `name`; version, notas, notación y grafo quedan intactos |
 | Build de producción | `npm run build` | verde |
 
 Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
