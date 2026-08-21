@@ -15,10 +15,21 @@ command -v graphify >/dev/null 2>&1 || exit 0
 [ -f graphify-out/graph.json ] || exit 0   # sin índice construido no hay nada que actualizar
 
 CAMBIOS=$(git diff-tree --no-commit-id --name-only -r HEAD | grep -E '\.(ts|tsx|js|mjs|md)$' || true)
-[ -z "$CAMBIOS" ] && exit 0
+if [ -z "$CAMBIOS" ]; then
+  # Nada indexable cambió: el índice sigue valiendo para este commit. Se sella
+  # igual, o `scripts/graph-check.mjs` lo leería como atrasado.
+  git rev-parse HEAD > graphify-out/.indexed-head
+  exit 0
+fi
 
-graphify update >/dev/null 2>&1 \
-  && echo "post-commit: índice de graphify actualizado." \
-  || echo "post-commit: graphify update falló (el commit está hecho; reindexá con \`graphify update\`)."
+if graphify update >/dev/null 2>&1; then
+  # El sello es lo que hace verificable la frescura: `graphify update` NO reescribe
+  # graph.json cuando no encontró nada nuevo, así que medir por mtime daba falsos
+  # rojos. Acá queda escrito PARA QUÉ commit está indexado.
+  git rev-parse HEAD > graphify-out/.indexed-head
+  echo "post-commit: índice de graphify actualizado."
+else
+  echo "post-commit: graphify update falló (el commit está hecho; reindexá con \`npm run graph:update\`)."
+fi
 
 exit 0

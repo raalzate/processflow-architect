@@ -94,9 +94,12 @@ npm run graph:check                # la señal del gate, suelta
 
 Las dos mentiras que se miden, y por qué así:
 
-1. **Estar viejo** — se compara contra la fecha de **HEAD**, no contra el working tree. Medir
-   contra el árbol pondría el gate en rojo con cada edición sin reindexar, y un freno que estorba
-   a mitad de desarrollo termina desactivado a mano.
+1. **Estar viejo** — se mide por **contenido**: el post-commit sella en
+   `graphify-out/.indexed-head` el sha que indexó, y la señal compara ese sello con HEAD; si
+   difieren, sólo es rojo cuando entre ambos cambió un archivo indexable (`*.ts|tsx|js|mjs|md`).
+   Medir por reloj daba falsos rojos (ver el gotcha «atrasado 0 minutos»), y medir contra el
+   working tree pondría el gate en rojo con cada edición sin reindexar: un freno que estorba a
+   mitad de desarrollo termina desactivado a mano.
 2. **Haberse encogido** — un reindexado a medias (extracción caída, corpus mal detectado, un
    `update` que falló silencioso) deja un grafo más chico que **igual contesta**: con menos verdad
    y sin avisar. El tamaño tiene línea base declarada en `.claude/harness.config.json`

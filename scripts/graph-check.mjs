@@ -4,10 +4,12 @@
  *
  * Dos formas de mentir que un índice tiene, y las dos se miden acá:
  *
- *  1. **Estar viejo.** Se compara contra la fecha de HEAD, no contra el working
- *     tree. Si midiéramos contra el árbol, cada edición sin reindexar pondría el
- *     gate en rojo a mitad de desarrollo y el freno terminaría desactivado a mano
- *     — que es la forma más común de perder un freno.
+ *  1. **Estar viejo.** Se mide por CONTENIDO, no por reloj: el post-commit deja el
+ *     sha que indexó en `graphify-out/.indexed-head` y acá se compara con HEAD; si
+ *     difieren, sólo es rojo cuando entre ambos cambió algún archivo indexable.
+ *     No se mide contra el working tree a propósito: cada edición sin reindexar
+ *     pondría el gate en rojo a mitad de desarrollo y el freno terminaría
+ *     desactivado a mano — la forma más común de perder un freno.
  *  2. **Haberse encogido.** Un reindexado a medias (extracción caída, corpus mal
  *     detectado, `graphify update` que falló silencioso) deja un grafo más chico
  *     que igual responde consultas: contesta con menos verdad y sin avisar. Por eso
@@ -43,15 +45,48 @@ if (!fs.existsSync(graphFile)) {
 
 const problemas = [];
 
-// 1 · Frescura contra HEAD.
-const headISO = execFileSync("git", ["log", "-1", "--format=%cI"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
-const headTime = new Date(headISO).getTime();
-const graphTime = fs.statSync(graphFile).mtimeMs;
-if (graphTime < headTime) {
-  const atraso = Math.round((headTime - graphTime) / 60000);
-  problemas.push(
-    `el índice es más viejo que HEAD (${atraso} min de atraso): una consulta contestaría con el repo anterior al último commit. Arreglo: \`${graph.updateCommand}\` (el post-commit de .githooks lo hace solo; si no corrió, \`npm run hooks:install\`).`,
-  );
+// 1 · Frescura: ¿el índice se construyó para ESTE contenido?
+//
+// Se pregunta por contenido y no por reloj. La versión anterior comparaba el mtime
+// de graph.json contra la fecha de HEAD y se ponía roja sola: `graphify update` NO
+// reescribe el archivo cuando no encontró nada nuevo, así que un commit sin cambios
+// indexables dejaba el índice «atrasado 0 minutos». El sello dice para qué commit se
+// indexó; lo escribe `.githooks/post-commit`.
+const git = (...args) => execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" }).trim();
+const HEAD = git("rev-parse", "HEAD");
+const stampFile = path.join(REPO_ROOT, graph.stampFile);
+const sello = fs.existsSync(stampFile) ? fs.readFileSync(stampFile, "utf8").trim() : "";
+
+/** Rutas cuyo cambio obliga a reindexar (lo que graphify sabe leer). */
+const indexables = (desde, hasta) =>
+  git("diff", "--name-only", `${desde}..${hasta}`, "--", "*.ts", "*.tsx", "*.js", "*.mjs", "*.md")
+    .split("\n")
+    .filter(Boolean);
+
+if (sello === HEAD) {
+  // Indexado exactamente para este commit.
+} else if (sello) {
+  let pendientes = [];
+  try {
+    pendientes = indexables(sello, HEAD);
+  } catch {
+    pendientes = ["(no se pudo comparar con el sello: commit reescrito o rama nueva)"];
+  }
+  if (pendientes.length) {
+    problemas.push(
+      `el índice se construyó para ${sello.slice(0, 7)} y desde ahí cambiaron ${pendientes.length} archivo(s) indexables (${pendientes.slice(0, 3).join(", ")}${pendientes.length > 3 ? "…" : ""}): una consulta contestaría con el repo viejo. Arreglo: \`${graph.updateCommand}\`.`,
+    );
+  }
+} else {
+  // Sin sello (índice hecho a mano con `/graphify .` antes de que existiera el sello):
+  // se cae al reloj, con margen para el hook que corre junto al commit.
+  const ultimoIndexable = git("log", "-1", "--format=%cI", "--", "*.ts", "*.tsx", "*.js", "*.mjs", "*.md");
+  const margenMs = (graph.freshnessGraceSeconds ?? 300) * 1000;
+  if (ultimoIndexable && fs.statSync(graphFile).mtimeMs + margenMs < new Date(ultimoIndexable).getTime()) {
+    problemas.push(
+      `el índice no tiene sello y es más viejo que el último commit con archivos indexables: reconstruilo con \`${graph.updateCommand}\` (el post-commit deja el sello en \`${graph.stampFile}\`).`,
+    );
+  }
 }
 
 // 2 · Tamaño contra la línea base declarada.

@@ -199,6 +199,8 @@
     "outDir": "graphify-out",
     "graphFile": "graphify-out/graph.json",
     "reportFile": "graphify-out/GRAPH_REPORT.md",
+    "stampFile": "graphify-out/.indexed-head",
+    "freshnessGraceSeconds": 300,
     "queryCommand": "graphify query \"<pregunta>\"",
     "updateCommand": "npm run graph:update",
     "$baseline": "Tamaño del índice cuando se lo midió por última vez con el gate verde. graph-check falla si el índice se encoge más de `shrinkTolerance` respecto de esto: un reindexado a medias (extracción caída, corpus mal detectado) deja un grafo chico que CONTESTA IGUAL, sólo con menos verdad. Subir estos números es un cambio declarado, como la allowlist de notación.",

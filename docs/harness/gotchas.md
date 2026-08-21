@@ -117,6 +117,23 @@ Mecanismo: `docs-linkcheck.mjs` mide contra `git ls-files` (un archivo nuevo sin
          se respete. Modo virtual para probarlo sin escribir en fuentes:
          `node scripts/docs-linkcheck.mjs --file <ruta virtual> --stdin`.
 
+### GOTCHA: el índice de graphify «atrasado 0 minutos» (frescura medida por reloj)
+
+Síntoma: `GATE ROJO — señales fallidas: self-test del arnés índice del repo`, y
+         `graph-check: el índice es más viejo que HEAD (0 min de atraso)` justo después de un
+         commit cuyo post-commit había dicho «índice de graphify actualizado».
+Causa:   la señal comparaba el **mtime** de `graphify-out/graph.json` contra la fecha de HEAD.
+         `graphify update` **no reescribe** el archivo cuando no encontró nada nuevo, así que un
+         commit sin cambios indexables (o dos commits seguidos) dejaba el mtime del commit
+         anterior: más viejo que HEAD por segundos, y rojo sin que nada estuviera desactualizado.
+Regla:   la frescura de un derivado se mide por **contenido**, no por reloj. El productor deja
+         escrito PARA QUÉ commit produjo; el verificador compara eso, y sólo se queja si entre
+         ambos cambió algo que el índice sabe leer.
+Mecanismo: `.githooks/post-commit` sella `graphify-out/.indexed-head` con el sha indexado (también
+         cuando no hubo cambios indexables: el índice sigue valiendo para ese commit) y
+         `scripts/graph-check.mjs` compara sello vs HEAD y, si difieren, mira si el diff entre
+         ambos toca `*.ts|tsx|js|mjs|md`. Un caso del self-test exige que el sello sea el de HEAD.
+
 ### GOTCHA: el release existe pero `gh` no lo ve (borrador + token sin permiso de escritura)
 
 Síntoma: se empuja el tag `v0.2.0`, los tres builds salen verdes y

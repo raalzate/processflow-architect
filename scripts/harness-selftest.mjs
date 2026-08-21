@@ -254,6 +254,18 @@ frenoDelLint(
   if (check.status === 0) ok("graph-check: verde (índice al día u omitido donde no existe)");
   else bad("graph-check", `${check.stdout}${check.stderr}`.trim().slice(0, 240));
 
+  // El sello es lo que hace verificable la frescura. Este caso existe por un falso
+  // rojo real: se medía por mtime contra la fecha de HEAD y `graphify update` no
+  // reescribe graph.json cuando no hay nada nuevo, así que un commit sin cambios
+  // indexables daba «atrasado 0 minutos» y ponía el gate en rojo sin causa.
+  if (grafoPresente) {
+    const sello = abs(config.graph.stampFile);
+    const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).stdout?.trim();
+    const actual = fs.existsSync(sello) ? fs.readFileSync(sello, "utf8").trim() : "";
+    if (actual === head) ok("graph-check: el índice está sellado para HEAD (frescura por contenido, no por reloj)");
+    else bad("graph-check: sello del índice", `sello=${actual.slice(0, 7) || "(ninguno)"} HEAD=${head?.slice(0, 7)}: corré \`npm run graph:update\``);
+  }
+
   // Un índice ENCOGIDO contesta igual, con menos verdad: el freno tiene que morder.
   // El grafo de mentira va fuera de `src/` y se borra siempre (el watcher de Next no
   // debe ver aparecer y desaparecer archivos: ver el ENOENT de docs/harness/gotchas.md).
