@@ -91,6 +91,7 @@ const regexes = [
   ...(config.bash?.deny ?? []).map((r) => ["bash.deny", r.pattern]),
   ...(config.reuse ?? []).flatMap((r) => [["reuse.pattern", r.pattern], ["reuse.appliesTo", r.appliesTo]]),
   ...(config.sdd?.routes ?? []).flatMap((r) => (r.patterns ?? []).map((p) => [`sdd.${r.route}`, p])),
+  ...(config.graph?.questionPatterns ?? []).map((p) => ["graph.questionPatterns", p]),
 ];
 let badRegex = 0;
 for (const [where, pattern] of regexes) {
@@ -217,6 +218,31 @@ frenoDelLint(
   'export const esMac = () => navigator.platform.includes("Mac");\n',
   "PLATAFORMA",
 );
+
+// El índice de graphify: el hook empuja a consultarlo SÓLO si existe, y la señal
+// del gate se omite donde no está (CI). Las dos mitades se prueban acá porque un
+// hook que habla sin grafo, o un gate rojo en CI por un derivado, terminan
+// desactivados a mano.
+{
+  const grafoPresente = fs.existsSync(abs(config.graph.graphFile));
+  const pregunta = { hook_event_name: "UserPromptSubmit", prompt: "dónde está el graph-processor" };
+  const res = runHook("graph-first.mjs", pregunta);
+  const hablo = res.stdout.includes("graph-first");
+  if (hablo === grafoPresente) {
+    ok(`graph-first.mjs: ${grafoPresente ? "empuja al índice cuando el grafo existe" : "callado sin grafo construido"}`);
+  } else {
+    bad("graph-first.mjs", `grafo ${grafoPresente ? "presente" : "ausente"} y salida ${hablo ? "con" : "sin"} aviso`);
+  }
+
+  // Silencio en lo trivial: un hook que habla en cada turno deja de leerse.
+  const trivial = runHook("graph-first.mjs", { hook_event_name: "UserPromptSubmit", prompt: "gracias, dale" });
+  if (trivial.stdout.trim() === "") ok("graph-first.mjs: callado en lo que no es pregunta de código");
+  else bad("graph-first.mjs: callado en lo trivial", trivial.stdout.trim().slice(0, 160));
+
+  const check = spawnSync("node", [abs("scripts/graph-check.mjs")], { cwd: REPO_ROOT, encoding: "utf8" });
+  if (check.status === 0) ok("graph-check: verde (índice al día u omitido donde no existe)");
+  else bad("graph-check", `${check.stdout}${check.stderr}`.trim().slice(0, 240));
+}
 
 // RELEASE: una versión sin notas en el repo es gate rojo. Sin este freno, el
 // borrador del release sale vacío y las notas se improvisan en la web al publicar.

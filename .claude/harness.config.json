@@ -186,6 +186,24 @@
       "app.disableHardwareAcceleration()"
     ]
   },
+  "graph": {
+    "$comment": "graphify indexa el repo (código por AST, docs y specs por extracción semántica) y deja un grafo consultable. `graphify-out/` NO se commitea: se reconstruye solo en el post-commit y en CI no existe, así que la señal del gate se reporta como omitida en vez de fallar. El hook graph-first empuja a consultar antes de leer; la frescura la mide scripts/graph-check.mjs contra la fecha de HEAD.",
+    "outDir": "graphify-out",
+    "graphFile": "graphify-out/graph.json",
+    "reportFile": "graphify-out/GRAPH_REPORT.md",
+    "queryCommand": "graphify query \"<pregunta>\"",
+    "updateCommand": "graphify update",
+    "questionPatterns": [
+      "d[oó]nde (est[aá]|vive|queda)",
+      "qui[eé]n (usa|llama|importa|consume)",
+      "c[oó]mo funciona",
+      "qu[eé] hace (el|la|los|las)?\\s*\\w+",
+      "expli(ca|came|came)",
+      "arquitectura",
+      "de qu[eé] depende",
+      "qu[eé] archivos?"
+    ]
+  },
   "release": {
     "$comment": "Las notas de cada versión viven EN EL REPO, no en el cuadro de texto de GitHub: `release-build.yml` las usa como cuerpo del release (body_path), así que el borrador nace escrito y el gate puede juzgarlas. Un `version` nuevo en package.json sin su archivo de notas es gate rojo.",
     "notesDir": "docs/releases",

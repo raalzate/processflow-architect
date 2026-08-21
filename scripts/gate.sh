@@ -37,6 +37,9 @@ run "link-check de docs"    node scripts/docs-linkcheck.mjs
 run "lint de convenciones"  node scripts/repo-lint.mjs
 # 3b. El skill que se entrega al agente externo debe ser el del repo, no una copia vieja.
 run "skills sincronizados"  node scripts/sync-skills.mjs --check
+# 3c. El índice de graphify no contesta con el repo de antes del último commit.
+#     Se omite (verde) donde no hay índice: en CI el directorio no existe.
+run "índice del repo"       node scripts/graph-check.mjs
 # 4. vitest transpila por archivo y NO type-checkea: esta señal es irremplazable.
 run "typecheck"             npm run typecheck --silent
 # 5. Comportamiento, con la misma cobertura que exige CI.

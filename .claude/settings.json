@@ -8,7 +8,10 @@
     ],
     "UserPromptSubmit": [
       {
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/sdd-router.mjs" }]
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/sdd-router.mjs" },
+          { "type": "command", "command": "node .claude/hooks/graph-first.mjs" }
+        ]
       }
     ],
     "PreToolUse": [

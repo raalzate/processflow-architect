@@ -14,6 +14,9 @@
 - Cómo está montado (hooks, subagentes, comandos, rutas protegidas): `docs/harness/harness.md`.
 - Antes de escribir código: `docs/architecture/reuse-patterns.md` (¿ya existe la abstracción?)
   y el índice de símbolos de Serena antes de abrir archivos.
+- **Consultar antes de leer.** Hay índice de graphify (`graphify-out/`, gitignorado):
+  `graphify query "<pregunta>"` devuelve un subgrafo en vez del árbol; `graphify update`
+  lo reindexa (el post-commit lo hace solo). Detalle en `docs/harness/harness.md`.
 - Trabajo de tamaño feature → ruta SDD (`docs/harness/sdd.md`). Saltarla se **declara** en una
   línea; no se omite en silencio.
 - Un incidente que costó tiempo termina en `/lesson`: mecanismo más fuerte disponible

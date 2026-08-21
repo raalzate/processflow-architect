@@ -20,6 +20,7 @@ Al terminar en verde borra `.git/gate-dirty`, que es lo que mira el hook `Stop`.
 | `node scripts/harness-selftest.mjs` | que los hooks bloquean lo que dicen bloquear y que ninguna ruta del config apunta a la nada | un hook roto o un config inválido fallan en silencio: ninguna otra señal los ve |
 | `node scripts/docs-linkcheck.mjs` | que ninguna referencia a un doc o a una ruta del repo apunte a la nada | mover un archivo rompe punteros que ninguna otra señal mira |
 | `node scripts/repo-lint.mjs` | convenciones que el compilador no ve: pureza de `src/lib/`, agnosticismo de notación, invariantes de WebGPU, SDKs de nube prohibidos, `.only(` olvidado, dependencias de hook que leen la notación, tokens del tema en la UI, `fill` en los `<text>` de SVG, detección de plataforma en un solo módulo y notas de release en `docs/releases/<versión>.md` | barato, atrapa clases enteras de error; ver ADR `docs/decisions/0001-arnes-del-agente.md` sobre por qué no es ESLint |
+| `node scripts/graph-check.mjs` | que el índice de graphify no contesta con el repo de antes del último commit | ninguna otra señal mira los derivados; un índice viejo miente con cara de dato |
 | `npm run typecheck` | que el proyecto compila completo (renderer + electron) | vitest transpila por archivo y **no** type-checkea: un import inválido pasa los tests y rompe el build |
 | `npm run test:coverage` | comportamiento de `src/lib/` con la misma cobertura que exige CI | no ve tipos ni empaquetado |
 | `npm run build` | que el artefacto publicable se genera (`next build` + `tsc` de electron + `move-out`) | dev y prod difieren (tree-shaking, resolución de módulos, asar) |
@@ -61,6 +62,7 @@ repo es cambiar ese único archivo.
 | Momento | Hook | Qué hace |
 |---|---|---|
 | `UserPromptSubmit` | `sdd-router.mjs` | clasifica el pedido: tamaño feature → ruta SDD, falla concreta → bugfix, cambio de IA → `AiTask` y llaves fuera del renderer; se calla en lo trivial |
+| `UserPromptSubmit` | `graph-first.mjs` | si hay índice de graphify construido, empuja a consultarlo (`graphify query`) antes de abrir archivos; callado si el grafo no existe o el pedido no es una pregunta de código |
 | `SessionStart` | `session-start.mjs` | imprime rama, HEAD, cambios sin commitear y `STATUS.md`; avisa si el pre-commit no está instalado o si hay gate pendiente |
 | `PreToolUse` Write\|Edit | `protected-paths.mjs` | deniega editar `.env*`, `package-lock.json`, `.git/`, `build/`, `dist/`, `.next/`, `coverage/`, `node_modules/` |
 | `PreToolUse` Write\|Edit | `reuse-guard.mjs` | bloquea boilerplate que ya tiene abstracción (`docs/architecture/reuse-patterns.md`) |
@@ -68,9 +70,32 @@ repo es cambiar ese único archivo.
 | `PostToolUse` Write\|Edit | `post-edit-check.mjs` | corre `repo-lint` sobre el archivo tocado (devuelve el error real) y marca `.git/gate-dirty` |
 | `Stop` | `gate-stop.mjs` | impide cerrar la tarea si se editó código y el gate no quedó verde |
 
-En el repo, además: `.githooks/pre-commit` (rutas protegidas + `repo-lint` de los archivos staged),
-instalado con `npm run hooks:install` — `core.hooksPath` debe valer `.githooks`; `.git/hooks/` sólo
-tiene `.sample` a propósito.
+En el repo, además: `.githooks/pre-commit` (rutas protegidas + `repo-lint` de los archivos staged) y
+`.githooks/post-commit` (reindexa con `graphify update`), instalados con `npm run hooks:install` —
+`core.hooksPath` debe valer `.githooks`; `.git/hooks/` sólo tiene `.sample` a propósito.
+
+## El índice del repo (graphify)
+
+*Consultar antes de leer*: la regla de `buenas-practicas.md` §1 acá tiene mecanismo.
+
+```bash
+/graphify .                       # construye el índice (AST del código + extracción semántica de docs)
+graphify query "<pregunta>"       # devuelve un subgrafo, no el árbol de archivos
+graphify update                   # reindexa lo que cambió
+```
+
+| Pieza | Qué hace |
+|---|---|
+| `graphify-out/` | el índice: `graph.json` + `GRAPH_REPORT.md`. **Gitignorado**: es derivado y por máquina |
+| `.githooks/post-commit` | reindexa después de cada commit. **No** se instala con `graphify hook install`: ese comando escribe en `.git/hooks/`, que git ignora porque `core.hooksPath=.githooks` |
+| `.claude/hooks/graph-first.mjs` | pone el índice en el camino del agente cuando el pedido es «dónde está X», «quién usa Y», «cómo funciona Z» |
+| `node scripts/graph-check.mjs` | señal del gate: falla si el índice es más viejo que HEAD; **omitido** donde no existe (CI) |
+
+La frescura se mide contra la fecha de **HEAD**, no contra el working tree: medir contra el árbol
+pondría el gate en rojo con cada edición sin reindexar, y un freno que estorba a mitad de
+desarrollo termina desactivado a mano. Convive con Serena (índice de símbolos) y con el subagente
+`explorer`: el grafo agrega las relaciones entre docs, specs y código que un índice de símbolos no
+tiene.
 
 ## Subagentes (`.claude/agents/`)
 

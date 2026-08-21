@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Post-commit: reindexa el repo con graphify después de cada commit.
+#
+# Por qué vive acá y NO se instala con `graphify hook install`: este repo setea
+# `core.hooksPath=.githooks` (npm run hooks:install), así que git IGNORA
+# `.git/hooks/post-commit` — que es exactamente donde escribe ese comando. Un hook
+# instalado ahí existe, se ve bien y nunca corre.
+#
+# Barato y silencioso: `graphify update` re-extrae sólo lo que cambió. Si graphify
+# no está instalado o falla, el commit YA ocurrió y no se toca: el índice es una
+# ayuda de lectura, no parte del entregable (esa es `scripts/gate.sh`).
+set -uo pipefail
+
+command -v graphify >/dev/null 2>&1 || exit 0
+[ -f graphify-out/graph.json ] || exit 0   # sin índice construido no hay nada que actualizar
+
+CAMBIOS=$(git diff-tree --no-commit-id --name-only -r HEAD | grep -E '\.(ts|tsx|js|mjs|md)$' || true)
+[ -z "$CAMBIOS" ] && exit 0
+
+graphify update >/dev/null 2>&1 \
+  && echo "post-commit: índice de graphify actualizado." \
+  || echo "post-commit: graphify update falló (el commit está hecho; reindexá con \`graphify update\`)."
+
+exit 0
