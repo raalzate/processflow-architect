@@ -101,7 +101,6 @@ import {
 import {
   getNotation,
   sizeOfType,
-  defaultRoutingFor,
   DEFAULT_NOTATION_ID,
   type NotationId,
 } from "@/lib/notations";
@@ -139,6 +138,7 @@ import {
 import {
   linkEndpoints,
   linkGeometry,
+  routingOf,
   flipCurveApex,
   nodeBox,
   AGGREGATE_DEFAULT_WIDTH,
@@ -949,7 +949,10 @@ const EditLinkDialog: React.FC<{
           </div>
           <div className="mt-4 space-y-1.5">
             <Label>Estilo de línea</Label>
-            <div className="inline-flex overflow-hidden rounded-md border">
+            {/* `flex w-fit`, no `inline-flex`: con un contenedor inline el rótulo
+                (un <label>, también inline) queda en la MISMA línea y este bloque
+                se desalinea del resto de la ficha. */}
+            <div className="flex w-fit overflow-hidden rounded-md border">
               <button
                 type="button"
                 onClick={() => setDraft((d) => (d ? { ...d, dashed: false } : d))}
@@ -987,7 +990,7 @@ const EditLinkDialog: React.FC<{
                   onClick={() => setDraft((d) => (d ? { ...d, routing: val } : d))}
                   className={cn(
                     "rounded-md border px-4 py-1.5 text-sm",
-                    (draft.routing ?? "straight") === val
+                    routingOf(draft, notation) === val
                       ? "bg-primary text-primary-foreground font-medium"
                       : "bg-muted text-muted-foreground"
                   )}
@@ -996,7 +999,7 @@ const EditLinkDialog: React.FC<{
                 </button>
               ))}
             </div>
-            {(draft.routing ?? defaultRoutingFor(notation)) === "curved" && (
+            {routingOf(draft, notation) === "curved" && (
               // La comba tenía un solo signo: si el arco tapaba un nodo no había
               // forma de mandarlo al otro lado sin mover los nodos.
               <div className="flex flex-wrap gap-2 pt-1">
@@ -2448,7 +2451,7 @@ export const ComponentDesigner: React.FC<{
     (e: React.MouseEvent, linkId: string) => {
       e.stopPropagation();
       const link = linksRef.current.get(linkId);
-      if (!link || (link.routing ?? "straight") !== "orthogonal" || !svgRef.current) return;
+      if (!link || routingOf(link, notationId) !== "orthogonal" || !svgRef.current) return;
       const ep = linkEndpoints(link, nodesRef.current);
       if (!ep) return;
       const p = toSvgPoint(e.clientX, e.clientY);
@@ -2481,7 +2484,7 @@ export const ComponentDesigner: React.FC<{
         return l;
       });
     },
-    [updateLinks]
+    [updateLinks, notationId]
   );
 
   // Quita un punto de quiebre por índice (doble clic en su manija).

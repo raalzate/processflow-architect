@@ -14,9 +14,10 @@ import {
   mirrorCurveApex,
   flipCurveApex,
   polylineMidpoint,
+  routingOf,
 } from "../link-geom";
 import type { DesignerNode, DesignerLink } from "../serialize";
-import { sizeOfType, typesWithRole } from "@/lib/notations";
+import { defaultRoutingFor, sizeOfType, typesWithRole } from "@/lib/notations";
 
 // Igual que en los demás tests nuevos: los tipos se derivan del registro, no se
 // cablean (P6). `actor` y `system` existen en C4 por declaración de roles.
@@ -267,5 +268,38 @@ describe("linkGeometry · etiqueta", () => {
     // L de 100 + 100: la mitad del recorrido es el final del primer tramo.
     expect(polylineMidpoint([[0, 0], [100, 0], [100, 100]])).toEqual({ x: 100, y: 0 });
     expect(polylineMidpoint([[0, 0], [40, 0]])).toEqual({ x: 20, y: 0 });
+  });
+});
+
+/**
+ * El enrutado efectivo se resuelve en UN solo lugar (issue #112): la ficha
+ * «Editar enlace» resaltaba «Recta» sobre un enlace de C4 que el lienzo dibujaba
+ * curvo, porque cada uno usaba su propio valor por defecto.
+ */
+describe("routingOf — enrutado efectivo", () => {
+  it("sin enrutado propio manda el de la notación, no el literal recta", () => {
+    expect(routingOf({ routing: undefined }, "c4")).toBe(defaultRoutingFor("c4"));
+    expect(routingOf({ routing: undefined }, "c4")).toBe("curved");
+    expect(routingOf({ routing: undefined }, "ddd")).toBe(defaultRoutingFor("ddd"));
+  });
+
+  it("el enrutado puesto a mano gana sobre la notación", () => {
+    expect(routingOf({ routing: "straight" }, "c4")).toBe("straight");
+    expect(routingOf({ routing: "orthogonal" }, "c4")).toBe("orthogonal");
+  });
+
+  it("lo que resalta la ficha es lo que dibuja el lienzo", () => {
+    // La ficha resalta `routingOf(draft, notation)`; la geometría enruta con lo
+    // mismo. Con un enlace sin `routing` en C4, ambos dicen «curva».
+    const a = nodo("a", ACTOR, 0, 0);
+    const b = nodo("b", SISTEMA, 600, 0);
+    const link = arista({});
+    const geo = linkGeometry(link, mapa(a, b), "c4")!;
+    const marcado = routingOf(link, "c4");
+    expect(marcado).toBe("curved");
+    // Curvo de verdad: el recorrido es una cuadrática, no una recta.
+    expect(geo.path).toContain("Q");
+    // Y los controles de la curva se ofrecen exactamente cuando eso pasa.
+    expect(marcado === "curved").toBe(geo.bendKind === "curve");
   });
 });

@@ -108,7 +108,6 @@ import {
 import {
   ALL_ELEMENTS,
   getNotation,
-  defaultRoutingFor,
   isBlobContainer,
   isLifelineContainer,
   isSwimlaneContainer,

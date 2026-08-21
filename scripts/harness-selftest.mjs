@@ -232,6 +232,16 @@ frenoDelLint(
   "IATASK",
 );
 
+// ENRUTADO: el enrutado efectivo de una arista tiene UNA respuesta. Tres defaults
+// distintos para el mismo campo dieron una ficha que marcaba «Recta» sobre un
+// enlace curvo (issue #112) — compila y pasa los tests, sólo se ve en pantalla.
+frenoDelLint(
+  "repo-lint: detecta un enrutado resuelto a mano en la UI",
+  "src/components/__selftest-routing.tsx",
+  'export const X = (link) => (link.routing ?? "straight") === "curved";\n',
+  "ENRUTADO",
+);
+
 // PLATAFORMA: la detección del SO vive en un solo módulo y sin API deprecada.
 frenoDelLint(
   "repo-lint: detecta navigator.platform fuera de lib/platform",

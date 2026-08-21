@@ -16,6 +16,7 @@
  *   DEPSHOOK  un useMemo/useCallback que lee `notationId` lo declara en sus dependencias.
  *   TOKENS    la UI usa los tokens del tema, no colores crudos de Tailwind ni tamaños en px.
  *   SVGFILL   un <text> de SVG pinta con `fill`: sin él, una clase text-* cae a negro.
+ *   ENRUTADO  el enrutado efectivo de una arista se resuelve con `routingOf`, sin fallback a mano.
  *   PLATAFORMA  detectar el sistema operativo sólo en src/lib/platform.ts (y sin API deprecada).
  *   DEPS      sin SDKs de nube en package.json (las llamadas van con fetch desde el main).
  *   RELEASE   la versión de package.json tiene sus notas en docs/releases/<versión>.md.
@@ -223,6 +224,24 @@ function checkFile(relPath, contenidoDado = null) {
         lineOf(content, m.index),
         "SVGFILL",
         "`<text>` de SVG sin `fill`: una clase `text-*` no pinta el texto y el navegador cae a negro. Poné `fill=\"currentColor\"` (el color lo sigue dando la clase) o un `fill-*` explícito.",
+      );
+    }
+  }
+
+  // ENRUTADO — el enrutado EFECTIVO de una arista sale de `routingOf(link, notation)`
+  // y de ningún otro lado. La ficha «Editar enlace» tenía tres respuestas para la
+  // misma pregunta (`?? "straight"` para el resaltado, `?? defaultRoutingFor(...)`
+  // para los controles de curva, y la geometría con la suya): en C4 marcaba «Recta»
+  // sobre un enlace que el lienzo dibujaba curvo. El fallback a mano es lo que se
+  // desalinea del registro de notaciones (P6), así que se prohíbe fuera de `link-geom`.
+  if (relPath.startsWith("src/components/") && !isTest(relPath) && !relPath.endsWith("/link-geom.ts")) {
+    const m = /\brouting\s*\?\?/.exec(content);
+    if (m) {
+      fail(
+        relPath,
+        lineOf(content, m.index),
+        "ENRUTADO",
+        "`routing ??` resuelve el enrutado por su cuenta: usá `routingOf(link, notation)` de `link-geom` — es la única función que lo resuelve, y la misma que usa el lienzo.",
       );
     }
   }

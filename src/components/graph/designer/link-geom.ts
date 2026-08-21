@@ -26,6 +26,19 @@ export const AGGREGATE_DEFAULT_HEIGHT = 400;
 export const shapeForType = (type: string): ShapeKind =>
   ALL_ELEMENTS[type]?.shape ?? "rounded";
 
+/**
+ * Enrutado EFECTIVO de una relación: el propio si lo tiene, y si no el de la
+ * notación. Es la única forma de resolverlo: la ficha, el lienzo y la geometría
+ * preguntan acá. Cuando cada uno lo resolvía por su cuenta, la ficha de C4
+ * resaltaba «Recta» sobre un enlace que el lienzo dibujaba curvo (issue #112);
+ * el literal `"straight"` como fallback en la UI es lo que se desalinea del
+ * registro (P6), por eso el lint lo prohíbe fuera de acá.
+ */
+export const routingOf = (
+  link: Pick<DesignerLink, "routing">,
+  notation?: NotationId | string
+): "straight" | "curved" | "orthogonal" => link.routing ?? defaultRoutingFor(notation);
+
 // Recorta un extremo al CONTORNO de la forma (en la dirección que sale del centro),
 // así la línea nace/termina en el borde y nunca cruza el interior (clave con relleno
 // transparente). Soporta elipse, rombo y rectángulo (contenedores → rectángulo).
@@ -232,7 +245,7 @@ export function linkGeometry(
   if (!ep) return null;
   let { start, end } = ep;
   // Sin trazo propio manda el de la notación (C4 curva; el resto, recta).
-  const routing = link.routing ?? defaultRoutingFor(notation);
+  const routing = routingOf(link, notation);
   let path: string;
   let labelX = (start.x + end.x) / 2;
   let labelY = (start.y + end.y) / 2;
