@@ -135,6 +135,7 @@ import {
   LinkEndpointHandles,
   CHANGE_STATES,
 } from "./DesignerCanvas";
+import { styleLinks, styleLinksSummary, type LinkStylePatch } from "./link-style";
 import {
   linkEndpoints,
   linkGeometry,
@@ -160,13 +161,27 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+/** Orden en que se ofrecen los enrutados (el mismo que la ficha del enlace). */
+const ROUTING_ORDER = ["straight", "curved", "orthogonal"] as const;
+
+/** Rótulo de cada enrutado: lo comparten la barra de relaciones y los avisos. */
+const ROUTING_LABEL: Record<"straight" | "curved" | "orthogonal", string> = {
+  straight: "Recta",
+  curved: "Curva",
+  orthogonal: "Escalonada",
+};
 
 // Metadatos del proyecto que no se expresan geométricamente en el lienzo.
 interface DesignerMeta {
   nombre_proyecto: string;
   version: string;
+  /** Enrutado con el que nacen las relaciones de esta vista (issue #128). */
+  defaultRouting?: "straight" | "curved" | "orthogonal";
   fecha_analisis: string;
   bigPictureDescripcion: string;
   hotspots: string[];
@@ -180,6 +195,7 @@ function metaFromContent(content: GraphData): DesignerMeta {
   return {
     nombre_proyecto: content.nombre_proyecto || "Proyecto sin nombre",
     version: content.version || "1.0.0",
+    defaultRouting: content.defaultRouting,
     fecha_analisis: content.fecha_analisis || "",
     bigPictureDescripcion: content.big_picture?.descripcion || "",
     hotspots: content.big_picture?.hotspots || [],
@@ -200,6 +216,7 @@ function buildContent(
   return canvasToGraphData(nodes, links, {
     nombre_proyecto: meta.nombre_proyecto,
     version: meta.version,
+    defaultRouting: meta.defaultRouting,
     notation,
     fecha_analisis: meta.fecha_analisis,
     big_picture: {
@@ -1728,6 +1745,50 @@ export const ComponentDesigner: React.FC<{
     if (h.index < h.snapshots.length - 1) applySnapshot(h.index + 1);
   }, [applySnapshot]);
 
+  /**
+   * Enrutado con el que NACEN las relaciones de esta vista. Antes era el literal
+   * `"orthogonal"` en cada punto de creación; ahora sale de la vista (issue #128)
+   * y `orthogonal` queda sólo como el valor histórico cuando la vista no eligió.
+   */
+  const newLinkRouting = meta?.defaultRouting ?? "orthogonal";
+
+  /** De lo seleccionado, cuántas son RELACIONES (la selección mezcla nodos). */
+  const selectedLinkCount = Array.from(selectedIds).filter((id) => links.has(id)).length;
+
+  /**
+   * Aplica estilo de trazo a un conjunto de relaciones —la selección o toda la
+   * vista— en UNA sola operación deshacible (P10: nunca 30 cambios sueltos en el
+   * historial). La regla de qué cambia y qué se conserva vive en `link-style.ts`.
+   */
+  const applyLinkStyle = useCallback(
+    (ambito: "selection" | "view", patch: LinkStylePatch) => {
+      const ids = ambito === "view" ? ("all" as const) : Array.from(selectedIdsRef.current);
+      const res = styleLinks(linksRef.current, ids, patch);
+      const aviso = styleLinksSummary(res);
+      if (!aviso) {
+        toast({ title: "Sin cambios", description: "Esas relaciones ya tenían ese estilo." });
+        return;
+      }
+      setLinks(res.links);
+      linksRef.current = res.links;
+      pushSnapshot(nodesRef.current, res.links); // un solo paso de Deshacer
+      toast({ title: "Relaciones actualizadas", description: aviso });
+    },
+    [pushSnapshot, toast]
+  );
+
+  /** Enrutado por defecto de la VISTA: las relaciones nuevas nacen con él. */
+  const setViewRouting = useCallback(
+    (routing: "straight" | "curved" | "orthogonal") => {
+      setMeta((m) => (m ? { ...m, defaultRouting: routing } : m));
+      toast({
+        title: "Enrutado por defecto de la vista",
+        description: `Las relaciones nuevas nacerán ${ROUTING_LABEL[routing].toLowerCase()}. Las que ya existen no se tocan.`,
+      });
+    },
+    [toast]
+  );
+
   const deleteSelected = useCallback(() => {
     const ids = selectedIdsRef.current;
     if (ids.size === 0) return;
@@ -2546,11 +2607,11 @@ export const ComponentDesigner: React.FC<{
       const id = `link-${from}-${targetId}-${crypto.randomUUID()}`;
       updateLinks((prev) => {
         const n = new Map(prev);
-        n.set(id, { id, sourceId: from, targetId, descripcion: "interactúa", routing: "orthogonal" });
+        n.set(id, { id, sourceId: from, targetId, descripcion: "interactúa", routing: newLinkRouting });
         return n;
       });
     },
-    [updateLinks]
+    [updateLinks, newLinkRouting]
   );
 
   // Event Storming: crea el siguiente elemento sugerido, conectado al actual.
@@ -2575,12 +2636,12 @@ export const ComponentDesigner: React.FC<{
           sourceId: fromNode.id,
           targetId: id,
           descripcion: sug.relacion || "produce",
-          routing: "orthogonal",
+          routing: newLinkRouting,
         })
       );
       selectOnly(id);
     },
-    [updateNodes, updateLinks, selectOnly, notationId]
+    [updateNodes, updateLinks, selectOnly, notationId, newLinkRouting]
   );
 
   const handleClear = () => {
@@ -2984,6 +3045,71 @@ export const ComponentDesigner: React.FC<{
           )}
 
           <div className="w-px h-6 bg-border mx-1" />
+
+          {/* Estilo de las relaciones en LOTE (issue #128): el enrutado se
+              cambiaba de a una arista, y en un C4 de 30 relaciones eso eran 30
+              fichas. Tres ámbitos: la selección, toda la vista, y con qué nacen
+              las nuevas. Cada aplicación es UN paso de Deshacer. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={links.size === 0}
+                title="Enrutado y trazo de varias relaciones a la vez"
+              >
+                <Workflow className="mr-2 h-4 w-4" /> Relaciones
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              <DropdownMenuLabel>
+                {selectedLinkCount > 0
+                  ? `Enrutado de la selección (${selectedLinkCount})`
+                  : "Enrutado de la selección"}
+              </DropdownMenuLabel>
+              {ROUTING_ORDER.map((r) => (
+                <DropdownMenuItem
+                  key={`sel-${r}`}
+                  disabled={selectedLinkCount === 0}
+                  onClick={() => applyLinkStyle("selection", { routing: r })}
+                >
+                  {ROUTING_LABEL[r]}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>{`Toda la vista (${links.size})`}</DropdownMenuLabel>
+              {ROUTING_ORDER.map((r) => (
+                <DropdownMenuItem
+                  key={`all-${r}`}
+                  onClick={() => applyLinkStyle("view", { routing: r })}
+                >
+                  {ROUTING_LABEL[r]}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Trazo de la selección</DropdownMenuLabel>
+              <DropdownMenuItem
+                disabled={selectedLinkCount === 0}
+                onClick={() => applyLinkStyle("selection", { dashed: false })}
+              >
+                Continua
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={selectedLinkCount === 0}
+                onClick={() => applyLinkStyle("selection", { dashed: true })}
+              >
+                Discontinua
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Las relaciones nuevas nacen…</DropdownMenuLabel>
+              {ROUTING_ORDER.map((r) => (
+                <DropdownMenuItem key={`new-${r}`} onClick={() => setViewRouting(r)}>
+                  {ROUTING_LABEL[r]}
+                  {newLinkRouting === r && <Check className="ml-auto h-4 w-4 opacity-70" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button variant="outline" size="sm" onClick={() => setReferenceOpen(true)}>
             <Library className="mr-2 h-4 w-4" /> Contexto

@@ -170,6 +170,13 @@ export interface GraphData {
    * defecto (ddd).
    */
   notation?: NotationId;
+  /**
+   * Enrutado con el que NACEN las relaciones de esta vista (issue #128). Sin
+   * esto el trazo de las aristas nuevas era un literal en el lienzo y no había
+   * forma de cambiarlo; el enrutado de una arista concreta sigue mandando sobre
+   * este valor, y este sobre el de la notación.
+   */
+  defaultRouting?: "straight" | "curved" | "orthogonal";
   fecha_analisis: string;
   big_picture: BigPicture;
   agregados: Agregado[];

@@ -128,6 +128,14 @@ describe("canvasToGraphData", () => {
     expect(g.politicas_inter_agregados).toEqual([]);
   });
 
+  it("preserva el enrutado por defecto de la VISTA (issue #128)", () => {
+    // Igual que la notación: si el autoguardado no lo propaga, el primer cambio
+    // en el lienzo borra la preferencia y las aristas nuevas vuelven al literal.
+    const g = canvasToGraphData(new Map(), new Map(), { ...BASE, defaultRouting: "curved" });
+    expect(g.defaultRouting).toBe("curved");
+    expect(canvasToGraphData(new Map(), new Map(), BASE).defaultRouting).toBeUndefined();
+  });
+
   it("uses base metadata and falls back to defaults", () => {
     const g = canvasToGraphData(new Map(), new Map(), BASE);
     expect(g.nombre_proyecto).toBe("Proj");
