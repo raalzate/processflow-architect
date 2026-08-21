@@ -140,11 +140,29 @@ jobs:
       - name: List what will be attached
         run: ls -lh installers
 
+      # El cuerpo del release vive en el repo (docs/releases/<versión>.md) y lo
+      # exige la regla RELEASE del lint: así el borrador nace escrito y revisado
+      # en el diff, en vez de redactarse a mano en la web al momento de publicar.
+      - name: Checkout (para las notas del release)
+        uses: actions/checkout@v4
+
+      - name: Resolve release notes
+        id: notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          path="docs/releases/${version}.md"
+          if [ ! -f "$path" ]; then
+            echo "Faltan las notas en $path (ver docs/RELEASE.md)." >&2
+            exit 1
+          fi
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           draft: true # Coincide con releaseType: draft de package.json; revisá antes de publicar.
           fail_on_unmatched_files: false
+          body_path: ${{ steps.notes.outputs.path }}
           files: |
             installers/*.dmg
             installers/*.exe

@@ -18,6 +18,7 @@
  *   SVGFILL   un <text> de SVG pinta con `fill`: sin él, una clase text-* cae a negro.
  *   PLATAFORMA  detectar el sistema operativo sólo en src/lib/platform.ts (y sin API deprecada).
  *   DEPS      sin SDKs de nube en package.json (las llamadas van con fetch desde el main).
+ *   RELEASE   la versión de package.json tiene sus notas en docs/releases/<versión>.md.
  *   WEBGPU    main.ts conserva los switches de WebGPU y no reactiva disableHardwareAcceleration.
  */
 import fs from "node:fs";
@@ -230,6 +231,42 @@ function checkDeps() {
   }
 }
 
+/**
+ * RELEASE — la versión que se va a empaquetar tiene sus notas EN EL REPO.
+ *
+ * `release-build.yml` usa `docs/releases/<versión>.md` como cuerpo del release
+ * (`body_path`): sin el archivo, el borrador sale vacío y las notas terminan
+ * escritas a mano en la web, donde nadie las revisa ni las versiona. Subir
+ * `version` en package.json sin ese archivo es gate rojo.
+ *
+ * `versionDada` existe para el self-test: prueba el freno con una versión que no
+ * tiene notas, sin tocar package.json ni escribir archivos.
+ */
+function checkRelease(versionDada = null) {
+  const version = versionDada ?? JSON.parse(read("package.json")).version;
+  const notes = `${config.release.notesDir}/${version}.md`;
+  const abs = path.join(REPO_ROOT, notes);
+  if (!fs.existsSync(abs)) {
+    fail("package.json", 1, "RELEASE", `falta \`${notes}\`: es el cuerpo del release que publica release-build.yml (ver docs/RELEASE.md).`);
+    return;
+  }
+  const content = fs.readFileSync(abs, "utf8");
+  for (const section of config.release.requiredSections) {
+    if (!content.includes(section)) {
+      fail(notes, 1, "RELEASE", `falta la sección \`${section}\`: quien descarga necesita qué cambió, qué archivo bajar y qué máquina hace falta.`);
+    }
+  }
+  if (!content.includes(version)) {
+    fail(notes, 1, "RELEASE", `las notas no nombran la versión \`${version}\`: se copió el archivo de otra release y quedó desfasado.`);
+  }
+  for (const forbidden of config.release.forbiddenText) {
+    const idx = content.indexOf(forbidden);
+    if (idx !== -1) {
+      fail(notes, lineOf(content, idx), "RELEASE", `\`${forbidden}\` es del crédito anterior: la autoría es del autor (ver src/lib/credits.ts).`);
+    }
+  }
+}
+
 function checkWebgpu() {
   const file = config.webgpu.file;
   const content = read(file);
@@ -257,13 +294,21 @@ const single = fileFlagIndex !== -1 ? process.argv[fileFlagIndex + 1] : null;
 const desdeStdin = process.argv.includes("--stdin");
 const contenidoStdin = desdeStdin ? fs.readFileSync(0, "utf8") : null;
 
-if (single) {
+// `--release-check <versión>`: sólo la regla RELEASE, contra la versión dada. Lo
+// usa el self-test para probar que el freno muerde sin tocar package.json.
+const releaseFlagIndex = process.argv.indexOf("--release-check");
+const releaseVersion = releaseFlagIndex !== -1 ? process.argv[releaseFlagIndex + 1] : null;
+
+if (releaseVersion) {
+  checkRelease(releaseVersion);
+} else if (single) {
   if (/\.(ts|tsx)$/.test(single)) checkFile(single, contenidoStdin);
-  if (single === "package.json") checkDeps();
+  if (single === "package.json") { checkDeps(); checkRelease(); }
   if (single === config.webgpu.file) checkWebgpu();
 } else {
   for (const relPath of [...sourceFiles("src"), ...sourceFiles("main"), ...sourceFiles("mcp-server")]) checkFile(relPath);
   checkDeps();
+  checkRelease();
   checkWebgpu();
 }
 

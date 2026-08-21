@@ -186,6 +186,19 @@
       "app.disableHardwareAcceleration()"
     ]
   },
+  "release": {
+    "$comment": "Las notas de cada versión viven EN EL REPO, no en el cuadro de texto de GitHub: `release-build.yml` las usa como cuerpo del release (body_path), así que el borrador nace escrito y el gate puede juzgarlas. Un `version` nuevo en package.json sin su archivo de notas es gate rojo.",
+    "notesDir": "docs/releases",
+    "requiredSections": [
+      "### Cambios",
+      "### Descargas",
+      "### Requisitos"
+    ],
+    "forbiddenText": [
+      "Sofka",
+      "sofka"
+    ]
+  },
   "docs": {
     "$comment": "`.tessl/` la genera `tessl install` y está gitignored: se declara en externalPaths porque ninguna máquina puede verificarla en el clon. El resto de las rutas se miden contra `git ls-files` (no contra el disco), o el gate sale verde local y rojo en CI. buenas-practicas.md es la guía agnóstica: sus rutas son ejemplos, no punteros de este repo.",
     "ignore": [

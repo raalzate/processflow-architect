@@ -26,9 +26,32 @@ electron-builder empaqueta según `build.*` de `package.json`:
 La matriz corre las 3 plataformas en paralelo (`fail-fast: false`: si una falla,
 las otras siguen).
 
+## Las notas de la versión viven en el repo · BLOQUEANTE
+
+Cada versión que se empaqueta trae su archivo **`docs/releases/<versión>.md`**, y
+ese archivo es el **cuerpo del release** que publica GitHub Actions (`body_path` de
+`action-gh-release`). No se redactan notas a mano en la web: así el borrador nace
+escrito, el texto se revisa en el diff como cualquier otro cambio y no depende de
+que alguien se acuerde al momento de publicar.
+
+Estructura obligatoria (la exige la regla **RELEASE** de `scripts/repo-lint.mjs`,
+que corre en el gate):
+
+| Parte | Qué va |
+|---|---|
+| `## Processflow Architect <versión> · beta` + una o dos frases | qué es este release para quien lo va a instalar |
+| `### Cambios` | qué cambia **para quien usa la app**, no cómo está implementado |
+| `### Descargas` | tabla de instaladores por sistema y cómo pasar el aviso de seguridad |
+| `### Requisitos` | WebGPU obligatorio; la nube es opcional y con llave propia |
+
+El freno falla si falta el archivo, si falta una de las tres secciones, si el texto
+no nombra la versión (señal de que se copió de otra release) o si vuelve el crédito
+anterior. Copiá [`docs/releases/PLANTILLA.md`](releases/PLANTILLA.md) y completá.
+
 ## Publicar una versión (release por tag)
 
-1. Subí la versión en `package.json` (`"version"`), commiteá y mergeá a `main`.
+1. Subí la versión en `package.json` (`"version"`) **y escribí
+   `docs/releases/<versión>.md`** (sin él el gate es rojo), commiteá y mergeá a `main`.
 2. Creá y empujá el tag:
 
    ```bash
@@ -37,9 +60,10 @@ las otras siguen).
    ```
 
 3. El workflow arranca solo. Cada job añade sus instaladores al **mismo** GitHub
-   Release, creado en modo **draft** (borrador).
-4. Andá a **Releases**, revisá los assets, escribí las notas y **publicá** el
-   borrador manualmente.
+   Release, creado en modo **draft** (borrador) y ya con las notas del repo como
+   cuerpo. Si el archivo de notas no existe, el job `release` falla ahí mismo.
+4. Andá a **Releases**, revisá los assets y el texto, y **publicá** el borrador
+   manualmente.
 
 > El release nace como borrador a propósito (coincide con `releaseType: draft` de
 > `package.json`). Nada se hace público hasta que lo publiques a mano.

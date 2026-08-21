@@ -218,6 +218,27 @@ frenoDelLint(
   "PLATAFORMA",
 );
 
+// RELEASE: una versión sin notas en el repo es gate rojo. Sin este freno, el
+// borrador del release sale vacío y las notas se improvisan en la web al publicar.
+{
+  const res = spawnSync("node", [abs("scripts/repo-lint.mjs"), "--release-check", "99.99.99"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
+  const salida = `${res.stderr}${res.stdout}`;
+  if (res.status === 1 && /RELEASE/.test(salida)) ok("repo-lint: exige notas de release para la versión que se empaqueta");
+  else bad("repo-lint: exige notas de release", `exit ${res.status}: ${salida.trim().slice(0, 240)}`);
+
+  // Y la versión real SÍ las tiene: si no, el freno estaría midiendo el aire.
+  const version = JSON.parse(fs.readFileSync(abs("package.json"), "utf8")).version;
+  const real = spawnSync("node", [abs("scripts/repo-lint.mjs"), "--release-check", version], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
+  if (real.status === 0) ok(`las notas de ${version} existen y están completas`);
+  else bad(`las notas de ${version}`, `${real.stderr}${real.stdout}`.trim().slice(0, 240));
+}
+
 // El link-check mide contra `git ls-files`, no contra el disco: un puntero a un
 // archivo gitignored existe en TU máquina y no en el clon de CI. Ese fue el gate
 // verde local y rojo en CI de `.tessl/RULES.md`.

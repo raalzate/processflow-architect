@@ -13,6 +13,7 @@ lo que se supone va en "deuda conocida".
 
 | Señal | Comando | Resultado |
 |---|---|---|
+| Notas de release en el repo | `node scripts/repo-lint.mjs --release-check 0.6.1` | verde — `docs/releases/0.6.1.md` con las tres secciones; con una versión inventada el freno RELEASE muerde |
 | Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 22 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA y «no escribe temporales en `src/`»), 8 casos de ruteo |
 | Link-check de docs | `node scripts/docs-linkcheck.mjs` | verde |
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
