@@ -21,6 +21,7 @@
  *   DEPS      sin SDKs de nube en package.json (las llamadas van con fetch desde el main).
  *   RELEASE   la versión de package.json tiene sus notas en docs/releases/<versión>.md.
  *   IATASK    el router y los proveedores no conocen tareas de IA por nombre (P5).
+ *   RELEASEJOB  el job que publica el release baja los artefactos DESPUÉS del checkout y falla si no hay binarios.
  *   WEBGPU    main.ts conserva los switches de WebGPU y no reactiva disableHardwareAcceleration.
  */
 import fs from "node:fs";
@@ -359,6 +360,53 @@ function checkIncidents(contenidoDado = null) {
   });
 }
 
+/**
+ * RELEASEJOB — el borrador del release nace CON los instaladores.
+ *
+ * Lo que pasó: en el job que publica, `actions/checkout` estaba DESPUÉS de
+ * `download-artifact`. Checkout limpia el workspace (`clean: true` por defecto),
+ * así que borraba `installers/` con los 750 MB ya bajados y el release quedaba
+ * vacío… en VERDE, porque `fail_on_unmatched_files: false` se comía el vacío. El
+ * síntoma sólo se veía abriendo el borrador en la web.
+ *
+ * Dos cosas verificables: el orden de los pasos, y que un patrón sin archivos
+ * sea un fallo. Ambas se leen del YAML sin dependencias nuevas.
+ */
+function checkReleaseJob(contenidoDado = null) {
+  const file = ".github/workflows/release-build.yml";
+  let content = contenidoDado;
+  if (content === null) {
+    try {
+      content = read(file);
+    } catch {
+      fail(file, 1, "RELEASEJOB", "no existe el workflow que empaqueta y publica el release.");
+      return;
+    }
+  }
+  const publica = content.indexOf("softprops/action-gh-release");
+  if (publica === -1) return; // no publica: nada que exigir
+  const descarga = content.indexOf("actions/download-artifact");
+  const checkoutTrasDescarga = descarga !== -1 && content.indexOf("actions/checkout", descarga) !== -1
+    && content.indexOf("actions/checkout", descarga) < publica;
+  if (checkoutTrasDescarga) {
+    fail(
+      file,
+      lineOf(content, content.indexOf("actions/checkout", descarga)),
+      "RELEASEJOB",
+      "`actions/checkout` corre DESPUÉS de `download-artifact` y limpia el workspace: borra los instaladores bajados y el release se publica vacío. Poné el checkout primero.",
+    );
+  }
+  const idxLaxo = content.indexOf("fail_on_unmatched_files: false");
+  if (idxLaxo !== -1) {
+    fail(
+      file,
+      lineOf(content, idxLaxo),
+      "RELEASEJOB",
+      "`fail_on_unmatched_files: false` deja pasar un release SIN binarios en verde. Un patrón sin archivos es un fallo.",
+    );
+  }
+}
+
 function checkWebgpu() {
   const file = config.webgpu.file;
   const content = read(file);
@@ -398,11 +446,13 @@ if (releaseVersion) {
   if (single === "package.json") { checkDeps(); checkRelease(); }
   if (single === config.webgpu.file) checkWebgpu();
   if (single === config.incidents.file) checkIncidents(contenidoStdin);
+  if (single === ".github/workflows/release-build.yml") checkReleaseJob(contenidoStdin);
 } else {
   for (const relPath of [...sourceFiles("src"), ...sourceFiles("main"), ...sourceFiles("mcp-server")]) checkFile(relPath);
   checkDeps();
   checkRelease();
   checkIncidents();
+  checkReleaseJob();
   checkWebgpu();
 }
 

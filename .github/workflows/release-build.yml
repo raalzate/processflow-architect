@@ -130,6 +130,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      # El checkout va PRIMERO y no al medio: `actions/checkout` limpia el
+      # workspace (`clean: true` por defecto), así que puesto después de bajar
+      # los artefactos borraba `installers/` y el release nacía sin instaladores
+      # —el log mostraba los 750 MB bajados y el borrador quedaba vacío—.
+      #
+      # El cuerpo del release vive en el repo (docs/releases/<versión>.md) y lo
+      # exige la regla RELEASE del lint: así el borrador nace escrito y revisado
+      # en el diff, en vez de redactarse a mano en la web al momento de publicar.
+      - name: Checkout (para las notas del release)
+        uses: actions/checkout@v4
+
       - name: Download installers from the matrix
         uses: actions/download-artifact@v4
         with:
@@ -139,12 +150,6 @@ jobs:
 
       - name: List what will be attached
         run: ls -lh installers
-
-      # El cuerpo del release vive en el repo (docs/releases/<versión>.md) y lo
-      # exige la regla RELEASE del lint: así el borrador nace escrito y revisado
-      # en el diff, en vez de redactarse a mano en la web al momento de publicar.
-      - name: Checkout (para las notas del release)
-        uses: actions/checkout@v4
 
       - name: Resolve release notes
         id: notes
@@ -161,7 +166,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true # Coincide con releaseType: draft de package.json; revisá antes de publicar.
-          fail_on_unmatched_files: false
+          # Un borrador sin instaladores es un release inútil que salía VERDE:
+          # que falte un patrón es un fallo, no un detalle.
+          fail_on_unmatched_files: true
           body_path: ${{ steps.notes.outputs.path }}
           files: |
             installers/*.dmg

@@ -232,6 +232,16 @@ frenoDelLint(
   "IATASK",
 );
 
+// RELEASEJOB: el release 0.6.3 salió VERDE y sin instaladores porque el checkout
+// corría después de bajar los artefactos y limpiaba el workspace. El freno lee el
+// orden de los pasos del YAML; con el orden malo tiene que morder.
+frenoDelLint(
+  "repo-lint: detecta el checkout que borra los instaladores",
+  ".github/workflows/release-build.yml",
+  "jobs:\n  release:\n    steps:\n      - uses: actions/download-artifact@v4\n      - uses: actions/checkout@v4\n      - uses: softprops/action-gh-release@v2\n",
+  "RELEASEJOB",
+);
+
 // ENRUTADO: el enrutado efectivo de una arista tiene UNA respuesta. Tres defaults
 // distintos para el mismo campo dieron una ficha que marcaba «Recta» sobre un
 // enlace curvo (issue #112) — compila y pasa los tests, sólo se ve en pantalla.
