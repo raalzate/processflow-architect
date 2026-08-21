@@ -15,6 +15,7 @@
  */
 
 import type { GraphData, GraphNode, GraphLink } from "./types";
+import { claveNormalizada, type ElementMetadata } from "./element-metadata";
 
 type Edge = Omit<GraphLink, "source" | "target" | "tipo">;
 
@@ -99,8 +100,55 @@ function findNodeAnywhere(graph: GraphData, id: string): GraphNode | null {
 }
 
 /**
+ * Une listas de metadatos por clave: el orden y el valor del PRINCIPAL manda, y
+ * las claves que sólo traen los secundarios se agregan al final en el orden en
+ * que aparecen. Devuelve `undefined` si no queda ninguna (un nodo sin
+ * referencias no debe ganar una lista vacía).
+ */
+export function mergeMetadata(
+  principal: ElementMetadata[] | undefined,
+  secundarias: (ElementMetadata[] | undefined)[]
+): ElementMetadata[] | undefined {
+  const salida: ElementMetadata[] = (principal ?? []).map((m) => ({ ...m }));
+  const vistas = new Set(salida.map((m) => claveNormalizada(m.clave)));
+  for (const lista of secundarias) {
+    for (const m of lista ?? []) {
+      const k = claveNormalizada(m.clave);
+      if (vistas.has(k)) continue;
+      vistas.add(k);
+      salida.push({ ...m });
+    }
+  }
+  return salida.length ? salida : undefined;
+}
+
+/**
+ * Claves cuyo valor NO coincide entre el principal y los secundarios. La fusión
+ * se queda con el del principal; esto es lo que se le muestra al humano para que
+ * la decisión no sea invisible.
+ */
+export function metadataConflictos(
+  principal: ElementMetadata[] | undefined,
+  secundarias: (ElementMetadata[] | undefined)[]
+): { clave: string; principal: string; otros: string[] }[] {
+  const conflictos: { clave: string; principal: string; otros: string[] }[] = [];
+  for (const m of principal ?? []) {
+    const k = claveNormalizada(m.clave);
+    const otros = new Set<string>();
+    for (const lista of secundarias) {
+      for (const o of lista ?? []) {
+        if (claveNormalizada(o.clave) === k && o.valor !== m.valor) otros.add(o.valor);
+      }
+    }
+    if (otros.size) conflictos.push({ clave: m.clave, principal: m.valor, otros: [...otros] });
+  }
+  return conflictos;
+}
+
+/**
  * Fusiona `secondaryIds` en `primaryId`:
- *  - combina descripciones únicas (separador `\n---\n`) y une tags_tecnologia,
+ *  - combina descripciones únicas (separador `\n---\n`), une tags_tecnologia y
+ *    une los metadatos por clave (el principal gana el valor en conflicto),
  *  - re-apunta aristas de las TRES listas y limpia duplicados/self-loops,
  *  - elimina los nodos fusionados de agregados y big_picture.
  * @throws si el nodo principal no existe.
@@ -134,6 +182,13 @@ export function mergeNodesInGraph(
   addDescs(primary.descripcion);
   secondaries.forEach((s) => addDescs(s.descripcion));
   primary.descripcion = Array.from(descriptions).join("\n---\n");
+
+  // Unión de metadatos (referencias: repo, wiki, dueño). Se unen POR CLAVE y el
+  // PRINCIPAL gana el valor en conflicto: perder la referencia de una caja al
+  // fusionar es perder el enlace al código, y hacerlo en silencio es peor.
+  // Quién quiera avisar del conflicto usa `metadataConflictos` con los mismos
+  // nodos antes de fusionar.
+  primary.metadata = mergeMetadata(primary.metadata, secondaries.map((s) => s.metadata));
 
   // Unión de tags de tecnología.
   const tags = new Set<string>(primary.tags_tecnologia || []);

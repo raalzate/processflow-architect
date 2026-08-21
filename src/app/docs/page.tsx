@@ -265,6 +265,17 @@ export default function DocsPage() {
                     hacer clic en otro elemento pasa a editar ESE.
                   </p>
                   <p>
+                    <b className="text-foreground">Referencias (metadatos):</b> en la ficha, cada
+                    elemento —nodo o contenedor— lleva una lista de{" "}
+                    <i>clave · valor · url</i> con <b className="text-foreground">dónde vive de
+                    verdad</b>: el repositorio del componente, la wiki que lo explica, el tablero,
+                    el equipo dueño. Las urls <i>http(s)</i> quedan como enlace y se abren en el
+                    navegador del sistema; cualquier otro esquema se muestra como texto. Un agente
+                    las escribe por MCP (<i>metadata</i> en <i>add_node</i>, <i>add_container</i> y{" "}
+                    <i>update_element</i>), y <i>review_diagram</i> avisa qué cajas quedaron sin
+                    referencia.
+                  </p>
+                  <p>
                     <b className="text-foreground">Copiar y pegar:</b> clic derecho sobre un
                     elemento abre el menú contextual (editar, copiar, cortar, duplicar, pegar aquí,
                     eliminar); sobre el vacío, ofrece pegar en ese punto y seleccionar todo. Con el

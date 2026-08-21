@@ -658,3 +658,110 @@ describe("ambigüedades", () => {
     expect(g.notas).toContain("No, el documento lo descarta");
   });
 });
+
+describe("metadatos de la caja (referencias: repo, wiki, owner)", () => {
+  const conMeta = () => {
+    let m = emptyDiagram(base);
+    m = addContainer(m, {
+      nombre: "Pagos",
+      tipo_elemento: "Agregado",
+      metadata: [{ clave: "wiki", valor: "Dominio Pagos", url: "https://wiki/pagos" }],
+    }).model;
+    m = addNode(m, {
+      nombre: "API de Pagos",
+      tipo_elemento: "Comando",
+      container: "Pagos",
+      metadata: [
+        { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
+        { clave: "owner", valor: "Equipo Pagos" },
+      ],
+    }).model;
+    return m;
+  };
+
+  it("se declaran al crear el nodo y el contenedor, en orden", () => {
+    const m = conMeta();
+    const nodo = m.nodes.find((n) => n.id === "api-de-pagos")!;
+    expect(nodo.metadata?.map((x) => x.clave)).toEqual(["repo", "owner"]);
+    expect(m.nodes.find((n) => n.id === "pagos")!.metadata?.[0].url).toBe("https://wiki/pagos");
+  });
+
+  it("agregar una referencia NO borra las que ya estaban, y conserva id y relaciones", () => {
+    let m = conMeta();
+    m = addNode(m, { nombre: "Cobro", tipo_elemento: "Evento", container: "Pagos" }).model;
+    m = addEdge(m, { fuente: "api-de-pagos", destino: "cobro" });
+    m = updateNode(m, "api-de-pagos", {
+      metadata: [{ clave: "wiki", valor: "API de Pagos", url: "https://wiki/api-pagos" }],
+    });
+    const nodo = m.nodes.find((n) => n.id === "api-de-pagos")!;
+    expect(nodo.metadata?.map((x) => x.clave)).toEqual(["repo", "owner", "wiki"]);
+    expect(nodo.tipo_elemento).toBe("Comando");
+    expect(m.edges).toHaveLength(1);
+  });
+
+  it("una clave repetida reemplaza el valor en su posición", () => {
+    const m = updateNode(conMeta(), "api-de-pagos", {
+      metadata: [{ clave: "REPO", valor: "acme/pagos-v2" }],
+    });
+    const meta = m.nodes.find((n) => n.id === "api-de-pagos")!.metadata!;
+    expect(meta).toHaveLength(2);
+    expect(meta[0]).toEqual({ clave: "repo", valor: "acme/pagos-v2" });
+  });
+
+  it("borra por clave sin tocar el resto", () => {
+    const m = updateNode(conMeta(), "api-de-pagos", { metadataRemove: ["owner"] });
+    expect(m.nodes.find((n) => n.id === "api-de-pagos")!.metadata?.map((x) => x.clave)).toEqual(["repo"]);
+  });
+
+  it("un metadato sin clave revienta y el modelo no cambia", () => {
+    const m = conMeta();
+    expect(() => updateNode(m, "api-de-pagos", { metadata: [{ clave: " ", valor: "x" }] })).toThrow(/clave/i);
+    expect(m.nodes.find((n) => n.id === "api-de-pagos")!.metadata).toHaveLength(2);
+  });
+
+  it("ida y vuelta al formato del proyecto sin pérdida ni reordenamiento", () => {
+    const data = toGraphData(conMeta());
+    const agg = data.agregados[0];
+    expect(agg.metadata?.map((x) => x.clave)).toEqual(["wiki"]);
+    expect(agg.nodos[0].metadata?.map((x) => x.clave)).toEqual(["repo", "owner"]);
+
+    const vuelta = fromGraphData(data, "ddd");
+    const nodo = vuelta.nodes.find((n) => n.nombre === "API de Pagos")!;
+    expect(nodo.metadata).toEqual([
+      { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
+      { clave: "owner", valor: "Equipo Pagos" },
+    ]);
+    expect(vuelta.nodes.find((n) => n.nombre === "Pagos")!.metadata?.[0].valor).toBe("Dominio Pagos");
+  });
+
+  it("un diagrama sin metadatos no gana listas vacías al ir y volver", () => {
+    let m = emptyDiagram(base);
+    m = addNode(m, { nombre: "Pago", tipo_elemento: "Comando" }).model;
+    const vuelta = fromGraphData(toGraphData(m), "ddd");
+    expect(vuelta.nodes[0].metadata).toBeUndefined();
+  });
+});
+
+describe("metadatos: validación en la puerta", () => {
+  it("crear con una clave vacía revienta en la llamada, no deja basura", () => {
+    const m = emptyDiagram(base);
+    expect(() =>
+      addNode(m, { nombre: "Pago", tipo_elemento: "Comando", metadata: [{ clave: "", valor: "x" }] })
+    ).toThrow(/clave/i);
+    expect(() =>
+      addContainer(m, { nombre: "Pagos", tipo_elemento: "Agregado", metadata: [{ clave: "repo", valor: " " }] })
+    ).toThrow(/valor/i);
+  });
+
+  it("crear con la misma clave dos veces deja una sola, con el último valor", () => {
+    const m = addNode(emptyDiagram(base), {
+      nombre: "Pago",
+      tipo_elemento: "Comando",
+      metadata: [
+        { clave: "repo", valor: "viejo" },
+        { clave: "Repo", valor: "acme/pagos-svc" },
+      ],
+    }).model;
+    expect(m.nodes[0].metadata).toEqual([{ clave: "repo", valor: "acme/pagos-svc" }]);
+  });
+});

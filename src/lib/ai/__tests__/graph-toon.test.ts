@@ -182,3 +182,26 @@ describe("safeGraphToToon", () => {
     expect(TOON_LEGEND).toContain("campo[N]");
   });
 });
+
+describe("metadatos en el contexto de la IA", () => {
+  it("las referencias de una caja NO son ruido: viajan al contexto", () => {
+    // Para que el agente pueda responder «¿qué cajas no tienen repo?» sin abrir
+    // la app. Si alguien las agrega a NOISE_KEYS, esto se pone rojo.
+    const toon = graphToToon({
+      nodos: [
+        {
+          id: "cmd",
+          nombre: "Pagar",
+          tipo_elemento: "Comando",
+          x: 10,
+          y: 20,
+          metadata: [{ clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" }],
+        },
+      ],
+    });
+    expect(toon).toContain("repo");
+    expect(toon).toContain("acme/pagos-svc");
+    // La geometría sigue siendo ruido.
+    expect(toon).not.toMatch(/\bx\b/);
+  });
+});

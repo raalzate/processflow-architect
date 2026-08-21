@@ -152,6 +152,30 @@ Para CADA diagrama:
    contenedor/fase y qué mirada complementaria sostiene el material. No metas 60
    elementos en una vista.
 
+### Metadatos: dónde vive la caja
+
+`add_node`, `add_container` y `update_element` aceptan `metadata`: una lista de
+`{clave, valor, url?}` con **dónde vive de verdad** el elemento — el repositorio
+del componente, la wiki que lo explica, el tablero, el equipo dueño, un SLA. Es
+lo que convierte el diagrama en algo navegable: un clic desde la ficha al código.
+
+```
+add_node { id: "c4-api-pagos", name: "API de Pagos", type: "Contenedor", container: "Pagos",
+  metadata: [ { clave: "repo",  valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
+              { clave: "wiki",  valor: "Dominio Pagos",  url: "https://wiki/pagos" },
+              { clave: "owner", valor: "Equipo Pagos" } ] }
+```
+
+Reglas: la clave repetida **reemplaza** su valor (no duplica); sólo las urls
+`http(s)` se vuelven enlace en la app (lo demás queda como texto); para sumar una
+referencia después usá `update_element` con `metadata` —agrega o reemplaza por
+clave, no pisa las que ya estaban— y `metadataRemove` para borrar por clave.
+
+No lo confundas con `source`: la cita dice de **dónde salió** el elemento en la
+documentación (sostiene la revisión); el metadato dice **dónde vive** el artefacto
+real. Pon metadatos cuando la fuente los da o cuando estás modelando desde código;
+no los inventes: una url adivinada es peor que ninguna.
+
 ## 4 · Validar calidad (no sólo validez)
 
 `validate_diagram` responde dos cosas: si la app puede importarlo (errores) y si

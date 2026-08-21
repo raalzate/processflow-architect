@@ -25,6 +25,7 @@ import {
   validate,
 } from "./diagram-builder";
 import { qualityFindings, type QualityFinding } from "./quality";
+import { formatMetadata, metadataFaltantes } from "../element-metadata";
 import { toMermaid } from "./to-mermaid";
 
 export interface ReviewPacket {
@@ -35,6 +36,12 @@ export interface ReviewPacket {
   findings: QualityFinding[];
   /** Elementos sin cita de fuente (los que el revisor no puede contrastar). */
   untraced: string[];
+  /**
+   * Cajas SIN referencias (repo/wiki/dueño). Es un aviso, no un error: un Evento
+   * no necesita repositorio. Contesta «¿qué falta enganchar al código?» sin abrir
+   * las fichas una por una.
+   */
+  sinReferencias: string[];
 }
 
 const isContainer = (n: BuilderNode) => isContainerType(n.tipo_elemento);
@@ -45,9 +52,15 @@ function sourceTable(nodes: BuilderNode[]): string {
     const fuente = n.source?.trim() || "— (sin fuente)";
     const detalle = (n.descripcion || "").replace(/\s+/g, " ").trim();
     const corto = detalle.length > 80 ? `${detalle.slice(0, 77)}…` : detalle;
-    return `| ${n.nombre} | ${n.tipo_elemento} | ${fuente} | ${corto || "—"} |`;
+    // Las referencias van en la misma tabla: el revisor contrasta la caja con la
+    // fuente Y con el artefacto vivo (repo, wiki) en una sola pasada.
+    return `| ${n.nombre} | ${n.tipo_elemento} | ${fuente} | ${formatMetadata(n.metadata) || "—"} | ${corto || "—"} |`;
   });
-  return ["| Elemento | Tipo | Fuente | Detalle |", "|---|---|---|---|", ...rows].join("\n");
+  return [
+    "| Elemento | Tipo | Fuente | Referencias | Detalle |",
+    "|---|---|---|---|---|",
+    ...rows,
+  ].join("\n");
 }
 
 /**
@@ -63,6 +76,7 @@ export function reviewPacket(model: DiagramModel, sourceLabel?: string): ReviewP
   const v = validate(model);
   const pendientes = pendingAmbiguities(model);
   const untraced = nodes.filter((n) => !n.source?.trim()).map((n) => n.nombre);
+  const sinReferencias = metadataFaltantes([...containers, ...nodes]);
   const decididas = (model.ambiguities ?? []).filter((a) => a.resolucion?.trim());
 
   const ready = v.errors.length === 0 && graves.length === 0;
@@ -98,6 +112,11 @@ export function reviewPacket(model: DiagramModel, sourceLabel?: string): ReviewP
   if (untraced.length) {
     parts.push(
       `⚠️ ${untraced.length} elemento(s) sin fuente: ${untraced.join(", ")}. Sin cita, el revisor no puede contrastarlos.`
+    );
+  }
+  if (sinReferencias.length) {
+    parts.push(
+      `ℹ️ ${sinReferencias.length} caja(s) sin referencias: ${sinReferencias.join(", ")}. Poné al menos \`repo\` o \`wiki\` donde el artefacto exista (con \`update_element\`); no es un error del diagrama.`
     );
   }
 
@@ -144,5 +163,5 @@ export function reviewPacket(model: DiagramModel, sourceLabel?: string): ReviewP
       : `❌ No exportes todavía: ${v.errors.length} error(es) de validez y ${graves.length} hallazgo(s) grave(s). Corrige y vuelve a pedir la revisión.`
   );
 
-  return { markdown: parts.filter(Boolean).join("\n\n"), ready, findings, untraced };
+  return { markdown: parts.filter(Boolean).join("\n\n"), ready, findings, untraced, sinReferencias };
 }

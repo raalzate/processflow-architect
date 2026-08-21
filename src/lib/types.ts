@@ -1,8 +1,11 @@
 
 import type { SimulationNodeDatum, SimulationLinkDatum } from "d3";
 import type { EdgeRelationKind } from "./edge-relations";
+import type { ElementMetadata } from "./element-metadata";
 import type { NotationId } from "./notations";
 import { z } from "zod";
+
+export type { ElementMetadata };
 
 export const UsageSchema = z.object({
   totalTokens: z.number(),
@@ -64,6 +67,13 @@ export interface GraphNode extends SimulationNodeDatum {
   color?: string;
   /** Color de borde/contorno personalizado (hex). Si falta, usa el de la notación. */
   borderColor?: string;
+  /**
+   * Referencias y datos externos de la caja: dónde vive de verdad (repositorio,
+   * wiki, tablero, dueño). Es lo que conecta el diagrama con los artefactos
+   * reales; distinto de la cita de la fuente (`source` del MCP), que justifica
+   * el modelado y viaja dentro de la descripción. Ver `element-metadata.ts`.
+   */
+  metadata?: ElementMetadata[];
   /**
    * Id de la vista embebida (subproceso). Si está presente, el nodo actúa como
    * un "call activity" BPMN: al abrirlo se entra a esa vista para dar profundidad.
@@ -132,6 +142,8 @@ export interface Agregado {
   color?: string;
   /** Color de borde/contorno personalizado del contenedor (hex). */
   borderColor?: string;
+  /** Referencias y datos externos del contenedor (ver `GraphNode.metadata`). */
+  metadata?: ElementMetadata[];
 }
 
 export interface BigPicture {

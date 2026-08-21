@@ -170,3 +170,40 @@ describe("suggestViews", () => {
     expect(ddd?.name).toBe("Visión de dominio");
   });
 });
+
+describe("referencias en el paquete de revisión", () => {
+  it("informa las cajas sin referencias y las muestra en la tabla, sin volverlo un error", () => {
+    let m = emptyDiagram({ nombre_proyecto: "Pagos", notation: "ddd" });
+    m = addContainer(m, {
+      nombre: "Pagos",
+      tipo_elemento: "Agregado",
+      source: "PRD §1",
+      metadata: [{ clave: "wiki", valor: "Dominio Pagos", url: "https://wiki/pagos" }],
+    }).model;
+    m = addNode(m, {
+      nombre: "Pagar",
+      tipo_elemento: "Comando",
+      container: "Pagos",
+      source: "PRD §1",
+      metadata: [{ clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" }],
+    }).model;
+    m = addNode(m, { nombre: "Pago Hecho", tipo_elemento: "Evento", container: "Pagos", source: "PRD §1" }).model;
+    m = addEdge(m, { fuente: "pagar", destino: "pago-hecho", descripcion: "dispara" });
+
+    const p = reviewPacket(m, "PRD Aurora");
+    expect(p.sinReferencias).toEqual(["Pago Hecho"]);
+    expect(p.markdown).toContain("Referencias");
+    expect(p.markdown).toContain("repo: acme/pagos-svc");
+    expect(p.markdown).toContain("sin referencias");
+    // Un aviso no bloquea la entrega: el veredicto lo deciden errores y hallazgos graves.
+    expect(p.ready).toBe(true);
+  });
+
+  it("un diagrama sin ninguna referencia no rompe nada", () => {
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "ddd" });
+    m = addNode(m, { nombre: "Pagar", tipo_elemento: "Comando", source: "PRD" }).model;
+    const p = reviewPacket(m);
+    expect(p.sinReferencias).toEqual(["Pagar"]);
+    expect(p.markdown).toContain("| — |");
+  });
+});

@@ -1005,3 +1005,80 @@ describe("notación en el round-trip", () => {
     expect(emptyGraphData("P", "2026-08-05").notation).toBeUndefined();
   });
 });
+
+describe("metadatos de la caja: ida y vuelta", () => {
+  const meta = [
+    { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
+    { clave: "wiki", valor: "Dominio Pagos", url: "https://wiki/pagos" },
+    { clave: "owner", valor: "Equipo Pagos" },
+  ];
+
+  it("sobreviven el ciclo lienzo → GraphData → lienzo, en nodo Y en contenedor", () => {
+    const nodes = new Map<string, DesignerNode>([
+      ["agg-Pagos", makeNode({ id: "agg-Pagos", nombre: "Pagos", tipo_elemento: "Agregado", metadata: meta.slice(0, 1) })],
+      ["cmd", makeNode({ id: "cmd", nombre: "Pagar", agregado: "Pagos", metadata: meta })],
+    ]);
+    const data = canvasToGraphData(nodes, new Map(), {
+      nombre_proyecto: "P",
+      fecha_analisis: "2026-08-21",
+    });
+    expect(data.agregados[0].metadata).toEqual(meta.slice(0, 1));
+    expect(data.agregados[0].nodos[0].metadata).toEqual(meta);
+
+    const vuelta = graphDataToCanvas(data);
+    expect(vuelta.nodes.get("cmd")!.metadata).toEqual(meta);
+    expect(vuelta.nodes.get("agg-Pagos")!.metadata).toEqual(meta.slice(0, 1));
+  });
+
+  it("un modelo guardado ANTES de la feature abre sin metadatos y sin error", () => {
+    const viejo: GraphData = {
+      ...emptyGraphData("Viejo", "2026-08-21"),
+      agregados: [
+        {
+          nombre_agregado: "Pagos",
+          entidad_raiz: "Pago",
+          descripcion: "",
+          nodos: [
+            {
+              id: "cmd",
+              nombre: "Pagar",
+              tipo_elemento: "Comando",
+              estado_comparativo: "nuevo",
+            } as any,
+          ],
+          aristas: [],
+        } as Agregado,
+      ],
+    };
+    const canvas = graphDataToCanvas(viejo);
+    expect(canvas.nodes.get("cmd")!.metadata).toBeUndefined();
+    expect(canvas.nodes.get("agg-Pagos")!.metadata).toBeUndefined();
+  });
+
+  it("lo guardado se normaliza al abrir: basura fuera, clave repetida deduplicada", () => {
+    const data: GraphData = {
+      ...emptyGraphData("P", "2026-08-21"),
+      big_picture: {
+        descripcion: "",
+        hotspots: [],
+        nodos: [
+          {
+            id: "cmd",
+            nombre: "Pagar",
+            tipo_elemento: "Comando",
+            estado_comparativo: "nuevo",
+            metadata: [
+              { clave: "repo", valor: "viejo" },
+              { clave: "", valor: "x" },
+              { clave: "REPO", valor: "acme/pagos-svc" },
+            ],
+          } as any,
+        ],
+        aristas: [],
+      },
+    };
+    expect(graphDataToCanvas(data).nodes.get("cmd")!.metadata).toEqual([
+      { clave: "repo", valor: "acme/pagos-svc" },
+    ]);
+  });
+});

@@ -527,3 +527,33 @@ describe("lectura de la app (list_artifacts · get_artifact · list_views · get
     expect(resumen).toContain("Modelo");
   });
 });
+
+describe("metadatos de la caja (referencias): contrato con el agente", () => {
+  const TOOLS_CON_METADATA = ["add_node", "add_container", "update_element"];
+
+  it("las tres herramientas declaran el parámetro `metadata`", () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: "/tmp/x" });
+    for (const nombre of TOOLS_CON_METADATA) {
+      expect(tools.get(nombre)!.def.inputSchema.metadata, nombre).toBeDefined();
+    }
+    // Borrar es explícito y sólo en update: agregar no debe obligar a reenviar todo.
+    expect(tools.get("update_element")!.def.inputSchema.metadataRemove).toBeDefined();
+    expect(tools.get("add_node")!.def.inputSchema.metadataRemove).toBeUndefined();
+  });
+
+  it("su documentación explica para qué sirve y da el ejemplo con repositorio y wiki", () => {
+    // FR-008: la descripción de la tool es lo ÚNICO que el agente lee antes de
+    // usarla. Si esto se afloja, la propiedad existe y nadie la usa.
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: "/tmp/x" });
+    for (const nombre of TOOLS_CON_METADATA) {
+      const doc = JSON.stringify(tools.get(nombre)!.def);
+      expect(doc, nombre).toContain("repo");
+      expect(doc, nombre).toContain("wiki");
+      expect(doc, nombre).toMatch(/http\(s\)/);
+      // Y la diferencia con la cita de la fuente, que ya se confundió una vez.
+      expect(doc, nombre).toContain("source");
+    }
+  });
+});

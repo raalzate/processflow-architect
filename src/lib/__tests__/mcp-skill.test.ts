@@ -158,3 +158,18 @@ describe("contrato del arnés dentro del skill", () => {
     expect(SKILL_MD).toContain(SKILL_EXAMPLES_PATH);
   });
 });
+
+describe("metadatos en la guía del agente", () => {
+  it("los dos skills explican `metadata` con ejemplo y lo distinguen de `source`", () => {
+    // Sin esto la propiedad existe y nadie la usa: el agente sólo sabe lo que la
+    // skill y las descripciones de las tools le dicen (FR-008).
+    for (const skill of listSkills()) {
+      const md = skill.files[0].content;
+      expect(md, skill.id).toMatch(/metadata/);
+      expect(md, skill.id).toContain("repo");
+      expect(md, skill.id).toContain("wiki");
+      expect(md, skill.id).toContain("metadataRemove");
+      expect(md, skill.id).toMatch(/dónde vive/i);
+    }
+  });
+});

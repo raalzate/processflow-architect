@@ -109,6 +109,21 @@ export interface McpToolsOptions {
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 const fail = (t: string) => ({ content: [{ type: "text" as const, text: t }], isError: true });
 
+/**
+ * Metadatos de una caja tal como los declara el agente. Se valida y deduplica en
+ * `src/lib/element-metadata.ts`; acá sólo se declara la FORMA y —lo que de verdad
+ * importa— la documentación que el agente lee antes de usarla.
+ */
+const metadataSchema = z
+  .array(
+    z.object({
+      clave: z.string().describe('Clave corta: "repo", "wiki", "owner", "SLA".'),
+      valor: z.string().describe('Valor legible: "acme/pagos-svc", "Equipo Pagos".'),
+      url: z.string().optional().describe("URL donde eso vive. Sólo http(s) se vuelve enlace en la app."),
+    })
+  )
+  .optional();
+
 export function registerProcessflowTools(server: McpServer, opts: McpToolsOptions) {
   const DIAGRAMS_DIR = path.join(opts.workspace, ".processflow", "diagrams");
 
@@ -293,12 +308,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .describe(
             "Cita de DÓNDE sale en la fuente (\"PRD §3.2 (p. 7)\", \"acta 12-mar\", \"src/pagos/service.ts\"). Sostiene la revisión humana: aparece en la tabla elemento←fuente de review_diagram."
           ),
+        metadata: metadataSchema.describe(
+            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"acme/pagos-svc\", url:\"https://github.com/acme/pagos-svc\"}, {clave:\"wiki\", valor:\"Dominio Pagos\", url:\"https://wiki/pagos\"}, {clave:\"owner\", valor:\"Equipo Pagos\"}]"
+          ),
       },
     },
-    async ({ diagramId, name, type, description, source }) => {
+    async ({ diagramId, name, type, description, source, metadata }) => {
       const model = await loadModel(diagramId);
       try {
-        const r = addContainer(model, { nombre: name, tipo_elemento: type, descripcion: description, source });
+        const r = addContainer(model, { nombre: name, tipo_elemento: type, descripcion: description, source, metadata });
         await saveModel(diagramId, r.model);
         return text(`Contenedor "${name}" añadido (id=${r.id}). Úsalo como container="${name}".`);
       } catch (e: any) {
@@ -327,9 +345,12 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .describe(
             "Cita de DÓNDE sale en la fuente (\"PRD §3.2 (p. 7)\", \"acta 12-mar\", \"src/pagos/service.ts\"). Aparece en la descripción del elemento y en la tabla elemento←fuente de review_diagram: sin ella el humano no puede contrastar el diagrama."
           ),
+        metadata: metadataSchema.describe(
+            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"acme/pagos-svc\", url:\"https://github.com/acme/pagos-svc\"}, {clave:\"wiki\", valor:\"Dominio Pagos\", url:\"https://wiki/pagos\"}, {clave:\"owner\", valor:\"Equipo Pagos\"}]"
+          ),
       },
     },
-    async ({ diagramId, name, type, container, description, tags, id, source }) => {
+    async ({ diagramId, name, type, container, description, tags, id, source, metadata }) => {
       const model = await loadModel(diagramId);
       try {
         const r = addNode(model, {
@@ -340,6 +361,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           descripcion: description,
           tags_tecnologia: tags,
           source,
+          metadata,
         });
         await saveModel(diagramId, r.model);
         return text(`Nodo "${name}" añadido (id=${r.id}).`);
@@ -386,7 +408,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Corregir un elemento",
       description:
-        "Cambia nombre, descripción, cita de la fuente o tags de un elemento existente SIN perder su id ni sus relaciones. Es la herramienta para arreglar lo que reporta validate_diagram (nombres que el lienzo recorta, elementos sin fuente) en vez de borrar y recrear. Renombrar un contenedor arrastra a sus hijos.",
+        "Cambia nombre, descripción, cita de la fuente, tags o METADATOS (repositorio, wiki, dueño) de un elemento existente SIN perder su id ni sus relaciones. Es la herramienta para arreglar lo que reporta validate_diagram (nombres que el lienzo recorta, elementos sin fuente) en vez de borrar y recrear. Renombrar un contenedor arrastra a sus hijos.",
       inputSchema: {
         diagramId: z.string(),
         id: z.string().describe("Id del elemento (nodo o contenedor)."),
@@ -400,9 +422,18 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         description: z.string().optional().describe("Descripción nueva (aquí va el detalle largo)."),
         source: z.string().optional().describe("Cita de la fuente."),
         tags: z.array(z.string()).optional(),
+        metadata: metadataSchema.describe(
+            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"acme/pagos-svc\", url:\"https://github.com/acme/pagos-svc\"}, {clave:\"wiki\", valor:\"Dominio Pagos\", url:\"https://wiki/pagos\"}, {clave:\"owner\", valor:\"Equipo Pagos\"}]"
+          ),
+        metadataRemove: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Claves de metadatos a BORRAR. Va aparte de `metadata` —que agrega o reemplaza por clave— para que sumar una referencia no obligue a reenviar las que ya estaban."
+          ),
       },
     },
-    async ({ diagramId, id, name, type, description, source, tags }) => {
+    async ({ diagramId, id, name, type, description, source, tags, metadata, metadataRemove }) => {
       const model = await loadModel(diagramId);
       try {
         const next = updateNode(model, id, {
@@ -411,6 +442,8 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ...(description !== undefined ? { descripcion: description } : {}),
           ...(source !== undefined ? { source } : {}),
           ...(tags !== undefined ? { tags_tecnologia: tags } : {}),
+          ...(metadata !== undefined ? { metadata } : {}),
+          ...(metadataRemove !== undefined ? { metadataRemove } : {}),
         });
         await saveModel(diagramId, next);
         const n = next.nodes.find((x) => x.id === id)!;

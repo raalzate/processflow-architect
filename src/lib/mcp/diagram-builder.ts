@@ -22,6 +22,12 @@
 
 import type { GraphData, GraphNode, Agregado } from "../types";
 import {
+  normalizarLista,
+  quitarMetadata,
+  upsertVarios,
+  type ElementMetadata,
+} from "../element-metadata";
+import {
   getNotation,
   hasRole,
   isBlobContainer,
@@ -101,6 +107,13 @@ export interface BuilderNode {
    * revisor compara elemento ↔ fuente en vez de confiar en el modelo.
    */
   source?: string;
+  /**
+   * Referencias y datos externos de la caja: DÓNDE VIVE de verdad (repositorio,
+   * wiki, tablero, dueño). Distinto de `source`: la cita justifica el modelado,
+   * el metadato apunta al artefacto vivo y sobrevive el ida y vuelta como dato
+   * (la cita se dobla en la descripción, ver `toDomainNode`).
+   */
+  metadata?: ElementMetadata[];
   /** Nombre del contenedor al que pertenece (los contenedores lo dejan vacío). */
   container?: string;
   estado_comparativo?: Estado;
@@ -193,6 +206,17 @@ export function emptyDiagram(meta: DiagramMeta): DiagramModel {
   return { meta: { ...meta }, nodes: [], edges: [] };
 }
 
+/**
+ * Metadatos declarados al crear una caja: se validan y deduplican por clave acá,
+ * no al guardarlos. Un agente que manda una clave vacía tiene que enterarse en la
+ * llamada, no dejar el diagrama con basura silenciosa.
+ * @throws con el motivo (clave/valor obligatorios, topes).
+ */
+function metadataDeEntrada(lista: ElementMetadata[] | undefined): ElementMetadata[] | undefined {
+  if (!lista?.length) return undefined;
+  return upsertVarios(undefined, lista);
+}
+
 /** Añade un CONTENEDOR (Agregado, Pool, Límite, Paquete…). Lanza si el tipo no es contenedor. */
 export function addContainer(
   model: DiagramModel,
@@ -205,7 +229,8 @@ export function addContainer(
   }
   const id = input.id ?? uniqueId(model, input.nombre);
   if (findNode(model, id)) throw new Error(`Ya existe un elemento con id "${id}".`);
-  const node: BuilderNode = { ...input, id, container: "" };
+  const node: BuilderNode = { ...input, id, container: "", metadata: metadataDeEntrada(input.metadata) };
+  if (!node.metadata) delete node.metadata;
   return { model: { ...model, nodes: [...model.nodes, node] }, id };
 }
 
@@ -229,7 +254,8 @@ export function addNode(
   }
   const id = input.id ?? uniqueId(model, input.nombre);
   if (findNode(model, id)) throw new Error(`Ya existe un elemento con id "${id}".`);
-  const node: BuilderNode = { ...input, id };
+  const node: BuilderNode = { ...input, id, metadata: metadataDeEntrada(input.metadata) };
+  if (!node.metadata) delete node.metadata;
   return { model: { ...model, nodes: [...model.nodes, node] }, id };
 }
 
@@ -249,7 +275,12 @@ export function addEdge(model: DiagramModel, input: BuilderEdge): DiagramModel {
 export function updateNode(
   model: DiagramModel,
   id: string,
-  patch: Partial<Pick<BuilderNode, "nombre" | "descripcion" | "source" | "tags_tecnologia" | "tipo_elemento">>
+  patch: Partial<Pick<BuilderNode, "nombre" | "descripcion" | "source" | "tags_tecnologia" | "tipo_elemento">> & {
+    /** Metadatos a agregar o reemplazar POR CLAVE (no reemplaza la lista entera). */
+    metadata?: ElementMetadata[];
+    /** Claves de metadatos a borrar. */
+    metadataRemove?: string[];
+  }
 ): DiagramModel {
   const target = findNode(model, id);
   if (!target) throw new Error(`No existe el elemento "${id}".`);
@@ -264,9 +295,24 @@ export function updateNode(
   if (nuevoNombre && nuevoNombre !== target.nombre && model.nodes.some((n) => n.nombre === nuevoNombre && isContainerNode(n))) {
     throw new Error(`Ya hay un contenedor llamado "${nuevoNombre}".`);
   }
+  // Los metadatos se aplican POR CLAVE: reemplazar la lista entera borraría en
+  // silencio las referencias que otra pasada del agente ya había puesto.
+  const { metadata: metaUpsert, metadataRemove, ...campos } = patch;
+  let metadata = target.metadata;
+  if (metadataRemove?.length) {
+    const quedan = quitarMetadata(metadata, metadataRemove);
+    metadata = quedan.length ? quedan : undefined;
+  }
+  if (metaUpsert?.length) metadata = upsertVarios(metadata, metaUpsert);
+
   const renombraContenedor = isContainerNode(target) && nuevoNombre && nuevoNombre !== target.nombre;
   const nodes = model.nodes.map((n) => {
-    if (n.id === id) return { ...n, ...patch, nombre: nuevoNombre || n.nombre };
+    if (n.id === id) {
+      const actualizado: BuilderNode = { ...n, ...campos, nombre: nuevoNombre || n.nombre };
+      if (metadata?.length) actualizado.metadata = metadata;
+      else delete actualizado.metadata;
+      return actualizado;
+    }
     // Los hijos referencian al contenedor por NOMBRE: hay que arrastrarlos.
     if (renombraContenedor && n.container === target.nombre) return { ...n, container: nuevoNombre };
     return n;
@@ -1052,6 +1098,7 @@ function toDomainNode(n: BuilderNode): Omit<GraphNode, "agregado"> {
     nombre: n.nombre,
     tipo_elemento: n.tipo_elemento as GraphNode["tipo_elemento"],
     descripcion,
+    metadata: n.metadata,
     estado_comparativo: n.estado_comparativo ?? "nuevo",
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
@@ -1087,6 +1134,7 @@ export function toGraphData(input: DiagramModel): GraphData {
     tipo_contenedor: c.tipo_elemento,
     color: c.color,
     borderColor: c.borderColor,
+    metadata: c.metadata,
   }));
   const aggByName = new Map(agregados.map((a) => [a.nombre_agregado, a]));
 
@@ -1169,13 +1217,14 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       container: "",
       color: (agg as any).color,
       borderColor: (agg as any).borderColor,
+      metadata: normalizarLista(agg.metadata),
       x: agg.x,
       y: agg.y,
       width: agg.width,
       height: agg.height,
     });
     for (const n of agg.nodos || []) {
-      nodes.push({ ...(n as any), container: agg.nombre_agregado });
+      nodes.push({ ...(n as any), container: agg.nombre_agregado, metadata: normalizarLista((n as any).metadata) });
     }
     for (const a of agg.aristas || []) {
       edges.push({
@@ -1191,7 +1240,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
     }
   }
   for (const n of data.big_picture?.nodos || []) {
-    nodes.push({ ...(n as any), container: "" });
+    nodes.push({ ...(n as any), container: "", metadata: normalizarLista((n as any).metadata) });
   }
   const pushEdge = (a: any) =>
     edges.push({

@@ -9,6 +9,8 @@ import {
   deleteNodeAcrossGraphs,
   updateNodeAcrossGraphs,
   BIG_PICTURE_GROUP,
+  mergeMetadata,
+  metadataConflictos,
   type NamedGraph,
 } from "../graph-merge";
 import type { GraphData } from "../types";
@@ -178,5 +180,58 @@ describe("updateNodeInGraph", () => {
 
   it("devuelve null si el nodo no existe", () => {
     expect(updateNodeInGraph(makeGraph(), "zzz", { nombre: "X" })).toBeNull();
+  });
+});
+
+describe("metadatos al fusionar cajas", () => {
+  it("une por clave: el principal gana el valor y las claves nuevas se agregan", () => {
+    const unido = mergeMetadata(
+      [{ clave: "repo", valor: "acme/principal" }],
+      [
+        [
+          { clave: "REPO", valor: "acme/secundario" },
+          { clave: "wiki", valor: "Dominio Pagos", url: "https://wiki/pagos" },
+        ],
+      ]
+    );
+    expect(unido).toEqual([
+      { clave: "repo", valor: "acme/principal" },
+      { clave: "wiki", valor: "Dominio Pagos", url: "https://wiki/pagos" },
+    ]);
+  });
+
+  it("sin metadatos en ninguna, no inventa una lista vacía", () => {
+    expect(mergeMetadata(undefined, [undefined, []])).toBeUndefined();
+  });
+
+  it("el conflicto de una clave queda reportado, no silenciado", () => {
+    const conflictos = metadataConflictos(
+      [{ clave: "repo", valor: "acme/principal" }, { clave: "owner", valor: "Pagos" }],
+      [[{ clave: "repo", valor: "acme/secundario" }, { clave: "owner", valor: "Pagos" }]]
+    );
+    expect(conflictos).toEqual([
+      { clave: "repo", principal: "acme/principal", otros: ["acme/secundario"] },
+    ]);
+  });
+
+  it("mergeNodesInGraph conserva las referencias de los dos nodos", () => {
+    const graph: GraphData = {
+      ...makeGraph(),
+      big_picture: {
+        descripcion: "",
+        hotspots: [],
+        nodos: [
+          { id: "a", nombre: "Cliente", tipo_elemento: "Actor", estado_comparativo: "nuevo", metadata: [{ clave: "repo", valor: "acme/a" }] } as any,
+          { id: "b", nombre: "Usuario", tipo_elemento: "Actor", estado_comparativo: "nuevo", metadata: [{ clave: "repo", valor: "acme/b" }, { clave: "wiki", valor: "W" }] } as any,
+        ],
+        aristas: [],
+      },
+    };
+    const next = mergeNodesInGraph(graph, "a", ["b"]);
+    const nodo = next.big_picture.nodos.find((n) => n.id === "a")!;
+    expect(nodo.metadata).toEqual([
+      { clave: "repo", valor: "acme/a" },
+      { clave: "wiki", valor: "W" },
+    ]);
   });
 });

@@ -18,6 +18,7 @@ import {
   type Agregado,
 } from "@/lib/types";
 import { type EdgeRelationKind } from "@/lib/edge-relations";
+import { normalizarLista, type ElementMetadata } from "@/lib/element-metadata";
 import {
   isNotationContainer,
   sizeOfType,
@@ -44,6 +45,12 @@ export interface DesignerNode {
   color?: string;
   /** Color de borde/contorno personalizado (hex). */
   borderColor?: string;
+  /**
+   * Referencias y datos externos de la caja (repo, wiki, dueño). Vale igual para
+   * un nodo y para un CONTENEDOR: en el lienzo el contenedor también es un
+   * `DesignerNode` (`agg-<nombre>`), pero al guardar viaja a `Agregado.metadata`.
+   */
+  metadata?: ElementMetadata[];
   /** Id de la vista embebida (subproceso): abrirlo entra a esa vista. */
   viewRef?: string;
   x: number;
@@ -132,6 +139,7 @@ export function canvasToGraphData(
       tipo_contenedor: c.tipo_elemento,
       color: c.color,
       borderColor: c.borderColor,
+      metadata: c.metadata,
     }));
   const aggByName = new Map(agregados.map((a) => [a.nombre_agregado, a]));
 
@@ -223,6 +231,7 @@ function toDomainNode(n: DesignerNode): Omit<GraphNode, "agregado"> {
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
     borderColor: n.borderColor,
+    metadata: n.metadata,
     viewRef: n.viewRef,
     x: n.x,
     y: n.y,
@@ -276,6 +285,9 @@ export function graphDataToCanvas(content: GraphData | null | undefined): {
       estado_comparativo: "nuevo",
       color: (agg as any).color,
       borderColor: (agg as any).borderColor,
+      // Lo guardado puede venir de un import o de una versión vieja: se normaliza
+      // (descarta lo inválido, deduplica por clave) en vez de confiar.
+      metadata: normalizarLista((agg as any).metadata),
       x: pos.x,
       y: pos.y,
       width: w,
@@ -336,6 +348,7 @@ function hydrateNode(
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
     borderColor: n.borderColor,
+    metadata: normalizarLista(n.metadata),
     viewRef: n.viewRef,
     x,
     y,

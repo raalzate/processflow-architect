@@ -55,3 +55,39 @@ describe("inspector-draft", () => {
     });
   });
 });
+
+describe("metadatos en el parche del borrador", () => {
+  it("editar sólo las referencias manda sólo `metadata` (la geometría del lienzo queda)", () => {
+    const original = {
+      id: "cmd",
+      nombre: "Pagar",
+      x: 10,
+      y: 20,
+      metadata: [{ clave: "repo", valor: "acme/pagos-svc" }],
+    };
+    const draft = {
+      ...original,
+      metadata: [
+        { clave: "repo", valor: "acme/pagos-svc" },
+        { clave: "wiki", valor: "Dominio Pagos", url: "https://wiki/pagos" },
+      ],
+    };
+    expect(hasDraftChanges(original, draft)).toBe(true);
+    expect(draftPatch(original, draft)).toEqual({ metadata: draft.metadata });
+  });
+
+  it("quitar la última referencia viaja como `undefined`, no como lista vacía", () => {
+    // El campo es OPCIONAL en el elemento (como en `DesignerNode`): el borrador
+    // sin referencias no manda `[]`, manda que ya no hay.
+    type Ficha = { id: string; metadata?: { clave: string; valor: string }[] };
+    const original: Ficha = { id: "cmd", metadata: [{ clave: "repo", valor: "a" }] };
+    const draft: Ficha = { id: "cmd", metadata: undefined };
+    expect(draftPatch(original, draft)).toEqual({ metadata: undefined });
+  });
+
+  it("reordenar cuenta como cambio: el orden es del usuario", () => {
+    const a = { metadata: [{ clave: "repo", valor: "r" }, { clave: "wiki", valor: "w" }] };
+    const b = { metadata: [{ clave: "wiki", valor: "w" }, { clave: "repo", valor: "r" }] };
+    expect(hasDraftChanges(a, b)).toBe(true);
+  });
+});

@@ -32,6 +32,9 @@ import {
   ClipboardPaste,
   CopyPlus,
   BoxSelect,
+  ChevronUp,
+  ChevronDown,
+  Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +61,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import * as DrawerPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
+import {
+  MAX_METADATA_POR_CAJA,
+  esEnlaceExterno,
+  moverMetadata,
+  quitarMetadata,
+  upsertMetadata,
+  validarMetadata,
+  type ElementMetadata,
+} from "@/lib/element-metadata";
 import { hasPlatformModifier, modifierLabel } from "@/lib/platform";
 import {
   EDGE_RELATIONS,
@@ -262,6 +274,150 @@ const TagsField: React.FC<{
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+/**
+ * Campo «Referencias» (metadatos de la caja): dónde vive de verdad el elemento
+ * —repositorio, wiki, tablero, dueño—. Lo escribe casi siempre el agente por
+ * MCP; esta ficha es la red para corregir a mano una url mal puesta.
+ *
+ * Todo lo que DECIDE (validar, deduplicar por clave, qué url es enlazable) vive
+ * en `src/lib/element-metadata.ts`: acá sólo se orquesta. En particular
+ * `esEnlaceExterno` es la frontera de seguridad — un metadato lo escribe un
+ * agente y termina en un `href`, así que `javascript:`/`data:`/`file://` se
+ * muestran como texto y nunca como enlace.
+ */
+const MetadataField: React.FC<{
+  value?: ElementMetadata[];
+  onChange: (lista: ElementMetadata[] | undefined) => void;
+}> = ({ value, onChange }) => {
+  const lista = value ?? [];
+  const [clave, setClave] = useState("");
+  const [valor, setValor] = useState("");
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const agregar = () => {
+    const entrada: ElementMetadata = { clave, valor, ...(url.trim() ? { url: url.trim() } : {}) };
+    const problema = validarMetadata(entrada);
+    if (problema) return setError(problema);
+    try {
+      onChange(upsertMetadata(lista, entrada));
+    } catch (e) {
+      return setError(e instanceof Error ? e.message : String(e));
+    }
+    setClave("");
+    setValor("");
+    setUrl("");
+    setError(null);
+  };
+
+  const quitar = (k: string) => {
+    const quedan = quitarMetadata(lista, [k]);
+    onChange(quedan.length ? quedan : undefined);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <Label htmlFor="meta-clave">Referencias</Label>
+        <span className="text-2xs text-muted-foreground">
+          {lista.length}/{MAX_METADATA_POR_CAJA}
+        </span>
+      </div>
+      <p className="mb-1.5 mt-0.5 text-xs text-muted-foreground">
+        Dónde vive esto: repositorio, wiki, tablero, dueño. Las urls http(s) se abren en el
+        navegador.
+      </p>
+
+      {lista.length > 0 && (
+        <ul className="mb-2 space-y-1">
+          {lista.map((m, i) => (
+            <li
+              key={`${m.clave}-${i}`}
+              className="flex items-start gap-2 rounded-md border bg-muted/40 px-2 py-1.5"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-2xs uppercase tracking-wide text-muted-foreground">{m.clave}</div>
+                {esEnlaceExterno(m.url) ? (
+                  <a
+                    href={m.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={m.url}
+                    className="inline-flex max-w-full items-center gap-1 truncate text-xs text-primary hover:underline"
+                  >
+                    <Link2 className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{m.valor}</span>
+                  </a>
+                ) : (
+                  <div className="truncate text-xs" title={m.url ? `${m.valor} — ${m.url}` : m.valor}>
+                    {m.valor}
+                    {/* Una url que no es http(s) se muestra, pero no se puede clicar. */}
+                    {m.url && <span className="ml-1 text-muted-foreground">({m.url})</span>}
+                  </div>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-0.5">
+                <button
+                  type="button"
+                  title="Subir"
+                  disabled={i === 0}
+                  onClick={() => onChange(moverMetadata(lista, i, i - 1))}
+                  className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  title="Bajar"
+                  disabled={i === lista.length - 1}
+                  onClick={() => onChange(moverMetadata(lista, i, i + 1))}
+                  className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  title={`Quitar "${m.clave}"`}
+                  onClick={() => quitar(m.clave)}
+                  className="rounded p-1 text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Input
+          id="meta-clave"
+          value={clave}
+          onChange={(e) => setClave(e.target.value)}
+          placeholder="repo"
+          className="h-8 w-24"
+        />
+        <Input
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          placeholder="acme/pagos-svc"
+          className="h-8 flex-1"
+        />
+        <Input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://github.com/acme/pagos-svc"
+          className="h-8 flex-1"
+        />
+        <Button type="button" variant="outline" size="sm" className="h-8" onClick={agregar}>
+          <Plus className="mr-1 h-3.5 w-3.5" /> Agregar
+        </Button>
+      </div>
+      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </div>
   );
 };
@@ -594,6 +750,10 @@ const EditNodeDialog: React.FC<{
             label="Color de borde"
             value={draft.borderColor}
             onChange={(c) => setDraft((d) => (d ? { ...d, borderColor: c } : d))}
+          />
+          <MetadataField
+            value={draft.metadata}
+            onChange={(lista) => setDraft((d) => (d ? { ...d, metadata: lista } : d))}
           />
             </div>
           </div>

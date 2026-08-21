@@ -80,7 +80,12 @@ export function copySelection(
 
   if (picked.size === 0) return null;
   return {
-    nodes: Array.from(picked.values()).map((n) => ({ ...n })),
+    // Copia de los metadatos también: compartir el array dejaría al pegado y al
+    // original editándose entre sí a la primera mutación descuidada.
+    nodes: Array.from(picked.values()).map((n) => ({
+      ...n,
+      ...(n.metadata ? { metadata: n.metadata.map((m) => ({ ...m })) } : {}),
+    })),
     links: copiedLinks.map((l) => ({ ...l })),
   };
 }

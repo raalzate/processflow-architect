@@ -187,3 +187,24 @@ describe("portapapeles compartido", () => {
     expect(getSharedClipboard()).toBe(clip);
   });
 });
+
+describe("metadatos al copiar y pegar", () => {
+  it("la copia se lleva los metadatos, en orden y sin compartir el array", () => {
+    const meta = [
+      { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
+      { clave: "owner", valor: "Equipo Pagos" },
+    ];
+    const nodes = new Map<string, DesignerNode>([
+      ["cmd", node({ id: "cmd", nombre: "Pagar", metadata: meta })],
+    ]);
+    const clip = copySelection(nodes, new Map(), ["cmd"])!;
+    expect(clip.nodes[0].metadata).toEqual(meta);
+    expect(clip.nodes[0].metadata).not.toBe(meta);
+
+    let i = 0;
+    const res = pasteClipboard(nodes, new Map(), clip, { newId: () => `n${++i}` });
+    const pegado = res.nodes.get("n1")!;
+    expect(pegado.metadata).toEqual(meta);
+    expect(pegado.metadata).not.toBe(nodes.get("cmd")!.metadata);
+  });
+});
