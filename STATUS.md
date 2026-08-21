@@ -4,10 +4,10 @@ Lo imprime el hook `SessionStart`. Sirve para no releer el repo entero para resp
 Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verificado con un comando**;
 lo que se supone va en "deuda conocida".
 
-- **Fecha del último gate completo:** 2026-08-20
+- **Fecha del último gate completo:** 2026-08-21
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.6.0 (tag `v0.6.0` → instaladores por `release-build.yml`)
+- **Versión publicada:** 0.6.1 (tag `v0.6.1` → instaladores por `release-build.yml`)
 
 ## Señales
 
