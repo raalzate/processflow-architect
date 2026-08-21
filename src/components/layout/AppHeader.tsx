@@ -17,6 +17,7 @@ import {
   X,
   FolderOpen,
   ChevronDown,
+  Pencil,
 } from "lucide-react";
 import {
   Dialog,
@@ -57,6 +58,7 @@ import { isChecked } from "@/lib/graph-filters";
 import { useToast } from "@/hooks/use-toast";
 import { BetaBadge } from "@/components/layout/AppCredits";
 import { parseDiagramJson } from "@/lib/import-diagram";
+import { normalizeProjectName } from "@/lib/project-rename";
 import {
   INITIAL_NOTATION_ID,
   NOTATION_LIST,
@@ -73,6 +75,8 @@ interface AppHeaderProps {
   /** Importa un GraphData ya generado (p. ej. exportado por el MCP / Claude Code). */
   onImportJson: (nombre: string, content: GraphData) => string | null;
   onFileDelete: (id: string) => void;
+  /** Renombra el proyecto activo; `false` si el nombre no era válido. */
+  onRenameProject: (id: string, nombre: string) => boolean;
   onDownloadJson: () => void;
   onSearchSelect: (node: GraphNode) => void;
 }
@@ -148,6 +152,7 @@ const FileManagement: React.FC<
     | "onCreateProject"
     | "onImportJson"
     | "onFileDelete"
+    | "onRenameProject"
     | "onDownloadJson"
   >
 > = ({
@@ -157,6 +162,7 @@ const FileManagement: React.FC<
   onCreateProject,
   onImportJson,
   onFileDelete,
+  onRenameProject,
   onDownloadJson,
 }) => {
   const { toast } = useToast();
@@ -165,6 +171,28 @@ const FileManagement: React.FC<
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Renombrar el proyecto activo (issue #127): el nombre se lee en este selector,
+  // así que se cambia acá — por el menú Proyecto o con doble clic sobre el nombre,
+  // el mismo gesto que ya enseña la barra de vistas.
+  const current = savedFiles.find((f) => f.id === currentFileId) ?? null;
+  const currentName = current?.content.nombre_proyecto ?? "";
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const startRename = () => {
+    if (!current) return;
+    setRenameValue(currentName);
+    setRenaming(true);
+  };
+  const submitRename = () => {
+    if (!currentFileId) return;
+    const res = normalizeProjectName(renameValue);
+    if (!res.ok) {
+      toast({ variant: "destructive", title: "No se pudo renombrar", description: res.motivo });
+      return; // se queda en edición: el nombre inválido no cierra el campo
+    }
+    if (onRenameProject(currentFileId, renameValue)) setRenaming(false);
+  };
 
   // Diálogo de "Nuevo proyecto"
   const [newOpen, setNewOpen] = useState(false);
@@ -211,13 +239,33 @@ const FileManagement: React.FC<
 
   return (
     <div className="flex items-center gap-2">
-      {mounted ? (
+      {mounted && renaming ? (
+        // Edición en el lugar: Enter guarda, Esc cancela, salir del campo guarda.
+        <Input
+          autoFocus
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submitRename();
+            if (e.key === "Escape") setRenaming(false);
+          }}
+          onBlur={submitRename}
+          className="w-[280px] md:w-[320px]"
+          title="Enter guarda · Esc cancela"
+          aria-label="Nombre del proyecto"
+        />
+      ) : mounted ? (
         <Select
           value={currentFileId || ""}
           onValueChange={onFileSelect}
           disabled={savedFiles.length === 0}
         >
-          <SelectTrigger className="w-[280px] md:w-[320px]">
+          <SelectTrigger
+            className="w-[280px] md:w-[320px]"
+            onDoubleClick={startRename}
+            // El nombre se recorta con «…» en el trigger: el title lo da entero.
+            title={currentName ? `${currentName} — doble clic para renombrar` : "Seleccionar proyecto"}
+          >
             <SelectValue placeholder="Seleccionar proyecto..." />
           </SelectTrigger>
           <SelectContent>
@@ -263,6 +311,9 @@ const FileManagement: React.FC<
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled={!currentFileId} onClick={onDownloadJson}>
             <FileDown className="mr-2 h-4 w-4" /> Descargar JSON
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={!currentFileId} onClick={startRename}>
+            <Pencil className="mr-2 h-4 w-4" /> Renombrar proyecto
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={!currentFileId}

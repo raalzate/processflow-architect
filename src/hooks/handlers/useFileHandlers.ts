@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { SavedFile, GraphData, ArchitectureDriversOutput, ConstraintsRisksOutput, RoadmapOutput, TechnicalElementsOutput } from "@/lib/types";
 import { emptyGraphData } from "@/components/graph/designer/serialize";
+import { normalizeProjectName, renameSavedFile } from "@/lib/project-rename";
 import type { NotationId } from "@/lib/notations";
 
 type FileHandlersDeps = {
@@ -143,6 +144,33 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         toast({ title: "Archivo eliminado", description: `"${fileToDel.name}" ha sido eliminado.` });
     }, [savedFiles, currentFileId, deleteFileHook, setCurrentFileId, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
 
+    // Renombrar el proyecto activo. Vive acá y no sólo en «Metadatos del
+    // proyecto» del lienzo: el nombre se LEE en la cabecera, así que se cambia
+    // desde donde se lee (issue #127). La regla de qué se mueve —y qué no— la
+    // decide `src/lib/project-rename.ts`.
+    const handleRenameProject = useCallback((id: string, nombre: string) => {
+        const file = savedFiles.find((f) => f.id === id);
+        if (!file) return false;
+        const res = normalizeProjectName(nombre);
+        if (!res.ok) {
+            toast({ variant: "destructive", title: "No se pudo renombrar", description: res.motivo });
+            return false;
+        }
+        const renamed = renameSavedFile(file, nombre);
+        if (!renamed || renamed === file) return true; // mismo nombre: nada que guardar
+        const updated = savedFiles.map((f) => (f.id === id ? renamed : f));
+        setSavedFiles(updated);
+        if (currentFileId === id) {
+            try {
+                loadFile(renamed); // refresca las vistas derivadas con el nombre nuevo
+            } catch (e) {
+                console.error("Error refreshing views after rename:", e);
+            }
+        }
+        toast({ title: "Proyecto renombrado", description: `Ahora se llama "${res.nombre}".` });
+        return true;
+    }, [savedFiles, setSavedFiles, currentFileId, loadFile, toast]);
+
     const handleDownloadJson = useCallback(() => {
         if (!graphData || !currentFileId) { toast({ variant: "destructive", title: "No hay archivo para descargar", description: "Carga o selecciona un archivo primero." }); return; }
         const currentFile = savedFiles.find(f => f.id === currentFileId); if (!currentFile) return;
@@ -157,6 +185,7 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         handleDesignUpdate,
         handleFileSelect,
         handleFileDelete,
+        handleRenameProject,
         handleDownloadJson,
     };
 }

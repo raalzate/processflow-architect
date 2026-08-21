@@ -42,6 +42,7 @@ const MemoizedAppHeader = React.memo(() => {
     handleCreateProject,
     handleCreateProjectFromContent,
     handleFileDelete,
+    handleRenameProject,
     handleDownloadJson,
     handleSearchSelect,
   } = useGraphContext();
@@ -54,6 +55,7 @@ const MemoizedAppHeader = React.memo(() => {
       onCreateProject={handleCreateProject}
       onImportJson={handleCreateProjectFromContent}
       onFileDelete={handleFileDelete}
+      onRenameProject={handleRenameProject}
       onDownloadJson={handleDownloadJson}
       onSearchSelect={handleSearchSelect}
     />

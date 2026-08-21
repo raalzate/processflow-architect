@@ -76,6 +76,8 @@ export interface GraphContextType {
   handleDesignUpdate: (fileId: string, content: GraphData) => void;
   handleFileSelect: (id: string) => void;
   handleFileDelete: (id: string) => void;
+  /** Renombra el proyecto guardado; `false` si el nombre no era válido. */
+  handleRenameProject: (id: string, nombre: string) => boolean;
   handleDownloadJson: () => void;
   openNodeModal: (node: GraphNode | null, clearHistory?: boolean) => void;
   handleNodeSelectFromSidebar: (node: GraphNode) => void;
