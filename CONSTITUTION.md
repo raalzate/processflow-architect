@@ -1,6 +1,6 @@
 # Constitución — Processflow Architect
 
-**Versión 1.0.0** · Principios que no se negocian. Lo demás (convenciones, dominio, cómo se
+**Versión 1.1.0** · Principios que no se negocian. Lo demás (convenciones, dominio, cómo se
 hacen las cosas) vive en `CLAUDE.md`; el arnés que los hace cumplir, en `docs/harness/harness.md`.
 
 Cada principio dice su **fuerza**:
@@ -46,11 +46,15 @@ y las peticiones HTTP a proveedores salen sólo del main. No se agregan SDKs de 
 *Mecanismo:* regla DEPS de `scripts/repo-lint.mjs` (SDKs prohibidos en `package.json`) +
 `reuse-guard` (instanciar un cliente de nube en el código se bloquea) + `reviewer`.
 
-## P5 — Añadir una función de IA es declarar una `AiTask` · REVIEW
+## P5 — Añadir una función de IA es declarar una `AiTask` · BLOCKING
 
 La superficie de extensión es `src/lib/ai/tasks.ts`. El router (`router.ts`) y los proveedores
 (`providers.ts`) sólo se tocan para agregar un motor nuevo. Política de ruteo:
 `local`→local, `remote`→nube, `hybrid`→`heavy`/`structured` o entrada grande a la nube.
+
+*Mecanismo:* regla IATASK de `scripts/repo-lint.mjs` (un `task.id === "…"` en el router o en los
+proveedores se bloquea) + `src/lib/ai/__tests__/tasks-registry.test.ts`, que barre las tareas con
+`import *` —una tarea nueva entra sola— y exige que el router las rutee en los tres modos.
 
 ## P6 — El arnés es agnóstico de notación · BLOCKING
 
@@ -111,3 +115,4 @@ Una regla que ya garantiza un test se borra del markdown: la prosa duplicada só
 | Versión | Fecha | Cambio |
 |---|---|---|
 | 1.0.0 | 2026-08-14 | Primera versión, al montar el arnés (`docs/harness/harness.md`). |
+| 1.1.0 | 2026-08-21 | P5 pasa de REVIEW a BLOCKING: la regla IATASK del lint y `tasks-registry.test.ts` lo hacen cumplir. |
