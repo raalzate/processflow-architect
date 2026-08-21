@@ -192,7 +192,13 @@
     "graphFile": "graphify-out/graph.json",
     "reportFile": "graphify-out/GRAPH_REPORT.md",
     "queryCommand": "graphify query \"<pregunta>\"",
-    "updateCommand": "graphify update",
+    "updateCommand": "npm run graph:update",
+    "$baseline": "Tamaño del índice cuando se lo midió por última vez con el gate verde. graph-check falla si el índice se encoge más de `shrinkTolerance` respecto de esto: un reindexado a medias (extracción caída, corpus mal detectado) deja un grafo chico que CONTESTA IGUAL, sólo con menos verdad. Subir estos números es un cambio declarado, como la allowlist de notación.",
+    "baseline": {
+      "nodes": 2253,
+      "edges": 5575
+    },
+    "shrinkTolerance": 0.15,
     "questionPatterns": [
       "d[oó]nde (est[aá]|vive|queda)",
       "qui[eé]n (usa|llama|importa|consume)",

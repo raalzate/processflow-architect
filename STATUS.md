@@ -13,7 +13,7 @@ lo que se supone va en "deuda conocida".
 
 | Señal | Comando | Resultado |
 |---|---|---|
-| Índice del repo (graphify) | `node scripts/graph-check.mjs` | verde — 2 191 nodos / 5 499 aristas / 187 comunidades (331 archivos: 272 de código por AST + 51 docs por extracción semántica). Salud del grafo: **529 aristas con punta colgante** (ids semánticos que no casan con los del AST) — deuda declarada abajo |
+| Índice del repo (graphify) | `npm run graph:check` | verde — 2 253 nodos / 5 575 aristas / 188 comunidades sobre 334 archivos (262 de código por AST + 51 docs + 8 imágenes por extracción semántica). Mide dos cosas: atraso contra HEAD y encogimiento contra `graph.baseline`; se omite donde no hay índice (CI) |
 | Notas de release en el repo | `node scripts/repo-lint.mjs --release-check 0.6.1` | verde — `docs/releases/0.6.1.md` con las tres secciones; con una versión inventada el freno RELEASE muerde |
 | Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 22 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA y «no escribe temporales en `src/`»), 8 casos de ruteo |
 | Link-check de docs | `node scripts/docs-linkcheck.mjs` | verde |
@@ -40,8 +40,7 @@ Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
 | 16 archivos cablean literales de notación | `.claude/harness.config.json` → `notation.allow` | la regla NOTACION bloquea lo nuevo; la lista sólo puede achicarse |
 | SDD ruteado pero no bloqueante | `docs/harness/sdd.md` §Estado | ya hay una feature con artefactos: `specs/001-layout-legible/` |
 | El lienzo se verifica a ojo | — | no hay test de render; la simbología se cubre por el registro (`notation-symbols`, `notation-contrast`) y la geometría por `link-geom` |
-| 529 aristas colgantes en el índice de graphify | `graphify-out/GRAPH_REPORT.md` | los ids que inventó la extracción semántica de docs no siempre casan con los del AST: esas relaciones existen en el grafo pero no unen nada. Las consultas de código no se ven afectadas (el AST es el 88 % de los nodos) |
-| 8 imágenes sin indexar (capturas + `diag.png`) | `graphify-out/manifest.json` | quedaron sin extracción semántica a propósito (coste); el próximo `graphify update` las reintenta |
+| ~535 aristas colgantes en el índice de graphify | `graphify-out/GRAPH_REPORT.md` | **diagnosticado: no es corrupción.** Son imports a paquetes que graphify no nodifica (`ref_react` 83, `ref_vitest` 76, `ref_lucide_react` 45, `ref_node_path`, `ref_electron`…) más re-exports de barriles. El grafo las descarta al construir; las consultas de código no se ven afectadas |
 | Sin test de frontera de red | — | nada prueba que los tests no hagan llamadas externas |
 | Sin dobles de prueba para LiteRT ni E2E del lienzo | — | la UI se verifica a mano (`npm run electron-dev`) |
 | Transporte HTTP del MCP sin probar end-to-end | `main/services/mcp-http.ts` | el registro y la LECTURA ya se probaron contra la app viva por el transporte en memoria (playground); el puerto HTTP, `export_as_view` y la banda vacía en el lienzo se verifican a mano |

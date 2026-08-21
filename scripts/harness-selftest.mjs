@@ -242,6 +242,20 @@ frenoDelLint(
   const check = spawnSync("node", [abs("scripts/graph-check.mjs")], { cwd: REPO_ROOT, encoding: "utf8" });
   if (check.status === 0) ok("graph-check: verde (índice al día u omitido donde no existe)");
   else bad("graph-check", `${check.stdout}${check.stderr}`.trim().slice(0, 240));
+
+  // Un índice ENCOGIDO contesta igual, con menos verdad: el freno tiene que morder.
+  // El grafo de mentira va fuera de `src/` y se borra siempre (el watcher de Next no
+  // debe ver aparecer y desaparecer archivos: ver el ENOENT de docs/harness/gotchas.md).
+  const enano = abs(".claude/__selftest-grafo-enano.json");
+  try {
+    fs.writeFileSync(enano, JSON.stringify({ nodes: [{ id: "a" }], edges: [] }));
+    const chico = spawnSync("node", [abs("scripts/graph-check.mjs"), "--graph", enano], { cwd: REPO_ROOT, encoding: "utf8" });
+    const salida = `${chico.stdout}${chico.stderr}`;
+    if (chico.status === 1 && /se encogió/.test(salida)) ok("graph-check: caza un índice encogido (reindexado a medias)");
+    else bad("graph-check: índice encogido", `exit ${chico.status}: ${salida.trim().slice(0, 240)}`);
+  } finally {
+    fs.rmSync(enano, { force: true });
+  }
 }
 
 // RELEASE: una versión sin notas en el repo es gate rojo. Sin este freno, el

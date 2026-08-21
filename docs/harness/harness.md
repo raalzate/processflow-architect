@@ -79,9 +79,10 @@ En el repo, además: `.githooks/pre-commit` (rutas protegidas + `repo-lint` de l
 *Consultar antes de leer*: la regla de `buenas-practicas.md` §1 acá tiene mecanismo.
 
 ```bash
-/graphify .                       # construye el índice (AST del código + extracción semántica de docs)
-graphify query "<pregunta>"       # devuelve un subgrafo, no el árbol de archivos
-graphify update                   # reindexa lo que cambió
+/graphify .                        # construye el índice (AST del código + extracción semántica de docs)
+npm run graph:query "<pregunta>"   # devuelve un subgrafo, no el árbol de archivos
+npm run graph:update               # reindexa lo que cambió
+npm run graph:check                # la señal del gate, suelta
 ```
 
 | Pieza | Qué hace |
@@ -89,13 +90,26 @@ graphify update                   # reindexa lo que cambió
 | `graphify-out/` | el índice: `graph.json` + `GRAPH_REPORT.md`. **Gitignorado**: es derivado y por máquina |
 | `.githooks/post-commit` | reindexa después de cada commit. **No** se instala con `graphify hook install`: ese comando escribe en `.git/hooks/`, que git ignora porque `core.hooksPath=.githooks` |
 | `.claude/hooks/graph-first.mjs` | pone el índice en el camino del agente cuando el pedido es «dónde está X», «quién usa Y», «cómo funciona Z» |
-| `node scripts/graph-check.mjs` | señal del gate: falla si el índice es más viejo que HEAD; **omitido** donde no existe (CI) |
+| `node scripts/graph-check.mjs` | señal del gate: mide las **dos** formas en que un índice miente (abajo); **omitida** donde no existe (CI) |
 
-La frescura se mide contra la fecha de **HEAD**, no contra el working tree: medir contra el árbol
-pondría el gate en rojo con cada edición sin reindexar, y un freno que estorba a mitad de
-desarrollo termina desactivado a mano. Convive con Serena (índice de símbolos) y con el subagente
-`explorer`: el grafo agrega las relaciones entre docs, specs y código que un índice de símbolos no
-tiene.
+Las dos mentiras que se miden, y por qué así:
+
+1. **Estar viejo** — se compara contra la fecha de **HEAD**, no contra el working tree. Medir
+   contra el árbol pondría el gate en rojo con cada edición sin reindexar, y un freno que estorba
+   a mitad de desarrollo termina desactivado a mano.
+2. **Haberse encogido** — un reindexado a medias (extracción caída, corpus mal detectado, un
+   `update` que falló silencioso) deja un grafo más chico que **igual contesta**: con menos verdad
+   y sin avisar. El tamaño tiene línea base declarada en `.claude/harness.config.json`
+   (`graph.baseline` + `graph.shrinkTolerance`); bajarla es un cambio que se declara en su commit,
+   igual que la allowlist de notación.
+
+**Las aristas «colgantes» del reporte no son corrupción.** Son imports a paquetes que graphify no
+nodifica: `ref_react`, `ref_vitest`, `ref_lucide_react`, `ref_node_path`, `ref_electron` y demás
+(el ~80 % de las ocurrencias), más re-exports de barriles. El grafo las descarta al construir; no
+afectan a las consultas de código, donde el AST es la mayoría de los nodos.
+
+Convive con Serena (índice de símbolos) y con el subagente `explorer`: el grafo agrega las
+relaciones entre docs, specs y código que un índice de símbolos no tiene.
 
 ## Subagentes (`.claude/agents/`)
 
