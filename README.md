@@ -60,8 +60,8 @@ portapapeles y las llamadas a la nube **si** el usuario activa un proveedor remo
 ## Empieza en 60 segundos
 
 ```bash
-git clone https://github.com/ralzate-sofka/-processflow_architect
-cd -processflow_architect
+git clone https://github.com/raalzate/processflow-architect
+cd processflow-architect
 npm install            # postinstall reconstruye módulos nativos de Electron
 npm run electron-dev   # Next.js + Electron + tsc watch
 ```

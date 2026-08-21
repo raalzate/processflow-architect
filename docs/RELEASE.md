@@ -110,10 +110,10 @@ cada SO muestra un aviso de seguridad la primera vez. Cómo abrirlos:
 
 - **`--publish never`**: los assets se suben con `softprops/action-gh-release`,
   que apunta al **repositorio actual**. El bloque `build.publish` de
-  `package.json` apunta a otro repo (`raulalzate/ia-processflow-architect`),
-  así que dejar que electron-builder publique fallaría. Si algún día querés que
-  electron-builder publique directo, alineá ese `owner`/`repo` con el remoto real
-  y usá `--publish always`.
+  `package.json` ya nombra el remoto real (`raalzate/processflow-architect`), así
+  que quedan dos caminos posibles y se elige uno: el actual (la action sube los
+  assets) o `--publish always` (los sube electron-builder). Los dos a la vez
+  duplican el trabajo, no lo mejoran.
 - **`shell: bash`** en el paso de empaquetado: unifica la sintaxis en las 3
   plataformas. En Windows lo aporta Git Bash (el default sería PowerShell).
 - **`npm ci`** (no `npm install`): reproducible desde `package-lock.json`. A

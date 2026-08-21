@@ -101,8 +101,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "raulalzate",
-        "repo": "ia-processflow-architect",
+        "owner": "raalzate",
+        "repo": "processflow-architect",
         "releaseType": "draft"
       }
     ],
