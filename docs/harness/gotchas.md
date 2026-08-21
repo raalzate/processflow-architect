@@ -6,9 +6,15 @@ Se escribe en el momento en que se paga, no "cuando haya tiempo" (`/lesson <inci
 Higiene: si un test o un hook ya garantiza la regla, la entrada se recorta a una línea que apunta
 al mecanismo. La prosa duplicada sólo gasta contexto.
 
+Cada entrada está **espejada** en un issue cerrado (`Issue: #N`, label `gotcha`) para poder citarla
+desde un PR o una discusión. El archivo sigue siendo la fuente: es lo que exige la regla INCIDENTE
+del lint y lo que viaja con el clon. Espejar uno nuevo: `node scripts/sdd-github.mjs mirror-docs --apply`.
+
 ---
 
 ### GOTCHA: el motor local no arranca en el binario empaquetado
+
+Issue: #95
 
 Síntoma: la IA local funciona en `npm run electron-dev` y en el `.dmg` no; el renderer no ve `navigator.gpu`.
 Causa:   WebGPU viene `disabled_off` en Electron, y los schemes privilegiados (`app://`,
@@ -21,6 +27,8 @@ Mecanismo: regla WEBGPU de `scripts/repo-lint.mjs` (los switches y la prohibici�
 
 ### GOTCHA: `onnxruntime-node` mata el proceso al generar con Gemma
 
+Issue: #96
+
 Síntoma: el proceso muere sin excepción de JS (crash nativo) al pedir generación.
 Causa:   `onnxruntime-node` no soporta ese modelo; no es un error de configuración, no hay flag que
          lo arregle.
@@ -31,6 +39,8 @@ Mecanismo: ninguno ejecutable — memoria y `CLAUDE.md`. La dependencia sigue en
 
 ### GOTCHA: editás el agente local y la app sigue con el código viejo
 
+Issue: #97
+
 Síntoma: cambios en `src/lib/ai/litert-agent.ts` o en el motor no tienen ningún efecto; ni error, ni
          comportamiento nuevo.
 Causa:   Fast Refresh de Next no re-evalúa esos módulos (viven detrás del arranque del motor).
@@ -40,12 +50,16 @@ Mecanismo: ninguno ejecutable (es del entorno de desarrollo, no del artefacto). 
 
 ### GOTCHA: el servidor MCP no encuentra las herramientas exportadas por un barrel
 
+Issue: #98
+
 Síntoma: `npx tsx mcp-server/index.ts` arranca pero faltan herramientas, o el import resuelve `undefined`.
 Causa:   un `export *` (barrel) no sobrevive la resolución de `tsx` en ese entry point.
 Regla:   en `mcp-server/`, importar cada módulo por su ruta concreta; nada de barrels.
 Mecanismo: ninguno ejecutable — memoria. Se nota al arrancar el servidor.
 
 ### GOTCHA: `vitest run` verde y el build roto igual
+
+Issue: #99
 
 Síntoma: tests verdes, `npm run build` falla por un import inválido o un tipo.
 Causa:   vitest transpila por archivo y **no** hace type-check del proyecto; dev y prod además
@@ -54,6 +68,8 @@ Regla:   nada se entrega con una sola señal. El entregable es `npm run gate`.
 Mecanismo: `scripts/gate.sh`, el hook `Stop` (`.claude/hooks/gate-stop.mjs`) y el job `gate` de CI.
 
 ### GOTCHA (RESUELTA): correr el gate completo con la app abierta rompía el dev server
+
+Issue: #100
 
 Síntoma: la ventana de Electron mostraba `Runtime Error · Cannot find module './1331.js'` con un
          require stack que apuntaba a `.next/server/webpack-runtime.js`.
@@ -67,6 +83,8 @@ Mecanismo: `next.config.ts` da al dev server su propio `distDir` (`.next-dev/`),
 
 ### GOTCHA: la app lanzada por el agente muere al terminar la tarea
 
+Issue: #101
+
 Síntoma: la ventana de Electron se cierra sola; el log termina en `exited with signal SIGTERM`
          sin ninguna línea de crash.
 Causa:   se lanzó como proceso HIJO de una tarea en segundo plano del agente; al detenerse la
@@ -78,6 +96,8 @@ Mecanismo: ninguno ejecutable — memoria.
 
 ### GOTCHA: cablear un tipo de componente rompe las otras notaciones
 
+Issue: #102
+
 Síntoma: una vista BPMN o C4 pierde iconos/colores, o un contenedor deja de comportarse como tal,
          después de un cambio que "sólo tocaba DDD".
 Causa:   el tipo se comparó contra un literal (`tipo_elemento === "Contexto Delimitado"`) en vez de
@@ -87,6 +107,8 @@ Regla:   `src/lib/notations.ts` es la única fuente de verdad. Los archivos que 
 Mecanismo: regla NOTACION de `scripts/repo-lint.mjs` + allowlist en `.claude/harness.config.json`.
 
 ### GOTCHA: `ENOENT __harness-selftest-tmp.tsx` en el build de Next
+
+Issue: #103
 
 Síntoma: correr el gate con `next dev`/`electron-dev` vivo deja el navegador en
          `Build Error — ENOENT: no such file or directory, stat '…/__harness-selftest-tmp.tsx'`,
@@ -102,6 +124,8 @@ Mecanismo: `--stdin` en `scripts/repo-lint.mjs` + el helper `lintVirtual`/`freno
          `__selftest*` dentro de `src/`.
 
 ### GOTCHA: gate verde en local, rojo en CI por el link-check de docs
+
+Issue: #104
 
 Síntoma: `npm run gate` verde en la máquina y `GATE ROJO — señales fallidas: link-check de docs`
          en GitHub Actions, con `AGENTS.md: enlace rota → .tessl/RULES.md` y cuatro punteros más.
@@ -119,6 +143,8 @@ Mecanismo: `docs-linkcheck.mjs` mide contra `git ls-files` (un archivo nuevo sin
 
 ### GOTCHA: el índice de graphify «atrasado 0 minutos» (frescura medida por reloj)
 
+Issue: #105
+
 Síntoma: `GATE ROJO — señales fallidas: self-test del arnés índice del repo`, y
          `graph-check: el índice es más viejo que HEAD (0 min de atraso)` justo después de un
          commit cuyo post-commit había dicho «índice de graphify actualizado».
@@ -135,6 +161,8 @@ Mecanismo: `.githooks/post-commit` sella `graphify-out/.indexed-head` con el sha
          ambos toca `*.ts|tsx|js|mjs|md`. Un caso del self-test exige que el sello sea el de HEAD.
 
 ### GOTCHA: el release existe pero `gh` no lo ve (borrador + token sin permiso de escritura)
+
+Issue: #106
 
 Síntoma: se empuja el tag `v0.2.0`, los tres builds salen verdes y
          `gh release list` / `gh api repos/:owner/:repo/releases` sólo muestran el release
@@ -154,6 +182,8 @@ Mecanismo: sólo prosa: ningún comando del repo puede ver lo que el token del h
 
 ### GOTCHA: la burbuja del chat se sale del panel y corta el texto
 
+Issue: #107
+
 Síntoma: una respuesta del agente con un bloque de código (o cualquier línea larga) se ve cortada
          a la derecha: los párrafos siguen fuera del panel y no hay scroll horizontal.
 Causa:   la burbuja es un ítem flex con `max-w-[85%]`, pero un ítem flex arranca con
@@ -166,6 +196,8 @@ Mecanismo: prosa + el ejemplo en `AgentChatPanel.tsx` (comentario en la burbuja)
          layout en el repo; se verifica a ojo con `npm run electron-dev`.
 
 ### GOTCHA: el chat muestra el JSON del protocolo en vez de una respuesta
+
+Issue: #108
 
 Síntoma: el mensaje del agente es un bloque `{"thought":"…","action":"read_view","args":{…}}` y la
          corrida se corta ahí (la traza queda en 2 pasos).
@@ -183,6 +215,8 @@ Mecanismo: `repairProtocolJson` + `looksLikeProtocol` en `src/lib/ai/litert-agen
 
 ### GOTCHA: `RET_CHECK !HasProcessedContext()` al lanzar una segunda tarea de IA
 
+Issue: #109
+
 Síntoma: con el chat del agente abierto, pedir un artefacto (o cualquier tarea suelta) muere con
          `RET_CHECK failure (…/context_handler.h:182) !HasProcessedContext() The processed context
          is already set`. Después de eso, la IA local queda muerta hasta reiniciar la app.
@@ -199,6 +233,8 @@ Mecanismo: `activeConversation` + cola en `src/lib/ai/litert-engine.ts`, con `li
          «Limpiar» del chat llama `releaseLitertContext()`.
 
 ### GOTCHA: el tooltip queda por debajo del panel (Radix sin Portal)
+
+Issue: #110
 
 Síntoma: en el riel del sidebar colapsado el globo del tooltip no se lee: aparece recortado o
          tapado por la barra.

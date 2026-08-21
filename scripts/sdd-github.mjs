@@ -16,6 +16,7 @@
  * Subcomandos:
  *
  *   node scripts/sdd-github.mjs migrate [--apply]     migra specs/ a issues (dry-run por defecto)
+ *   node scripts/sdd-github.mjs mirror-docs [--apply] espeja gotchas y ADRs a issues (no borra archivos)
  *   node scripts/sdd-github.mjs new <archivo.md>      abre la issue madre de una feature nueva
  *   node scripts/sdd-github.mjs tasks <issue> <tasks.md>   crea las issues de tarea y las enlaza
  *   node scripts/sdd-github.mjs status                 qué hay abierto, por feature
@@ -283,6 +284,79 @@ function status() {
   }
 }
 
+// ── mirror-docs (gotchas y ADRs a issues) ────────────────────────────────────
+
+/**
+ * Espeja a issues los registros que ya viven en el repo: los incidentes de
+ * `gotchas.md` y las decisiones de `docs/decisions/`.
+ *
+ * Espeja, no muda, y el motivo es que los archivos son MECANISMO: la regla
+ * INCIDENTE del lint exige cada gotcha con su línea `Mecanismo:` (P12) y un ADR
+ * explica el código, así que tiene que viajar con el clon. Lo que se gana en
+ * GitHub es lo que un archivo no da: buscable desde afuera, comentable y enlazable
+ * desde un commit o un PR. Cada entrada queda con su `Issue: #N`, y esa línea es
+ * lo que hace el comando idempotente: lo ya espejado no se duplica.
+ *
+ * Nacen CERRADAS: son registro de algo que ya pasó, no trabajo pendiente.
+ */
+function mirrorDocs({ apply }) {
+  const gotchasFile = config.incidents.file;
+  const md = leer(gotchasFile);
+  const heading = config.incidents.heading;
+  const partes = md.split(new RegExp(`(?=^${heading})`, "m"));
+  const pendientes = partes.filter((b) => b.startsWith(heading) && !/^Issue:\s*#\d+/m.test(b));
+
+  const adrDir = gh.decisionsDir;
+  const adrs = fs.existsSync(abs(adrDir))
+    ? fs.readdirSync(abs(adrDir)).filter((f) => f.endsWith(".md")).filter((f) => !/^Issue:\s*#\d+/m.test(leer(`${adrDir}/${f}`)))
+    : [];
+
+  if (!apply) {
+    console.log(`DRY-RUN — se espejarían a ${gh.repo}:`);
+    console.log(`  ${pendientes.length} gotcha(s) sin issue de ${partes.filter((b) => b.startsWith(heading)).length} en ${gotchasFile}`);
+    console.log(`  ${adrs.length} ADR(s) sin issue en ${adrDir}`);
+    console.log("Los archivos NO se borran: son el mecanismo (regla INCIDENTE + P12). Se les agrega la línea `Issue: #N`.");
+    return;
+  }
+
+  asegurarLabel(gh.gotchaLabel, "Incidente registrado en docs/harness/gotchas.md");
+  asegurarLabel(gh.adrLabel, "Decisión de arquitectura (docs/decisions/)");
+
+  let nuevoMd = md;
+  for (const bloque of pendientes) {
+    const titulo = bloque.split("\n")[0].replace(heading, "").replace(/^:\s*/, "").trim();
+    const cuerpo = [
+      `Registrado en \`${gotchasFile}\` (el archivo es el mecanismo: la regla INCIDENTE del lint exige su línea \`Mecanismo:\`).`,
+      "",
+      bloque.trim(),
+    ].join("\n");
+    const url = ghCli(["issue", "create", "--title", `[gotcha] ${recorta(titulo)}`, "--body", cuerpo, "--label", gh.gotchaLabel]);
+    const numero = url.split("/").pop();
+    ghCli(["issue", "close", numero, "--reason", "completed"]);
+    // La línea va justo después del encabezado: queda visible al leer el gotcha.
+    const lineas = bloque.split("\n");
+    lineas.splice(1, 0, "", `Issue: #${numero}`);
+    nuevoMd = nuevoMd.replace(bloque, lineas.join("\n"));
+    console.log(`· #${numero} [gotcha] ${titulo}`);
+  }
+  if (pendientes.length) fs.writeFileSync(abs(gotchasFile), nuevoMd);
+
+  for (const archivo of adrs) {
+    const ruta = `${adrDir}/${archivo}`;
+    const contenido = leer(ruta);
+    const titulo = tituloDe(contenido, archivo.replace(/\.md$/, ""));
+    const cuerpo = [`Decisión versionada en \`${ruta}\`: el archivo manda y viaja con el clon.`, "", contenido].join("\n");
+    const url = ghCli(["issue", "create", "--title", `[adr] ${recorta(titulo)}`, "--body", cuerpo, "--label", gh.adrLabel]);
+    const numero = url.split("/").pop();
+    ghCli(["issue", "close", numero, "--reason", "completed"]);
+    const lineas = contenido.split("\n");
+    const iH1 = lineas.findIndex((l) => l.startsWith("# "));
+    lineas.splice(iH1 + 1, 0, "", `Issue: #${numero}`);
+    fs.writeFileSync(abs(ruta), lineas.join("\n"));
+    console.log(`· #${numero} [adr] ${titulo}`);
+  }
+}
+
 // ── check (señal del gate, sin red) ──────────────────────────────────────────
 
 function check() {
@@ -338,6 +412,9 @@ switch (subcomando) {
     }
     tareasDesde(resto[0].replace(/^#/, ""), resto[1]);
     break;
+  case "mirror-docs":
+    mirrorDocs({ apply: resto.includes("--apply") });
+    break;
   case "status":
     status();
     break;
@@ -345,6 +422,6 @@ switch (subcomando) {
     check();
     break;
   default:
-    console.error("Subcomandos: migrate [--apply] · new <archivo.md> · tasks <issue> <tasks.md> · status · check");
+    console.error("Subcomandos: migrate [--apply] · mirror-docs [--apply] · new <archivo.md> · tasks <issue> <tasks.md> · status · check");
     process.exit(1);
 }

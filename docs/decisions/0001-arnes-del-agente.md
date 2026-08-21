@@ -1,5 +1,7 @@
 # ADR 0001 — Arnés del agente sobre el repo, no un modelo más grande
 
+Issue: #111
+
 - **Fecha:** 2026-08-14
 - **Estado:** aceptado
 - **Contexto previo:** `docs/harness/buenas-practicas.md` (guía agnóstica de stack)

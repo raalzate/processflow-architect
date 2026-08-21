@@ -7,13 +7,14 @@ lo que se supone va en "deuda conocida".
 - **Fecha del último gate completo:** 2026-08-21
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.6.1 (tag `v0.6.1` → instaladores por `release-build.yml`)
+- **Versión publicada:** 0.6.1 — release **publicado** (no borrador) con los 3 instaladores
 
 ## Señales
 
 | Señal | Comando | Resultado |
 |---|---|---|
-| Ruta SDD en GitHub | `npm run sdd:check` | verde — las 5 features migradas a issues (#1 · #25 · #45 · #62 · #79) con 89 issues de tarea (83 cerradas al migrar); `specs/` sólo tiene su README y cualquier otro archivo ahí pone el gate en rojo |
+| Ruta SDD en GitHub | `npm run sdd:check` | verde — las 5 features migradas a issues (#1 · #25 · #45 · #62 · #79) con 89 issues de tarea, **todas cerradas**; `specs/` sólo tiene su README y cualquier otro archivo ahí pone el gate en rojo |
+| Registros espejados en GitHub | `node scripts/sdd-github.mjs mirror-docs` | verde — 16 gotchas (#95–#110) y el ADR 0001 (#111) tienen su issue cerrado con `Issue: #N` en el archivo; el comando es idempotente y **no** borra archivos (son el mecanismo: regla INCIDENTE + P12) |
 | Frontera de red de la suite | `npx vitest run src/lib/__tests__/network-boundary.test.ts` | verde — `fetch` y `http/https.request` revientan dentro de un test (con el destino en el mensaje) y simular la red sigue siendo posible |
 | Superficie de extensión de la IA (P5) | `npx vitest run src/lib/ai/__tests__/tasks-registry.test.ts` | verde — barrido por `import *`: toda `AiTask` declarada tiene id kebab único, tier válido, forma de ejecutarse, y el router la rutea en los tres modos sin conocerla |
 | Índice del repo (graphify) | `npm run graph:check` | verde — 2 253 nodos / 5 575 aristas / 188 comunidades sobre 334 archivos (262 de código por AST + 51 docs + 8 imágenes por extracción semántica). Mide dos cosas: atraso contra HEAD y encogimiento contra `graph.baseline`; se omite donde no hay índice (CI) |
@@ -52,7 +53,11 @@ Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
 
 ## Trabajo en curso
 
-Nada abierto. **005** (el agente recupera el contexto por partes y consulta al humano) entró en
+Nada abierto: el tablero de GitHub quedó en cero (0 issues abiertas). Las 6 tareas que quedaban
+—validación visual de 001 y la IA de organización + medición de 002— se cerraron como *no
+planificadas* al pasar la ruta SDD a GitHub; si se retoman, se abre una feature nueva.
+
+**005** (el agente recupera el contexto por partes y consulta al humano) entró en
 `main` y salió en `v0.3.0`. En `v0.4.0` salieron los créditos de Sofka + marca beta, el pedido
 explícito de artefacto (menú «+»), el riel de artefactos del panel colapsado con iconos por tipo,
 y los arreglos del motor local (una sola conversación viva por engine, JSON con comillas sueltas,
