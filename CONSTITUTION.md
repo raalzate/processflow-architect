@@ -1,6 +1,6 @@
 # Constitución — Processflow Architect
 
-**Versión 1.1.0** · Principios que no se negocian. Lo demás (convenciones, dominio, cómo se
+**Versión 1.2.0** · Principios que no se negocian. Lo demás (convenciones, dominio, cómo se
 hacen las cosas) vive en `CLAUDE.md`; el arnés que los hace cumplir, en `docs/harness/harness.md`.
 
 Cada principio dice su **fuerza**:
@@ -102,11 +102,15 @@ Leer la salida real (archivo, línea, mensaje) antes de reintentar; reintentar s
 nueva; presupuesto de **2 intentos** sobre el mismo error, y al tercero se para y se escala con el
 diagnóstico. Fallar rápido y con causa vale más que degradar en silencio.
 
-## P12 — Cada incidente deja infraestructura · REVIEW
+## P12 — Cada incidente deja infraestructura · BLOCKING
 
 Un problema que costó tiempo termina en el mecanismo más fuerte disponible (test > hook/lint >
 comando > markdown), y esa mejora pasa el gate antes de quedar. `/lesson <incidente>` es el ciclo.
 Una regla que ya garantiza un test se borra del markdown: la prosa duplicada sólo gasta contexto.
+
+*Mecanismo:* regla INCIDENTE de `scripts/repo-lint.mjs` — todo bloque `### GOTCHA` de
+`docs/harness/gotchas.md` declara **Síntoma / Causa / Regla / Mecanismo**. Que la mejora sea la más
+fuerte posible sigue siendo juicio (`reviewer`); que un incidente quede sin mecanismo escrito, no.
 
 ---
 
@@ -116,3 +120,4 @@ Una regla que ya garantiza un test se borra del markdown: la prosa duplicada só
 |---|---|---|
 | 1.0.0 | 2026-08-14 | Primera versión, al montar el arnés (`docs/harness/harness.md`). |
 | 1.1.0 | 2026-08-21 | P5 pasa de REVIEW a BLOCKING: la regla IATASK del lint y `tasks-registry.test.ts` lo hacen cumplir. |
+| 1.2.0 | 2026-08-21 | P12 pasa de REVIEW a BLOCKING en su parte verificable: la regla INCIDENTE exige `Mecanismo:` en cada gotcha. |
