@@ -299,6 +299,47 @@ function checkRelease(versionDada = null) {
   }
 }
 
+/**
+ * INCIDENTE — P12: un incidente que costó tiempo deja infraestructura.
+ *
+ * Lo que una máquina puede verificar de ese principio es que el registro no se
+ * degrade a anécdota: cada gotcha dice qué se VIO (síntoma), por qué pasó (causa),
+ * qué regla queda y —lo que importa— QUÉ MECANISMO la hace cumplir. Un gotcha sin
+ * la línea `Mecanismo:` es prosa que se va a volver a pagar.
+ */
+function checkIncidents(contenidoDado = null) {
+  const file = config.incidents.file;
+  let content = contenidoDado;
+  if (content === null) {
+    try {
+      content = read(file);
+    } catch {
+      fail(file, 1, "INCIDENTE", `no existe el registro de incidentes declarado en la config.`);
+      return;
+    }
+  }
+  const heading = config.incidents.heading;
+  const bloques = content.split(new RegExp(`^${heading}`, "m")).slice(1);
+  if (!bloques.length) {
+    fail(file, 1, "INCIDENTE", `no hay ningún bloque \`${heading}\`: el registro quedó vacío o cambió de formato.`);
+    return;
+  }
+  bloques.forEach((bloque, i) => {
+    const titulo = bloque.split("\n")[0].trim().slice(0, 60);
+    for (const requerida of config.incidents.requiredLines) {
+      if (!new RegExp(`^${requerida}`, "m").test(bloque)) {
+        fail(
+          file,
+          lineOf(content, content.indexOf(bloque)),
+          "INCIDENTE",
+          `el gotcha «${titulo}» no tiene línea \`${requerida}\`. Un incidente sin mecanismo se vuelve a pagar (P12): test > hook/lint > comando > markdown.`,
+        );
+      }
+    }
+    void i;
+  });
+}
+
 function checkWebgpu() {
   const file = config.webgpu.file;
   const content = read(file);
@@ -337,10 +378,12 @@ if (releaseVersion) {
   if (/\.(ts|tsx)$/.test(single)) checkFile(single, contenidoStdin);
   if (single === "package.json") { checkDeps(); checkRelease(); }
   if (single === config.webgpu.file) checkWebgpu();
+  if (single === config.incidents.file) checkIncidents(contenidoStdin);
 } else {
   for (const relPath of [...sourceFiles("src"), ...sourceFiles("main"), ...sourceFiles("mcp-server")]) checkFile(relPath);
   checkDeps();
   checkRelease();
+  checkIncidents();
   checkWebgpu();
 }
 

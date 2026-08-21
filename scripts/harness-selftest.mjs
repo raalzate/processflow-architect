@@ -79,6 +79,7 @@ const mustExist = [
   config.status.file,
   config.lint.command[1],
   config.aiSurface.extensionPoint,
+  config.incidents.file,
   ...config.aiSurface.closedFiles,
   ...config.notation.allow,
   ...(config.reuse ?? []).map((r) => r.see),
@@ -211,6 +212,15 @@ frenoDelLint(
   "src/components/__selftest-svg.tsx",
   'export const X = () => <svg><text className="text-sm">hola</text></svg>;\n',
   "SVGFILL",
+);
+
+// INCIDENTE: P12 medible en lo que una máquina puede ver — un gotcha sin la línea
+// `Mecanismo:` es prosa que se va a volver a pagar.
+frenoDelLint(
+  "repo-lint: detecta un gotcha sin mecanismo",
+  config.incidents.file,
+  "### GOTCHA: algo se rompió\n\nSíntoma: x\nCausa: y\nRegla: z\n",
+  "INCIDENTE",
 );
 
 // IATASK: P5 deja de ser sólo REVIEW. Un `task.id === "…"` en el router mata la

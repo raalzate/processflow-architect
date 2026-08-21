@@ -186,6 +186,17 @@
       "app.disableHardwareAcceleration()"
     ]
   },
+  "incidents": {
+    "$comment": "P12: cada incidente deja infraestructura. Lo verificable por máquina es que el registro no se degrade a anécdota: todo gotcha dice síntoma, causa, regla y —lo que importa— el MECANISMO que la hace cumplir. La regla INCIDENTE del lint lo exige.",
+    "file": "docs/harness/gotchas.md",
+    "heading": "### GOTCHA",
+    "requiredLines": [
+      "Síntoma:",
+      "Causa:",
+      "Regla:",
+      "Mecanismo:"
+    ]
+  },
   "aiSurface": {
     "$comment": "P5: añadir una función de IA es declarar una AiTask. La forma en que ese principio se rompe siempre es un `if (task.id === \"…\")` en el router; la regla IATASK del lint lo bloquea. `closedFiles` son los archivos que NO pueden conocer tareas por nombre.",
     "extensionPoint": "src/lib/ai/tasks.ts",
