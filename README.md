@@ -211,6 +211,5 @@ Apache 2.0 — see [LICENSE](LICENSE).
 
 ## Créditos
 
-Desarrollado por **[Sofka Technologies](https://sofka.com.co)** ·
-[LinkedIn](https://www.linkedin.com/company/sofka-technologies) ·
-[Blog](https://sofka.com.co/blog/)
+Desarrollado por **Raúl Andrés Alzate Gómez** ·
+[alzategomez.raul@gmail.com](mailto:alzategomez.raul@gmail.com)

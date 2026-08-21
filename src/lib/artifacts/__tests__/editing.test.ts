@@ -59,9 +59,9 @@ describe("applyMarkdownAction — prefijos de línea", () => {
 
 describe("applyMarkdownAction — enlace y tabla", () => {
   it("el enlace deja el texto seleccionado y la URL por escribir", () => {
-    const r = applyMarkdownAction("Sofka", { start: 0, end: 5 }, "link");
-    expect(r.text).toBe("[Sofka](https://)");
-    expect(r.text.slice(r.start, r.end)).toBe("Sofka");
+    const r = applyMarkdownAction("Autor", { start: 0, end: 5 }, "link");
+    expect(r.text).toBe("[Autor](https://)");
+    expect(r.text.slice(r.start, r.end)).toBe("Autor");
   });
 
   it("la tabla se inserta con separación cuando cae a mitad de línea", () => {

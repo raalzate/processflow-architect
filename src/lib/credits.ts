@@ -16,14 +16,10 @@ export const RELEASE_CHANNEL = "beta" as const;
 /** Etiqueta corta para el badge del header: «v0.3.0 · beta». */
 export const versionLabel = () => `v${APP_VERSION} · ${RELEASE_CHANNEL}`;
 
-export const CREDIT_ORG = "Sofka Technologies";
-export const CREDIT_LINE = `Desarrollado por ${CREDIT_ORG}`;
-/**
- * Ruta del logo dentro de `public/` (sirve en dev y bajo el scheme `app://`).
- * Es la versión NEGATIVA —wordmark blanco, acento naranja— porque la app se
- * muestra siempre en oscuro: el logo negro quedaba casi invisible en el header.
- */
-export const CREDIT_LOGO = "/sofka.png";
+/** Autoría individual: no hay logo ni organización detrás, sólo el autor. */
+export const CREDIT_AUTHOR = "Raúl Andrés Alzate Gómez";
+export const CREDIT_EMAIL = "alzategomez.raul@gmail.com";
+export const CREDIT_LINE = `Desarrollado por ${CREDIT_AUTHOR}`;
 
 export interface CreditLink {
   label: string;
@@ -32,21 +28,15 @@ export interface CreditLink {
   title: string;
 }
 
-/** Enlaces de crédito. Sólo https: los abre el navegador del sistema. */
+/**
+ * Enlaces de crédito. Sólo `mailto:` y `https:`: son los schemes que el
+ * `setWindowOpenHandler` de `main/window.ts` delega al sistema; cualquier otro
+ * se niega y el clic no haría nada.
+ */
 export const CREDIT_LINKS: readonly CreditLink[] = [
   {
-    label: "sofka.com.co",
-    href: "https://sofka.com.co",
-    title: "Sitio web de Sofka Technologies",
-  },
-  {
-    label: "LinkedIn",
-    href: "https://www.linkedin.com/company/sofka-technologies",
-    title: "Sofka Technologies en LinkedIn",
-  },
-  {
-    label: "Blog",
-    href: "https://sofka.com.co/blog/",
-    title: "Blog de Sofka Technologies",
+    label: CREDIT_EMAIL,
+    href: `mailto:${CREDIT_EMAIL}`,
+    title: `Escribir a ${CREDIT_AUTHOR}`,
   },
 ] as const;

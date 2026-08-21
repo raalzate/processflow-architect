@@ -52,7 +52,7 @@ import {
 import { AiAgentsPanel } from "@/components/ai-panel/AiAgentsPanel"; 
 import { ArtifactViewerDialog } from "@/components/ai-panel/ArtifactViewerDialog";
 import { iconForArtifact, iconForArtifactKind } from "@/components/ai-panel/artifact-icon";
-import { SofkaCredits } from "@/components/layout/SofkaCredits";
+import { AppCredits } from "@/components/layout/AppCredits";
 import { AiGenerationModal } from "@/components/modals/AiGenerationModal";
 import { Sparkles, Loader2 } from "lucide-react";
 import { useState } from "react"; 
@@ -767,10 +767,10 @@ export function AppSidebar() {
         </TooltipProvider>
       </SidebarContent>
       {/* Crédito al pie: sólo con el panel abierto (colapsado no hay ancho para
-          el logo ni los enlaces). */}
+          el nombre ni los enlaces). */}
       {open && (
         <SidebarFooter className="border-t">
-          <SofkaCredits />
+          <AppCredits />
         </SidebarFooter>
       )}
     </Sidebar>

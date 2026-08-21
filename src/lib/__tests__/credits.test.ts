@@ -7,10 +7,10 @@ import path from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   APP_VERSION,
+  CREDIT_AUTHOR,
+  CREDIT_EMAIL,
   CREDIT_LINE,
   CREDIT_LINKS,
-  CREDIT_LOGO,
-  CREDIT_ORG,
   RELEASE_CHANNEL,
   versionLabel,
 } from "../credits";
@@ -30,22 +30,25 @@ describe("credits", () => {
     expect(RELEASE_CHANNEL).toBe("beta");
   });
 
-  it("el crédito nombra a la organización", () => {
-    expect(CREDIT_LINE).toContain(CREDIT_ORG);
-    expect(CREDIT_ORG).toBe("Sofka Technologies");
+  it("el crédito nombra al autor", () => {
+    expect(CREDIT_LINE).toContain(CREDIT_AUTHOR);
+    expect(CREDIT_AUTHOR).toBe("Raúl Andrés Alzate Gómez");
+    expect(CREDIT_EMAIL).toBe("alzategomez.raul@gmail.com");
   });
 
-  it("el logo existe en public/", () => {
-    expect(CREDIT_LOGO.startsWith("/")).toBe(true);
-    expect(fs.existsSync(path.join(repoRoot, "public", CREDIT_LOGO.slice(1)))).toBe(true);
+  it("no queda rastro del crédito anterior", () => {
+    const source = fs.readFileSync(path.join(repoRoot, "src", "lib", "credits.ts"), "utf8");
+    expect(source.toLowerCase()).not.toContain("sofka");
+    expect(fs.existsSync(path.join(repoRoot, "public", "sofka.png"))).toBe(false);
   });
 
-  it("todos los enlaces son https y llevan a sofka o a su perfil", () => {
-    expect(CREDIT_LINKS.length).toBeGreaterThan(1);
+  it("los enlaces usan schemes que el main sabe abrir", () => {
+    expect(CREDIT_LINKS.length).toBeGreaterThan(0);
     for (const link of CREDIT_LINKS) {
-      expect(link.href.startsWith("https://")).toBe(true);
+      expect(/^(https:\/\/|mailto:)/.test(link.href)).toBe(true);
       expect(link.label.trim()).not.toBe("");
-      expect(link.title).toContain("Sofka");
+      expect(link.title).toContain(CREDIT_AUTHOR);
     }
+    expect(CREDIT_LINKS.some((l) => l.href === `mailto:${CREDIT_EMAIL}`)).toBe(true);
   });
 });

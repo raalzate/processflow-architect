@@ -55,7 +55,7 @@ import { useGraphContext } from "@/context/GraphContext"; // Importa el hook
 import { useViews } from "@/context/ViewsContext";
 import { isChecked } from "@/lib/graph-filters";
 import { useToast } from "@/hooks/use-toast";
-import { BetaBadge, SofkaLogo } from "@/components/layout/SofkaCredits";
+import { AuthorName, BetaBadge } from "@/components/layout/AppCredits";
 import { CREDIT_LINE, CREDIT_LINKS } from "@/lib/credits";
 import { parseDiagramJson } from "@/lib/import-diagram";
 import {
@@ -458,8 +458,8 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             </h1>
             <BetaBadge />
           </div>
-          {/* Sólo el logo: el crédito completo vive en el pie del sidebar y en
-              «Acerca de». Con el texto al lado, la barra quedaba cargada. */}
+          {/* Sólo el nombre del autor: el crédito completo con los enlaces vive
+              en el pie del sidebar y en «Acerca de». */}
           <a
             href={CREDIT_LINKS[0].href}
             target="_blank"
@@ -467,7 +467,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             title={CREDIT_LINE}
             className="hidden opacity-90 transition-opacity hover:opacity-100 md:block"
           >
-            <SofkaLogo className="h-4" />
+            <AuthorName />
           </a>
         </div>
 

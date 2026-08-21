@@ -21,7 +21,7 @@ import {
   Boxes,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { BetaBadge, SofkaCredits } from "@/components/layout/SofkaCredits";
+import { AppCredits, BetaBadge } from "@/components/layout/AppCredits";
 import { versionLabel } from "@/lib/credits";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -389,7 +389,7 @@ export default function DocsPage() {
                 IA local siguen en evolución y el formato de los proyectos puede cambiar
                 entre versiones.
               </p>
-              <SofkaCredits className="mt-4" />
+              <AppCredits className="mt-4" />
             </section>
           </div>
         </main>

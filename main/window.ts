@@ -27,11 +27,11 @@ export function createMainWindow() {
     }
 
     // Nunca se abre una segunda ventana de la app; pero un enlace externo
-    // (créditos de Sofka, docs de un proveedor de IA) sí debe llegar al
-    // navegador del sistema. Antes se denegaba todo y el clic no hacía nada.
-    // Sólo http(s): cualquier otro scheme (file:, etc.) se sigue negando.
+    // (el correo del autor en los créditos, docs de un proveedor de IA) sí debe
+    // llegar al programa del sistema. Antes se denegaba todo y el clic no hacía
+    // nada. Sólo http(s) y mailto: cualquier otro scheme (file:, etc.) se niega.
     win.webContents.setWindowOpenHandler(({ url }) => {
-        if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+        if (/^(https?:\/\/|mailto:)/i.test(url)) shell.openExternal(url);
         return { action: "deny" };
     });
     setupMenu(win);
