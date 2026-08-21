@@ -427,13 +427,21 @@ if (!missingSkills.length) ok(`las ${config.sdd.phases.length} fases del kit \`$
 else if (process.env.CI) skip("kit de SDD instalado", `faltan ${missingSkills.length} fases; el kit no se versiona en el repo`);
 else bad("kit de SDD instalado", `faltan: ${missingSkills.join(", ")}. Instalá el kit o corregí \`sdd.skillRoots\` en la config.`);
 
-// El puntero de feature activa no puede quedar colgado.
+// El puntero de feature activa no puede quedar colgado. Desde que los artefactos
+// viven en GitHub el puntero guarda el NÚMERO DE LA ISSUE MADRE (`#113`), no una
+// carpeta: validarlo contra `specs/<n>` era imposible de satisfacer —el freno de
+// `sdd-github check` prohíbe justamente esas carpetas—, así que se valida la
+// FORMA. Resolver la issue exigiría red, y este paso corre en el gate y en CI.
 const pointer = abs(config.sdd.activeFeaturePointer);
 if (fs.existsSync(pointer)) {
   const active = fs.readFileSync(pointer, "utf8").trim();
   if (!active) ok("puntero de feature activa vacío (sin SDD en curso)");
-  else if (fs.existsSync(abs(path.join(config.sdd.specsDir, active)))) ok(`feature activa: ${active}`);
-  else bad("puntero de feature activa", `apunta a \`${config.sdd.specsDir}/${active}\`, que no existe`);
+  else if (/^#\d+$/.test(active)) ok(`feature activa: issue ${active}`);
+  else
+    bad(
+      "puntero de feature activa",
+      `\`${active}\` no es una issue madre: el puntero guarda \`#<número>\` (ver docs/harness/sdd.md) o queda vacío.`,
+    );
 } else {
   ok("sin puntero de feature activa");
 }
