@@ -396,7 +396,9 @@ function checkReleaseJob(contenidoDado = null) {
       "`actions/checkout` corre DESPUÉS de `download-artifact` y limpia el workspace: borra los instaladores bajados y el release se publica vacío. Poné el checkout primero.",
     );
   }
-  const idxLaxo = content.indexOf("fail_on_unmatched_files: false");
+  // Sólo la CLAVE real, no una mención en un comentario: la regla se mordía a sí
+  // misma cuando el comentario de al lado explicaba por qué el `false` está mal.
+  const idxLaxo = content.search(/^\s*fail_on_unmatched_files:\s*false\b/m);
   if (idxLaxo !== -1) {
     fail(
       file,

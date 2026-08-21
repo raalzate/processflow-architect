@@ -170,10 +170,14 @@ jobs:
           # que falte un patrón es un fallo, no un detalle.
           fail_on_unmatched_files: true
           body_path: ${{ steps.notes.outputs.path }}
+          # Sólo los tres formatos que electron-builder produce de verdad. El
+          # `*.zip` que estaba acá no lo genera ningún target: era invisible con
+          # `fail_on_unmatched_files: false` y, al ponerlo en `true`, tiraba el
+          # publish con «Pattern does not match any files». Agregar un patrón acá
+          # implica agregar su target en package.json → build.
           files: |
             installers/*.dmg
             installers/*.exe
             installers/*.AppImage
-            installers/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
