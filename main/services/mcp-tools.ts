@@ -38,6 +38,10 @@ import {
   recordAmbiguity,
   resolveAmbiguity,
   pendingAmbiguities,
+  setProjectMeta,
+  addReadModel,
+  removeReadModel,
+  MAX_LISTA_PROYECTO,
   type DiagramModel,
 } from "../../src/lib/mcp/diagram-builder";
 import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
@@ -183,6 +187,12 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     return [
       `Diagrama "${id}" (${model.meta.nombre_proyecto}, notación ${model.meta.notation})`,
       `Elementos: ${model.nodes.length} · Aristas: ${model.edges.length}`,
+      // Lo que el humano ve en «Metadatos»: si no se dice acá, el agente no
+      // sabe que ya existe y lo pisa en el próximo export.
+      `Hotspots: ${model.meta.hotspots?.length ?? 0} · Responsables: ${model.meta.responsables?.length ?? 0} · Notas propias: ${model.meta.notas ? "sí" : "no"} · Read models: ${model.readModels?.length ?? 0}`,
+      ...(model.readModels?.length
+        ? [`Vista de datos: ${model.readModels.map((r) => r.nombre).join(" · ")}`]
+        : []),
       v.errors.length ? `Errores: ${v.errors.length}` : "Sin errores",
       v.warnings.length ? `Avisos: ${v.warnings.length}` : "Sin avisos",
     ].join("\n");
@@ -629,6 +639,113 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         const next = resolveAmbiguity(model, id, resolution);
         await saveModel(diagramId, next);
         return text(`Ambigüedad "${id}" resuelta. Pendientes: ${pendingAmbiguities(next).length}.`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  // -- 3b. Metadatos del proyecto (lo que la app muestra en «Metadatos») -------
+  // Sin esto el MCP no podía escribir hotspots, responsables, notas ni read
+  // models, y peor: `export_to_app` REEMPLAZA el proyecto, así que un export
+  // vaciaba lo que el humano había llenado a mano (#133).
+
+  server.registerTool(
+    "set_project_meta",
+    {
+      title: "Metadatos del proyecto",
+      description:
+        "Declara los campos del proyecto que el humano ve en «Metadatos»: zonas a discutir (hotspots), responsables y notas. Un hotspot es lo que el equipo TIENE que discutir (una decisión sin dueño, un flujo contradictorio), no cualquier detalle pendiente: para eso está record_ambiguity. Las notas que el humano ya escribió en la app NO se pisan — quedan arriba y el resumen de ambigüedades se agrega debajo. Pasar una lista vacía borra ese campo; omitirlo lo deja como estaba.",
+      inputSchema: {
+        diagramId: z.string(),
+        hotspots: z
+          .array(z.string())
+          .optional()
+          .describe(`Zonas del modelo a discutir con el equipo (máximo ${MAX_LISTA_PROYECTO}).`),
+        responsables: z
+          .array(z.string())
+          .optional()
+          .describe("Quién responde por el modelo (nombres o roles)."),
+        notes: z
+          .string()
+          .optional()
+          .describe("Notas del proyecto. Reemplaza las notas propias, no el resumen de ambigüedades."),
+      },
+    },
+    async ({ diagramId, hotspots, responsables, notes }) => {
+      const model = await loadModel(diagramId);
+      try {
+        const next = setProjectMeta(model, { hotspots, responsables, notas: notes });
+        await saveModel(diagramId, next);
+        return text(
+          `Metadatos de "${diagramId}" actualizados.\n` +
+            `Hotspots: ${next.meta.hotspots?.length ?? 0} · Responsables: ${next.meta.responsables?.length ?? 0} · Notas: ${next.meta.notas ? "sí" : "no"}.\n` +
+            `Siguiente: export_to_app (o export_as_view) para que el humano las vea.`
+        );
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "add_read_model",
+    {
+      title: "Añadir modelo de lectura",
+      description:
+        "Declara una proyección (read model) de la vista de datos: qué pantalla o consulta se arma con qué eventos. No es una caja del lienzo: sale en la «Vista de Datos» del proyecto y en su Markdown. Un nombre repetido REEMPLAZA al anterior (dos proyecciones con el mismo nombre no se distinguen).",
+      inputSchema: {
+        diagramId: z.string(),
+        name: z.string().describe("Nombre de la proyección (p. ej. «Panel de pólizas»)."),
+        description: z.string().optional().describe("Para qué sirve, en una línea."),
+        projects: z
+          .array(z.string())
+          .optional()
+          .describe("Qué elementos del modelo proyecta (nombres de eventos/entidades)."),
+        uiPolicies: z
+          .array(z.string())
+          .optional()
+          .describe("Reglas de la interfaz que dependen de esta vista (sólo lectura, refresco, permisos)."),
+        technologies: z.array(z.string()).optional().describe("Tecnologías con las que se implementa."),
+      },
+    },
+    async ({ diagramId, name, description, projects, uiPolicies, technologies }) => {
+      const model = await loadModel(diagramId);
+      try {
+        const r = addReadModel(model, {
+          nombre: name,
+          descripcion: description,
+          proyecta: projects,
+          ui_policies: uiPolicies,
+          tecnologias: technologies,
+        });
+        await saveModel(diagramId, r.model);
+        return text(
+          `${r.reemplazado ? "Reemplazado" : "Añadido"} el read model "${name}". Total: ${r.model.readModels?.length ?? 0}.`
+        );
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "remove_read_model",
+    {
+      title: "Quitar modelo de lectura",
+      description:
+        "Quita una proyección de la vista de datos por su nombre. Si no existe, la respuesta lista las que sí hay.",
+      inputSchema: {
+        diagramId: z.string(),
+        name: z.string().describe("Nombre exacto del read model (ver get_diagram)."),
+      },
+    },
+    async ({ diagramId, name }) => {
+      const model = await loadModel(diagramId);
+      try {
+        const next = removeReadModel(model, name);
+        await saveModel(diagramId, next);
+        return text(`Read model "${name}" quitado. Quedan ${next.readModels?.length ?? 0}.`);
       } catch (e: any) {
         return fail(e.message);
       }

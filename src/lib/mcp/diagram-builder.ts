@@ -20,7 +20,7 @@
  * el proceso stdio del MCP vía tsx.
  */
 
-import type { GraphData, GraphNode, Agregado } from "../types";
+import type { GraphData, GraphNode, Agregado, ReadModel } from "../types";
 import {
   normalizarLista,
   quitarMetadata,
@@ -93,6 +93,20 @@ export interface DiagramMeta {
   fecha_analisis?: string;
   /** Con qué densidad y estrategia se dibujó por última vez (ver `layout-presets`). */
   layout?: { density: LayoutDensity; strategy: LayoutStrategy };
+  /**
+   * Zonas del modelo que hay que discutir (los "hotspots" del Event Storming).
+   * Viajan a `big_picture.hotspots`, que es lo que muestra la app.
+   */
+  hotspots?: string[];
+  /** Quién responde por el modelo (va a `GraphData.responsables`). */
+  responsables?: string[];
+  /**
+   * Notas del humano sobre el proyecto. NO reemplazan el resumen de
+   * ambigüedades: en `toGraphData` van primero y el resumen se agrega debajo.
+   * Antes este campo no existía y `notas` era sólo el resumen, así que exportar
+   * de nuevo borraba lo que el humano había escrito en la app.
+   */
+  notas?: string;
 }
 
 /** Nodo en construcción. `container` = NOMBRE del contenedor padre (o vacío). */
@@ -160,6 +174,11 @@ export interface DiagramModel {
   nodes: BuilderNode[];
   edges: BuilderEdge[];
   ambiguities?: Ambiguity[];
+  /**
+   * Modelos de lectura (proyecciones). No son nodos del lienzo: son la vista de
+   * datos que la app lista aparte, así que viven en el modelo y no en `nodes`.
+   */
+  readModels?: ReadModel[];
 }
 
 export interface ValidationResult {
@@ -376,6 +395,79 @@ export function recordAmbiguity(
   let i = 2;
   while (taken.has(id)) id = `${base}-${i++}`;
   return { model: { ...model, ambiguities: [...existing, { ...input, id }] }, id };
+}
+
+/** Tope de elementos en las listas del proyecto: una lista larga no se lee. */
+export const MAX_LISTA_PROYECTO = 30;
+
+/**
+ * Declara (reemplazando) los campos del proyecto que el humano edita en
+ * «Metadatos del proyecto»: hotspots, responsables y notas. Sólo se toca lo que
+ * viene: pasar `undefined` deja el valor anterior; pasar lista vacía o texto
+ * vacío lo borra a propósito.
+ * @throws si una lista pasa el tope (el agente se entera en la llamada).
+ */
+export function setProjectMeta(
+  model: DiagramModel,
+  input: { hotspots?: string[]; responsables?: string[]; notas?: string }
+): DiagramModel {
+  const lista = (valor: string[] | undefined, campo: string) => {
+    if (valor === undefined) return undefined;
+    const limpia = Array.from(new Set(valor.map((v) => v.trim()).filter(Boolean)));
+    if (limpia.length > MAX_LISTA_PROYECTO) {
+      throw new Error(
+        `Demasiados elementos en ${campo}: ${limpia.length} (máximo ${MAX_LISTA_PROYECTO}). Deja los que el humano tiene que discutir.`
+      );
+    }
+    return limpia;
+  };
+  const meta = { ...model.meta };
+  const hs = lista(input.hotspots, "hotspots");
+  if (hs !== undefined) meta.hotspots = hs.length ? hs : undefined;
+  const rs = lista(input.responsables, "responsables");
+  if (rs !== undefined) meta.responsables = rs.length ? rs : undefined;
+  if (input.notas !== undefined) meta.notas = input.notas.trim() || undefined;
+  return { ...model, meta };
+}
+
+/**
+ * Añade (o reemplaza por nombre) un modelo de lectura. Reemplazar en vez de
+ * duplicar: dos proyecciones con el mismo nombre en la vista de datos no se
+ * distinguen y el humano no sabe cuál manda.
+ */
+export function addReadModel(
+  model: DiagramModel,
+  input: { nombre: string; descripcion?: string; proyecta?: string[]; ui_policies?: string[]; tecnologias?: string[] }
+): { model: DiagramModel; reemplazado: boolean } {
+  const nombre = input.nombre.trim();
+  if (!nombre) throw new Error("El read model necesita un nombre.");
+  const limpia = (v: string[] | undefined) =>
+    Array.from(new Set((v ?? []).map((x) => x.trim()).filter(Boolean)));
+  const nuevo: ReadModel = {
+    nombre,
+    descripcion: input.descripcion?.trim() || "",
+    proyecta: limpia(input.proyecta),
+    ui_policies: limpia(input.ui_policies),
+    tecnologias: limpia(input.tecnologias),
+  };
+  const actuales = model.readModels ?? [];
+  const i = actuales.findIndex((r) => r.nombre === nombre);
+  const readModels = i >= 0 ? actuales.map((r, k) => (k === i ? nuevo : r)) : [...actuales, nuevo];
+  return { model: { ...model, readModels }, reemplazado: i >= 0 };
+}
+
+/** Quita un modelo de lectura por nombre. Lanza con las opciones si no existe. */
+export function removeReadModel(model: DiagramModel, nombre: string): DiagramModel {
+  const actuales = model.readModels ?? [];
+  const buscado = nombre.trim();
+  if (!actuales.some((r) => r.nombre === buscado)) {
+    throw new Error(
+      actuales.length
+        ? `No hay un read model "${buscado}". Disponibles: ${actuales.map((r) => r.nombre).join(" · ")}`
+        : `No hay un read model "${buscado}": el diagrama no tiene ninguno.`
+    );
+  }
+  return { ...model, readModels: actuales.filter((r) => r.nombre !== buscado) };
 }
 
 /** Cierra una ambigüedad con la respuesta del humano. Lanza si el id no existe. */
@@ -1186,17 +1278,20 @@ export function toGraphData(input: DiagramModel): GraphData {
     fecha_analisis: meta.fecha_analisis || new Date().toISOString().slice(0, 10),
     big_picture: {
       descripcion: meta.descripcion || "",
-      hotspots: [],
+      // Declarados con set_project_meta. Antes eran `[]` fijo: lo que el humano
+      // escribía en la app se perdía en el siguiente export.
+      hotspots: [...(meta.hotspots ?? [])],
       nodos: bigNodos,
       aristas: bigAristas,
     },
     agregados,
-    read_models: [],
+    read_models: (model.readModels ?? []).map((r) => ({ ...r })),
     politicas_inter_agregados: policies,
-    responsables: [],
+    responsables: [...(meta.responsables ?? [])],
     // Las decisiones y lo pendiente viajan con el modelo: el humano que revisa en
     // la app ve por qué el diagrama dice lo que dice sin releer el documento.
-    notas: ambiguityNotes(model),
+    // Las notas del humano van PRIMERO; el resumen de ambigüedades se suma.
+    notas: mergeNotas(meta.notas, ambiguityNotes(model)),
     transcript: "",
   };
 }
@@ -1263,8 +1358,59 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       descripcion: data.big_picture?.descripcion,
       version: data.version,
       fecha_analisis: data.fecha_analisis,
+      // Se recuperan o se pierden: `export_to_app` REEMPLAZA el proyecto, así
+      // que lo que no vuelva por acá desaparece del trabajo del humano.
+      hotspots: textosDeEntrada(data.big_picture?.hotspots),
+      responsables: textosDeEntrada(data.responsables),
+      notas: data.notas?.trim() ? data.notas : undefined,
     },
     nodes,
     edges,
+    readModels: readModelsDeEntrada(data.read_models),
   };
 }
+
+/** Lista de textos limpia (sin vacíos ni repetidos); `undefined` si no queda nada. */
+function textosDeEntrada(lista: unknown): string[] | undefined {
+  if (!Array.isArray(lista)) return undefined;
+  const limpios = Array.from(
+    new Set(lista.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean))
+  );
+  return limpios.length ? limpios : undefined;
+}
+
+/** Read models válidos (con nombre); los campos de lista se normalizan a array. */
+function readModelsDeEntrada(lista: unknown): ReadModel[] | undefined {
+  if (!Array.isArray(lista)) return undefined;
+  const limpios = lista
+    .filter((r): r is Partial<ReadModel> => !!r && typeof r === "object" && !!(r as any).nombre?.trim?.())
+    .map((r) => ({
+      nombre: String(r.nombre).trim(),
+      descripcion: r.descripcion ?? "",
+      proyecta: textosDeEntrada(r.proyecta) ?? [],
+      ui_policies: textosDeEntrada(r.ui_policies) ?? [],
+      tecnologias: textosDeEntrada(r.tecnologias) ?? [],
+    }));
+  return limpios.length ? limpios : undefined;
+}
+
+/**
+ * Notas del humano + resumen de ambigüedades. El resumen se regenera en cada
+ * export; las notas no se tocan. Si el humano ya había pegado el resumen (venía
+ * de un export anterior), no se duplica.
+ */
+export function mergeNotas(humano: string | undefined, resumen: string): string {
+  const propio = (humano ?? "").trim();
+  const auto = resumen.trim();
+  if (!auto) return propio;
+  if (!propio) return auto;
+  if (propio.includes(auto)) return propio;
+  // Quita de las notas del humano un resumen viejo (todo desde su encabezado)
+  // para no ir acumulando copias en cada export.
+  const marca = propio.indexOf(MARCA_AMBIGUEDADES);
+  const soloHumano = (marca >= 0 ? propio.slice(0, marca) : propio).trimEnd();
+  return soloHumano ? `${soloHumano}\n\n${MARCA_AMBIGUEDADES}\n${auto}` : `${MARCA_AMBIGUEDADES}\n${auto}`;
+}
+
+/** Encabezado que separa lo escrito por el humano de lo que genera el arnés. */
+export const MARCA_AMBIGUEDADES = "<!-- ambigüedades registradas por el agente -->";

@@ -526,6 +526,26 @@ se pregunta TODO junto en una sola ronda (\`AskUserQuestion\` si está disponibl
 Cada respuesta se cierra con \`resolve_ambiguity\`. Lo menor no se pregunta: va
 como «pendiente en la fuente» en la \`description\`.
 
+## 3b · Metadatos del proyecto: lo que el humano lee aparte del dibujo
+
+La app tiene un formulario «Metadatos del proyecto» y \`export_to_app\` **reemplaza
+el proyecto**: lo que no declares desaparece. Antes de exportar sobre algo que ya
+existe, \`get_diagram\` dice qué hay (hotspots, responsables, notas propias, read
+models); si retomaste el diseño con \`import_diagram\`, esos campos ya vienen
+cargados y no hay que reescribirlos.
+
+- \`set_project_meta\` — **hotspots**: lo que el equipo TIENE que discutir (una
+  decisión sin dueño, un flujo contradictorio, un límite que nadie confirma), no
+  cualquier detalle pendiente; lo que la fuente no cierra y cambia el diagrama va
+  en \`record_ambiguity\`. **responsables**: quién responde por el modelo.
+  **notes**: las notas del proyecto. Las **notas del humano no se pisan**: quedan
+  arriba y el resumen de ambigüedades se agrega debajo, sin duplicarse en cada
+  export.
+- \`add_read_model\` / \`remove_read_model\` — una proyección de la vista de datos:
+  qué pantalla o consulta se arma con qué eventos (\`projects\`), con qué reglas de
+  interfaz (\`uiPolicies\`) y con qué tecnologías. No es una caja del lienzo. El
+  mismo nombre reemplaza, no duplica.
+
 ## 4 · Construir
 
 1. \`create_diagram\` → guarda el \`diagramId\`.

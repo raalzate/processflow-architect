@@ -557,3 +557,92 @@ describe("metadatos de la caja (referencias): contrato con el agente", () => {
     }
   });
 });
+
+// =============================================================================
+// Metadatos del proyecto y vista de datos desde el MCP (#133)
+// =============================================================================
+
+describe("registerProcessflowTools · metadatos del proyecto", () => {
+  let ws: string;
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pfa-meta-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  /** Arranca el registro con workspace propio y crea un diagrama. */
+  async function conDiagrama() {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    const creado = await tools.get("create_diagram")!.handler({ name: "Seguros", notation: "ddd" });
+    const id = /diagramId="([^"]+)"/.exec(creado.content[0].text)![1];
+    return { tools, id };
+  }
+
+  it("declara hotspots, responsables y notas, y el export los lleva al GraphData", async () => {
+    const { tools, id } = await conDiagrama();
+    const res = await tools.get("set_project_meta")!.handler({
+      diagramId: id,
+      hotspots: ["¿Quién cobra la prima?"],
+      responsables: ["Ana"],
+      notes: "Revisado con negocio.",
+    });
+    expect(res.isError).toBeUndefined();
+    await tools.get("add_node")!.handler({ diagramId: id, name: "Cobrar", type: "Comando" });
+    const out = path.join(ws, "salida.json");
+    await tools.get("export_to_app")!.handler({ diagramId: id, outPath: out });
+    const graph = JSON.parse(await fs.readFile(out, "utf8"));
+    expect(graph.big_picture.hotspots).toEqual(["¿Quién cobra la prima?"]);
+    expect(graph.responsables).toEqual(["Ana"]);
+    expect(graph.notas).toContain("Revisado con negocio.");
+  });
+
+  it("una lista desmedida falla como error de la herramienta, no como excepción", async () => {
+    const { tools, id } = await conDiagrama();
+    const res = await tools.get("set_project_meta")!.handler({
+      diagramId: id,
+      hotspots: Array.from({ length: 40 }, (_, i) => `h${i}`),
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/máximo/i);
+  });
+
+  it("añade, reemplaza y quita read models; el nombre inexistente devuelve las opciones", async () => {
+    const { tools, id } = await conDiagrama();
+    await tools.get("add_read_model")!.handler({ diagramId: id, name: "Panel", description: "v1", projects: ["Prima cobrada"] });
+    const rep = await tools.get("add_read_model")!.handler({ diagramId: id, name: "Panel", description: "v2" });
+    expect(rep.content[0].text).toContain("Reemplazado");
+    await tools.get("add_read_model")!.handler({ diagramId: id, name: "Reportes" });
+
+    // get_diagram declara lo que ya existe: sin esto el agente lo pisa.
+    const visto = await tools.get("get_diagram")!.handler({ diagramId: id });
+    expect(visto.content[0].text).toContain("Read models: 2");
+    expect(visto.content[0].text).toContain("Panel");
+
+    const quitado = await tools.get("remove_read_model")!.handler({ diagramId: id, name: "Panel" });
+    expect(quitado.isError).toBeUndefined();
+    const falla = await tools.get("remove_read_model")!.handler({ diagramId: id, name: "Panel" });
+    expect(falla.isError).toBe(true);
+    expect(falla.content[0].text).toContain("Reportes");
+  });
+
+  it("reimportar un GraphData con los campos llenos NO los borra al exportar de nuevo", async () => {
+    const { tools, id } = await conDiagrama();
+    await tools.get("add_node")!.handler({ diagramId: id, name: "Cobrar", type: "Comando" });
+    await tools.get("set_project_meta")!.handler({ diagramId: id, hotspots: ["Cobro"], responsables: ["Ana"], notes: "Nota del humano." });
+    await tools.get("add_read_model")!.handler({ diagramId: id, name: "Panel" });
+    const ida = path.join(ws, "ida.json");
+    await tools.get("export_to_app")!.handler({ diagramId: id, outPath: ida });
+
+    const reimportado = await tools.get("import_diagram")!.handler({ path: ida });
+    const id2 = /diagramId="([^"]+)"/.exec(reimportado.content[0].text)![1];
+    const vuelta = path.join(ws, "vuelta.json");
+    await tools.get("export_to_app")!.handler({ diagramId: id2, outPath: vuelta });
+    const graph = JSON.parse(await fs.readFile(vuelta, "utf8"));
+    expect(graph.big_picture.hotspots).toEqual(["Cobro"]);
+    expect(graph.responsables).toEqual(["Ana"]);
+    expect(graph.notas).toContain("Nota del humano.");
+    expect(graph.read_models.map((r: any) => r.nombre)).toEqual(["Panel"]);
+  });
+});

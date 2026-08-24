@@ -18,6 +18,12 @@ import {
   bpmnFlowWarnings,
   traceabilityWarnings,
   recordAmbiguity,
+  setProjectMeta,
+  addReadModel,
+  removeReadModel,
+  mergeNotas,
+  MARCA_AMBIGUEDADES,
+  MAX_LISTA_PROYECTO,
   resolveAmbiguity,
   pendingAmbiguities,
   type DiagramModel,
@@ -763,5 +769,131 @@ describe("metadatos: validación en la puerta", () => {
       ],
     }).model;
     expect(m.nodes[0].metadata).toEqual([{ clave: "repo", valor: "acme/pagos-svc" }]);
+  });
+});
+
+// =============================================================================
+// Metadatos del proyecto: hotspots, responsables, notas y read models (#133)
+// =============================================================================
+
+describe("metadatos del proyecto: lo que el humano escribe en la app", () => {
+  it("toGraphData emite lo declarado, no listas vacías fijas", () => {
+    let m = emptyDiagram(base);
+    m = setProjectMeta(m, {
+      hotspots: ["¿Quién cobra la prima?", "Firma electrónica"],
+      responsables: ["Ana", "Beto"],
+      notas: "Revisado con negocio el 12-mar.",
+    });
+    m = addReadModel(m, { nombre: "Panel de pólizas", descripcion: "Estado por cliente", proyecta: ["Póliza emitida"] }).model;
+    const g = toGraphData(m);
+    expect(g.big_picture.hotspots).toEqual(["¿Quién cobra la prima?", "Firma electrónica"]);
+    expect(g.responsables).toEqual(["Ana", "Beto"]);
+    expect(g.notas).toContain("Revisado con negocio el 12-mar.");
+    expect(g.read_models).toEqual([
+      { nombre: "Panel de pólizas", descripcion: "Estado por cliente", proyecta: ["Póliza emitida"], ui_policies: [], tecnologias: [] },
+    ]);
+  });
+
+  it("el round-trip NO destruye lo que el humano llenó en la app", () => {
+    // Es el bug real: export_to_app REEMPLAZA el proyecto, así que lo que
+    // fromGraphData no recupere desaparece del trabajo del humano.
+    const g = toGraphData(emptyDiagram(base));
+    const lleno = {
+      ...g,
+      big_picture: { ...g.big_picture, hotspots: ["Cobro sin confirmar"] },
+      responsables: ["Ana"],
+      notas: "Nota del humano.",
+      read_models: [
+        { nombre: "Panel", descripcion: "d", proyecta: ["Evento"], ui_policies: ["sólo lectura"], tecnologias: ["React"] },
+      ],
+    };
+    const vuelta = toGraphData(fromGraphData(lleno, "ddd"));
+    expect(vuelta.big_picture.hotspots).toEqual(["Cobro sin confirmar"]);
+    expect(vuelta.responsables).toEqual(["Ana"]);
+    expect(vuelta.notas).toBe("Nota del humano.");
+    expect(vuelta.read_models).toEqual(lleno.read_models);
+  });
+
+  it("las listas vuelven limpias: sin vacíos ni repetidos, y sin read models sin nombre", () => {
+    const g = toGraphData(emptyDiagram(base));
+    const sucio = {
+      ...g,
+      big_picture: { ...g.big_picture, hotspots: ["  Cobro ", "Cobro", "", "  "] },
+      responsables: ["Ana", "Ana"],
+      read_models: [{ nombre: "  ", descripcion: "x" }, { nombre: "Panel" }] as any,
+    };
+    const vuelta = toGraphData(fromGraphData(sucio, "ddd"));
+    expect(vuelta.big_picture.hotspots).toEqual(["Cobro"]);
+    expect(vuelta.responsables).toEqual(["Ana"]);
+    expect(vuelta.read_models).toEqual([
+      { nombre: "Panel", descripcion: "", proyecta: [], ui_policies: [], tecnologias: [] },
+    ]);
+  });
+
+  it("una lista desmedida revienta en la llamada", () => {
+    const muchos = Array.from({ length: MAX_LISTA_PROYECTO + 1 }, (_, i) => `h${i}`);
+    expect(() => setProjectMeta(emptyDiagram(base), { hotspots: muchos })).toThrow(/máximo/i);
+  });
+
+  it("declarar sólo un campo no borra los otros; lista vacía sí borra", () => {
+    let m = setProjectMeta(emptyDiagram(base), { hotspots: ["A"], responsables: ["Ana"] });
+    m = setProjectMeta(m, { notas: "hola" });
+    expect(m.meta.hotspots).toEqual(["A"]);
+    expect(m.meta.responsables).toEqual(["Ana"]);
+    m = setProjectMeta(m, { hotspots: [] });
+    expect(m.meta.hotspots).toBeUndefined();
+    expect(m.meta.responsables).toEqual(["Ana"]);
+  });
+});
+
+describe("notas: las del humano no se pisan ni se duplican", () => {
+  it("el resumen de ambigüedades va debajo de las notas del humano", () => {
+    let m = setProjectMeta(emptyDiagram(base), { notas: "Nota del humano." });
+    m = recordAmbiguity(m, { pregunta: "¿Cobro antes o después de emitir?" }).model;
+    const notas = toGraphData(m).notas;
+    expect(notas.indexOf("Nota del humano.")).toBeLessThan(notas.indexOf("Pendiente en la fuente"));
+    expect(notas).toContain(MARCA_AMBIGUEDADES);
+  });
+
+  it("exportar dos veces no acumula copias del resumen", () => {
+    let m = setProjectMeta(emptyDiagram(base), { notas: "Nota del humano." });
+    m = recordAmbiguity(m, { pregunta: "¿Cobro antes o después?" }).model;
+    // Simula el ciclo real: exportar, que la app guarde, reimportar y exportar.
+    const unaVez = toGraphData(m);
+    const dosVeces = toGraphData(
+      recordAmbiguity(fromGraphData(unaVez, "ddd"), { pregunta: "¿Cobro antes o después?" }).model
+    );
+    const cuantas = (t: string, aguja: string) => t.split(aguja).length - 1;
+    expect(cuantas(dosVeces.notas, MARCA_AMBIGUEDADES)).toBe(1);
+    expect(cuantas(dosVeces.notas, "Nota del humano.")).toBe(1);
+  });
+
+  it("sin ambigüedades, las notas son sólo las del humano", () => {
+    const m = setProjectMeta(emptyDiagram(base), { notas: "Sólo esto." });
+    expect(toGraphData(m).notas).toBe("Sólo esto.");
+    expect(mergeNotas(undefined, "")).toBe("");
+  });
+});
+
+describe("read models", () => {
+  it("el mismo nombre reemplaza en vez de duplicar", () => {
+    let m = addReadModel(emptyDiagram(base), { nombre: "Panel", descripcion: "v1" }).model;
+    const r = addReadModel(m, { nombre: "Panel", descripcion: "v2" });
+    expect(r.reemplazado).toBe(true);
+    expect(r.model.readModels).toHaveLength(1);
+    expect(r.model.readModels![0].descripcion).toBe("v2");
+  });
+
+  it("quitar por nombre deja el resto y avisa con las opciones si no existe", () => {
+    let m = addReadModel(emptyDiagram(base), { nombre: "Panel" }).model;
+    m = addReadModel(m, { nombre: "Reportes" }).model;
+    m = removeReadModel(m, "Panel");
+    expect(m.readModels!.map((r) => r.nombre)).toEqual(["Reportes"]);
+    expect(() => removeReadModel(m, "Panel")).toThrow(/Reportes/);
+    expect(() => removeReadModel(emptyDiagram(base), "Panel")).toThrow(/no tiene ninguno/i);
+  });
+
+  it("un read model sin nombre revienta en la llamada", () => {
+    expect(() => addReadModel(emptyDiagram(base), { nombre: "  " })).toThrow(/nombre/i);
   });
 });
