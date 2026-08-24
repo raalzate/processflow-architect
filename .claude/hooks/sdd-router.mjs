@@ -15,17 +15,26 @@ if (!config) allow();
 const prompt = String(input?.prompt ?? "");
 if (!prompt.trim()) allow();
 
-const messages = [];
-for (const route of config.sdd?.routes ?? []) {
-  if (!route.message) continue;
-  const hit = (route.patterns ?? []).some((p) => {
+/** ¿El pedido casa con alguna regex de la ruta? Una regex inválida no rutea. */
+const casa = (route) =>
+  (route.patterns ?? []).some((p) => {
     try {
       return new RegExp(p, "i").test(prompt);
     } catch {
       return false;
     }
   });
-  if (hit) messages.push(`- **${route.route}** · ${route.message}`);
+
+// La ruta `none` (typo, copy, renombrar, explicame…) no tiene mensaje: existe
+// para DESACTIVAR la ruta `issue`. Sin esto, "corregí un typo en el tooltip"
+// pediría abrir una issue y el router se volvería ruido que nadie lee.
+const trivial = (config.sdd?.routes ?? []).some((r) => r.route === "none" && casa(r));
+
+const messages = [];
+for (const route of config.sdd?.routes ?? []) {
+  if (!route.message) continue;
+  if (route.route === "issue" && trivial) continue;
+  if (casa(route)) messages.push(`- **${route.route}** · ${route.message}`);
 }
 
 // Silencio en lo trivial: un router que habla siempre deja de leerse.

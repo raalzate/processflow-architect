@@ -154,6 +154,57 @@ for (const [hook, name, payload, expected] of blocks) {
 }
 
 /**
+ * `.githooks/commit-msg` en un repo git DE VERDAD (temporal, fuera del árbol):
+ * el hook lee `git diff --cached`, así que probarlo con payloads falsos no
+ * probaría nada. Es el freno que faltaba cuando cuatro arreglos de una sesión
+ * llegaron a estar listos sin una sola issue abierta.
+ */
+{
+  const hook = abs(".githooks/commit-msg");
+
+  /**
+   * Repo git NUEVO por caso: los archivos staged de un caso anterior seguían
+   * ahí (nada se commitea) y el caso "sólo documentación" veía código staged.
+   */
+  const correr = (archivos, mensaje) => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-commitmsg-"));
+    try {
+      const git = (...args) => spawnSync("git", args, { cwd: tmp, encoding: "utf8" });
+      git("init", "-q");
+      git("config", "user.email", "selftest@example.com");
+      git("config", "user.name", "selftest");
+      for (const [rel, contenido] of Object.entries(archivos)) {
+        const dest = path.join(tmp, rel);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.writeFileSync(dest, contenido);
+      }
+      git("add", "-A");
+      const msgFile = path.join(tmp, "MSG");
+      fs.writeFileSync(msgFile, mensaje);
+      const res = spawnSync("bash", [hook, msgFile], { cwd: tmp, encoding: "utf8" });
+      return { status: res.status, stderr: res.stderr ?? "" };
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  };
+
+  const casos = [
+    ["código sin issue ni declaración", { "src/lib/x.ts": "export const x = 1;\n" }, "fix(lienzo): algo", 1],
+    ["código con issue referenciada", { "src/lib/y.ts": "export const y = 2;\n" }, "fix(lienzo): algo\n\nRefs #130", 0],
+    ["código con `sin-issue:` y motivo", { "src/lib/z.ts": "export const z = 3;\n" }, "chore: renombrar\n\nsin-issue: renombre interno, sin cambio de comportamiento", 0],
+    ["`sin-issue:` sin motivo NO alcanza", { "src/lib/w.ts": "export const w = 4;\n" }, "chore: algo\n\nsin-issue:", 1],
+    ["sólo documentación no pide issue", { "docs/algo.md": "# hola\n" }, "docs: notas", 0],
+    ["merge lo escribe git, no pide issue", { "src/lib/m.ts": "export const m = 5;\n" }, "Merge branch 'main'", 0],
+    ["un hook del arnés también cuenta como código", { ".claude/hooks/x.mjs": "// x\n" }, "chore: hook nuevo", 1],
+  ];
+  for (const [nombre, archivos, mensaje, esperado] of casos) {
+    const res = correr(archivos, mensaje);
+    if (res.status === esperado) ok(`commit-msg: ${nombre}`);
+    else bad(`commit-msg: ${nombre}`, `esperaba exit ${esperado}, salió ${res.status}. stderr: ${res.stderr.trim().slice(0, 160)}`);
+  }
+}
+
+/**
  * Corre el lint sobre un archivo QUE NO EXISTE: la ruta elige las reglas y el
  * contenido viaja por stdin. Antes esto se probaba escribiendo temporales dentro
  * de `src/`; con `next dev` vivo, el watcher los veía aparecer y desaparecer y
@@ -418,6 +469,12 @@ const routeCases = [
   ["cambiá el system prompt del agente local", "ai"],
   ["corregí un typo en el tooltip del sidebar", null],
   ["explicame cómo funciona graph-processor", null],
+  // Ruta `issue`: cualquier intención de cambiar código que no cae en una ruta
+  // más específica tiene que recordar PREGUNTAR si se registra la issue. Es el
+  // caso que se escapó: un pedido en prosa, sin la palabra "bug" ni "feature".
+  ["se vuelve dificil mover las flechas", "issue"],
+  ["agregá un botón para exportar a CSV", "issue"],
+  ["falta que el panel muestre los nodos sueltos", "issue"],
 ];
 for (const [prompt, expected] of routeCases) {
   const res = runHook("sdd-router.mjs", { hook_event_name: "UserPromptSubmit", prompt });

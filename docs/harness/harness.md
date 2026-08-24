@@ -70,8 +70,10 @@ repo es cambiar ese único archivo.
 | `PostToolUse` Write\|Edit | `post-edit-check.mjs` | corre `repo-lint` sobre el archivo tocado (devuelve el error real) y marca `.git/gate-dirty` |
 | `Stop` | `gate-stop.mjs` | impide cerrar la tarea si se editó código y el gate no quedó verde |
 
-En el repo, además: `.githooks/pre-commit` (rutas protegidas + `repo-lint` de los archivos staged) y
-`.githooks/post-commit` (reindexa con `graphify update`), instalados con `npm run hooks:install` —
+En el repo, además: `.githooks/pre-commit` (rutas protegidas + `repo-lint` de los archivos staged),
+`.githooks/commit-msg` (un commit que toca código referencia su issue —`#123`— o declara
+`sin-issue: <motivo>`) y `.githooks/post-commit` (reindexa con `graphify update`), instalados con
+`npm run hooks:install` —
 `core.hooksPath` debe valer `.githooks`; `.git/hooks/` sólo tiene `.sample` a propósito.
 
 ## El índice del repo (graphify)
@@ -88,6 +90,7 @@ npm run graph:check                # la señal del gate, suelta
 | Pieza | Qué hace |
 |---|---|
 | `graphify-out/` | el índice: `graph.json` + `GRAPH_REPORT.md`. **Gitignorado**: es derivado y por máquina |
+| `.githooks/commit-msg` | el trabajo no entra al historial sin quedar registrado: si el diff staged toca `src/`, `main/`, `scripts/`, `.githooks/` o `.claude/`, el mensaje lleva `#<issue>` o una línea `sin-issue: <motivo>`. Merge/revert/fixup quedan fuera. Lo prueban 7 casos del self-test en un repo git temporal |
 | `.githooks/post-commit` | reindexa después de cada commit. **No** se instala con `graphify hook install`: ese comando escribe en `.git/hooks/`, que git ignora porque `core.hooksPath=.githooks` |
 | `.claude/hooks/graph-first.mjs` | pone el índice en el camino del agente cuando el pedido es «dónde está X», «quién usa Y», «cómo funciona Z» |
 | `node scripts/graph-check.mjs` | señal del gate: mide las **dos** formas en que un índice miente (abajo); **omitida** donde no existe (CI) |

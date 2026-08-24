@@ -113,8 +113,12 @@ ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
   cada `tasks.md`). Las carpetas de `specs/` se borraron; el índice está en `specs/README.md`.
   Las skills `sofka-0x` no están versionadas en el repo, así que las fases se ejecutaron siguiendo
   su contrato con las herramientas del repo (vitest en lugar de un runner de Gherkin).
-- Deuda: nada impide entregar una feature grande **sin abrir la issue madre** — sólo el criterio del
-  agente y el review. El freno actual protege el *dónde* (los artefactos no vuelven al repo), no el
-  *si*. Candidato a mecanismo fuerte: un check en el `reviewer` que marque diffs con archivos nuevos
-  bajo `src/app/`, `main/services/` o `src/lib/notations.ts` sin issue `sdd:feature` referenciada en
-  el mensaje del commit.
+- **El registro ya no depende del criterio** (2026-08-24): `.githooks/commit-msg` frena cualquier
+  commit que toque código sin una issue referenciada (`#123`) o sin una línea `sin-issue: <motivo>`,
+  y la ruta `issue` del `sdd-router` recuerda **preguntarle al humano** si se registra antes de tocar
+  producción —incluso cuando el pedido viene en prosa y no nombra «feature» ni «bug»—, callándose en
+  lo trivial. Lo prueban 7 casos del self-test en un repo git temporal y 3 de ruteo. Nació de un
+  incidente: cuatro arreglos terminados sin una sola issue (`docs/harness/gotchas.md`).
+- Deuda que queda: el freno pide *un* registro, no el registro *correcto*. Que una feature grande
+  vaya con issue madre y tareas en vez de un `bug` suelto sigue siendo criterio del agente y del
+  `reviewer`.

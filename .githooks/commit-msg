@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# commit-msg — el trabajo no entra al historial sin quedar registrado.
+#
+# Por qué existe: la ruta SDD y el hook `sdd-router` informaban, pero nada
+# impedía cerrar un cambio de producción sin abrir la issue. Pasó: cuatro
+# arreglos de una sesión (manijas de relación, PNG sucio, contención de
+# contenedores, metadatos del proyecto en el MCP) llegaron a estar terminados sin
+# un solo issue, y el registro se hizo de memoria al final. El criterio del
+# agente no es un mecanismo; esto sí.
+#
+# Regla: si el commit toca CÓDIGO (no sólo documentación), el mensaje referencia
+# una issue (`#123`, `Refs #123`, `Closes #123`) o declara por qué no la lleva:
+#
+#     sin-issue: typo en el tooltip, sin superficie nueva
+#
+# La declaración va en su propia línea y queda en el historial: saltarse el
+# registro es una decisión firmada, no un silencio.
+#
+# Instalación: npm run hooks:install (core.hooksPath=.githooks).
+set -uo pipefail
+
+MSG_FILE="${1:-}"
+[ -z "$MSG_FILE" ] && exit 0
+MSG=$(cat "$MSG_FILE" 2>/dev/null || true)
+
+# Merge, revert y los commits de arreglo los escribe git o los reescribe el
+# rebase: no hay decisión humana nueva que declarar.
+case "$MSG" in
+  Merge\ *|Revert\ *|fixup!\ *|squash!\ *) exit 0 ;;
+esac
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+[ -z "$STAGED" ] && exit 0
+
+# Código = lo que puede romper la app o el arnés. Documentación, notas de release
+# y capturas no piden issue: son el registro, no el cambio.
+CODE=$(echo "$STAGED" | grep -E '^(src/|main/|main\.ts|preload\.ts|mcp-server/|scripts/|\.githooks/|\.claude/)' | grep -vE '\.(md|png|jpg|jpeg|svg)$' || true)
+[ -z "$CODE" ] && exit 0
+
+# Referencia a una issue de GitHub, en cualquier parte del mensaje.
+if echo "$MSG" | grep -qE '(^|[^A-Za-z0-9_])#[0-9]+'; then exit 0; fi
+# O la declaración explícita, en su propia línea y con motivo.
+if echo "$MSG" | grep -qiE '^sin-issue:[[:space:]]*[^[:space:]]+'; then exit 0; fi
+
+{
+  echo "commit-msg: este commit toca código y no queda registrado en ninguna parte."
+  echo ""
+  echo "Archivos de código en el commit:"
+  echo "$CODE" | sed 's/^/  - /'
+  echo ""
+  echo "Elegí una de las dos, y que quede en el historial:"
+  echo ""
+  echo "  1) Referenciá la issue en el mensaje — «#123», «Refs #123», «Closes #123»."
+  echo "     Bug o mejora acotada:  gh issue create --label bug --title \"…\" --body \"…\""
+  echo "     Tamaño feature:        npm run sdd:new <spec.md>   (ver docs/harness/sdd.md)"
+  echo ""
+  echo "  2) Declaralo, con el motivo, en una línea del cuerpo:"
+  echo "     sin-issue: <por qué este cambio no necesita registro>"
+  echo ""
+  echo "Saltear el hook está prohibido: si el freno estorba, se arregla el freno."
+} >&2
+exit 1

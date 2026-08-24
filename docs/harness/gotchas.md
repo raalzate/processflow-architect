@@ -243,3 +243,21 @@ Causa:   `TooltipContent` se renderizaba DENTRO del trigger, y `SidebarContent` 
 Regla:   todo contenido flotante de Radix va en su `Portal` (al `body`), no dentro del trigger.
 Mecanismo: `TooltipPrimitive.Portal` en `src/components/ui/tooltip.tsx` (+ `z-[60]`). Vale para
          cualquier tooltip dentro de un contenedor con desborde oculto.
+
+### GOTCHA: cuatro arreglos terminados sin una sola issue abierta
+
+Issue: #141
+
+Síntoma: una sesión entregó cuatro cambios de producción (manijas de relación, PNG sucio,
+         contención de contenedores, metadatos del proyecto en el MCP) con el gate verde y **sin
+         registro**: el humano preguntó «¿estamos reportando esto?» y el historial de issues estaba
+         vacío. El registro se hizo de memoria al final, con el riesgo de perder el porqué.
+Causa:   la ruta SDD y el hook `sdd-router` sólo hablaban cuando el pedido usaba palabras de
+         feature o de bug. Un pedido en prosa —«se vuelve difícil mover las flechas»— no casaba con
+         ningún patrón, así que nadie recordó preguntar; y nada frenaba el commit sin issue: el
+         freno protegía el *dónde* de los artefactos, no el *si* del registro.
+Regla:   un cambio de código llega al historial con una issue referenciada (`#123`) o con una línea
+         `sin-issue: <motivo>`. Antes de tocar producción se le pregunta al humano si se registra.
+Mecanismo: `.githooks/commit-msg` (bloqueante: mira el diff staged y el mensaje) + ruta `issue` del
+         `sdd-router`, que se desactiva sola en lo trivial (ruta `none`). Probados por
+         `scripts/harness-selftest.mjs`: 7 casos del hook en un repo git temporal y 3 de ruteo.

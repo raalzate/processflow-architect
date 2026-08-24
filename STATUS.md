@@ -21,7 +21,7 @@ lo que se supone va en "deuda conocida".
 | Índice del repo (graphify) | `npm run graph:check` | verde — 2 253 nodos / 5 575 aristas / 188 comunidades sobre 334 archivos (262 de código por AST + 51 docs + 8 imágenes por extracción semántica). Mide dos cosas: atraso contra HEAD y encogimiento contra `graph.baseline`; se omite donde no hay índice (CI) |
 | Release con instaladores | `node scripts/repo-lint.mjs` (regla RELEASEJOB) | verde — el job que publica baja los artefactos DESPUÉS del checkout y `fail_on_unmatched_files` está en `true`: el borrador vacío de v0.6.3 (checkout limpiando `installers/`) no puede repetirse en verde |
 | Notas de release en el repo | `node scripts/repo-lint.mjs --release-check 0.6.1` | verde — `docs/releases/0.6.1.md` con las tres secciones; con una versión inventada el freno RELEASE muerde |
-| Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 24 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA, ENRUTADO, RELEASEJOB y «no escribe temporales en `src/`»), 8 casos de ruteo |
+| Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 31 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA, ENRUTADO, RELEASEJOB y «no escribe temporales en `src/`»), el hook `commit-msg` en un repo git temporal, 11 casos de ruteo |
 | Link-check de docs | `node scripts/docs-linkcheck.mjs` | verde |
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |

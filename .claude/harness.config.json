@@ -379,6 +379,19 @@
           "\\bauditar?\\b"
         ],
         "message": ""
+      },
+      {
+        "route": "issue",
+        "$comment": "Cualquier intención de CAMBIAR código que no cayó en una ruta más específica. La ruta `none` la desactiva (lo trivial no lleva issue): esa lógica vive en .claude/hooks/sdd-router.mjs.",
+        "patterns": [
+          "\\b(arregl|corrig|ajust|agreg|añad|anad|implement|cambi|quit|borr|elimin|mejor|refactor|optimiz|soport|habilit|desactiv|reescrib)",
+          "\\bhac(é|e)(lo|los|la)?\\b",
+          "\\bfalta\\b",
+          "\\bno (se|puede|deja|detecta|aparece|anda|sirve)\\b",
+          "\\bse (vuelve|pierde|traba|cuelga|queda)\\b",
+          "\\b(bug|falla|error|regresi[óo]n)\\b"
+        ],
+        "message": "Este pedido cambia código: **preguntá al humano si se registra la issue ANTES de tocar producción** (bug/mejora acotada con `gh issue create`, o ruta SDD con `npm run sdd:new` si crea superficie nueva). No lo decidas solo y no lo dejes para el final: el hook `commit-msg` exige `#<número>` en el mensaje o una línea `sin-issue: <motivo>`, así que un cambio sin registrar no llega al historial."
       }
     ],
     "$activeFeaturePointer": "Número de la issue MADRE de la feature en curso (p. ej. `#25`), o vacío si no hay ninguna. Antes apuntaba a una carpeta de specs/; los artefactos ahora viven en GitHub."
