@@ -345,3 +345,42 @@ export function linkGeometry(
 
   return { start, end, path, labelX, labelY, labelAnchor, bend, bendKind, waypoints };
 }
+
+/**
+ * Tamaño de las manijas de una relación, en PÍXELES DE PANTALLA. El zoom escala
+ * el viewBox, así que una manija medida en unidades del lienzo se encoge al
+ * alejar: a zoom 0.5 el círculo de 6 u quedaba en 3 px y agarrar la punta era
+ * cuestión de suerte. Se declaran en px y se dividen por el zoom.
+ */
+export const HANDLE_PX = {
+  /** Radio visible de la punta (círculo). */
+  radius: 7,
+  /** Radio del área de agarre invisible: bastante más grande que lo que se ve. */
+  hit: 15,
+  /** Medio lado del cuadrado de doblez / punto de quiebre. */
+  half: 6,
+  /** Grosor del borde. */
+  stroke: 2,
+} as const;
+
+/**
+ * Convierte `HANDLE_PX` a unidades del lienzo para un zoom dado, de modo que en
+ * pantalla la manija mida siempre lo mismo. El zoom no válido (0, negativo,
+ * NaN) cae a 1: una manija de tamaño raro es peor que una sin escalar.
+ */
+export function handleGeom(zoom: number): {
+  radius: number;
+  hit: number;
+  half: number;
+  hitHalf: number;
+  stroke: number;
+} {
+  const z = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  return {
+    radius: HANDLE_PX.radius / z,
+    hit: HANDLE_PX.hit / z,
+    half: HANDLE_PX.half / z,
+    hitHalf: HANDLE_PX.hit / z,
+    stroke: HANDLE_PX.stroke / z,
+  };
+}

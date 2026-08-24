@@ -9,6 +9,8 @@
 import { describe, it, expect } from "vitest";
 import {
   linkGeometry,
+  handleGeom,
+  HANDLE_PX,
   linkEndpoints,
   defaultCurveApex,
   mirrorCurveApex,
@@ -301,5 +303,29 @@ describe("routingOf — enrutado efectivo", () => {
     expect(geo.path).toContain("Q");
     // Y los controles de la curva se ofrecen exactamente cuando eso pasa.
     expect(marcado === "curved").toBe(geo.bendKind === "curve");
+  });
+});
+
+describe("handleGeom · manijas en píxeles de pantalla", () => {
+  it("mide lo mismo en pantalla a cualquier zoom", () => {
+    for (const zoom of [0.25, 0.5, 1, 2, 3]) {
+      const h = handleGeom(zoom);
+      expect(h.radius * zoom).toBeCloseTo(HANDLE_PX.radius);
+      expect(h.hit * zoom).toBeCloseTo(HANDLE_PX.hit);
+      expect(h.half * zoom).toBeCloseTo(HANDLE_PX.half);
+      expect(h.stroke * zoom).toBeCloseTo(HANDLE_PX.stroke);
+    }
+  });
+
+  it("el área de agarre es mayor que lo que se ve (agarrar la punta no es puntería)", () => {
+    const h = handleGeom(1);
+    expect(h.hit).toBeGreaterThan(h.radius);
+    expect(h.hitHalf).toBeGreaterThan(h.half);
+  });
+
+  it("un zoom inválido cae a 1 en vez de dar una manija absurda", () => {
+    for (const malo of [0, -2, NaN, Infinity]) {
+      expect(handleGeom(malo)).toEqual(handleGeom(1));
+    }
   });
 });

@@ -122,6 +122,7 @@ import {
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
 import {
   clipToShape,
+  handleGeom,
   linkEndpoints,
   linkGeometry,
   nodeBox,
@@ -135,6 +136,7 @@ import {
 // cambiar los imports de quien ya la tomaba de este archivo.
 export {
   clipToShape,
+  handleGeom,
   linkEndpoints,
   linkGeometry,
   nodeBox,
@@ -1274,6 +1276,8 @@ export const LinkEndpointHandles: React.FC<{
   nodes: Map<string, DesignerNode>;
   /** Notación de la vista: sin ella las manijas no caen sobre el trazo en C4. */
   notation?: NotationId;
+  /** Zoom del lienzo: las manijas se dibujan en píxeles de pantalla, no del viewBox. */
+  zoom?: number;
   onEndpointMouseDown: (e: React.MouseEvent, which: "source" | "target" | "bend") => void;
   onWaypointMouseDown: (e: React.MouseEvent, index: number) => void;
   onWaypointDoubleClick: (index: number) => void;
@@ -1283,6 +1287,7 @@ export const LinkEndpointHandles: React.FC<{
   link,
   nodes,
   notation,
+  zoom = 1,
   onEndpointMouseDown,
   onWaypointMouseDown,
   onWaypointDoubleClick,
@@ -1292,74 +1297,101 @@ export const LinkEndpointHandles: React.FC<{
   if (!geo) return null;
   const { start, end, bend, bendKind, waypoints } = geo;
   const esArco = bendKind === "curve";
+  const H = handleGeom(zoom);
   return (
     <g>
       {/* Manija del doblez: en curva es el VÉRTICE del arco (arrástralo al otro
-          lado para invertir la comba); en escalonada, la esquina sugerida. */}
+          lado para invertir la comba); en escalonada, la esquina sugerida.
+          El agarre es el rect transparente grande; el chico sólo se ve. */}
       {bend && (
-        <rect
-          x={bend.x - 6}
-          y={bend.y - 6}
-          width={12}
-          height={12}
-          rx={esArco ? 6 : 2}
-          className="fill-white stroke-blue-400 cursor-move hover:fill-blue-100"
-          strokeWidth={2}
-          strokeDasharray="3 2"
-          onMouseDown={(e) => onEndpointMouseDown(e, "bend")}
-          onDoubleClick={(e) => {
-            if (!esArco || !onBendDoubleClick) return;
-            e.stopPropagation();
-            onBendDoubleClick();
-          }}
-        >
-          <title>
-            {esArco
-              ? "Arrastra para curvar (al otro lado invierte la comba) · doble clic para restablecer"
-              : "Arrastra para crear un punto de quiebre"}
-          </title>
-        </rect>
+        <g className="cursor-move">
+          <rect
+            x={bend.x - H.hitHalf}
+            y={bend.y - H.hitHalf}
+            width={H.hitHalf * 2}
+            height={H.hitHalf * 2}
+            className="fill-transparent"
+            onMouseDown={(e) => onEndpointMouseDown(e, "bend")}
+            onDoubleClick={(e) => {
+              if (!esArco || !onBendDoubleClick) return;
+              e.stopPropagation();
+              onBendDoubleClick();
+            }}
+          >
+            <title>
+              {esArco
+                ? "Arrastra para curvar (al otro lado invierte la comba) · doble clic para restablecer"
+                : "Arrastra para crear un punto de quiebre"}
+            </title>
+          </rect>
+          <rect
+            x={bend.x - H.half}
+            y={bend.y - H.half}
+            width={H.half * 2}
+            height={H.half * 2}
+            rx={esArco ? H.half : 2 / (zoom || 1)}
+            className="fill-white stroke-blue-400"
+            strokeWidth={H.stroke}
+            strokeDasharray={`${3 / (zoom || 1)} ${2 / (zoom || 1)}`}
+            pointerEvents="none"
+          />
+        </g>
       )}
       {/* Puntos de quiebre del usuario: arrastrar para mover, doble clic para quitar. */}
       {waypoints.map((w, i) => (
-        <rect
-          key={i}
-          x={w.x - 6}
-          y={w.y - 6}
-          width={12}
-          height={12}
-          rx={2}
-          className="fill-white stroke-blue-600 cursor-move hover:fill-blue-100"
-          strokeWidth={2}
-          onMouseDown={(e) => onWaypointMouseDown(e, i)}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            onWaypointDoubleClick(i);
-          }}
-        >
-          <title>Arrastra para mover · doble clic para quitar</title>
-        </rect>
+        <g key={i} className="cursor-move">
+          <rect
+            x={w.x - H.hitHalf}
+            y={w.y - H.hitHalf}
+            width={H.hitHalf * 2}
+            height={H.hitHalf * 2}
+            className="fill-transparent"
+            onMouseDown={(e) => onWaypointMouseDown(e, i)}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              onWaypointDoubleClick(i);
+            }}
+          >
+            <title>Arrastra para mover · doble clic para quitar</title>
+          </rect>
+          <rect
+            x={w.x - H.half}
+            y={w.y - H.half}
+            width={H.half * 2}
+            height={H.half * 2}
+            rx={2 / (zoom || 1)}
+            className="fill-white stroke-blue-600"
+            strokeWidth={H.stroke}
+            pointerEvents="none"
+          />
+        </g>
       ))}
-      <circle
-        cx={start.x}
-        cy={start.y}
-        r={6}
-        className="fill-white stroke-blue-600 cursor-move hover:fill-blue-100"
-        strokeWidth={2}
-        onMouseDown={(e) => onEndpointMouseDown(e, "source")}
-      >
-        <title>Arrastra para mover la punta de origen</title>
-      </circle>
-      <circle
-        cx={end.x}
-        cy={end.y}
-        r={6}
-        className="fill-white stroke-blue-600 cursor-move hover:fill-blue-100"
-        strokeWidth={2}
-        onMouseDown={(e) => onEndpointMouseDown(e, "target")}
-      >
-        <title>Arrastra para mover la punta de destino</title>
-      </circle>
+      {(
+        [
+          { p: start, which: "source" as const, titulo: "Arrastra para mover la punta de origen" },
+          { p: end, which: "target" as const, titulo: "Arrastra para mover la punta de destino" },
+        ]
+      ).map(({ p, which, titulo }) => (
+        <g key={which} className="group cursor-move">
+          <circle
+            cx={p.x}
+            cy={p.y}
+            r={H.hit}
+            className="fill-transparent"
+            onMouseDown={(e) => onEndpointMouseDown(e, which)}
+          >
+            <title>{titulo}</title>
+          </circle>
+          <circle
+            cx={p.x}
+            cy={p.y}
+            r={H.radius}
+            className="fill-white stroke-blue-600 group-hover:fill-blue-100"
+            strokeWidth={H.stroke}
+            pointerEvents="none"
+          />
+        </g>
+      ))}
     </g>
   );
 };

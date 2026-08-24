@@ -6,7 +6,7 @@ import {
   canvasWorldSize,
   canvasPixelSize,
 } from "../minimap-geom";
-import { croppedViewBox } from "../export-canvas";
+import { captureRegion, croppedViewBox } from "../export-canvas";
 
 describe("minimapScale", () => {
   it("elige el factor que hace caber el lienzo en la caja (el menor)", () => {
@@ -95,5 +95,43 @@ describe("canvasPixelSize", () => {
 
   it("zoom inválido cae a 1 en vez de producir Infinity en el viewBox", () => {
     expect(canvasPixelSize({ width: 100, height: 100 }, 0, { w: 0, h: 0 }).viewBox).toBe("0 0 100 100");
+  });
+});
+
+describe("captureRegion · el PNG se recorta al contenido", () => {
+  const bounds = { minX: 100, minY: 50, width: 400, height: 200 };
+  const wrapper = { left: 200, top: 80, width: 1200, height: 800 };
+
+  it("encuadra el contenido con margen en vez del contenedor entero", () => {
+    const r = captureRegion(bounds, 1, { left: 0, top: 0 }, wrapper, 24);
+    expect(r).toEqual({ x: 200 + 100 - 24, y: 80 + 50 - 24, width: 400 + 48, height: 200 + 48 });
+    // Lo que importa: nada de la franja vacía del contenedor entra en la imagen.
+    expect(r.width).toBeLessThan(wrapper.width);
+    expect(r.height).toBeLessThan(wrapper.height);
+  });
+
+  it("escala con el zoom y descuenta el scroll", () => {
+    const r = captureRegion(bounds, 2, { left: 150, top: 40 }, wrapper, 0);
+    expect(r).toEqual({ x: 200 + 200 - 150, y: 80 + 100 - 40, width: 800, height: 400 });
+  });
+
+  it("no se sale del contenedor: fuera del viewport no hay nada pintado", () => {
+    const r = captureRegion({ minX: 0, minY: 0, width: 5000, height: 5000 }, 1, { left: 0, top: 0 }, wrapper, 40);
+    expect(r.x).toBe(wrapper.left);
+    expect(r.y).toBe(wrapper.top);
+    expect(r.width).toBe(wrapper.width);
+    expect(r.height).toBe(wrapper.height);
+  });
+
+  it("nunca devuelve una región vacía (capturePage falla con 0)", () => {
+    const fuera = captureRegion({ minX: 9000, minY: 9000, width: 10, height: 10 }, 1, { left: 0, top: 0 }, wrapper, 0);
+    expect(fuera.width).toBeGreaterThan(0);
+    expect(fuera.height).toBeGreaterThan(0);
+  });
+
+  it("un zoom inválido no rompe el encuadre (cae a 1)", () => {
+    expect(captureRegion(bounds, 0, { left: 0, top: 0 }, wrapper, 0)).toEqual(
+      captureRegion(bounds, 1, { left: 0, top: 0 }, wrapper, 0)
+    );
   });
 });

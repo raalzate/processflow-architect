@@ -1,9 +1,20 @@
 
 import type { GraphData, GraphNode, GraphLink } from "./types";
 
+/**
+ * Árbol del modelo para el panel lateral. El nombre y la descripción del
+ * contenedor viajan como CAMPOS: la clave concatenaba `nombre - descripción` y
+ * el panel la volvía a partir por " - ", así que un contenedor llamado
+ * "Middleware BUPA - API Manager" mostraba "API Manager" como si fuera su
+ * descripción y la real se perdía.
+ */
 type NodeTree = {
   [aggregate: string]: {
-    [type: string]: GraphNode[];
+    nombre: string;
+    descripcion: string;
+    tipos: {
+      [type: string]: GraphNode[];
+    };
   };
 };
 
@@ -66,7 +77,11 @@ export function processGraphData(jsonData: GraphData): {
     const aggregateName = agregado.nombre_agregado + (aggregateDescription ? ` - ${aggregateDescription}` : "");
 
     if (!nodeTree[aggregateName]) {
-      nodeTree[aggregateName] = {};
+      nodeTree[aggregateName] = {
+        nombre: agregado.nombre_agregado,
+        descripcion: aggregateDescription || "",
+        tipos: {},
+      };
     }
 
     if (agregado.nodos) {
@@ -84,11 +99,10 @@ export function processGraphData(jsonData: GraphData): {
           nodeIds.add(node.id);
 
           const nodeType = node.tipo_elemento;
-          if (!nodeTree[aggregateName][nodeType]) {
-            nodeTree[aggregateName][nodeType] = [];
-          }
-          nodeTree[aggregateName][nodeType].push(fullNode);
-          nodeTree[aggregateName][nodeType].sort((a,b) => a.nombre.localeCompare(b.nombre));
+          const tipos = nodeTree[aggregateName].tipos;
+          if (!tipos[nodeType]) tipos[nodeType] = [];
+          tipos[nodeType].push(fullNode);
+          tipos[nodeType].sort((a, b) => a.nombre.localeCompare(b.nombre));
         }
       });
     }
@@ -112,16 +126,22 @@ export function processGraphData(jsonData: GraphData): {
     agregados.forEach((agregado) => {
       const aggregateDescription = agregado.descripcion;
       const aggregateName = agregado.nombre_agregado + (aggregateDescription ? ` - ${aggregateDescription}` : "");
-      if (!nodeTree[aggregateName]) nodeTree[aggregateName] = {};
+      if (!nodeTree[aggregateName])
+        nodeTree[aggregateName] = {
+          nombre: agregado.nombre_agregado,
+          descripcion: aggregateDescription || "",
+          tipos: {},
+        };
       (agregado.nodos || []).forEach((node) => {
         if (nodeIds.has(node.id)) return;
         const fullNode = { ...node, agregado: aggregateName };
         allNodes.push(fullNode);
         nodeIds.add(node.id);
         const nodeType = node.tipo_elemento;
-        if (!nodeTree[aggregateName][nodeType]) nodeTree[aggregateName][nodeType] = [];
-        nodeTree[aggregateName][nodeType].push(fullNode);
-        nodeTree[aggregateName][nodeType].sort((a, b) => a.nombre.localeCompare(b.nombre));
+        const tipos = nodeTree[aggregateName].tipos;
+        if (!tipos[nodeType]) tipos[nodeType] = [];
+        tipos[nodeType].push(fullNode);
+        tipos[nodeType].sort((a, b) => a.nombre.localeCompare(b.nombre));
       });
     });
   }

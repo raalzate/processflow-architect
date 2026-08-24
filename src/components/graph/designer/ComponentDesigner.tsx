@@ -137,6 +137,7 @@ import {
 } from "./DesignerCanvas";
 import { styleLinks, styleLinksSummary, type LinkStylePatch } from "./link-style";
 import { nodeAtPoint, reconnectLink } from "./link-reconnect";
+import { containerOf, reassignContainers } from "./containment";
 import {
   linkEndpoints,
   linkGeometry,
@@ -157,7 +158,12 @@ import {
 } from "./serialize";
 import { NotationLegend } from "./NotationLegend";
 import { Minimap } from "./Minimap";
-import { exportCanvasSvg, downloadDataUrl } from "./export-canvas";
+import {
+  captureRegion,
+  downloadDataUrl,
+  exportCanvasSvg,
+  waitForFloatingLayersGone,
+} from "./export-canvas";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1414,6 +1420,10 @@ export const ComponentDesigner: React.FC<{
 
   const notationId: NotationId = notation ?? DEFAULT_NOTATION_ID;
   const activeNotation = getNotation(notationId);
+  // Ref para los callbacks memoizados (pushSnapshot): la notación decide el
+  // tamaño de las cajas y con ello la pertenencia.
+  const notationIdRef = useRef(notationId);
+  notationIdRef.current = notationId;
   // Tipos de elemento de la notación activa (para el Select de "Editar elemento").
   const elementTypes = useMemo(
     () => activeNotation.elements.map((e) => e.type),
@@ -1443,8 +1453,19 @@ export const ComponentDesigner: React.FC<{
   // Selección MÚLTIPLE de elementos (nodos y enlaces). Un Set permite alternar con
   // Shift/⌘ y seleccionar por marco de arrastre. Mantén también la selección única
   // (helpers) para no romper el flujo de un solo elemento.
+  // Durante la captura a PNG se ocultan los overlays (minimapa, leyenda, zoom)
+  // para que no salgan en la imagen.
+  const [capturing, setCapturing] = useState(false);
+  // El menú de exportar es CONTROLADO: hay que poder cerrarlo (y esperar a que
+  // su portal se desmonte) antes de rasterizar la pantalla.
+  const [exportOpen, setExportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const isSelected = useCallback((id: string) => selectedIds.has(id), [selectedIds]);
+  // Durante la captura a PNG nadie está seleccionado: el borde azul y las
+  // manijas del elemento en foco salían dibujados en la imagen exportada.
+  const isSelected = useCallback(
+    (id: string) => !capturing && selectedIds.has(id),
+    [selectedIds, capturing]
+  );
   const selectOnly = useCallback((id: string) => setSelectedIds(new Set([id])), []);
   const toggleSelect = useCallback(
     (id: string) =>
@@ -1468,9 +1489,6 @@ export const ComponentDesigner: React.FC<{
   // Confirmación de "Limpiar" controlada: así también la paleta (⌘K) puede
   // ABRIR la confirmación en vez de borrar sin preguntar (acción destructiva).
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
-  // Durante la captura a PNG se ocultan los overlays (minimapa, leyenda, zoom)
-  // para que no salgan en la imagen.
-  const [capturing, setCapturing] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   // Conexión por arrastre: nodo origen + posición actual del cursor (línea guía).
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
@@ -1703,9 +1721,18 @@ export const ComponentDesigner: React.FC<{
 
   const pushSnapshot = useCallback(
     (n: Map<string, DesignerNode>, l: Map<string, DesignerLink>) => {
+      // Antes de guardar el paso, la pertenencia se recalcula para TODOS los
+      // nodos: antes sólo se hacía para los que el humano acababa de arrastrar,
+      // así que dos cajas dentro de la misma banda podían quedar una en el
+      // modelo y otra fuera, sin diferencia visible en el lienzo.
+      const norm = reassignContainers(n, notationIdRef.current);
+      if (norm.cambios) {
+        setNodes(norm.nodes);
+        nodesRef.current = norm.nodes;
+      }
       const h = historyRef.current;
       h.snapshots = h.snapshots.slice(0, h.index + 1);
-      h.snapshots.push({ nodes: Array.from(n.entries()), links: Array.from(l.entries()) });
+      h.snapshots.push({ nodes: Array.from(norm.nodes.entries()), links: Array.from(l.entries()) });
       h.index = h.snapshots.length - 1;
       bump();
     },
@@ -1990,7 +2017,11 @@ export const ComponentDesigner: React.FC<{
     loadedFileId.current = sourceKey;
     skipFirstSave.current = true; // no guardar el contenido recién cargado
 
-    const { nodes: n, links: l } = graphDataToCanvas(sourceContent);
+    // Al ABRIR se normaliza la pertenencia: lo guardado puede venir de una
+    // sesión con la regla vieja (por esquina, y sólo para lo que se arrastró),
+    // así que el árbol del modelo no coincidía con las bandas del lienzo.
+    const { nodes: crudos, links: l } = graphDataToCanvas(sourceContent);
+    const n = reassignContainers(crudos, sourceContent.notation ?? notationId).nodes;
     // Lienzo nuevo y vacío: sembrar un contenedor inicial de la notación activa.
     if (n.size === 0 && seedContainerType) {
       const seedName = `${seedContainerType} Principal`;
@@ -2174,19 +2205,27 @@ export const ComponentDesigner: React.FC<{
       const p = toSvgPoint(e.clientX, e.clientY);
       const isContainer = isContainerType(dropped.tipo_elemento);
 
-      // Buscar el contenedor más pequeño que contiene el punto.
+      // Contenedor bajo el punto donde se suelta, con la MISMA regla que el
+      // resto (`containment.ts`): se prueba la caja que tendría el nodo ahí.
       let smallest: DesignerNode | null = null;
       if (!isContainer) {
-        for (const c of nodesRef.current.values()) {
-          if (!isContainerType(c.tipo_elemento)) continue;
-          const w = c.width || AGGREGATE_DEFAULT_WIDTH;
-          const h = c.height || AGGREGATE_DEFAULT_HEIGHT;
-          if (p.x >= c.x && p.x <= c.x + w && p.y >= c.y && p.y <= c.y + h) {
-            if (!smallest || w * h < (smallest.width || 0) * (smallest.height || 0)) {
-              smallest = c;
-            }
-          }
-        }
+        const caja = sizeOfType(dropped.tipo_elemento, notationId);
+        smallest = containerOf(
+          {
+            id: "__drop__",
+            nombre: "__drop__",
+            tipo_elemento: dropped.tipo_elemento,
+            agregado: "",
+            estado_comparativo: "nuevo",
+            descripcion: "",
+            x: p.x - caja.w / 2,
+            y: p.y - caja.h / 2,
+            width: caja.w,
+            height: caja.h,
+          } as DesignerNode,
+          nodesRef.current.values(),
+          notationId
+        );
       }
 
       const uniqueName = (base: string) => {
@@ -2466,33 +2505,8 @@ export const ComponentDesigner: React.FC<{
       return;
     }
     if (!draggingInfo) return;
-    if (draggingInfo.type === "move") {
-      // Reasignar contenedor padre (por contención) a cada nodo NO contenedor movido.
-      const n = new Map(nodesRef.current);
-      let changed = false;
-      for (const id of draggingInfo.origins.keys()) {
-        const moved = n.get(id);
-        if (!moved || isContainerType(moved.tipo_elemento)) continue;
-        let parent: DesignerNode | null = null;
-        for (const c of n.values()) {
-          if (!isContainerType(c.tipo_elemento)) continue;
-          const w = c.width || 0;
-          const h = c.height || 0;
-          if (moved.x > c.x && moved.x < c.x + w && moved.y > c.y && moved.y < c.y + h) {
-            if (!parent || w * h < (parent.width || 0) * (parent.height || 0)) parent = c;
-          }
-        }
-        const newAgg = parent ? parent.nombre : "";
-        if (moved.agregado !== newAgg) {
-          n.set(id, { ...moved, agregado: newAgg });
-          changed = true;
-        }
-      }
-      if (changed) {
-        setNodes(n);
-        nodesRef.current = n;
-      }
-    }
+    // La pertenencia (qué contenedor adopta a cada nodo) la recalcula
+    // `pushSnapshot` con la regla única de `containment.ts`: acá no se repite.
     pushSnapshot(nodesRef.current, linksRef.current);
     setDraggingInfo(null);
   }, [draggingInfo, pushSnapshot, notationId]);
@@ -2808,18 +2822,31 @@ export const ComponentDesigner: React.FC<{
       toast({ variant: "destructive", title: "PNG no disponible", description: "Sólo en la app de escritorio." });
       return;
     }
+    const bounds = computeContentBounds(nodesRef.current, notationId);
+    if (!bounds) {
+      toast({ variant: "destructive", title: "Nada que exportar", description: "El lienzo está vacío." });
+      return;
+    }
+    // Vista actual: se restaura al terminar. Exportar no debería dejar al
+    // usuario en otro zoom/scroll del que tenía.
+    const vista = { zoom, left: wrapper.scrollLeft, top: wrapper.scrollTop };
+    setExportOpen(false);
     setCapturing(true);
     fitToContent();
+    // El menú es un portal fuera del lienzo: si se captura antes de que se
+    // desmonte, sale dibujado sobre el diagrama.
+    await waitForFloatingLayersGone();
     // Deja que el zoom/scroll se asienten y los overlays desaparezcan (2 frames).
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
     try {
       const rect = wrapper.getBoundingClientRect();
-      const dataUrl = await api.captureCanvas({
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
-      });
+      const region = captureRegion(
+        bounds,
+        zoomRef.current,
+        { left: wrapper.scrollLeft, top: wrapper.scrollTop },
+        { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+      );
+      const dataUrl = await api.captureCanvas(region);
       const base = (meta?.nombre_proyecto || "diagrama").replace(/[^\w.-]+/g, "_");
       downloadDataUrl(dataUrl, `${base}.png`);
       toast({ title: "Diagrama exportado", description: "Se descargó un PNG del lienzo." });
@@ -2827,8 +2854,14 @@ export const ComponentDesigner: React.FC<{
       toast({ variant: "destructive", title: "No se pudo exportar el PNG", description: e?.message });
     } finally {
       setCapturing(false);
+      setZoom(vista.zoom);
+      requestAnimationFrame(() => {
+        wrapper.scrollLeft = vista.left;
+        wrapper.scrollTop = vista.top;
+        syncViewport();
+      });
     }
-  }, [fitToContent, meta, toast]);
+  }, [fitToContent, meta, toast, notationId, zoom, syncViewport]);
 
   // --- Acciones desde la paleta de comandos (⌘K) ---
   // La paleta despacha un CustomEvent en vez de acoplarse al estado interno del
@@ -3169,7 +3202,7 @@ export const ComponentDesigner: React.FC<{
             <Settings2 className="mr-2 h-4 w-4" /> Metadatos
           </Button>
 
-          <DropdownMenu>
+          <DropdownMenu open={exportOpen} onOpenChange={setExportOpen}>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
@@ -3515,7 +3548,7 @@ export const ComponentDesigner: React.FC<{
             {/* Capa superior: manijas de reanclado de los enlaces seleccionados
                 (encima de los nodos para que no queden tapadas). */}
             <g>
-              {visto.links
+              {(capturing ? [] : visto.links)
                 .filter((l) => selectedIds.has(l.id))
                 .map((link) => (
                   <LinkEndpointHandles
@@ -3523,6 +3556,7 @@ export const ComponentDesigner: React.FC<{
                     link={link}
                     nodes={nodes}
                     notation={notationId}
+                    zoom={zoom}
                     onEndpointMouseDown={(e, which) => startEndpointDrag(e, link.id, which)}
                     onWaypointMouseDown={(e, i) => startWaypointDrag(e, link.id, i)}
                     onWaypointDoubleClick={(i) => removeWaypoint(link.id, i)}

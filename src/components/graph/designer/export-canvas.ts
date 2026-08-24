@@ -117,3 +117,54 @@ export function exportCanvasSvg(
     "image/svg+xml"
   );
 }
+
+/**
+ * Región de PANTALLA a capturar para el PNG. Antes se pasaba el rectángulo
+ * COMPLETO del contenedor scrolleable: si el contenido no llenaba el viewport
+ * (lo normal tras «ajustar a contenido», que topa el zoom en 3×) el PNG salía
+ * con media imagen de lienzo vacío. Acá se recorta a la caja del contenido,
+ * traducida a píxeles: `mundo * zoom - scroll + origen del contenedor`.
+ *
+ * Se intersecta con el contenedor: lo que quedó fuera del viewport no está
+ * pintado y capturarlo daría bandas vacías. Puro y con prueba.
+ */
+export function captureRegion(
+  // Sólo el origen y el tamaño: `maxX/maxY` no hacen falta para encuadrar.
+  bounds: Pick<ContentBounds, "minX" | "minY" | "width" | "height">,
+  zoom: number,
+  scroll: { left: number; top: number },
+  wrapper: { left: number; top: number; width: number; height: number },
+  padPx = 24
+): { x: number; y: number; width: number; height: number } {
+  const z = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const x0 = wrapper.left + bounds.minX * z - scroll.left - padPx;
+  const y0 = wrapper.top + bounds.minY * z - scroll.top - padPx;
+  const x1 = x0 + bounds.width * z + padPx * 2;
+  const y1 = y0 + bounds.height * z + padPx * 2;
+  const left = Math.max(wrapper.left, Math.floor(x0));
+  const top = Math.max(wrapper.top, Math.floor(y0));
+  const right = Math.min(wrapper.left + wrapper.width, Math.ceil(x1));
+  const bottom = Math.min(wrapper.top + wrapper.height, Math.ceil(y1));
+  return {
+    x: left,
+    y: top,
+    // Nunca cero: una región vacía hace fallar `capturePage` con un error opaco.
+    width: Math.max(1, right - left),
+    height: Math.max(1, bottom - top),
+  };
+}
+
+/**
+ * Espera a que no quede ningún panel flotante de Radix en el DOM (menús,
+ * tooltips, popovers). El menú «Exportar» es un portal `position:fixed` fuera
+ * del lienzo: `capturing` no lo tapaba y el PNG salía con los dos ítems del
+ * menú dibujados encima del diagrama. Cierre + desmontaje son asíncronos, así
+ * que se sondea por frames con tope para no colgar la exportación.
+ */
+export async function waitForFloatingLayersGone(maxFrames = 30): Promise<void> {
+  const SEL = "[data-radix-popper-content-wrapper],[role=menu],[role=tooltip]";
+  for (let i = 0; i < maxFrames; i++) {
+    if (!document.querySelector(SEL)) return;
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+  }
+}

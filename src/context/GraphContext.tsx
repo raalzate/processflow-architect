@@ -18,7 +18,11 @@ import type { NotationId } from "@/lib/notations";
 // Define un tipo para el árbol de nodos
 type NodeTree = {
   [aggregate: string]: {
-    [type: string]: GraphNode[];
+    nombre: string;
+    descripcion: string;
+    tipos: {
+      [type: string]: GraphNode[];
+    };
   };
 };
 

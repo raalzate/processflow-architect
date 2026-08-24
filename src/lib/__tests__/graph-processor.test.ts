@@ -190,7 +190,12 @@ describe("processGraphData", () => {
         ],
       });
       const result = processGraphData(data);
-      const tree = result.nodeTree["Agg"];
+      const grupo = result.nodeTree["Agg"];
+      // El nombre y la descripción del contenedor son CAMPOS del grupo: el panel
+      // ya no parte la clave por " - " (un nombre con guiones perdía su descripción).
+      expect(grupo.nombre).toBe("Agg");
+      expect(grupo.descripcion).toBe("");
+      const tree = grupo.tipos;
       expect(Object.keys(tree).sort()).toEqual(["Comando", "Evento"]);
       // Comandos sorted alphabetically by nombre
       expect(tree["Comando"].map((n) => n.nombre)).toEqual(["Alpha", "Zeta"]);

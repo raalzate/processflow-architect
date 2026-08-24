@@ -423,17 +423,17 @@ function DomainModelPanel() {
          {graphData?.big_picture.descripcion}
       </p>
       <Accordion type="multiple" className="w-full">
-        {Object.entries(sidebarNodeTree).map(([agg, types]) => (
+        {Object.entries(sidebarNodeTree).map(([agg, grupo]) => (
           <AccordionItem value={agg} key={agg}>
             <AccordionTrigger className="text-sm font-medium px-2 py-1.5 hover:bg-muted rounded-md">
-              {agg.split(" - ")[0]} 
+              {grupo.nombre}
             </AccordionTrigger>
             <AccordionContent className="pt-1">
               <p className="text-xs italic px-2 mb-2 text-muted-foreground">
-                {agg.split(" - ")[1] || "Sin descripción"}
+                {grupo.descripcion || "Sin descripción"}
               </p>
               <div className="pl-4 border-l">
-                {Object.entries(types).map(([type, nodes]) => (
+                {Object.entries(grupo.tipos).map(([type, nodes]) => (
                   <div key={`${agg}-${type}`} className="mb-1">
                     <h4 className="text-xs px-2 py-1 font-semibold">
                       {type} ({nodes.length})
