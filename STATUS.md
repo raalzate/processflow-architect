@@ -7,8 +7,8 @@ lo que se supone va en "deuda conocida".
 - **Fecha del último gate completo:** 2026-08-24
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.6.3 — release publicado con los 3 instaladores
-- **Versión en el repo:** 0.6.4 — notas en `docs/releases/0.6.4.md`; 0.6.2 quedó en borrador
+- **Versión publicada:** 0.6.4 — release **publicado** (Latest) con los 3 instaladores
+- **Versión en el repo:** 0.6.4 — notas en `docs/releases/0.6.4.md`; 0.6.2 quedó en borrador. El workflow deja el release en BORRADOR a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v<versión> --draft=false`)
 
 ## Señales
 
