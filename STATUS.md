@@ -4,11 +4,11 @@ Lo imprime el hook `SessionStart`. Sirve para no releer el repo entero para resp
 Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verificado con un comando**;
 lo que se supone va en "deuda conocida".
 
-- **Fecha del último gate completo:** 2026-08-21
+- **Fecha del último gate completo:** 2026-08-24
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.6.1 — release **publicado** (no borrador) con los 3 instaladores
-- **Versión en el repo:** 0.6.3 — notas en `docs/releases/0.6.3.md`; 0.6.2 quedó en borrador
+- **Versión publicada:** 0.6.3 — release publicado con los 3 instaladores
+- **Versión en el repo:** 0.6.4 — notas en `docs/releases/0.6.4.md`; 0.6.2 quedó en borrador
 
 ## Señales
 
@@ -31,6 +31,10 @@ lo que se supone va en "deuda conocida".
 | Lectura de la app por MCP (modo app) | script manual por CDP contra la app viva | verde — 30 tools registradas; `list_artifacts`, `get_artifact` (con revisión), `list_views`, `get_view` (+`importAs`) y sus errores con opciones, también contra OTRO proyecto |
 | Editor de artefactos con documento largo | script manual por CDP contra la app viva | verde — 11 021 caracteres: índice de 49 encabezados con salto, buscar/reemplazar (72 coincidencias), stats, borrador recuperable |
 | Integridad del registro de notaciones | `npx vitest run src/lib/__tests__/notations-registry.test.ts` | verde — todo tipo declarado está en la paleta y viceversa, sin repetidos, con icono en `ICON_MAP` y con ayuda |
+| Registro de un cambio en el historial | `node scripts/harness-selftest.mjs` | verde — `.githooks/commit-msg` frena un commit que toca código sin `#<issue>` ni línea `sin-issue: <motivo>`; 7 casos en un repo git temporal (docs solo, merge, declaración sin motivo) y la ruta `issue` del router recuerda preguntar antes de tocar producción |
+| Contención de contenedores | `npx vitest run src/components/graph/designer/__tests__/containment.test.ts` | verde — una sola regla (mayor solape, mínimo media caja, empate al más chico) aplicada en cada commit de geometría y al abrir; sobre el modelo real las bandas pasan de 1/0/0 nodos a 1/3/6 |
+| Manijas de relación y PNG del lienzo | `npx vitest run src/components/graph/designer/__tests__/link-geometry.test.ts src/components/graph/designer/__tests__/geom.test.ts` | verde — las manijas miden lo mismo en pantalla de 0,25× a 3× con 15 px de agarre, y la región del PNG se recorta al contenido sin salirse del viewport |
+| Metadatos del proyecto por MCP | `npx vitest run src/lib/mcp/__tests__/diagram-builder.test.ts main/services/__tests__/mcp-tools.test.ts` | verde — hotspots, responsables, notas y read models sobreviven el ciclo `export_to_app → import_diagram → export_to_app`, que antes los vaciaba; las notas del humano no se pisan ni se duplican |
 | Relaciones de arista (UML) | `npx vitest run src/lib/__tests__/edge-relations.test.ts` | verde — herencia/realización/composición/agregación/dependencia: marca por punta y trazo; `dashed` a mano gana |
 | Autoguardado de la ficha (parche, no borrador) | `npx vitest run src/components/graph/designer/__tests__/inspector-draft.test.ts` | verde — sólo viajan los campos editados: arrastrar el nodo con la ficha abierta ya no lo devuelve a su sitio anterior |
 | Portapapeles del lienzo (copiar/pegar) | `npx vitest run src/components/graph/designer/__tests__/clipboard.test.ts` | verde — copia contenedor+contenido, sólo enlaces con ambas puntas, ids/nombres nuevos al pegar, `agregado` reapuntado |
