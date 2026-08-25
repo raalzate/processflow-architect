@@ -64,7 +64,7 @@ nunca ve una herramienta que su transporte no soporta.
 | Herramienta | Qué hace |
 |---|---|
 | `create_diagram` | abre un modelo nuevo (nombre + notación) → `diagramId`. |
-| `list_diagrams` | los modelos en curso del workspace. |
+| `list_diagrams` | los modelos en curso del workspace **con su vocabulario** (notación, conteos y nombres de los elementos): es lo que evita construir la segunda versión de la verdad con sinónimos. |
 | `get_diagram` | resumen + vista previa Mermaid. |
 | `import_diagram` | carga un `GraphData` exportado como modelo editable (retomar contexto). |
 
@@ -77,6 +77,8 @@ nunca ve una herramienta que su transporte no soporta.
 | `add_edge` | conecta dos elementos y clasifica la relación (interna / política / big picture). |
 | `update_element` / `update_edge` | corrigen sin borrar y recrear (conserva id, citas y geometría). |
 | `remove_element` / `remove_edge` | borran nodo/contenedor (con sus aristas) o una relación. |
+
+Los tres primeros aceptan `estado` (`existente` · `modificado` · `nuevo` · `sin_cambios` · `eliminado`), el vocabulario que distingue **documentar lo que hay** de **diseñar lo que viene**. Por defecto es `nuevo`: sin declararlo, el lienzo pinta como propuesta un sistema que ya está en producción. Sale de un solo lugar (`ESTADOS` en `src/lib/mcp/diagram-builder.ts`).
 | `relayout_diagram` | rehace la disposición con estrategia y densidad (`src/lib/mcp/layout-presets.ts`). |
 | `render_mermaid` | vista previa Mermaid del modelo. |
 
@@ -107,8 +109,8 @@ recortan al dibujar.
 
 | Herramienta | Qué hace |
 |---|---|
-| `export_to_app` | escribe el `.json` (`GraphData`) y —en modo app— lo **inyecta al lienzo** por IPC. En stdio queda el archivo para «Importar diagrama». |
-| `export_as_view` **app** | suma una **pestaña** (vista custom con su propia notación) al proyecto ACTIVO, sin crear proyecto aparte. |
+| `export_to_app` | escribe el `.json` (`GraphData`) y —en modo app— lo **inyecta al lienzo** por IPC. En stdio queda el archivo para «Importar diagrama». `projectName` nombra el proyecto en la app (simétrico con `viewName`). |
+| `export_as_view` **app** | suma una **pestaña** (vista custom con su propia notación) al proyecto ACTIVO, sin crear proyecto aparte. Las notas, hotspots y responsables son del PROYECTO: la app los fusiona al recibir la vista (`src/lib/mcp/project-meta.ts`) sin pisar lo que ya había. |
 | `export_mermaid_view` **app** | suma una pestaña de vista **Mermaid** al proyecto activo. |
 
 ### 6 · Skills — el arnés del agente externo
@@ -116,7 +118,7 @@ recortan al dibujar.
 | Herramienta | Qué hace |
 |---|---|
 | `list_skills` | skills instalables, qué traen y dónde van. |
-| `install_skill` | los escribe en `.claude/skills` (proyecto) o `~/.claude/skills` (usuario) **con la config del transporte real inyectada**: URL o stdio, herramientas realmente disponibles, workspace, notación por defecto y límites. |
+| `install_skill` | los escribe en `.claude/skills` (proyecto) o `~/.claude/skills` (usuario) **con la config del transporte real inyectada**: URL o stdio, herramientas realmente disponibles, workspace, notación por defecto y límites. Sin `overwrite` no pisa, pero **compara**: avisa cuál difiere del que generaría en vez de saltarlo en silencio. |
 
 Hoy hay dos (`SKILL_IDS` en `src/lib/mcp-skill.ts`): `documento-a-processflow` (documento →
 portafolio de diagramas) y `disenar-diagrama` (un diagrama trazado a su fuente). El

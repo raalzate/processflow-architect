@@ -106,7 +106,10 @@ En este orden, siempre:
    Markdown: es fuente citable de PRIMERA mano sobre lo que el usuario decidió,
    y contradecirla sin decirlo es el error más caro que puedes cometer acá.
 5. \`list_diagrams\` — ¿hay un diseño en curso que retomar (\`get_diagram\`) en vez
-   de empezar de cero?
+   de empezar de cero? Devuelve también los NOMBRES de los elementos: si uno de
+   ellos ya describe lo que ibas a crear, reusá ESE nombre en vez de inventar un
+   sinónimo («Servicio de listas» y «OFAC Screening» son el mismo sistema con dos
+   nombres, y eso es la segunda versión de la verdad).
 6. \`describe_notation\` de cada notación que vayas a usar — los \`type\` válidos
    salen SOLO de ahí.
 
@@ -211,6 +214,14 @@ Para CADA diagrama:
 3. \`suggest_views\` cuando el diagrama crece: te dice si hay que cortarlo por
    contenedor/fase y qué mirada complementaria sostiene el material. No metas 60
    elementos en una vista.
+
+### Estado: documentar lo que HAY vs diseñar lo que VIENE
+
+\`add_node\`, \`add_container\` y \`update_element\` aceptan \`estado\`: \`existente\` (ya
+está en producción), \`modificado\` (existe y este diseño lo cambia), \`nuevo\` (lo
+trae este diseño), \`sin_cambios\`, \`eliminado\`. Por defecto es \`nuevo\`: si estás
+documentando un sistema vivo y no lo declarás, el lienzo pinta como propuesta lo
+que ya existe y se pierde justo la distinción que el humano necesita para decidir.
 
 ### Metadatos: dónde vive la caja
 
@@ -479,6 +490,8 @@ revisión → exportar\`.
    propuesta, roadmap, ADRs). Si hay uno que describe lo que vas a modelar,
    \`get_artifact\` y trátalo como FUENTE citable: \`source: "Drivers v2 §NFR"\`.
 5. \`list_diagrams\` / \`get_diagram\` — ¿hay un diseño en curso que retomar?
+   \`list_diagrams\` devuelve los NOMBRES de los elementos de cada diagrama: si uno
+   ya describe lo que ibas a crear, reusá ESE nombre en vez de un sinónimo.
    \`import_diagram\` si el usuario trae un \`.json\` exportado.
 
 Reutilizar es la regla: rehacer a mano algo que ya está en la app es trabajo
@@ -563,6 +576,14 @@ Convenciones: nombres en el idioma de la fuente, **\`name\` de máx ~21 caracter
 (más largo lo recorta el lienzo) y **\`label\` de arista de máx ~30** (verbo +
 \`[tecnología]\`; se dibuja suelta sobre la línea y tapa los nodos vecinos). El
 detalle va en \`description\`. Ids autogenerados salvo necesidad.
+
+### Estado: documentar lo que HAY vs diseñar lo que VIENE
+
+\`add_node\`, \`add_container\` y \`update_element\` aceptan \`estado\`: \`existente\` (ya
+está en producción), \`modificado\` (existe y este diseño lo cambia), \`nuevo\` (lo
+trae este diseño), \`sin_cambios\`, \`eliminado\`. Por defecto es \`nuevo\`: si estás
+documentando un sistema vivo y no lo declarás, el lienzo pinta como propuesta lo
+que ya existe y se pierde justo la distinción que el humano necesita para decidir.
 
 ### Metadatos: dónde vive la caja
 

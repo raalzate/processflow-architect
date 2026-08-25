@@ -364,9 +364,11 @@ describe("list_skills / install_skill", () => {
     const primero = await textOf("install_skill", { skill: "all", scope: "project", projectDir, overwrite: false, configure: false });
     expect(primero).toContain("documento-a-processflow/references/ejemplos.md");
 
+    // Cambio intencional (issue #144 · D1): lo que ya está se COMPARA con lo que
+    // se generaría, en vez de saltarse en silencio. Igual → "al día".
     const segundo = await textOf("install_skill", { skill: "all", scope: "project", projectDir, overwrite: false, configure: false });
-    expect(segundo).toContain("Ya existían");
-    expect(segundo).toContain("overwrite=true");
+    expect(segundo).toContain("Ya estaban al día");
+    expect(segundo).not.toContain("DESACTUALIZADOS");
 
     const tercero = await textOf("install_skill", { skill: "all", scope: "project", projectDir, overwrite: true, configure: false });
     expect(tercero).toContain("Escritos");
@@ -644,5 +646,189 @@ describe("registerProcessflowTools · metadatos del proyecto", () => {
     expect(graph.responsables).toEqual(["Ana"]);
     expect(graph.notas).toContain("Nota del humano.");
     expect(graph.read_models.map((r: any) => r.nombre)).toEqual(["Panel"]);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Issue #144 — la puerta del estado comparativo, el vocabulario del workspace,
+// el nombre del proyecto al exportar y la higiene de la instalación del skill.
+// -----------------------------------------------------------------------------
+
+describe("estado_comparativo · A", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-estado-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  async function conDiagrama() {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    const creado = await tools.get("create_diagram")!.handler({ name: "Seguros", notation: "ddd" });
+    const id = /diagramId="([^"]+)"/.exec(creado.content[0].text)![1];
+    return { tools, id };
+  }
+
+  it("las tres herramientas declaran el parámetro `estado` con el mismo vocabulario", () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    for (const t of ["add_node", "add_container", "update_element"]) {
+      const shape = tools.get(t)!.def.inputSchema;
+      expect(shape.estado, `${t} sin \`estado\``).toBeDefined();
+      const opciones = (shape.estado._def.innerType ?? shape.estado)._def.values;
+      expect(opciones).toContain("existente");
+      expect(opciones).toContain("modificado");
+      expect(opciones).toContain("nuevo");
+    }
+  });
+
+  it("el estado sobrevive add_node/add_container → export → import → export", async () => {
+    const { tools, id } = await conDiagrama();
+    await tools.get("add_container")!.handler({
+      diagramId: id, name: "Pólizas", type: "Agregado", estado: "existente",
+    });
+    await tools.get("add_node")!.handler({
+      diagramId: id, name: "Cobrar", type: "Comando", container: "Pólizas", estado: "modificado",
+    });
+    await tools.get("add_node")!.handler({ diagramId: id, name: "Anular", type: "Comando", container: "Pólizas" });
+
+    const ida = path.join(ws, "ida.json");
+    await tools.get("export_to_app")!.handler({ diagramId: id, outPath: ida });
+    const uno = JSON.parse(await fs.readFile(ida, "utf8"));
+    expect(uno.agregados[0].estado_comparativo).toBe("existente");
+    expect(uno.agregados[0].nodos.find((n: any) => n.nombre === "Cobrar").estado_comparativo).toBe("modificado");
+    // Sin declararlo sigue siendo "nuevo": el default no cambia.
+    expect(uno.agregados[0].nodos.find((n: any) => n.nombre === "Anular").estado_comparativo).toBe("nuevo");
+
+    const reimportado = await tools.get("import_diagram")!.handler({ path: ida });
+    const id2 = /diagramId="([^"]+)"/.exec(reimportado.content[0].text)![1];
+    const vuelta = path.join(ws, "vuelta.json");
+    await tools.get("export_to_app")!.handler({ diagramId: id2, outPath: vuelta });
+    const dos = JSON.parse(await fs.readFile(vuelta, "utf8"));
+    expect(dos.agregados[0].estado_comparativo).toBe("existente");
+    expect(dos.agregados[0].nodos.find((n: any) => n.nombre === "Cobrar").estado_comparativo).toBe("modificado");
+  });
+
+  it("update_element cambia el estado de un elemento ya creado", async () => {
+    const { tools, id } = await conDiagrama();
+    await tools.get("add_node")!.handler({ diagramId: id, name: "Cobrar", type: "Comando", id: "cobrar" });
+    const res = await tools.get("update_element")!.handler({ diagramId: id, id: "cobrar", estado: "existente" });
+    expect(res.isError).toBeUndefined();
+    const out = path.join(ws, "s.json");
+    await tools.get("export_to_app")!.handler({ diagramId: id, outPath: out });
+    const graph = JSON.parse(await fs.readFile(out, "utf8"));
+    expect(graph.big_picture.nodos[0].estado_comparativo).toBe("existente");
+  });
+});
+
+describe("fricción de ingesta y exportación · C", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-fric-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  function toolsDe() {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    return tools;
+  }
+  async function crear(tools: Map<string, any>, name: string) {
+    const creado = await tools.get("create_diagram")!.handler({ name, notation: "c4" });
+    return /diagramId="([^"]+)"/.exec(creado.content[0].text)![1];
+  }
+
+  it("C1 · export_to_app acepta projectName y el GraphData sale con ese nombre", async () => {
+    const tools = toolsDe();
+    const id = await crear(tools, "Geiser · C4 L1 Contexto");
+    await tools.get("add_node")!.handler({ diagramId: id, name: "Portal", type: "Sistema Externo" });
+    const out = path.join(ws, "c4.json");
+    const res = await tools.get("export_to_app")!.handler({ diagramId: id, projectName: "Geiser", outPath: out });
+    expect(res.isError).toBeUndefined();
+    const graph = JSON.parse(await fs.readFile(out, "utf8"));
+    expect(graph.nombre_proyecto).toBe("Geiser");
+  });
+
+  it("C1 · sin projectName manda el nombre del diagrama (no cambia el default)", async () => {
+    const tools = toolsDe();
+    const id = await crear(tools, "Geiser · C4 L1 Contexto");
+    const out = path.join(ws, "c4b.json");
+    await tools.get("export_to_app")!.handler({ diagramId: id, outPath: out });
+    const graph = JSON.parse(await fs.readFile(out, "utf8"));
+    expect(graph.nombre_proyecto).toBe("Geiser · C4 L1 Contexto");
+  });
+
+  it("C3 · list_diagrams devuelve el VOCABULARIO, no sólo los ids", async () => {
+    const tools = toolsDe();
+    const id = await crear(tools, "Paisaje");
+    await tools.get("add_node")!.handler({ diagramId: id, name: "OFAC Screening", type: "Sistema Externo" });
+    const salida = (await tools.get("list_diagrams")!.handler({ names: true, limit: 40 })).content[0].text;
+    expect(salida).toContain("OFAC Screening");
+    expect(salida).toContain("Paisaje");
+    expect(salida).toMatch(/reus/i);
+
+    const corto = (await tools.get("list_diagrams")!.handler({ names: false, limit: 40 })).content[0].text;
+    expect(corto).not.toContain("OFAC Screening");
+  });
+
+  it("C3 · el tope de nombres resume el resto en vez de volcarlo entero", async () => {
+    const tools = toolsDe();
+    const id = await crear(tools, "Grande");
+    for (let i = 0; i < 5; i++) {
+      await tools.get("add_node")!.handler({ diagramId: id, name: `Sistema ${i}`, type: "Sistema Externo" });
+    }
+    const salida = (await tools.get("list_diagrams")!.handler({ names: true, limit: 2 })).content[0].text;
+    expect(salida).toContain("y 3 más");
+  });
+});
+
+describe("higiene del skill y de los metadatos · D", () => {
+  let ws = "";
+  let proj = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-d-"));
+    proj = await fs.mkdtemp(path.join(os.tmpdir(), "pf-dproj-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+    await fs.rm(proj, { recursive: true, force: true });
+  });
+
+  it("D1 · avisa que el skill en disco DIFIERE del que generaría, en vez de saltarlo callado", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    const args = { skill: "disenar-diagrama", scope: "project", projectDir: proj, overwrite: false, configure: false };
+    await tools.get("install_skill")!.handler(args);
+
+    const skillMd = path.join(proj, ".claude", "skills", "disenar-diagrama", "SKILL.md");
+    await fs.writeFile(skillMd, "# skill viejo, de otra versión\n", "utf8");
+
+    const segundo = (await tools.get("install_skill")!.handler(args)).content[0].text;
+    expect(segundo).toContain("DESACTUALIZADOS");
+    expect(segundo).toContain("overwrite=true");
+
+    const tercero = (await tools.get("install_skill")!.handler({ ...args, overwrite: true })).content[0].text;
+    expect(tercero).toContain("Escritos");
+    expect(await fs.readFile(skillMd, "utf8")).not.toContain("skill viejo");
+  });
+
+  it("D2 · metadata acepta el array serializado como texto (tropiezo de clientes MCP)", () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    const esquema = tools.get("add_node")!.def.inputSchema.metadata;
+
+    const comoTexto = esquema.parse('[{"clave":"repo","valor":"acme/pagos-svc"}]');
+    expect(comoTexto).toEqual([{ clave: "repo", valor: "acme/pagos-svc" }]);
+    // El array de siempre sigue funcionando.
+    expect(esquema.parse([{ clave: "wiki", valor: "Pagos" }])).toEqual([{ clave: "wiki", valor: "Pagos" }]);
+
+    // Un texto que no es JSON falla diciendo CÓMO se manda.
+    const malo = esquema.safeParse("repo=acme/pagos-svc");
+    expect(malo.success).toBe(false);
+    expect(JSON.stringify(malo.error.issues)).toContain("LISTA de objetos");
   });
 });

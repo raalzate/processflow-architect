@@ -42,6 +42,8 @@ import {
   addReadModel,
   removeReadModel,
   MAX_LISTA_PROYECTO,
+  ESTADOS,
+  type Estado,
   type DiagramModel,
 } from "../../src/lib/mcp/diagram-builder";
 import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
@@ -118,15 +120,48 @@ const fail = (t: string) => ({ content: [{ type: "text" as const, text: t }], is
  * `src/lib/element-metadata.ts`; acá sólo se declara la FORMA y —lo que de verdad
  * importa— la documentación que el agente lee antes de usarla.
  */
+/**
+ * Estado del elemento frente a lo que YA existe. El vocabulario sale de
+ * `ESTADOS` (`src/lib/mcp/diagram-builder.ts`), no de una lista a mano acá.
+ */
+const estadoSchema = z
+  .enum(ESTADOS as unknown as [string, ...string[]])
+  .optional()
+  .describe(
+    "Estado frente a lo que ya existe: \"existente\" (documentás algo que ya está en producción), \"modificado\" (existe y este diseño lo cambia), \"nuevo\" (lo trae este diseño), \"sin_cambios\", \"eliminado\". Por defecto \"nuevo\": declaralo al documentar un sistema vivo o el lienzo pinta todo como si fuera a construirse."
+  );
+
+/**
+ * Metadatos aceptando TAMBIÉN el array serializado como texto: varios clientes
+ * MCP mandan el JSON en un string y Zod contestaba `expected "array", received
+ * "string"` sin decir cómo arreglarlo. Se parsea antes de validar; si el texto
+ * no es JSON, el mensaje explica la forma esperada.
+ */
 const metadataSchema = z
+  .preprocess((v) => {
+    if (typeof v !== "string") return v;
+    const t = v.trim();
+    if (!t) return undefined;
+    try {
+      return JSON.parse(t);
+    } catch {
+      // Texto que no es JSON: se deja pasar tal cual para que falle en el array
+      // con el mensaje de abajo, que sí dice cómo corregirlo.
+      return v;
+    }
+  }, z
   .array(
     z.object({
       clave: z.string().describe('Clave corta: "repo", "wiki", "owner", "SLA".'),
       valor: z.string().describe('Valor legible: "acme/pagos-svc", "Equipo Pagos".'),
       url: z.string().optional().describe("URL donde eso vive. Sólo http(s) se vuelve enlace en la app."),
-    })
+    }),
+    {
+      invalid_type_error:
+        'metadata es una LISTA de objetos, no texto: [{"clave":"repo","valor":"acme/pagos-svc","url":"https://github.com/acme/pagos-svc"}]. Si tu cliente sólo manda texto, mandá ese mismo JSON como cadena y se parsea solo.',
+    }
   )
-  .optional();
+  .optional());
 
 export function registerProcessflowTools(server: McpServer, opts: McpToolsOptions) {
   const DIAGRAMS_DIR = path.join(opts.workspace, ".processflow", "diagrams");
@@ -273,13 +308,48 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     "list_diagrams",
     {
       title: "Listar diagramas",
-      description: "Lista los diagramas en curso guardados en el workspace.",
-      inputSchema: {},
+      description:
+        "Lista los diagramas en curso del workspace CON su vocabulario: notación, conteos y los nombres de sus elementos. Los nombres son lo que evita construir una segunda versión de la verdad — antes de crear \"Servicio de listas\" mirá si el workspace ya lo llama \"OFAC Screening\".",
+      inputSchema: {
+        names: z
+          .boolean()
+          .default(true)
+          .describe("false para listar sólo los ids (listado corto)."),
+        limit: z
+          .number()
+          .int()
+          .positive()
+          .default(40)
+          .describe("Tope de nombres por diagrama; el resto se resume como «… y N más»."),
+      },
     },
-    async () => {
+    async ({ names, limit }) => {
       const ids = await listModels();
       if (!ids.length) return text("No hay diagramas. Crea uno con create_diagram.");
-      return text(ids.map((i) => `- ${i}`).join("\n"));
+      if (!names) return text(ids.map((i) => `- ${i}`).join("\n"));
+
+      const lineas: string[] = [];
+      for (const id of ids) {
+        let model: DiagramModel;
+        try {
+          model = await loadModel(id);
+        } catch {
+          lineas.push(`- ${id} (ilegible)`);
+          continue;
+        }
+        const vocab = model.nodes.map((n) => n.nombre);
+        const visibles = vocab.slice(0, limit);
+        const resto = vocab.length - visibles.length;
+        lineas.push(
+          `- ${id} · ${model.meta.nombre_proyecto} · ${model.meta.notation} · ${model.nodes.length} elementos, ${model.edges.length} aristas` +
+            (visibles.length
+              ? `\n  ${visibles.join(" · ")}${resto > 0 ? ` · … y ${resto} más` : ""}`
+              : "")
+        );
+      }
+      return text(
+        `${lineas.join("\n")}\n\nSi un nombre de tu diseño describe lo mismo que uno de arriba, reusá ESE nombre (o importá el diagrama con import_diagram) en vez de inventar un sinónimo.`
+      );
     }
   );
 
@@ -312,6 +382,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         name: z.string().describe("Nombre del contenedor (también su clave como padre)."),
         type: z.string().describe("Tipo contenedor válido de la notación (ver describe_notation)."),
         description: z.string().optional(),
+        estado: estadoSchema,
         source: z
           .string()
           .optional()
@@ -323,10 +394,17 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId, name, type, description, source, metadata }) => {
+    async ({ diagramId, name, type, description, estado, source, metadata }) => {
       const model = await loadModel(diagramId);
       try {
-        const r = addContainer(model, { nombre: name, tipo_elemento: type, descripcion: description, source, metadata });
+        const r = addContainer(model, {
+          nombre: name,
+          tipo_elemento: type,
+          descripcion: description,
+          estado_comparativo: estado as Estado | undefined,
+          source,
+          metadata,
+        });
         await saveModel(diagramId, r.model);
         return text(`Contenedor "${name}" añadido (id=${r.id}). Úsalo como container="${name}".`);
       } catch (e: any) {
@@ -347,6 +425,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         type: z.string().describe("Tipo NO contenedor válido de la notación."),
         container: z.string().optional().describe("Nombre de un contenedor existente."),
         description: z.string().optional(),
+        estado: estadoSchema,
         tags: z.array(z.string()).optional().describe("Etiquetas de tecnología."),
         id: z.string().optional().describe("Id explícito (por defecto se deriva del nombre)."),
         source: z
@@ -360,7 +439,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId, name, type, container, description, tags, id, source, metadata }) => {
+    async ({ diagramId, name, type, container, description, estado, tags, id, source, metadata }) => {
       const model = await loadModel(diagramId);
       try {
         const r = addNode(model, {
@@ -369,6 +448,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           tipo_elemento: type,
           container,
           descripcion: description,
+          estado_comparativo: estado as Estado | undefined,
           tags_tecnologia: tags,
           source,
           metadata,
@@ -418,7 +498,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Corregir un elemento",
       description:
-        "Cambia nombre, descripción, cita de la fuente, tags o METADATOS (repositorio, wiki, dueño) de un elemento existente SIN perder su id ni sus relaciones. Es la herramienta para arreglar lo que reporta validate_diagram (nombres que el lienzo recorta, elementos sin fuente) en vez de borrar y recrear. Renombrar un contenedor arrastra a sus hijos.",
+        "Cambia nombre, descripción, ESTADO (existente/modificado/nuevo), cita de la fuente, tags o METADATOS (repositorio, wiki, dueño) de un elemento existente SIN perder su id ni sus relaciones. Es la herramienta para arreglar lo que reporta validate_diagram (nombres que el lienzo recorta, elementos sin fuente) en vez de borrar y recrear. Renombrar un contenedor arrastra a sus hijos.",
       inputSchema: {
         diagramId: z.string(),
         id: z.string().describe("Id del elemento (nodo o contenedor)."),
@@ -430,6 +510,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             "Tipo nuevo, de la MISMA familia (nodo→nodo, contenedor→contenedor). Para reclasificar: un Carril que en realidad es un participante independiente pasa a Pool."
           ),
         description: z.string().optional().describe("Descripción nueva (aquí va el detalle largo)."),
+        estado: estadoSchema,
         source: z.string().optional().describe("Cita de la fuente."),
         tags: z.array(z.string()).optional(),
         metadata: metadataSchema.describe(
@@ -443,13 +524,14 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId, id, name, type, description, source, tags, metadata, metadataRemove }) => {
+    async ({ diagramId, id, name, type, description, estado, source, tags, metadata, metadataRemove }) => {
       const model = await loadModel(diagramId);
       try {
         const next = updateNode(model, id, {
           ...(name !== undefined ? { nombre: name } : {}),
           ...(type !== undefined ? { tipo_elemento: type } : {}),
           ...(description !== undefined ? { descripcion: description } : {}),
+          ...(estado !== undefined ? { estado_comparativo: estado as Estado } : {}),
           ...(source !== undefined ? { source } : {}),
           ...(tags !== undefined ? { tags_tecnologia: tags } : {}),
           ...(metadata !== undefined ? { metadata } : {}),
@@ -1009,17 +1091,25 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         : undefined;
 
       const written: string[] = [];
-      const skipped: string[] = [];
+      const alDia: string[] = [];
+      const desactualizados: string[] = [];
       for (const id of ids) {
         for (const file of renderSkillFiles(id, config)) {
           const dest = path.join(root, id, ...file.path.split("/"));
           if (!overwrite) {
+            // Saltar en silencio dejaba leyendo un skill viejo sin saberlo: se
+            // COMPARA con lo que se generaría y se dice cuál difiere.
+            let actual: string | null = null;
             try {
-              await fs.access(dest);
-              skipped.push(path.relative(root, dest));
-              continue;
+              actual = await fs.readFile(dest, "utf8");
             } catch {
-              // no existe: se escribe
+              actual = null; // no existe: se escribe
+            }
+            if (actual !== null) {
+              const rel = path.relative(root, dest);
+              if (actual === file.content) alDia.push(rel);
+              else desactualizados.push(rel);
+              continue;
             }
           }
           await ensureDir(path.dirname(dest));
@@ -1030,10 +1120,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
 
       const parts = [`Raíz de instalación: ${root}`];
       if (written.length) parts.push(`Escritos (${written.length}):\n- ${written.join("\n- ")}`);
-      if (skipped.length) {
+      if (desactualizados.length) {
         parts.push(
-          `Ya existían y NO se tocaron (${skipped.length}):\n- ${skipped.join("\n- ")}\nLlamá de nuevo con overwrite=true para actualizarlos.`
+          `⚠️ DESACTUALIZADOS — el archivo en disco NO es el que este servidor genera (${desactualizados.length}):\n- ${desactualizados.join(
+            "\n- "
+          )}\nEstás leyendo un skill viejo: llamá de nuevo con overwrite=true para actualizarlo.`
         );
+      }
+      if (alDia.length) {
+        parts.push(`Ya estaban al día (${alDia.length}):\n- ${alDia.join("\n- ")}`);
       }
       if (written.length) {
         parts.push(
@@ -1055,16 +1150,23 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         : "Serializa el diagrama al formato GraphData y lo escribe como .json en el workspace. Ese archivo se abre en Processflow Architect con «Importar diagrama (JSON)». Devuelve la ruta absoluta.",
       inputSchema: {
         diagramId: z.string(),
+        projectName: z
+          .string()
+          .optional()
+          .describe(
+            "Nombre del PROYECTO en la app (por defecto el del diagrama). Útil cuando un diagrama es un nivel de algo mayor: un C4 con L1+L2+L3 no debería llamarse «… · C4 L1 Contexto». Simétrico con `viewName` de export_as_view."
+          ),
         outPath: z
           .string()
           .optional()
           .describe("Ruta de salida (por defecto <workspace>/<diagramId>.json)."),
       },
     },
-    async ({ diagramId, outPath }) => {
+    async ({ diagramId, projectName, outPath }) => {
       const model = await loadModel(diagramId);
       const v = validate(model);
-      const graph: GraphData = toGraphData(model);
+      const nombre = projectName?.trim() || model.meta.nombre_proyecto;
+      const graph: GraphData = { ...toGraphData(model), nombre_proyecto: nombre };
       const dest = path.resolve(outPath || path.join(opts.workspace, `${diagramId}.json`));
       await ensureDir(path.dirname(dest));
       await fs.writeFile(dest, JSON.stringify(graph, null, 2), "utf8");
@@ -1076,10 +1178,10 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
 
       // Modo app: entrega directa al lienzo.
       if (opts.exportToApp) {
-        const delivered = await opts.exportToApp(model.meta.nombre_proyecto, graph);
+        const delivered = await opts.exportToApp(nombre, graph);
         if (delivered) {
           return text(
-            `✅ Diagrama cargado en el lienzo de la app como proyecto "${model.meta.nombre_proyecto}".\nRespaldo: ${dest}${warn}${err}`
+            `✅ Diagrama cargado en el lienzo de la app como proyecto "${nombre}".\nRespaldo: ${dest}${warn}${err}`
           );
         }
         return text(
@@ -1122,8 +1224,19 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
 
         const delivered = await opts.exportViewToApp!(name, graph, model.meta.notation);
         if (delivered) {
+          // Los metadatos son del PROYECTO, no de la vista: la app los fusiona
+          // al recibirla (ver `src/lib/mcp/project-meta.ts`). Se declara acá
+          // para que el agente no los repita a mano en el chat.
+          const meta: string[] = [];
+          if (model.meta.hotspots?.length) meta.push(`${model.meta.hotspots.length} hotspots`);
+          if (model.meta.responsables?.length)
+            meta.push(`${model.meta.responsables.length} responsables`);
+          if (model.meta.notas?.trim() || pendingAmbiguities(model).length) meta.push("notas/ambigüedades");
+          const metaTxt = meta.length
+            ? `\nAl proyecto activo se suman: ${meta.join(" · ")} (no se pisa lo que ya había).`
+            : "";
           return text(
-            `✅ Vista "${name}" (${model.meta.notation}) enviada al proyecto activo de la app.${warn}${err}`
+            `✅ Vista "${name}" (${model.meta.notation}) enviada al proyecto activo de la app.${metaTxt}${warn}${err}`
           );
         }
         return fail(

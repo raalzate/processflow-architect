@@ -13,6 +13,7 @@ import { parseDiagramJson, isJsonFile } from "@/lib/import-diagram";
 import { readMcpPrefs } from "@/lib/mcp-settings";
 import { describeAppState } from "@/lib/mcp/app-state";
 import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
+import { mergeProjectMeta, describeMetaAgregada } from "@/lib/mcp/project-meta";
 import { artifactBodyMarkdown } from "@/lib/artifacts/to-markdown";
 import { readStoredArtifacts } from "@/context/AgentContext";
 import { readStoredCustomViews } from "@/context/ViewsContext";
@@ -71,7 +72,7 @@ const MemoizedAppHeader = React.memo(() => {
 //    `get_app_state` lo sirva al agente: sin esa ingesta previa, el agente
 //    exporta a ciegas y duplica o pisa el trabajo del humano.
 const McpImportBridge = () => {
-  const { handleCreateProjectFromContent, currentFileId, graphData, savedFiles, allNodes } =
+  const { handleCreateProjectFromContent, handleDesignUpdate, currentFileId, graphData, savedFiles, allNodes } =
     useGraphContext();
   const { createView, views } = useViews();
   const { toast } = useToast();
@@ -212,9 +213,20 @@ const McpImportBridge = () => {
             activate: true,
           });
           if (!id) throw new Error("Se alcanzó el límite de vistas del proyecto.");
+          // Una vista no tiene notas, hotspots ni responsables: son del PROYECTO.
+          // Sin esto, las ambigüedades que el agente registró se quedaban en su
+          // chat y el humano revisaba el diagrama sin saber qué quedó abierto.
+          let extra = "";
+          if (graphData) {
+            const fusion = mergeProjectMeta(graphData, content as GraphData);
+            if (fusion.cambio) {
+              handleDesignUpdate(currentFileId, fusion.graph);
+              extra = ` Se sumaron al proyecto: ${describeMetaAgregada(fusion.agregado)}.`;
+            }
+          }
           toast({
             title: "Vista recibida por MCP",
-            description: `"${name}" se añadió como pestaña del proyecto activo.`,
+            description: `"${name}" se añadió como pestaña del proyecto activo.${extra}`,
           });
           return;
         }
@@ -237,7 +249,7 @@ const McpImportBridge = () => {
     if (enabled) electron.mcpServerStart?.(port).catch(() => {});
 
     return off;
-  }, [handleCreateProjectFromContent, createView, currentFileId, toast]);
+  }, [handleCreateProjectFromContent, handleDesignUpdate, createView, currentFileId, graphData, toast]);
 
   return null;
 };

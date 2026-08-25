@@ -82,8 +82,13 @@ export const MAX_EDGE_LABEL_CHARS = 30;
  */
 const ETIQUETA_BLOB = 24;
 
-const ESTADOS = ["nuevo", "modificado", "sin_cambios", "existente", "eliminado"] as const;
-type Estado = (typeof ESTADOS)[number];
+/**
+ * Vocabulario ÚNICO del estado comparativo de un elemento. Se exporta porque la
+ * puerta MCP (`add_node`, `add_container`, `update_element`) declara su enum
+ * desde acá: una segunda lista a mano se desincroniza en el primer estado nuevo.
+ */
+export const ESTADOS = ["nuevo", "modificado", "sin_cambios", "existente", "eliminado"] as const;
+export type Estado = (typeof ESTADOS)[number];
 
 export interface DiagramMeta {
   nombre_proyecto: string;
@@ -294,7 +299,7 @@ export function addEdge(model: DiagramModel, input: BuilderEdge): DiagramModel {
 export function updateNode(
   model: DiagramModel,
   id: string,
-  patch: Partial<Pick<BuilderNode, "nombre" | "descripcion" | "source" | "tags_tecnologia" | "tipo_elemento">> & {
+  patch: Partial<Pick<BuilderNode, "nombre" | "descripcion" | "source" | "tags_tecnologia" | "tipo_elemento" | "estado_comparativo">> & {
     /** Metadatos a agregar o reemplazar POR CLAVE (no reemplaza la lista entera). */
     metadata?: ElementMetadata[];
     /** Claves de metadatos a borrar. */
@@ -1227,6 +1232,9 @@ export function toGraphData(input: DiagramModel): GraphData {
     color: c.color,
     borderColor: c.borderColor,
     metadata: c.metadata,
+    // Un contenedor también documenta lo que YA existe: sin esto el estado que
+    // declara el agente moría en la serialización (sólo lo llevaban los nodos).
+    estado_comparativo: c.estado_comparativo,
   }));
   const aggByName = new Map(agregados.map((a) => [a.nombre_agregado, a]));
 
@@ -1310,6 +1318,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
         : "Agregado",
       descripcion: agg.descripcion || agg.entidad_raiz || "",
       container: "",
+      estado_comparativo: agg.estado_comparativo,
       color: (agg as any).color,
       borderColor: (agg as any).borderColor,
       metadata: normalizarLista(agg.metadata),
