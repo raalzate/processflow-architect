@@ -7,8 +7,8 @@ lo que se supone va en "deuda conocida".
 - **Fecha del último gate completo:** 2026-08-25
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.6.4 — release publicado (Latest). **0.6.5 está en BORRADOR** con los 3 instaladores construidos (`gh release edit v0.6.5 --draft=false` para publicarlo: es un paso humano a propósito)
-- **Versión en el repo:** 0.6.5 — notas en `docs/releases/0.6.5.md`; PR #145 mergeado y tag `v0.6.5` empujado. El workflow dejó el release en BORRADOR (`draft: true`) con dmg, exe y AppImage
+- **Versión publicada:** 0.6.5 — release **publicado** (Latest) con los 3 instaladores (dmg arm64 · exe · AppImage)
+- **Versión en el repo:** 0.6.5 — notas en `docs/releases/0.6.5.md`. El workflow deja el release en BORRADOR a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v<versión> --draft=false`)
 
 ## Señales
 
