@@ -241,16 +241,31 @@ function metadataDeEntrada(lista: ElementMetadata[] | undefined): ElementMetadat
   return upsertVarios(undefined, lista);
 }
 
+/**
+ * Mensaje del intento de anidar contenedores. Vive acá —y no en el servidor—
+ * porque es la ÚNICA salida documentada (ADR 0002: la profundidad se modela con
+ * vistas, no anidando) y un mensaje que sólo dice "no se puede" deja al agente
+ * inventando bandas hermanas que mienten sobre la jerarquía.
+ */
+export const SIN_ANIDAMIENTO =
+  "Un contenedor no puede colgar de otro: el formato de proyecto es de UN nivel (ADR 0002). " +
+  "Para el nivel de abajo —los Componentes de un Contenedor en C4, un subproceso dentro de un " +
+  "carril en BPMN— creá OTRA VISTA con ese detalle y enlazala desde el elemento padre con " +
+  "`viewRef` (export_as_view). Meterlo como banda hermana en el mismo lienzo dice que son del " +
+  "mismo rango, que es justo lo que no son.";
+
 /** Añade un CONTENEDOR (Agregado, Pool, Límite, Paquete…). Lanza si el tipo no es contenedor. */
 export function addContainer(
   model: DiagramModel,
-  input: Omit<BuilderNode, "id" | "container"> & { id?: string }
+  input: Omit<BuilderNode, "id" | "container"> & { id?: string; container?: string }
 ): { model: DiagramModel; id: string } {
   if (!isNotationContainer(input.tipo_elemento)) {
     throw new Error(
       `"${input.tipo_elemento}" no es un tipo contenedor. Contenedores válidos: ${[...allContainerTypes()].join(", ")}.`
     );
   }
+  // El intento natural del agente es pasar `container`: que ahí aprenda la salida.
+  if (input.container?.trim()) throw new Error(SIN_ANIDAMIENTO);
   const id = input.id ?? uniqueId(model, input.nombre);
   if (findNode(model, id)) throw new Error(`Ya existe un elemento con id "${id}".`);
   const node: BuilderNode = { ...input, id, container: "", metadata: metadataDeEntrada(input.metadata) };

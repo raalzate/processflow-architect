@@ -136,6 +136,13 @@ nombraste no existe, la herramienta avisa en vez de inventar uno: mirá
 llama así en vez de dejar una segunda igual (y sin gastar cupo de vistas). Si esa pestaña no
 existe, avisa con las que hay en vez de crearla por su cuenta.
 
+### Profundidad: otra VISTA, no un contenedor dentro de otro
+
+Los contenedores **no se anidan** (el formato de proyecto es de un nivel, ADR 0002). Para el nivel
+de abajo —los Componentes de un Contenedor en C4, un subproceso dentro de un carril en BPMN— creá
+OTRA vista con ese detalle y enlazala desde el elemento padre con `viewRef`. Meterlo como banda
+hermana en el mismo lienzo dice que son del mismo rango, que es justo lo que no son.
+
 ### Estado: documentar lo que HAY vs diseñar lo que VIENE
 
 `add_node`, `add_container` y `update_element` aceptan `estado`: `existente` (ya

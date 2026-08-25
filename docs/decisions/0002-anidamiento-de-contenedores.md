@@ -1,8 +1,15 @@
 # ADR 0002 — Profundidad por VISTAS, no por contenedores anidados
 
 - **Fecha:** 2026-08-25
-- **Estado:** propuesto
+- **Estado:** aceptado
 - **Contexto previo:** [ADR 0001](0001-arnes-del-agente.md) · [arquitectura MCP](../architecture/mcp.md) · issue #144 (punto E)
+
+## Estado y mecanismo
+
+Aceptado el 2026-08-25. Lo que hace cumplir la decisión no es esta prosa: `addContainer` rechaza el
+intento de anidar con un mensaje que **enseña la salida** (crear otra vista y enlazarla con
+`viewRef`), y hay una prueba que falla si ese mensaje deja de decirlo
+(`src/lib/mcp/__tests__/diagram-builder.test.ts`).
 
 ## Contexto
 

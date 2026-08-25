@@ -73,7 +73,7 @@ nunca ve una herramienta que su transporte no soporta.
 
 | Herramienta | Qué hace |
 |---|---|
-| `add_container` | contenedor (Agregado, Pool, Límite de Sistema, Paquete…). |
+| `add_container` | contenedor (Agregado, Pool, Límite de Sistema, Paquete…). **No se anidan**: la profundidad va en otra vista enlazada con `viewRef` ([ADR 0002](../decisions/0002-anidamiento-de-contenedores.md)), y el error lo explica cuando se intenta. |
 | `add_node` | nodo, opcionalmente dentro de un contenedor. |
 | `add_edge` | conecta dos elementos y clasifica la relación (interna / política / big picture). |
 | `update_element` / `update_edge` | corrigen sin borrar y recrear (conserva id, citas y geometría). |

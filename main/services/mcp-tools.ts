@@ -508,13 +508,19 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Añadir contenedor",
       description:
-        "Añade un contenedor (Agregado, Contexto Delimitado, Pool, Carril, Límite de Sistema, Paquete, …). Devuelve su nombre para usarlo como `container` de los nodos hijos.",
+        "Añade un contenedor (Agregado, Contexto Delimitado, Pool, Carril, Límite de Sistema, Paquete, …). Devuelve su nombre para usarlo como `container` de los nodos hijos. Los contenedores NO se anidan: la profundidad se modela con VISTAS enlazadas por viewRef (ADR 0002).",
       inputSchema: {
         diagramId: diagramIdSchema,
         name: z.string().describe("Nombre del contenedor (también su clave como padre)."),
         type: z.string().describe("Tipo contenedor válido de la notación (ver describe_notation)."),
         description: z.string().optional(),
         estado: estadoSchema,
+        container: z
+          .string()
+          .optional()
+          .describe(
+            "NO soportado: un contenedor no cuelga de otro (el formato es de un nivel, ADR 0002). Para el nivel de abajo creá otra vista y enlazala con viewRef. Está declarado para poder explicarlo cuando lo intentes."
+          ),
         source: z
           .string()
           .optional()
@@ -526,7 +532,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId: diagramIdEntrada, name, type, description, estado, source, metadata }) => {
+    async ({ diagramId: diagramIdEntrada, name, type, description, estado, container, source, metadata }) => {
       // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
       // configuración, o el único del workspace (`active-diagram.ts`).
       let diagramId: string;
@@ -542,6 +548,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           tipo_elemento: type,
           descripcion: description,
           estado_comparativo: estado as Estado | undefined,
+          container,
           source,
           metadata,
         });

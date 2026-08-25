@@ -26,6 +26,7 @@ import {
   MAX_LISTA_PROYECTO,
   resolveAmbiguity,
   pendingAmbiguities,
+  SIN_ANIDAMIENTO,
   type DiagramModel,
 } from "../diagram-builder";
 import { processGraphData } from "../../graph-processor";
@@ -895,5 +896,42 @@ describe("read models", () => {
 
   it("un read model sin nombre revienta en la llamada", () => {
     expect(() => addReadModel(emptyDiagram(base), { nombre: "  " })).toThrow(/nombre/i);
+  });
+});
+
+
+/**
+ * ADR 0002 — la profundidad se modela con VISTAS, no anidando contenedores. El
+ * mecanismo de la decisión es este mensaje: si deja de enseñar la salida, el
+ * agente vuelve a las bandas hermanas que mienten sobre la jerarquía.
+ */
+describe("addContainer · no se anida, y el error dice por dónde ir (ADR 0002)", () => {
+  const base = () => emptyDiagram({ nombre_proyecto: "P", notation: "c4" });
+
+  it("rechaza colgar un contenedor de otro", () => {
+    let m = base();
+    m = addContainer(m, { nombre: "Sistema", tipo_elemento: "Límite de Sistema" }).model;
+    expect(() =>
+      addContainer(m, {
+        nombre: "API",
+        tipo_elemento: "Límite de Sistema",
+        container: "Sistema",
+      })
+    ).toThrow(SIN_ANIDAMIENTO);
+  });
+
+  it("el mensaje nombra la salida concreta: otra vista enlazada con viewRef", () => {
+    expect(SIN_ANIDAMIENTO).toContain("viewRef");
+    expect(SIN_ANIDAMIENTO).toMatch(/vista/i);
+    expect(SIN_ANIDAMIENTO).toContain("ADR 0002");
+  });
+
+  it("sin `container` (o vacío) el contenedor entra normal, en el nivel único", () => {
+    const r = addContainer(base(), {
+      nombre: "Sistema",
+      tipo_elemento: "Límite de Sistema",
+      container: "  ",
+    });
+    expect(r.model.nodes[0].container).toBe("");
   });
 });
