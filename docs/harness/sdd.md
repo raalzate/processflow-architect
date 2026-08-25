@@ -105,6 +105,7 @@ ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
 | El puntero de feature activa resuelve | self-test: puntero colgado = gate rojo |
 | Los artefactos SDD no vuelven al repo | `node scripts/sdd-github.mjs check` en el gate: cualquier archivo bajo `specs/` fuera de `sdd.github.allowedInRepo` es rojo, y el self-test lo prueba con un cebo |
 | Los artefactos no se pierden al entregar | son issues: se cierran, no se borran, y quedan enlazadas desde el commit |
+| El commit de código queda registrado | `.githooks/commit-msg`: referencia (`tracker.issuePattern`) o `sin-issue: <motivo>`. Los patrones viven en el config, así que el freno no está atado a GitHub |
 
 ## Estado
 
@@ -119,6 +120,12 @@ ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
   producción —incluso cuando el pedido viene en prosa y no nombra «feature» ni «bug»—, callándose en
   lo trivial. Lo prueban 7 casos del self-test en un repo git temporal y 3 de ruteo. Nació de un
   incidente: cuatro arreglos terminados sin una sola issue (`docs/harness/gotchas.md`).
+- **El freno dejó de estar atado a GitHub** (2026-08-25): `.githooks/commit-msg` lee `tracker` y
+  `commitMsg` del config en vez de tener los patrones en el bash. Este repo sigue en GitHub y nada
+  cambia para quien commitea; lo que cambia es que el mismo hook sirve con Azure Boards (`AB#123`)
+  o Jira (`PROJ-123`) editando una línea. Dos casos nuevos del self-test lo prueban con la config
+  de otra forja —acepta `AB#77`, rechaza `#77`—, así que si alguien vuelve a cablear los patrones,
+  el gate se pone rojo.
 - Deuda que queda: el freno pide *un* registro, no el registro *correcto*. Que una feature grande
   vaya con issue madre y tareas en vez de un `bug` suelto sigue siendo criterio del agente y del
   `reviewer`.
