@@ -41,10 +41,15 @@ async function exportToApp(
 }
 
 /** Igual que en mcp-http: entrega el diagrama como VISTA del proyecto activo. */
-async function exportViewToApp(name: string, graph: GraphData, notation: NotationId): Promise<boolean> {
+async function exportViewToApp(
+  name: string,
+  graph: GraphData,
+  notation: NotationId,
+  replace?: boolean
+): Promise<boolean> {
   const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
   if (!win) return false;
-  win.webContents.send("mcp-import-diagram", { name, content: graph, view: { notation } });
+  win.webContents.send("mcp-import-diagram", { name, content: graph, view: { notation, replace } });
   if (win.isMinimized()) win.restore();
   win.focus();
   return true;

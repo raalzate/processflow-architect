@@ -229,6 +229,10 @@ la posición que el humano les dio a las cajas y fusiona sus notas. Usá
 nombraste no existe, la herramienta avisa en vez de inventar uno: mirá
 \`get_app_state\` antes de entregar.
 
+\`export_as_view\` hace lo mismo con las pestañas: \`replace: true\` actualiza la vista que ya se
+llama así en vez de dejar una segunda igual (y sin gastar cupo de vistas). Si esa pestaña no
+existe, avisa con las que hay en vez de crearla por su cuenta.
+
 ### Estado: documentar lo que HAY vs diseñar lo que VIENE
 
 \`add_node\`, \`add_container\` y \`update_element\` aceptan \`estado\`: \`existente\` (ya
@@ -604,6 +608,10 @@ la posición que el humano les dio a las cajas y fusiona sus notas. Usá
 \`mode: "new"\` sólo cuando de verdad querés un proyecto aparte. Si el proyecto que
 nombraste no existe, la herramienta avisa en vez de inventar uno: mirá
 \`get_app_state\` antes de entregar.
+
+\`export_as_view\` hace lo mismo con las pestañas: \`replace: true\` actualiza la vista que ya se
+llama así en vez de dejar una segunda igual (y sin gastar cupo de vistas). Si esa pestaña no
+existe, avisa con las que hay en vez de crearla por su cuenta.
 
 ### Estado: documentar lo que HAY vs diseñar lo que VIENE
 

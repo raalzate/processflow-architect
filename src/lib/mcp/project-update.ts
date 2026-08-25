@@ -141,3 +141,37 @@ export function resolveProjectRef(
 function lista(proyectos: string[]): string {
   return proyectos.length ? proyectos.map((p) => `"${p}"`).join(", ") : "(ninguno)";
 }
+
+/**
+ * A qué VISTA del proyecto activo apunta una entrega que reemplaza (issue #147).
+ * Misma idea que `resolveProjectRef`, con una diferencia que importa: acá el
+ * nombre lo elige el agente al exportar, así que un nombre nuevo es lo normal —
+ * quien decide si eso es un alta o un error es el llamador, mirando `existe`.
+ *
+ * Las vistas del sistema (`builtin`) no se reemplazan: son la vista del modelo,
+ * no una pestaña que el agente haya creado.
+ */
+export function resolveViewRef(
+  nombre: string,
+  vistas: { name: string; builtin?: boolean }[]
+): { name: string; existe: boolean } {
+  const pedido = nombre.trim();
+  const candidatas = vistas.filter((v) => !v.builtin);
+
+  const exacta = candidatas.find((v) => v.name === pedido);
+  if (exacta) return { name: exacta.name, existe: true };
+
+  // Sin distinguir mayúsculas: el agente escribe el nombre de memoria.
+  const flexibles = candidatas.filter((v) => v.name.toLowerCase() === pedido.toLowerCase());
+  if (flexibles.length === 1) return { name: flexibles[0].name, existe: true };
+
+  return { name: pedido, existe: false };
+}
+
+/** Mensaje de «esa vista no está» con las que sí hay. */
+export function vistaInexistente(nombre: string, vistas: { name: string; builtin?: boolean }[]): string {
+  const candidatas = vistas.filter((v) => !v.builtin).map((v) => v.name);
+  return `No hay una vista llamada "${nombre}" en el proyecto activo. Las que hay: ${lista(
+    candidatas
+  )}. Mirá get_app_state, o entregá sin \`replace\` para crear una pestaña nueva.`;
+}

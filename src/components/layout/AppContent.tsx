@@ -14,7 +14,7 @@ import { readMcpPrefs } from "@/lib/mcp-settings";
 import { describeAppState } from "@/lib/mcp/app-state";
 import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
 import { mergeProjectMeta, describeMetaAgregada } from "@/lib/mcp/project-meta";
-import { mergeProjectGraph } from "@/lib/mcp/project-update";
+import { mergeProjectGraph, resolveViewRef } from "@/lib/mcp/project-update";
 import { artifactBodyMarkdown } from "@/lib/artifacts/to-markdown";
 import { readStoredArtifacts } from "@/context/AgentContext";
 import { readStoredCustomViews } from "@/context/ViewsContext";
@@ -82,7 +82,7 @@ const McpImportBridge = () => {
     savedFiles,
     allNodes,
   } = useGraphContext();
-  const { createView, views } = useViews();
+  const { createView, views, updateViewGraph, setViewNotation, setActiveView } = useViews();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -214,12 +214,37 @@ const McpImportBridge = () => {
             });
             return;
           }
-          const id = createView({
-            name,
-            graph: content as GraphData,
-            notation: view.notation as NotationId | undefined,
-            activate: true,
-          });
+          // `replace` ⇒ actualizar la pestaña que ya se llama así: entregar dos
+          // veces el mismo rediseño dejaba dos pestañas iguales y, cerca del
+          // cupo, la segunda ni siquiera entraba. No consume cupo.
+          const ref = view.replace ? resolveViewRef(name, views) : null;
+          const objetivo =
+            ref?.existe ? views.find((v) => !v.builtin && v.name === ref.name) : undefined;
+          if (view.replace && !objetivo) {
+            toast({
+              variant: "destructive",
+              title: `No encontré la vista "${name}"`,
+              description: "Se renombró o se borró: entregá sin `replace` para crearla.",
+            });
+            return;
+          }
+          let id: string | null;
+          if (objetivo) {
+            // Igual que al actualizar un proyecto: la estructura la trae el
+            // diseño nuevo, la geometría de lo que ya estaba la conserva la vista.
+            const { graph } = mergeProjectGraph(objetivo.graph ?? (content as GraphData), content as GraphData);
+            updateViewGraph(objetivo.id, graph);
+            if (view.notation) setViewNotation(objetivo.id, view.notation as NotationId);
+            setActiveView(objetivo.id);
+            id = objetivo.id;
+          } else {
+            id = createView({
+              name,
+              graph: content as GraphData,
+              notation: view.notation as NotationId | undefined,
+              activate: true,
+            });
+          }
           if (!id) throw new Error("Se alcanzó el límite de vistas del proyecto.");
           // Una vista no tiene notas, hotspots ni responsables: son del PROYECTO.
           // Sin esto, las ambigüedades que el agente registró se quedaban en su
@@ -233,8 +258,10 @@ const McpImportBridge = () => {
             }
           }
           toast({
-            title: "Vista recibida por MCP",
-            description: `"${name}" se añadió como pestaña del proyecto activo.${extra}`,
+            title: objetivo ? "Vista actualizada por MCP" : "Vista recibida por MCP",
+            description: objetivo
+              ? `"${name}" se actualizó conservando la posición de los elementos que ya estaban.${extra}`
+              : `"${name}" se añadió como pestaña del proyecto activo.${extra}`,
           });
           return;
         }
@@ -291,6 +318,10 @@ const McpImportBridge = () => {
     handleDesignUpdate,
     handleFileSelect,
     createView,
+    views,
+    updateViewGraph,
+    setViewNotation,
+    setActiveView,
     currentFileId,
     graphData,
     savedFiles,

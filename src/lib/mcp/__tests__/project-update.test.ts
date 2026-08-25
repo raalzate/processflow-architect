@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeProjectGraph, resolveProjectRef } from "../project-update";
+import { mergeProjectGraph, resolveProjectRef, resolveViewRef, vistaInexistente } from "../project-update";
 import type { GraphData } from "../../types";
 
 const nodo = (id: string, extra: Record<string, unknown> = {}) => ({
@@ -149,5 +149,32 @@ describe("resolveProjectRef · a qué proyecto se entrega", () => {
     expect(() => resolveProjectRef(undefined, { activo: null, proyectos: [] })).toThrow(
       /No hay un proyecto abierto/
     );
+  });
+});
+
+describe("resolveViewRef · a qué pestaña se entrega (#147)", () => {
+  const vistas = [
+    { name: "Modelo", builtin: true },
+    { name: "Proceso de alta", builtin: false },
+  ];
+
+  it("reconoce una vista existente, aunque el nombre venga en otra caja", () => {
+    expect(resolveViewRef("Proceso de alta", vistas)).toEqual({ name: "Proceso de alta", existe: true });
+    expect(resolveViewRef("proceso de alta", vistas)).toEqual({ name: "Proceso de alta", existe: true });
+  });
+
+  it("un nombre nuevo no es un error: dice que no existe y deja decidir", () => {
+    expect(resolveViewRef("Otra", vistas)).toEqual({ name: "Otra", existe: false });
+  });
+
+  it("las vistas del sistema no se reemplazan", () => {
+    expect(resolveViewRef("Modelo", vistas).existe).toBe(false);
+  });
+
+  it("el aviso lista las pestañas reemplazables y la salida", () => {
+    const msg = vistaInexistente("Otra", vistas);
+    expect(msg).toContain('"Proceso de alta"');
+    expect(msg).not.toContain('"Modelo"');
+    expect(msg).toContain("replace");
   });
 });

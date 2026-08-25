@@ -47,7 +47,7 @@ import {
   type DiagramModel,
 } from "../../src/lib/mcp/diagram-builder";
 import { resolveDiagramId } from "../../src/lib/mcp/active-diagram";
-import { resolveProjectRef } from "../../src/lib/mcp/project-update";
+import { resolveProjectRef, resolveViewRef, vistaInexistente } from "../../src/lib/mcp/project-update";
 import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
 import { toMermaid } from "../../src/lib/mcp/to-mermaid";
 import { qualityFindings, formatFindings, MAX_NODES } from "../../src/lib/mcp/quality";
@@ -96,7 +96,13 @@ export interface McpToolsOptions {
    * custom del proyecto ACTIVO (pestaña nueva con su propia notación), en vez
    * de crear un proyecto aparte. Devuelve true si la ventana lo recibió.
    */
-  exportViewToApp?: (name: string, graph: GraphData, notation: NotationId) => Promise<boolean>;
+  exportViewToApp?: (
+    name: string,
+    graph: GraphData,
+    notation: NotationId,
+    /** true ⇒ ACTUALIZAR la pestaña que ya se llama así, no agregar otra. */
+    replace?: boolean
+  ) => Promise<boolean>;
   /**
    * Presente sólo en el modo app: entrega CÓDIGO MERMAID al renderer como una
    * VISTA Mermaid nueva (pestaña) del proyecto ACTIVO. Devuelve true si la
@@ -1509,16 +1515,22 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       {
         title: "Exportar como vista",
         description:
-          "Carga el diagrama como una VISTA nueva (pestaña) del proyecto ACTIVO en la app, con su propia notación — en vez de crear un proyecto aparte (para eso está export_to_app). Úsala para complementar un modelo con vistas BPMN/C4/UML del mismo dominio. Requiere un proyecto abierto en la app.",
+          "Carga el diagrama como VISTA (pestaña) del proyecto ACTIVO en la app, con su propia notación — en vez de crear un proyecto aparte (para eso está export_to_app). Úsala para complementar un modelo con vistas BPMN/C4/UML del mismo dominio. Con `replace: true` ACTUALIZA la pestaña que ya se llama así (conserva la posición que el humano les dio a las cajas y no consume cupo) en vez de dejar una segunda con el mismo nombre. Requiere un proyecto abierto en la app.",
         inputSchema: {
           diagramId: diagramIdSchema,
           viewName: z
             .string()
             .optional()
             .describe("Nombre de la pestaña (por defecto, el nombre del diagrama)."),
+          replace: z
+            .boolean()
+            .optional()
+            .describe(
+              "true actualiza la pestaña existente con ese nombre. Si no existe ninguna, avisa con las que hay en vez de crearla: rediseñar y entregar dos veces no debería dejar dos pestañas iguales."
+            ),
         },
       },
-      async ({ diagramId: diagramIdEntrada, viewName }) => {
+      async ({ diagramId: diagramIdEntrada, viewName, replace }) => {
       // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
       // configuración, o el único del workspace (`active-diagram.ts`).
       let diagramId: string;
@@ -1537,7 +1549,16 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ? `\n\n⚠️ Con errores (revisa antes de usar):\n- ${v.errors.join("\n- ")}`
           : "";
 
-        const delivered = await opts.exportViewToApp!(name, graph, model.meta.notation);
+        // Reemplazar apunta a una pestaña que YA existe: se comprueba antes de
+        // entregar (con el retrato que publica el renderer) para poder avisar
+        // con las opciones, igual que `export_to_app` con `project`.
+        if (replace) {
+          const vistas = opts.getAppState?.()?.views ?? [];
+          const ref = resolveViewRef(name, vistas);
+          if (!ref.existe) return fail(vistaInexistente(name, vistas));
+        }
+
+        const delivered = await opts.exportViewToApp!(name, graph, model.meta.notation, replace);
         if (delivered) {
           // Los metadatos son del PROYECTO, no de la vista: la app los fusiona
           // al recibirla (ver `src/lib/mcp/project-meta.ts`). Se declara acá
@@ -1551,7 +1572,11 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             ? `\nAl proyecto activo se suman: ${meta.join(" · ")} (no se pisa lo que ya había).`
             : "";
           return text(
-            `✅ Vista "${name}" (${model.meta.notation}) enviada al proyecto activo de la app.${metaTxt}${warn}${err}`
+            `✅ Vista "${name}" (${model.meta.notation}) ${
+              replace ? "ACTUALIZADA" : "enviada"
+            } en el proyecto activo de la app.${
+              replace ? " Se conservó la posición de los elementos que ya estaban." : ""
+            }${metaTxt}${warn}${err}`
           );
         }
         return fail(

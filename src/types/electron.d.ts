@@ -72,8 +72,11 @@ export interface ElectronAPI {
     callback: (data: {
       name: string;
       content: unknown;
-      /** Presente cuando llega vía export_as_view: crear vista del proyecto activo. */
-      view?: { notation?: string };
+      /**
+       * Presente cuando llega vía export_as_view: vista del proyecto activo.
+       * `replace` ⇒ actualizar la pestaña que ya se llama así, no agregar otra.
+       */
+      view?: { notation?: string; replace?: boolean };
       /** true cuando llega vía export_mermaid_view: crear vista Mermaid (content = código). */
       mermaid?: boolean;
       /**

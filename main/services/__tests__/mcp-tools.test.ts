@@ -1022,3 +1022,75 @@ describe("export_to_app · actualizar el proyecto de la app", () => {
     expect(JSON.parse(await fs.readFile(out, "utf8")).nombre_proyecto).toBe("Solo");
   });
 });
+
+// -----------------------------------------------------------------------------
+// #147 — reemplazar una VISTA en vez de dejar dos pestañas con el mismo nombre.
+// -----------------------------------------------------------------------------
+
+describe("export_as_view · replace", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-vista-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  const estadoConVistas = (nombres: { name: string; builtin?: boolean }[]) => ({
+    projectName: "Seguros",
+    counts: { containers: 0, nodes: 0, edges: 0 },
+    views: nombres.map((v, i) => ({ id: `v${i}`, name: v.name, kind: "design", builtin: v.builtin, elements: 3 })),
+    viewsLimit: 50,
+    projects: ["Seguros"],
+    updatedAt: "2026-08-25T00:00:00.000Z",
+  });
+
+  async function conVistas(vistas: { name: string; builtin?: boolean }[]) {
+    const entregas: { name: string; replace?: boolean }[] = [];
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: ws,
+      getAppState: () => estadoConVistas(vistas),
+      exportViewToApp: async (name: string, _g: any, _n: any, replace?: boolean) => {
+        entregas.push({ name, replace });
+        return true;
+      },
+    } as any);
+    await tools.get("create_diagram")!.handler({ name: "Proceso de alta", notation: "bpmn" });
+    await tools.get("add_node")!.handler({ name: "Recibir", type: "Tarea" });
+    return { tools, entregas };
+  }
+
+  it("actualiza la pestaña que ya existe y lo dice", async () => {
+    const { tools, entregas } = await conVistas([
+      { name: "Modelo", builtin: true },
+      { name: "Proceso de alta" },
+    ]);
+    const res = await tools.get("export_as_view")!.handler({ replace: true });
+    expect(res.isError).toBeUndefined();
+    expect(entregas[0]).toEqual({ name: "Proceso de alta", replace: true });
+    expect(res.content[0].text).toContain("ACTUALIZADA");
+  });
+
+  it("sin replace sigue agregando una pestaña", async () => {
+    const { tools, entregas } = await conVistas([{ name: "Proceso de alta" }]);
+    const res = await tools.get("export_as_view")!.handler({});
+    expect(entregas[0].replace).toBeUndefined();
+    expect(res.content[0].text).toContain("enviada");
+  });
+
+  it("con replace y una vista que no existe, avisa con las opciones y NO entrega", async () => {
+    const { tools, entregas } = await conVistas([{ name: "Otra cosa" }]);
+    const res = await tools.get("export_as_view")!.handler({ viewName: "Fantasma", replace: true });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain('"Otra cosa"');
+    expect(entregas).toHaveLength(0);
+  });
+
+  it("una vista del sistema no se reemplaza", async () => {
+    const { tools, entregas } = await conVistas([{ name: "Modelo", builtin: true }]);
+    const res = await tools.get("export_as_view")!.handler({ viewName: "Modelo", replace: true });
+    expect(res.isError).toBe(true);
+    expect(entregas).toHaveLength(0);
+  });
+});

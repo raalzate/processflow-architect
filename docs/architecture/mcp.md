@@ -111,7 +111,7 @@ recortan al dibujar.
 | Herramienta | Qué hace |
 |---|---|
 | `export_to_app` | escribe el `.json` (`GraphData`) y —en modo app— lo entrega al lienzo por IPC. Por defecto **ACTUALIZA** un proyecto existente (`project`, o el de la configuración, o el abierto): conserva la geometría que el humano movió y fusiona sus notas (`src/lib/mcp/project-update.ts`). `mode: "new"` crea uno aparte. `projectName` nombra el diseño. En stdio queda el archivo para «Importar diagrama». |
-| `export_as_view` **app** | suma una **pestaña** (vista custom con su propia notación) al proyecto ACTIVO, sin crear proyecto aparte. Las notas, hotspots y responsables son del PROYECTO: la app los fusiona al recibir la vista (`src/lib/mcp/project-meta.ts`) sin pisar lo que ya había. |
+| `export_as_view` **app** | suma una **pestaña** (vista custom con su propia notación) al proyecto ACTIVO, sin crear proyecto aparte. Con `replace: true` **actualiza** la pestaña que ya se llama así —conserva la geometría del humano y no consume cupo—; si no existe, avisa con las que hay. Las notas, hotspots y responsables son del PROYECTO: la app los fusiona al recibir la vista (`src/lib/mcp/project-meta.ts`) sin pisar lo que ya había. |
 | `export_mermaid_view` **app** | suma una pestaña de vista **Mermaid** al proyecto activo. |
 
 ### 5b · Configuración del servidor
