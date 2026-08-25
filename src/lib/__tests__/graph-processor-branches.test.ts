@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { processGraphData } from "@/lib/graph-processor";
+import { looseGroupLabel } from "@/lib/notations";
 import type { GraphData } from "@/lib/types";
 
 const n = (id: string, nombre = id, tipo = "Comando") => ({
@@ -25,7 +26,10 @@ describe("processGraphData — redes de seguridad y ramas defensivas", () => {
     expect(out.aggregates).toContain("Ventas");
   });
 
-  it("expone el big_picture como 'Visión General' si no hay agregados con nodos", () => {
+  // Cambio intencional (#142): el grupo de los sueltos ya no se llama "Visión
+  // General" —un literal— sino lo que dice el registro de notaciones, y entra
+  // SIEMPRE, no sólo cuando ningún agregado tiene nodos.
+  it("expone el big_picture en el grupo de los sueltos si no hay agregados con nodos", () => {
     const data = {
       nombre_proyecto: "P",
       agregados: [],
@@ -36,7 +40,7 @@ describe("processGraphData — redes de seguridad y ramas defensivas", () => {
       },
     } as unknown as GraphData;
     const out = processGraphData(data);
-    expect(out.aggregates.some((a) => a.startsWith("Visión General"))).toBe(true);
+    expect(out.aggregates.some((a) => a.startsWith(looseGroupLabel(undefined)))).toBe(true);
     expect(out.nodes.map((x) => x.id).sort()).toEqual(["x", "y"]);
     expect(out.links).toHaveLength(1);
   });
