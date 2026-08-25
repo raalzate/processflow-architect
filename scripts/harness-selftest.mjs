@@ -154,6 +154,28 @@ for (const [hook, name, payload, expected] of blocks) {
 }
 
 /**
+ * `.githooks/pre-push`: el trabajo entra a main por PR, no de un empujón. Se prueba con
+ * la entrada que git le pasa de verdad al hook. El freno fuerte es la protección de rama
+ * de GitHub (activada a mano, anotada en STATUS): esto avisa antes de la red.
+ */
+{
+  const empujar = (rama) =>
+    spawnSync("bash", [abs(".githooks/pre-push")], {
+      cwd: REPO_ROOT,
+      input: `refs/heads/${rama} aaa refs/heads/${rama} bbb\n`,
+      encoding: "utf8",
+    });
+  for (const rama of config.branches?.protected ?? []) {
+    const r = empujar(rama);
+    if (r.status === 1) ok(`pre-push frena el empujón directo a \`${rama}\``);
+    else bad(`pre-push frena \`${rama}\``, `exit ${r.status}: el push directo pasa`);
+  }
+  const libre = empujar("feat/rama-de-prueba");
+  if (libre.status === 0) ok("pre-push deja pasar una rama de feature");
+  else bad("pre-push deja pasar una rama de feature", `exit ${libre.status}: bloquea de más`);
+}
+
+/**
  * «Una pregunta se contesta; una acción se pide». El freno que faltaba: el usuario
  * preguntaba y el agente se iba a editar archivos. El clasificador es lo único que lo
  * separa de un estorbo, así que se prueba con pedidos REALES en las dos direcciones.

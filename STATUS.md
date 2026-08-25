@@ -22,6 +22,8 @@ lo que se supone va en "deuda conocida".
 | Release con instaladores | `node scripts/repo-lint.mjs` (regla RELEASEJOB) | verde — el job que publica baja los artefactos DESPUÉS del checkout y `fail_on_unmatched_files` está en `true`: el borrador vacío de v0.6.3 (checkout limpiando `installers/`) no puede repetirse en verde |
 | Notas de release en el repo | `node scripts/repo-lint.mjs --release-check 0.6.1` | verde — `docs/releases/0.6.1.md` con las tres secciones; con una versión inventada el freno RELEASE muerde |
 | No se actúa sobre una pregunta | incluido en el self-test | verde — 7 pedidos reales de este repo por las dos direcciones; `ask-first` marca el turno informativo y `action-guard` deniega toda edición dentro del repo hasta el próximo pedido del humano |
+| El trabajo entra a `main` por PR | `gh api repos/…/branches/main/protection` | verde — **verificado el 2026-08-25**: PR obligatorio, 0 aprobaciones requeridas, check «Gate (arnés · docs · lint · typecheck · tests · build)» exigido, aplica a admins, force-push deshabilitado. El gate **no** verifica esto (necesita red y permisos): es una señal verificada a mano |
+| Freno local del push directo | incluido en el self-test | verde — `pre-push` frena `main` y deja pasar una rama de feature |
 | Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 24 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA, «no escribe temporales en `src/`» y los 9 casos de `commit-msg`, dos de ellos con la config de OTRA forja), 8 casos de ruteo |
 | Link-check de docs | `node scripts/docs-linkcheck.mjs` | verde |
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |

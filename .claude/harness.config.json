@@ -480,5 +480,12 @@
     "directRequestPatterns": [
       "\\b(pod[eé]s|puedes|podr[ií]as|te pido|por favor|necesito que|quiero que)\\b"
     ]
+  },
+  "branches": {
+    "$comment": "Ramas donde el trabajo entra por pull request. `.githooks/pre-push` falla ANTES de la red con el motivo y la salida. La protección de `main` en GitHub es el freno fuerte —exige PR y el check del gate en verde, y aplica también a admins—; se activó a mano el 2026-08-25 y está anotada en STATUS.md.",
+    "protected": [
+      "main"
+    ],
+    "reason": "el trabajo entra por pull request, con su revisión y el gate en verde. Un push directo entra sin que nadie lo mire."
   }
 }
