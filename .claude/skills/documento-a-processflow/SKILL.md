@@ -173,6 +173,18 @@ nombraste no existe, la herramienta avisa en vez de inventar uno: mirá
 llama así en vez de dejar una segunda igual (y sin gastar cupo de vistas). Si esa pestaña no
 existe, avisa con las que hay en vez de crearla por su cuenta.
 
+### Recoger lo que ensuciás
+
+Las pestañas se pueden borrar (`delete_view`) y renombrar (`rename_view`) por nombre exacto. Antes
+sólo se podían crear, así que un duplicado lo limpiaba el humano a mano. Borrar es destructivo: no
+hay coincidencia parcial ni «todas», y las vistas del sistema no se tocan.
+
+### Los ids se copian de `get_diagram`, no del dibujo
+
+Mermaid no admite guiones en un id, así que en el diagrama salen con guiones bajos. `get_diagram`
+declara la equivalencia cuando eso pasa; usá el id REAL. Las herramientas aceptan el id dibujado si
+no hay ambigüedad, pero el que vale es el que devuelve `add_node`.
+
 ### Profundidad: otra VISTA, no un contenedor dentro de otro
 
 Los contenedores **no se anidan** (el formato de proyecto es de un nivel, ADR 0002). Para el nivel

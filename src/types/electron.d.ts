@@ -11,6 +11,7 @@ export interface LitertModelStatus {
 
 import type { AppState } from "@/lib/mcp/app-state";
 import type { AppReadRequest, AppReadResult } from "@/lib/mcp/app-read";
+import type { AppActionRequest, AppActionResult } from "@/lib/mcp/app-actions";
 
 export interface McpServerStatus {
   running: boolean;
@@ -97,6 +98,15 @@ export interface ElectronAPI {
     handler: (payload: { id: number; request: AppReadRequest }) => void
   ) => () => void;
   mcpAppReadReply: (id: number, result: AppReadResult) => void;
+  /**
+   * El main pide una ACCIÓN sobre el proyecto (borrar o renombrar una vista).
+   * A diferencia de la lectura, esto cambia el trabajo del humano: el renderer
+   * contesta si ocurrió (`src/lib/mcp/app-actions.ts`).
+   */
+  onMcpAppAction: (
+    handler: (payload: { id: number; request: AppActionRequest }) => void
+  ) => () => void;
+  mcpAppActionReply: (id: number, result: AppActionResult) => void;
 
   // Playground MCP (guía /mcp): probar herramientas sin cliente externo.
   mcpPlaygroundListTools: () => Promise<PlaygroundTool[]>;

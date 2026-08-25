@@ -49,11 +49,17 @@ import {
 import { resolveDiagramId } from "../../src/lib/mcp/active-diagram";
 import { resolveProjectRef, resolveViewRef, vistaInexistente } from "../../src/lib/mcp/project-update";
 import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
-import { toMermaid } from "../../src/lib/mcp/to-mermaid";
+import { toMermaid, idsQueCambian } from "../../src/lib/mcp/to-mermaid";
 import { qualityFindings, formatFindings, MAX_NODES } from "../../src/lib/mcp/quality";
 import { reviewPacket } from "../../src/lib/mcp/review";
 import { suggestViews, formatViewPlan } from "../../src/lib/mcp/view-plan";
 import { formatAppState, type AppState } from "../../src/lib/mcp/app-state";
+import {
+  planAppAction,
+  describeAccion,
+  type AppActionRequest,
+  type AppActionResult,
+} from "../../src/lib/mcp/app-actions";
 import {
   formatArtifact,
   formatArtifactList,
@@ -121,6 +127,12 @@ export interface McpToolsOptions {
    * escritor. Nunca rechaza: el fallo viaja como `{ ok: false, error }`.
    */
   readApp?: (request: AppReadRequest) => Promise<AppReadResult>;
+  /**
+   * Presente sólo en el modo app: pide al renderer una ACCIÓN sobre el proyecto
+   * (borrar o renombrar una vista). Nunca rechaza: el fallo viaja en el
+   * resultado. Sin esto, el agente podía crear pestañas y no recoger las suyas.
+   */
+  actOnApp?: (request: AppActionRequest) => Promise<AppActionResult>;
   /**
    * Diagrama por defecto de este servidor (`PROCESSFLOW_DIAGRAM` o `--diagram`
    * en `.mcp.json`). Sirve para atar una sesión de trabajo a un diagrama sin
@@ -264,13 +276,37 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     }
   }
 
-  async function writePinned(id: string | null): Promise<void> {
+  async function readPinnedProject(): Promise<string | undefined> {
+    try {
+      const raw = JSON.parse(await fs.readFile(ACTIVE_FILE, "utf8"));
+      return typeof raw?.project === "string" ? raw.project : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Escribe una clave del archivo de fijados conservando la otra. */
+  async function writeActive(patch: { diagramId?: string | null; project?: string | null }): Promise<void> {
+    const actual = {
+      diagramId: await readPinned(),
+      project: await readPinnedProject(),
+    };
+    const proximo: Record<string, string> = {};
+    const diagram = patch.diagramId === undefined ? actual.diagramId : patch.diagramId;
+    const project = patch.project === undefined ? actual.project : patch.project;
+    if (diagram) proximo.diagramId = diagram;
+    if (project) proximo.project = project;
+
     await ensureDir(path.dirname(ACTIVE_FILE));
-    if (id === null) {
+    if (!Object.keys(proximo).length) {
       await fs.rm(ACTIVE_FILE, { force: true });
       return;
     }
-    await fs.writeFile(ACTIVE_FILE, JSON.stringify({ diagramId: id }, null, 2), "utf8");
+    await fs.writeFile(ACTIVE_FILE, JSON.stringify(proximo, null, 2), "utf8");
+  }
+
+  async function writePinned(id: string | null): Promise<void> {
+    await writeActive({ diagramId: id });
   }
 
   /**
@@ -495,8 +531,17 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         return fail(e.message);
       }
       const model = await loadModel(diagramId);
+      // Mermaid no admite guiones en un id, así que el dibujo los cambia. Si el
+      // agente copia de ahí, llama a un id que no existe: se declara la
+      // equivalencia junto al diagrama (issue #149).
+      const distintos = idsQueCambian(model);
+      const aviso = distintos.length
+        ? `\n\n⚠️ En el dibujo estos ids salen con guiones bajos; para llamar a las herramientas usá el id REAL (la izquierda):\n${distintos
+            .map((d) => `- ${d.real}  (en el Mermaid: ${d.mermaid})`)
+            .join("\n")}`
+        : "";
       return text(
-        `${summarize(diagramId, model)}\n\n\`\`\`mermaid\n${toMermaid(model)}\n\`\`\``
+        `${summarize(diagramId, model)}\n\n\`\`\`mermaid\n${toMermaid(model)}\n\`\`\`${aviso}`
       );
     }
   );
@@ -801,7 +846,13 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         return fail(e.message);
       }
       const model = await loadModel(diagramId);
-      await saveModel(diagramId, removeNode(model, id));
+      try {
+        // El error viaja como respuesta de la herramienta, no como excepción:
+        // el agente tiene que poder LEER que ese id no existía (issue #149).
+        await saveModel(diagramId, removeNode(model, id));
+      } catch (e: any) {
+        return fail(e.message);
+      }
       return text(`Elemento "${id}" eliminado.`);
     }
   );
@@ -1481,7 +1532,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           const estado = opts.getAppState?.() ?? null;
           try {
             destino = {
-              project: resolveProjectRef(project ?? opts.defaultProject, {
+              project: resolveProjectRef(project ?? (await readPinnedProject()) ?? opts.defaultProject, {
                 activo: estado?.projectName ?? null,
                 proyectos: estado?.projects ?? [],
               }),
@@ -1489,7 +1540,9 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           } catch (e: any) {
             // Pidió un proyecto POR NOMBRE y no existe: se avisa. Entregar a
             // otro (o crear una copia) es peor que no entregar.
-            if (project ?? opts.defaultProject) return fail(`${e.message}\n\nEl .json quedó en: ${dest}`);
+            if (project ?? (await readPinnedProject()) ?? opts.defaultProject) {
+              return fail(`${e.message}\n\nEl .json quedó en: ${dest}`);
+            }
             // Nadie dijo a cuál y no hay ninguno abierto (pantalla de
             // bienvenida): crear el primero es exactamente lo que se quiere.
             destino = undefined;
@@ -1589,6 +1642,103 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         return fail(
           "La app no tiene ventana activa; abre Processflow Architect y reintenta (o usa export_to_app para generar un .json)."
         );
+      }
+    );
+  }
+
+  // Sólo en modo app: fijar el proyecto destino. En HTTP no hay argumentos de
+  // línea de comandos que pasarle al servidor —el cliente sólo abre una URL— así
+  // que sin esto la única forma de elegir proyecto era tenerlo abierto (#148).
+  if (opts.getAppState) {
+    server.registerTool(
+      "use_project",
+      {
+        title: "Fijar el proyecto destino",
+        description:
+          "Fija a qué PROYECTO de la app entrega `export_to_app` cuando no pasás `project`. Queda guardado en el workspace del servidor, así que sobrevive reinicios y sirve en el transporte HTTP, donde no hay argumentos que pasarle al servidor. Llamala sin argumentos para ver cuál está fijo, o con `clear: true` para soltarlo y volver a «el proyecto abierto».",
+        inputSchema: {
+          project: z.string().optional().describe("Nombre del proyecto a fijar."),
+          clear: z.boolean().optional().describe("true suelta el proyecto fijado."),
+        },
+      },
+      async ({ project, clear }) => {
+        const estado = opts.getAppState?.() ?? null;
+        const conocidos = [
+          ...(estado?.projectName ? [estado.projectName] : []),
+          ...(estado?.projects ?? []),
+        ];
+        const lista = conocidos.length
+          ? [...new Set(conocidos)].map((p) => `"${p}"`).join(", ")
+          : "(ninguno)";
+
+        if (clear) {
+          await writeActive({ project: null });
+          return text(
+            `Proyecto fijado: ninguno. \`export_to_app\` vuelve a actualizar el proyecto ABIERTO${
+              estado?.projectName ? ` (ahora "${estado.projectName}")` : ""
+            }.`
+          );
+        }
+        if (!project) {
+          const fijo = await readPinnedProject();
+          const cfg = opts.defaultProject ? ` · configuración del servidor: "${opts.defaultProject}"` : "";
+          return text(
+            `Proyecto fijado: ${fijo ? `"${fijo}"` : "ninguno"}${cfg}\nAbierto en la app: ${
+              estado?.projectName ? `"${estado.projectName}"` : "ninguno"
+            }\nProyectos: ${lista}`
+          );
+        }
+        try {
+          // Se valida contra lo que la app dice tener: fijar un nombre que no
+          // existe sólo mueve el error al momento de entregar.
+          const resuelto = resolveProjectRef(project, {
+            activo: estado?.projectName ?? null,
+            proyectos: estado?.projects ?? [],
+          });
+          await writeActive({ project: resuelto });
+          return text(
+            `Proyecto fijado: "${resuelto}". \`export_to_app\` va a ACTUALIZARLO mientras no pases \`project\` ni \`mode: "new"\`.`
+          );
+        } catch (e: any) {
+          return fail(e.message);
+        }
+      }
+    );
+  }
+
+  // Sólo en modo app: recoger lo que el agente ensucia. Crear pestañas sin poder
+  // borrarlas dejaba el cupo lleno de duplicados que sólo limpiaba el humano.
+  if (opts.actOnApp) {
+    server.registerTool(
+      "delete_view",
+      {
+        title: "Eliminar una vista",
+        description:
+          "Elimina una PESTAÑA (vista custom) del proyecto ACTIVO por su nombre exacto. Es destructivo sobre el trabajo del humano: no borra por coincidencia parcial, no borra varias de una vez y no toca las vistas del sistema. Si el nombre no existe, te dice cuáles hay y no borra nada. Para el diagrama en curso están remove_element y remove_edge: esto opera sobre las pestañas del proyecto, no sobre su contenido.",
+        inputSchema: {
+          name: z.string().describe("Nombre exacto de la pestaña a eliminar."),
+        },
+      },
+      async ({ name }) => {
+        const r = await opts.actOnApp!({ kind: "delete-view", name });
+        return r.ok ? text(`✅ ${r.message}`) : fail(r.error);
+      }
+    );
+
+    server.registerTool(
+      "rename_view",
+      {
+        title: "Renombrar una vista",
+        description:
+          "Cambia el nombre de una PESTAÑA del proyecto ACTIVO. Es la alternativa NO destructiva a borrar y volver a subir: conserva la vista y su contenido. Falla si ya hay otra pestaña con ese nombre — dos pestañas iguales es justo lo que se está evitando.",
+        inputSchema: {
+          name: z.string().describe("Nombre exacto de la pestaña actual."),
+          newName: z.string().describe("Nombre nuevo."),
+        },
+      },
+      async ({ name, newName }) => {
+        const r = await opts.actOnApp!({ kind: "rename-view", name, newName });
+        return r.ok ? text(`✅ ${r.message}`) : fail(r.error);
       }
     );
   }

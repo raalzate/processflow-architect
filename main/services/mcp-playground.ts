@@ -17,6 +17,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { registerProcessflowTools } from "./mcp-tools";
 import { getAppState } from "./mcp-app-state";
 import { readFromApp } from "./mcp-app-read";
+import { actOnApp } from "./mcp-app-action";
 import type { GraphData } from "../../src/lib/types";
 import type { NotationId } from "../../src/lib/notations";
 
@@ -75,6 +76,7 @@ async function connectedClient(): Promise<{ client: Client; close: () => Promise
     exportMermaidToApp,
     getAppState,
     readApp: readFromApp,
+    actOnApp,
     // El playground corre DENTRO de la app: mismas capacidades que el modo HTTP.
     transport: "http",
   });

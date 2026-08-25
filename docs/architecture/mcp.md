@@ -68,6 +68,7 @@ nunca ve una herramienta que su transporte no soporta.
 | `get_diagram` | resumen + vista previa Mermaid. |
 | `import_diagram` | carga un `GraphData` exportado como modelo editable (retomar contexto) y lo deja fijado. |
 | `use_diagram` | fija el modelo sobre el que actúan las demás herramientas cuando no pasás `diagramId`. Se guarda en el workspace: sobrevive reinicios y el modo HTTP, que es **stateless**. |
+| `use_project` **app** | fija el PROYECTO destino de `export_to_app`. Es la única forma de elegirlo en HTTP, donde el cliente sólo abre una URL y no hay argumentos que pasar. |
 
 ### 3 · Construcción
 
@@ -113,6 +114,8 @@ recortan al dibujar.
 | `export_to_app` | escribe el `.json` (`GraphData`) y —en modo app— lo entrega al lienzo por IPC. Por defecto **ACTUALIZA** un proyecto existente (`project`, o el de la configuración, o el abierto): conserva la geometría que el humano movió y fusiona sus notas (`src/lib/mcp/project-update.ts`). `mode: "new"` crea uno aparte. `projectName` nombra el diseño. En stdio queda el archivo para «Importar diagrama». |
 | `export_as_view` **app** | suma una **pestaña** (vista custom con su propia notación) al proyecto ACTIVO, sin crear proyecto aparte. Con `replace: true` **actualiza** la pestaña que ya se llama así —conserva la geometría del humano y no consume cupo—; si no existe, avisa con las que hay. Las notas, hotspots y responsables son del PROYECTO: la app los fusiona al recibir la vista (`src/lib/mcp/project-meta.ts`) sin pisar lo que ya había. |
 | `export_mermaid_view` **app** | suma una pestaña de vista **Mermaid** al proyecto activo. |
+| `delete_view` **app** | elimina una pestaña por nombre exacto. Destructiva y estrecha a propósito: nunca por coincidencia parcial, nunca varias, nunca una vista del sistema. |
+| `rename_view` **app** | renombra una pestaña — la alternativa no destructiva a borrar y volver a subir. |
 
 ### 5b · Configuración del servidor
 
@@ -134,6 +137,10 @@ Además del workspace, el servidor acepta dos defaults para no repetir lo mismo 
 ```
 
 Precedencia del modelo: **parámetro de la llamada → `use_diagram` → configuración → el único que haya → error que lista lo que hay** (`src/lib/mcp/active-diagram.ts`).
+
+Precedencia del proyecto: **`project` de la llamada → `use_project` → configuración → el proyecto abierto**. Ambos fijados viven en el mismo `active.json` del workspace.
+
+> En HTTP el cliente sólo abre una URL: **no hay `args` ni entorno que pasarle al servidor**. Ahí se fija con `use_diagram` y `use_project`; `--diagram` y `--project` son de stdio. La guía embebida (`/mcp` → «Configuración») dice lo mismo para quien usa la app sin el repo.
 
 ### 6 · Skills — el arnés del agente externo
 

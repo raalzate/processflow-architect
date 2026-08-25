@@ -24,6 +24,7 @@ import {
   FlaskConical,
   Download,
   Sparkles,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -45,6 +46,7 @@ import { buildZip } from "@/lib/zip";
 const SECTIONS = [
   { id: "que-es", label: "¿Qué es?", icon: Terminal },
   { id: "conexion", label: "Conexión", icon: Plug },
+  { id: "configuracion", label: "Configuración", icon: Settings },
   { id: "flujo", label: "Flujo de trabajo", icon: Workflow },
   { id: "herramientas", label: "Herramientas", icon: Wrench },
   { id: "skill", label: "Skill descargable", icon: Sparkles },
@@ -69,6 +71,20 @@ const MCP_STDIO_JSON = `{
       "type": "stdio",
       "command": "npx",
       "args": ["tsx", "mcp-server/index.ts"]
+    }
+  }
+}`;
+
+const MCP_STDIO_CONFIG_JSON = `{
+  "mcpServers": {
+    "processflow-architect": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "tsx", "mcp-server/index.ts",
+        "--diagram", "enrollment-v2",
+        "--project", "Enrollment v2"
+      ]
     }
   }
 }`;
@@ -316,6 +332,67 @@ export default function McpGuidePage() {
                 </p>
               </CardContent>
             </Card>
+
+            {/* Configuración del servidor: qué se puede fijar y cómo, por transporte */}
+            <section id="configuracion" className="scroll-mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="w-5 h-5" /> Configuración
+                  </CardTitle>
+                  <CardDescription className="mt-1.5">
+                    El agente trabaja sobre <b>un diagrama</b> del servidor y entrega a <b>un proyecto</b> de la app.
+                    Los dos se pueden fijar para no repetirlos en cada paso — y <b>cómo</b> se fijan depende del
+                    transporte:
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-muted-foreground">
+                          <th className="py-1.5 pr-3 font-medium">Qué se fija</th>
+                          <th className="py-1.5 pr-3 font-medium">Conectado a la app (HTTP)</th>
+                          <th className="py-1.5 font-medium">Repo (stdio)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="[&>tr]:border-b [&>tr:last-child]:border-0">
+                        <tr>
+                          <td className="py-1.5 pr-3">Diagrama de trabajo</td>
+                          <td className="py-1.5 pr-3"><code>use_diagram</code></td>
+                          <td className="py-1.5"><code>use_diagram</code> o <code>--diagram &lt;id&gt;</code></td>
+                        </tr>
+                        <tr>
+                          <td className="py-1.5 pr-3">Proyecto destino</td>
+                          <td className="py-1.5 pr-3"><code>use_project</code></td>
+                          <td className="py-1.5"><code>--project &quot;&lt;nombre&gt;&quot;</code></td>
+                        </tr>
+                        <tr>
+                          <td className="py-1.5 pr-3">Workspace</td>
+                          <td className="py-1.5 pr-3">fijo (datos de la app)</td>
+                          <td className="py-1.5"><code>PROCESSFLOW_WORKSPACE</code></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Conectado por HTTP, el bloque del cliente sólo lleva la URL: <b>no hay argumentos que pasarle
+                    al servidor</b>. Se fija desde la conversación con <code>use_diagram</code> y{" "}
+                    <code>use_project</code>, y queda guardado (sobrevive reinicios). Sin fijar nada,{" "}
+                    <code>export_to_app</code> actualiza el proyecto que tengas <b>abierto</b>.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Con el repo por stdio también podés dejarlo escrito en <code>.mcp.json</code>:
+                  </p>
+                  <CodeBlock code={MCP_STDIO_CONFIG_JSON} />
+                  <p className="text-xs text-muted-foreground">
+                    Precedencia, de más fuerte a más débil: lo que dice <b>la llamada</b> →{" "}
+                    <code>use_diagram</code>/<code>use_project</code> → la configuración del servidor → el único
+                    diagrama que haya, o el proyecto abierto.
+                  </p>
+                </CardContent>
+              </Card>
+            </section>
 
             {/* Prompt de ejemplo */}
             <Card>

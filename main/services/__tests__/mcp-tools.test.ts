@@ -1094,3 +1094,208 @@ describe("export_as_view · replace", () => {
     expect(entregas).toHaveLength(0);
   });
 });
+
+// -----------------------------------------------------------------------------
+// #149 — la herramienta contesta la verdad: ids llamables y borrados que ocurren.
+// -----------------------------------------------------------------------------
+
+describe("ids y borrados por herramienta (#149)", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-ids-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  const UUID = "a1b2c3d4-e5f6-4711-8899-aabbccddeeff";
+
+  async function conUuid() {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws } as any);
+    await tools.get("create_diagram")!.handler({ name: "Seguros", notation: "ddd" });
+    await tools.get("add_node")!.handler({ id: UUID, name: "Cobrar", type: "Comando" });
+    return tools;
+  }
+
+  it("get_diagram declara qué id hay que usar cuando el dibujo lo cambia", async () => {
+    const tools = await conUuid();
+    const out = (await tools.get("get_diagram")!.handler({})).content[0].text;
+    expect(out).toContain(UUID);
+    expect(out).toMatch(/id REAL/i);
+  });
+
+  it("remove_element con un id inexistente NO dice que lo borró", async () => {
+    const tools = await conUuid();
+    const res = await tools.get("remove_element")!.handler({ id: "fantasma" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain(UUID);
+    // El elemento sigue ahí.
+    expect((await tools.get("get_diagram")!.handler({})).content[0].text).toContain("Cobrar");
+  });
+
+  it("el id copiado del dibujo sirve para borrar de verdad", async () => {
+    const tools = await conUuid();
+    const dibujado = UUID.replace(/-/g, "_");
+    const res = await tools.get("remove_element")!.handler({ id: dibujado });
+    expect(res.isError).toBeUndefined();
+    expect((await tools.get("get_diagram")!.handler({})).content[0].text).not.toContain("Cobrar");
+  });
+});
+
+// -----------------------------------------------------------------------------
+// #150 — el agente recoge lo que ensucia: borrar y renombrar pestañas.
+// -----------------------------------------------------------------------------
+
+describe("delete_view · rename_view", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-vw-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  it("sin actOnApp (modo stdio) las herramientas NO se registran", () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws } as any);
+    expect(tools.has("delete_view")).toBe(false);
+    expect(tools.has("rename_view")).toBe(false);
+  });
+
+  it("borra por nombre y devuelve lo que contestó la app", async () => {
+    const pedidos: any[] = [];
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: ws,
+      actOnApp: async (req: any) => {
+        pedidos.push(req);
+        return { ok: true, message: 'Vista "Sandbox" eliminada del proyecto activo. Vistas propias: 2 de 50.' };
+      },
+    } as any);
+
+    const res = await tools.get("delete_view")!.handler({ name: "Sandbox" });
+    expect(pedidos[0]).toEqual({ kind: "delete-view", name: "Sandbox" });
+    expect(res.isError).toBeUndefined();
+    expect(res.content[0].text).toContain("eliminada");
+    expect(res.content[0].text).toContain("2 de 50");
+  });
+
+  it("lo que la app rechaza vuelve como error de la herramienta, no como éxito", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: ws,
+      actOnApp: async () => ({ ok: false, error: 'No hay una vista llamada "Fantasma"…' }),
+    } as any);
+    const res = await tools.get("delete_view")!.handler({ name: "Fantasma" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("Fantasma");
+  });
+
+  it("renombrar pasa el nombre nuevo", async () => {
+    const pedidos: any[] = [];
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: ws,
+      actOnApp: async (req: any) => {
+        pedidos.push(req);
+        return { ok: true, message: "ok" };
+      },
+    } as any);
+    await tools.get("rename_view")!.handler({ name: "Sandbox", newName: "Sandbox v2" });
+    expect(pedidos[0]).toEqual({ kind: "rename-view", name: "Sandbox", newName: "Sandbox v2" });
+  });
+});
+
+// -----------------------------------------------------------------------------
+// #148 — fijar el proyecto destino sin línea de comandos (transporte HTTP).
+// -----------------------------------------------------------------------------
+
+describe("use_project", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-up-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  const estado = (activo: string | null, otros: string[] = []) => ({
+    projectName: activo,
+    counts: { containers: 0, nodes: 0, edges: 0 },
+    views: [],
+    viewsLimit: 50,
+    projects: otros,
+    updatedAt: "2026-08-25T00:00:00.000Z",
+  });
+
+  async function conApp(opts: Record<string, unknown> = {}) {
+    const entregas: { target?: { project: string } }[] = [];
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: ws,
+      getAppState: () => estado("Abierto", ["Abierto", "Enrollment v2"]),
+      exportToApp: async (_n: string, _g: any, target?: { project: string }) => {
+        entregas.push({ target });
+        return true;
+      },
+      ...opts,
+    } as any);
+    await tools.get("create_diagram")!.handler({ name: "Diseño", notation: "c4" });
+    await tools.get("add_node")!.handler({ name: "Portal", type: "Sistema Externo" });
+    return { tools, entregas };
+  }
+
+  it("sin app (stdio) no se registra: no hay proyectos que fijar", () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws } as any);
+    expect(tools.has("use_project")).toBe(false);
+  });
+
+  it("fija el destino y export_to_app lo usa sin repetirlo", async () => {
+    const { tools, entregas } = await conApp();
+    const fijado = await tools.get("use_project")!.handler({ project: "Enrollment v2" });
+    expect(fijado.isError).toBeUndefined();
+    await tools.get("export_to_app")!.handler({});
+    expect(entregas[0].target).toEqual({ project: "Enrollment v2" });
+  });
+
+  it("el `project` de la llamada gana sobre el fijado", async () => {
+    const { tools, entregas } = await conApp();
+    await tools.get("use_project")!.handler({ project: "Enrollment v2" });
+    await tools.get("export_to_app")!.handler({ project: "Abierto" });
+    expect(entregas[0].target).toEqual({ project: "Abierto" });
+  });
+
+  it("el fijado gana sobre la configuración del servidor", async () => {
+    const { tools, entregas } = await conApp({ defaultProject: "Abierto" });
+    await tools.get("use_project")!.handler({ project: "Enrollment v2" });
+    await tools.get("export_to_app")!.handler({});
+    expect(entregas[0].target).toEqual({ project: "Enrollment v2" });
+  });
+
+  it("clear vuelve al proyecto abierto", async () => {
+    const { tools, entregas } = await conApp();
+    await tools.get("use_project")!.handler({ project: "Enrollment v2" });
+    await tools.get("use_project")!.handler({ clear: true });
+    await tools.get("export_to_app")!.handler({});
+    expect(entregas[0].target).toEqual({ project: "Abierto" });
+  });
+
+  it("informa el estado y rechaza un proyecto que la app no tiene", async () => {
+    const { tools } = await conApp();
+    const info = await tools.get("use_project")!.handler({});
+    expect(info.content[0].text).toContain("Abierto");
+    const malo = await tools.get("use_project")!.handler({ project: "Fantasma" });
+    expect(malo.isError).toBe(true);
+    expect(malo.content[0].text).toContain("Enrollment v2");
+  });
+
+  it("fijar el proyecto no borra el diagrama fijado (comparten archivo)", async () => {
+    const { tools } = await conApp();
+    await tools.get("use_project")!.handler({ project: "Enrollment v2" });
+    // El diagrama quedó fijado por create_diagram: sigue resolviendo sin id.
+    const res = await tools.get("add_node")!.handler({ name: "Otro", type: "Sistema Externo" });
+    expect(res.isError).toBeUndefined();
+  });
+});

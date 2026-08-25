@@ -15,6 +15,7 @@ import { describeAppState } from "@/lib/mcp/app-state";
 import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
 import { mergeProjectMeta, describeMetaAgregada } from "@/lib/mcp/project-meta";
 import { mergeProjectGraph, resolveViewRef } from "@/lib/mcp/project-update";
+import { planAppAction, describeAccion } from "@/lib/mcp/app-actions";
 import { artifactBodyMarkdown } from "@/lib/artifacts/to-markdown";
 import { readStoredArtifacts } from "@/context/AgentContext";
 import { readStoredCustomViews } from "@/context/ViewsContext";
@@ -82,7 +83,8 @@ const McpImportBridge = () => {
     savedFiles,
     allNodes,
   } = useGraphContext();
-  const { createView, views, updateViewGraph, setViewNotation, setActiveView } = useViews();
+  const { createView, views, updateViewGraph, setViewNotation, setActiveView, deleteView, renameView } =
+    useViews();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -173,6 +175,46 @@ const McpImportBridge = () => {
     });
     return off;
   }, [currentFileId, graphData, savedFiles, views, allNodes]);
+
+  // Acciones del agente sobre las pestañas del proyecto (borrar, renombrar). La
+  // regla —qué vista toca y cuándo NO se hace nada— es pura y vive en
+  // `app-actions.ts`; acá sólo se aplica y se contesta si ocurrió.
+  useEffect(() => {
+    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    if (!electron?.onMcpAppAction) return;
+
+    const off = electron.onMcpAppAction(({ id, request }) => {
+      try {
+        if (!currentFileId) {
+          electron.mcpAppActionReply?.(id, {
+            ok: false,
+            error: "No hay un proyecto abierto en la app: abrí uno y volvé a intentar.",
+          });
+          return;
+        }
+        const plan = planAppAction(request, views);
+        if (!plan.ok) {
+          electron.mcpAppActionReply?.(id, { ok: false, error: plan.error });
+          return;
+        }
+        if (request.kind === "delete-view") deleteView(plan.id);
+        else renameView(plan.id, request.newName);
+
+        const propias = views.filter((v) => !v.builtin).length;
+        const restantes = request.kind === "delete-view" ? propias - 1 : propias;
+        electron.mcpAppActionReply?.(id, {
+          ok: true,
+          message: describeAccion(request, plan.name, restantes, MAX_CUSTOM_VIEWS),
+        });
+      } catch (e: any) {
+        electron.mcpAppActionReply?.(id, {
+          ok: false,
+          error: `La app no pudo hacer eso: ${String(e?.message ?? e)}`,
+        });
+      }
+    });
+    return off;
+  }, [currentFileId, views, deleteView, renameView]);
 
   useEffect(() => {
     const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
