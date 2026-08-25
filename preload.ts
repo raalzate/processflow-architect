@@ -53,6 +53,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Lectura bajo demanda: el main pide contenido (artefactos, vistas, otro
   // proyecto) y el renderer contesta por el canal de respuesta con el mismo id.
+  // Acciones sobre el proyecto pedidas por MCP (borrar/renombrar una vista): el
+  // main pide, el renderer aplica y contesta por el canal de respuesta.
+  onMcpAppAction: (
+    handler: (payload: { id: number; request: any }) => void
+  ) => {
+    const listener = (_e: any, payload: any) => handler(payload);
+    ipcRenderer.on('mcp-app-action', listener);
+    return () => ipcRenderer.removeListener('mcp-app-action', listener);
+  },
+  mcpAppActionReply: (id: number, result: any) =>
+    ipcRenderer.send('mcp-app-action-reply', { id, result }),
+
   onMcpAppRead: (
     handler: (payload: { id: number; request: any }) => void
   ) => {

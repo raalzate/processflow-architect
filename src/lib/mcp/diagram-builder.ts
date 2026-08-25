@@ -40,6 +40,7 @@ import {
   type NotationId,
 } from "../notations";
 import { validTypesFor } from "./catalog";
+import { mermaidSafeId } from "./mermaid-id";
 import {
   getPreset,
   resolveStrategy,
@@ -217,8 +218,32 @@ function uniqueId(model: DiagramModel, name: string): string {
   return `${base}-${i}`;
 }
 
-const findNode = (model: DiagramModel, id: string): BuilderNode | undefined =>
-  model.nodes.find((n) => n.id === id);
+/**
+ * Busca por id EXACTO y, si no hay, por el id tal como se dibuja en la vista
+ * previa Mermaid: es de ahí de donde el agente los copia, y ahí los guiones se
+ * vuelven guiones bajos. Un id saneado que corresponde a UN solo elemento se
+ * resuelve; si corresponde a varios se lanza, porque adivinar cuál sería peor
+ * que fallar (issue #149).
+ */
+const findNode = (model: DiagramModel, id: string): BuilderNode | undefined => {
+  const exacto = model.nodes.find((n) => n.id === id);
+  if (exacto) return exacto;
+
+  const porMermaid = model.nodes.filter((n) => mermaidSafeId(n.id) === id);
+  if (porMermaid.length === 1) return porMermaid[0];
+  if (porMermaid.length > 1) {
+    throw new Error(
+      `"${id}" es como se dibuja en Mermaid más de un elemento (${porMermaid
+        .map((n) => `"${n.id}"`)
+        .join(", ")}). Usa el id real, el que devuelve add_node o get_diagram.`
+    );
+  }
+  return undefined;
+};
+
+/** Ids reales de los elementos, para poner opciones en un mensaje de error. */
+const idsDisponibles = (model: DiagramModel): string =>
+  model.nodes.length ? model.nodes.map((n) => `"${n.id}"`).join(", ") : "(ninguno)";
 
 const isContainerNode = (n: BuilderNode): boolean => isNotationContainer(n.tipo_elemento);
 
@@ -267,7 +292,9 @@ export function addContainer(
   // El intento natural del agente es pasar `container`: que ahí aprenda la salida.
   if (input.container?.trim()) throw new Error(SIN_ANIDAMIENTO);
   const id = input.id ?? uniqueId(model, input.nombre);
-  if (findNode(model, id)) throw new Error(`Ya existe un elemento con id "${id}".`);
+  // Por id EXACTO: `findNode` resuelve también el id tal como se dibuja en
+  // Mermaid, y con eso un id nuevo chocaba contra otro que sólo se le parece.
+  if (model.nodes.some((n) => n.id === id)) throw new Error(`Ya existe un elemento con id "${id}".`);
   const node: BuilderNode = { ...input, id, container: "", metadata: metadataDeEntrada(input.metadata) };
   if (!node.metadata) delete node.metadata;
   return { model: { ...model, nodes: [...model.nodes, node] }, id };
@@ -292,7 +319,9 @@ export function addNode(
     }
   }
   const id = input.id ?? uniqueId(model, input.nombre);
-  if (findNode(model, id)) throw new Error(`Ya existe un elemento con id "${id}".`);
+  // Por id EXACTO: `findNode` resuelve también el id tal como se dibuja en
+  // Mermaid, y con eso un id nuevo chocaba contra otro que sólo se le parece.
+  if (model.nodes.some((n) => n.id === id)) throw new Error(`Ya existe un elemento con id "${id}".`);
   const node: BuilderNode = { ...input, id, metadata: metadataDeEntrada(input.metadata) };
   if (!node.metadata) delete node.metadata;
   return { model: { ...model, nodes: [...model.nodes, node] }, id };
@@ -300,8 +329,16 @@ export function addNode(
 
 /** Conecta dos elementos por id. Ambos extremos deben existir. */
 export function addEdge(model: DiagramModel, input: BuilderEdge): DiagramModel {
-  if (!findNode(model, input.fuente)) throw new Error(`La fuente "${input.fuente}" no existe.`);
-  if (!findNode(model, input.destino)) throw new Error(`El destino "${input.destino}" no existe.`);
+  const fuente = findNode(model, input.fuente);
+  if (!fuente) {
+    throw new Error(`La fuente "${input.fuente}" no existe. Los que hay: ${idsDisponibles(model)}.`);
+  }
+  const destino = findNode(model, input.destino);
+  if (!destino) {
+    throw new Error(`El destino "${input.destino}" no existe. Los que hay: ${idsDisponibles(model)}.`);
+  }
+  // Se guardan los ids REALES: una arista con el id dibujado quedaría colgando.
+  input = { ...input, fuente: fuente.id, destino: destino.id };
   return { ...model, edges: [...model.edges, { ...input }] };
 }
 
@@ -322,7 +359,9 @@ export function updateNode(
   }
 ): DiagramModel {
   const target = findNode(model, id);
-  if (!target) throw new Error(`No existe el elemento "${id}".`);
+  if (!target) {
+    throw new Error(`No existe el elemento "${id}". Los que hay: ${idsDisponibles(model)}.`);
+  }
   // Cambiar de familia (nodo↔contenedor) dejaría hijos colgando o un contenedor
   // sin marco: eso es rehacer el diagrama, no corregirlo.
   if (patch.tipo_elemento && isNotationContainer(patch.tipo_elemento) !== isContainerNode(target)) {
@@ -346,7 +385,7 @@ export function updateNode(
 
   const renombraContenedor = isContainerNode(target) && nuevoNombre && nuevoNombre !== target.nombre;
   const nodes = model.nodes.map((n) => {
-    if (n.id === id) {
+    if (n.id === target.id) {
       const actualizado: BuilderNode = { ...n, ...campos, nombre: nuevoNombre || n.nombre };
       if (metadata?.length) actualizado.metadata = metadata;
       else delete actualizado.metadata;
@@ -370,7 +409,10 @@ export function updateEdge(
   to: string,
   patch: Partial<Pick<BuilderEdge, "descripcion" | "dashed" | "arrow" | "routing" | "color">>
 ): DiagramModel {
-  const idx = model.edges.findIndex((e) => e.fuente === from && e.destino === to);
+  // Los extremos pueden llegar como se dibujan en Mermaid (ver `findNode`).
+  const f = findNode(model, from)?.id ?? from;
+  const t = findNode(model, to)?.id ?? to;
+  const idx = model.edges.findIndex((e) => e.fuente === f && e.destino === t);
   if (idx === -1) throw new Error(`No existe una relación de "${from}" a "${to}".`);
   const edges = model.edges.map((e, i) => (i === idx ? { ...e, ...patch } : e));
   return { ...model, edges };
@@ -382,7 +424,10 @@ export function updateEdge(
  * arista vieja, y borrar el nodo para eso se llevaba por delante el resto.
  */
 export function removeEdge(model: DiagramModel, from: string, to: string): DiagramModel {
-  const idx = model.edges.findIndex((e) => e.fuente === from && e.destino === to);
+  // Los extremos pueden llegar como se dibujan en Mermaid (ver `findNode`).
+  const f = findNode(model, from)?.id ?? from;
+  const t = findNode(model, to)?.id ?? to;
+  const idx = model.edges.findIndex((e) => e.fuente === f && e.destino === t);
   if (idx === -1) throw new Error(`No existe una relación de "${from}" a "${to}".`);
   return { ...model, edges: model.edges.filter((_, i) => i !== idx) };
 }
@@ -390,12 +435,21 @@ export function removeEdge(model: DiagramModel, from: string, to: string): Diagr
 /** Elimina un nodo/contenedor y las aristas que lo tocan. */
 export function removeNode(model: DiagramModel, id: string): DiagramModel {
   const node = findNode(model, id);
-  const nodes = model.nodes.filter((n) => n.id !== id);
+  // Antes filtraba sin comprobar y la herramienta contestaba "eliminado" igual:
+  // un borrado que dice haber ocurrido y no ocurrió es peor que un error, porque
+  // el agente sigue adelante creyendo que limpió el diagrama (issue #149).
+  if (!node) {
+    throw new Error(
+      `No existe el elemento "${id}". Los que hay: ${idsDisponibles(model)}.`
+    );
+  }
+  const real = node.id;
+  const nodes = model.nodes.filter((n) => n.id !== real);
   // Si era contenedor, sus hijos quedan sueltos (container vacío).
   const orphaned = node && isContainerNode(node)
     ? nodes.map((n) => (n.container === node.nombre ? { ...n, container: "" } : n))
     : nodes;
-  const edges = model.edges.filter((e) => e.fuente !== id && e.destino !== id);
+  const edges = model.edges.filter((e) => e.fuente !== real && e.destino !== real);
   return { ...model, nodes: orphaned, edges };
 }
 

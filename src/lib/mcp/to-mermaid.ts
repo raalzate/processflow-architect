@@ -8,12 +8,18 @@
  */
 
 import { ALL_ELEMENTS } from "../notations";
+import { mermaidSafeId as safeId, idCambiaEnMermaid } from "./mermaid-id";
 import type { DiagramModel, BuilderNode } from "./diagram-builder";
 
-/** Id seguro para Mermaid (alfanumérico + guion bajo). */
-function safeId(id: string): string {
-  const s = id.replace(/[^a-zA-Z0-9_]/g, "_");
-  return /^[a-zA-Z_]/.test(s) ? s : `n_${s}`;
+/**
+ * Los ids que en el dibujo NO se llaman como en las herramientas (Mermaid no
+ * admite guiones). Se declaran junto a la vista previa: sin eso, el agente copia
+ * del diagrama un id que no existe y lo manda a `update_element`/`remove_element`.
+ */
+export function idsQueCambian(model: DiagramModel): { real: string; mermaid: string }[] {
+  return model.nodes
+    .filter((n) => idCambiaEnMermaid(n.id))
+    .map((n) => ({ real: n.id, mermaid: safeId(n.id) }));
 }
 
 /** Escapa la etiqueta para Mermaid (comillas y saltos de línea). */
