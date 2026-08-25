@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import { useViews } from "@/context/ViewsContext";
 import { cn } from "@/lib/utils";
 import { MAX_CUSTOM_VIEWS, type DesignView } from "@/lib/views-types";
@@ -218,13 +220,13 @@ export function ViewsTabBar() {
         {/* Crear vista: elige el grupo de componentes (DDD, BPMN, C4, UML) */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
+            <IconAction
+              variant="ghost"
               disabled={!canCreate}
-              title={canCreate ? "Nueva vista (elige el grupo)" : `Máximo ${MAX_CUSTOM_VIEWS} vistas`}
-              className="flex shrink-0 items-center gap-1 rounded-lg border border-dashed px-2.5 py-1 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground disabled:opacity-40"
-            >
-              <Plus className="h-3.5 w-3.5" /> Nueva vista
-            </button>
+              label={canCreate ? accion("agregar", "vista") : `Máximo ${MAX_CUSTOM_VIEWS} vistas`}
+              icon={<Plus className="h-3.5 w-3.5" />}
+              className="h-7 w-7 shrink-0 rounded-lg border border-dashed text-muted-foreground hover:border-primary/40 hover:text-foreground disabled:opacity-40"
+            />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
             {NOTATION_LIST.map((n) => (

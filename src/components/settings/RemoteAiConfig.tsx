@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Cloud, KeyRound, Check, Loader2, Trash2, ExternalLink, Cpu, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -214,16 +216,14 @@ export function RemoteAiConfig() {
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar"}
             </Button>
             {configured && (
-              <Button
+              <IconAction
                 variant="ghost"
-                size="icon"
                 onClick={deleteKey}
                 disabled={!isDesktop}
-                title="Eliminar llave"
+                label={accion("eliminar", "la llave")}
+                icon={<Trash2 className="h-4 w-4" />}
                 className="shrink-0 text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              />
             )}
           </div>
           <a

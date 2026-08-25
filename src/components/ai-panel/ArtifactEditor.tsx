@@ -17,6 +17,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "./Markdown";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -266,12 +268,20 @@ export function ArtifactEditor({
           <span className="min-w-16 text-2xs text-muted-foreground">
             {query ? (matches.length ? `${hit + 1}/${matches.length}` : "sin resultados") : ""}
           </span>
-          <Button variant="ghost" size="icon" className="h-7 w-7" title="Anterior" onClick={() => buscarSiguiente(true)}>
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" title="Siguiente" onClick={() => buscarSiguiente(false)}>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
+          <IconAction
+            variant="ghost"
+            className="h-7 w-7"
+            label="Coincidencia anterior"
+            icon={<ChevronLeft className="h-3.5 w-3.5" />}
+            onClick={() => buscarSiguiente(true)}
+          />
+          <IconAction
+            variant="ghost"
+            className="h-7 w-7"
+            label="Coincidencia siguiente"
+            icon={<ChevronRight className="h-3.5 w-3.5" />}
+            onClick={() => buscarSiguiente(false)}
+          />
           <Button
             variant={caseSensitive ? "secondary" : "ghost"}
             size="sm"
@@ -312,9 +322,13 @@ export function ArtifactEditor({
           >
             Todos ({matches.length})
           </Button>
-          <Button variant="ghost" size="icon" className="ml-auto h-7 w-7" title="Cerrar" onClick={() => setSearchOpen(false)}>
-            <X className="h-3.5 w-3.5" />
-          </Button>
+          <IconAction
+            variant="ghost"
+            className="ml-auto h-7 w-7"
+            label={accion("cerrar", "la búsqueda")}
+            icon={<X className="h-3.5 w-3.5" />}
+            onClick={() => setSearchOpen(false)}
+          />
         </div>
       )}
 

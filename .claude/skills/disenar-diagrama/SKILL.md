@@ -31,6 +31,8 @@ revisión → exportar`.
    propuesta, roadmap, ADRs). Si hay uno que describe lo que vas a modelar,
    `get_artifact` y trátalo como FUENTE citable: `source: "Drivers v2 §NFR"`.
 5. `list_diagrams` / `get_diagram` — ¿hay un diseño en curso que retomar?
+   `list_diagrams` devuelve los NOMBRES de los elementos de cada diagrama: si uno
+   ya describe lo que ibas a crear, reusá ESE nombre en vez de un sinónimo.
    `import_diagram` si el usuario trae un `.json` exportado.
 
 Reutilizar es la regla: rehacer a mano algo que ya está en la app es trabajo
@@ -115,6 +117,39 @@ Convenciones: nombres en el idioma de la fuente, **`name` de máx ~21 caracteres
 (más largo lo recorta el lienzo) y **`label` de arista de máx ~30** (verbo +
 `[tecnología]`; se dibuja suelta sobre la línea y tapa los nodos vecinos). El
 detalle va en `description`. Ids autogenerados salvo necesidad.
+
+### El diagrama fijado y el proyecto destino
+
+`create_diagram` e `import_diagram` dejan **fijado** el modelo: las llamadas
+siguientes pueden omitir `diagramId`. Con varios modelos en curso, `use_diagram`
+cambia cuál es el activo (queda guardado en el workspace). Pasar `diagramId`
+explícito siempre gana.
+
+`export_to_app` **actualiza** el proyecto de la app —el que diga `project`, el de
+la configuración del servidor, o el abierto— en vez de crear una copia: conserva
+la posición que el humano les dio a las cajas y fusiona sus notas. Usá
+`mode: "new"` sólo cuando de verdad querés un proyecto aparte. Si el proyecto que
+nombraste no existe, la herramienta avisa en vez de inventar uno: mirá
+`get_app_state` antes de entregar.
+
+`export_as_view` hace lo mismo con las pestañas: `replace: true` actualiza la vista que ya se
+llama así en vez de dejar una segunda igual (y sin gastar cupo de vistas). Si esa pestaña no
+existe, avisa con las que hay en vez de crearla por su cuenta.
+
+### Profundidad: otra VISTA, no un contenedor dentro de otro
+
+Los contenedores **no se anidan** (el formato de proyecto es de un nivel, ADR 0002). Para el nivel
+de abajo —los Componentes de un Contenedor en C4, un subproceso dentro de un carril en BPMN— creá
+OTRA vista con ese detalle y enlazala desde el elemento padre con `viewRef`. Meterlo como banda
+hermana en el mismo lienzo dice que son del mismo rango, que es justo lo que no son.
+
+### Estado: documentar lo que HAY vs diseñar lo que VIENE
+
+`add_node`, `add_container` y `update_element` aceptan `estado`: `existente` (ya
+está en producción), `modificado` (existe y este diseño lo cambia), `nuevo` (lo
+trae este diseño), `sin_cambios`, `eliminado`. Por defecto es `nuevo`: si estás
+documentando un sistema vivo y no lo declarás, el lienzo pinta como propuesta lo
+que ya existe y se pierde justo la distinción que el humano necesita para decidir.
 
 ### Metadatos: dónde vive la caja
 

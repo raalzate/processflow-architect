@@ -13,6 +13,8 @@ import { parseDiagramJson, isJsonFile } from "@/lib/import-diagram";
 import { readMcpPrefs } from "@/lib/mcp-settings";
 import { describeAppState } from "@/lib/mcp/app-state";
 import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
+import { mergeProjectMeta, describeMetaAgregada } from "@/lib/mcp/project-meta";
+import { mergeProjectGraph, resolveViewRef } from "@/lib/mcp/project-update";
 import { artifactBodyMarkdown } from "@/lib/artifacts/to-markdown";
 import { readStoredArtifacts } from "@/context/AgentContext";
 import { readStoredCustomViews } from "@/context/ViewsContext";
@@ -71,9 +73,16 @@ const MemoizedAppHeader = React.memo(() => {
 //    `get_app_state` lo sirva al agente: sin esa ingesta previa, el agente
 //    exporta a ciegas y duplica o pisa el trabajo del humano.
 const McpImportBridge = () => {
-  const { handleCreateProjectFromContent, currentFileId, graphData, savedFiles, allNodes } =
-    useGraphContext();
-  const { createView, views } = useViews();
+  const {
+    handleCreateProjectFromContent,
+    handleDesignUpdate,
+    handleFileSelect,
+    currentFileId,
+    graphData,
+    savedFiles,
+    allNodes,
+  } = useGraphContext();
+  const { createView, views, updateViewGraph, setViewNotation, setActiveView } = useViews();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -169,7 +178,7 @@ const McpImportBridge = () => {
     const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
     if (!electron?.onMcpImportDiagram) return;
 
-    const off = electron.onMcpImportDiagram(({ name, content, view, mermaid }) => {
+    const off = electron.onMcpImportDiagram(({ name, content, view, mermaid, target }) => {
       try {
         if (mermaid) {
           // Vista Mermaid: content es el código. Requiere proyecto activo.
@@ -205,16 +214,83 @@ const McpImportBridge = () => {
             });
             return;
           }
-          const id = createView({
-            name,
-            graph: content as GraphData,
-            notation: view.notation as NotationId | undefined,
-            activate: true,
-          });
+          // `replace` ⇒ actualizar la pestaña que ya se llama así: entregar dos
+          // veces el mismo rediseño dejaba dos pestañas iguales y, cerca del
+          // cupo, la segunda ni siquiera entraba. No consume cupo.
+          const ref = view.replace ? resolveViewRef(name, views) : null;
+          const objetivo =
+            ref?.existe ? views.find((v) => !v.builtin && v.name === ref.name) : undefined;
+          if (view.replace && !objetivo) {
+            toast({
+              variant: "destructive",
+              title: `No encontré la vista "${name}"`,
+              description: "Se renombró o se borró: entregá sin `replace` para crearla.",
+            });
+            return;
+          }
+          let id: string | null;
+          if (objetivo) {
+            // Igual que al actualizar un proyecto: la estructura la trae el
+            // diseño nuevo, la geometría de lo que ya estaba la conserva la vista.
+            const { graph } = mergeProjectGraph(objetivo.graph ?? (content as GraphData), content as GraphData);
+            updateViewGraph(objetivo.id, graph);
+            if (view.notation) setViewNotation(objetivo.id, view.notation as NotationId);
+            setActiveView(objetivo.id);
+            id = objetivo.id;
+          } else {
+            id = createView({
+              name,
+              graph: content as GraphData,
+              notation: view.notation as NotationId | undefined,
+              activate: true,
+            });
+          }
           if (!id) throw new Error("Se alcanzó el límite de vistas del proyecto.");
+          // Una vista no tiene notas, hotspots ni responsables: son del PROYECTO.
+          // Sin esto, las ambigüedades que el agente registró se quedaban en su
+          // chat y el humano revisaba el diagrama sin saber qué quedó abierto.
+          let extra = "";
+          if (graphData) {
+            const fusion = mergeProjectMeta(graphData, content as GraphData);
+            if (fusion.cambio) {
+              handleDesignUpdate(currentFileId, fusion.graph);
+              extra = ` Se sumaron al proyecto: ${describeMetaAgregada(fusion.agregado)}.`;
+            }
+          }
           toast({
-            title: "Vista recibida por MCP",
-            description: `"${name}" se añadió como pestaña del proyecto activo.`,
+            title: objetivo ? "Vista actualizada por MCP" : "Vista recibida por MCP",
+            description: objetivo
+              ? `"${name}" se actualizó conservando la posición de los elementos que ya estaban.${extra}`
+              : `"${name}" se añadió como pestaña del proyecto activo.${extra}`,
+          });
+          return;
+        }
+        if (target?.project) {
+          // Actualizar EN EL SITIO: el proyecto conserva su id, su historial y la
+          // posición que el humano les dio a las cajas. Crear otro proyecto en
+          // cada entrega es lo que dejaba tres copias y ninguna vigente.
+          const destino =
+            savedFiles.find((f) => f.content?.nombre_proyecto === target.project) ??
+            (graphData?.nombre_proyecto === target.project && currentFileId
+              ? savedFiles.find((f) => f.id === currentFileId)
+              : undefined);
+          if (destino) {
+            const base = destino.id === currentFileId ? graphData ?? destino.content : destino.content;
+            const { graph, resumen } = mergeProjectGraph(base, content as GraphData);
+            handleDesignUpdate(destino.id, graph);
+            if (destino.id !== currentFileId) handleFileSelect(destino.id);
+            toast({
+              title: `Proyecto "${target.project}" actualizado por MCP`,
+              description: `${resumen.agregados} nuevos · ${resumen.conservados} conservados · ${resumen.quitados} que ya no están en el diseño.`,
+            });
+            return;
+          }
+          // El proyecto se renombró o se borró entre la resolución y la entrega.
+          handleCreateProjectFromContent(name, content as GraphData);
+          toast({
+            variant: "destructive",
+            title: `No encontré el proyecto "${target.project}"`,
+            description: `"${name}" se cargó como proyecto nuevo para no perder el diseño.`,
           });
           return;
         }
@@ -237,7 +313,20 @@ const McpImportBridge = () => {
     if (enabled) electron.mcpServerStart?.(port).catch(() => {});
 
     return off;
-  }, [handleCreateProjectFromContent, createView, currentFileId, toast]);
+  }, [
+    handleCreateProjectFromContent,
+    handleDesignUpdate,
+    handleFileSelect,
+    createView,
+    views,
+    updateViewGraph,
+    setViewNotation,
+    setActiveView,
+    currentFileId,
+    graphData,
+    savedFiles,
+    toast,
+  ]);
 
   return null;
 };

@@ -12,6 +12,8 @@
 import React, { useState } from "react";
 import { Copy, CopyCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -52,19 +54,19 @@ export function CodeBlock({
       >
         <code>{code}</code>
       </pre>
-      <Button
+      <IconAction
         variant="outline"
-        size="icon"
         className="absolute top-2 right-2 h-7 w-7 opacity-70 group-hover:opacity-100"
         onClick={copy}
-        title="Copiar"
-      >
-        {copied ? (
-          <CopyCheck className="h-3.5 w-3.5 text-success" />
-        ) : (
-          <Copy className="h-3.5 w-3.5" />
-        )}
-      </Button>
+        label={accion("copiar", "el código")}
+        icon={
+          copied ? (
+            <CopyCheck className="h-3.5 w-3.5 text-success" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )
+        }
+      />
     </div>
   );
 }

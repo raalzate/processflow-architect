@@ -718,6 +718,15 @@ export function notationContainerLabel(id: NotationId | string | undefined): str
   return getNotation(id).elements.find((e) => e.container)?.type ?? "Grupo";
 }
 
+/**
+ * Rótulo del grupo que junta los elementos SIN contenedor (`big_picture.nodos`).
+ * Sale del registro, no de un literal: en un C4 los actores sueltos están «fuera
+ * de un Límite de Sistema», no «fuera de un Agregado». Ver `graph-processor.ts`.
+ */
+export function looseGroupLabel(id: NotationId | string | undefined): string {
+  return `Sin ${notationContainerLabel(id).toLowerCase()}`;
+}
+
 /** Tipos de TODAS las notaciones (para filtros globales del visor de modelos). */
 export const ALL_NODE_TYPES: string[] = Object.keys(ALL_ELEMENTS);
 

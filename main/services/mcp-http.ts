@@ -39,10 +39,15 @@ function appWorkspace(): string {
 }
 
 /** Entrega un diagrama exportado al renderer para cargarlo en el lienzo. */
-async function exportToApp(name: string, graph: GraphData): Promise<boolean> {
+async function exportToApp(
+  name: string,
+  graph: GraphData,
+  target?: { project: string }
+): Promise<boolean> {
   const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
   if (!win) return false;
-  win.webContents.send("mcp-import-diagram", { name, content: graph });
+  // `target` presente ⇒ ACTUALIZAR ese proyecto; ausente ⇒ proyecto nuevo.
+  win.webContents.send("mcp-import-diagram", { name, content: graph, target });
   // Traer la app al frente para que el usuario vea el diagrama llegar.
   if (win.isMinimized()) win.restore();
   win.focus();
@@ -50,10 +55,15 @@ async function exportToApp(name: string, graph: GraphData): Promise<boolean> {
 }
 
 /** Entrega un diagrama al renderer como VISTA custom del proyecto activo. */
-async function exportViewToApp(name: string, graph: GraphData, notation: NotationId): Promise<boolean> {
+async function exportViewToApp(
+  name: string,
+  graph: GraphData,
+  notation: NotationId,
+  replace?: boolean
+): Promise<boolean> {
   const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
   if (!win) return false;
-  win.webContents.send("mcp-import-diagram", { name, content: graph, view: { notation } });
+  win.webContents.send("mcp-import-diagram", { name, content: graph, view: { notation, replace } });
   if (win.isMinimized()) win.restore();
   win.focus();
   return true;
@@ -74,6 +84,10 @@ function buildMcpServer(): McpServer {
   const server = new McpServer({ name: "processflow-architect", version: "0.1.0" });
   registerProcessflowTools(server, {
     workspace: appWorkspace(),
+    // En la app empaquetada no hay línea de comandos: el default sale del
+    // entorno, y lo normal es fijar el diagrama con `use_diagram`.
+    defaultDiagramId: process.env.PROCESSFLOW_DIAGRAM || undefined,
+    defaultProject: process.env.PROCESSFLOW_PROJECT || undefined,
     exportToApp,
     exportViewToApp,
     exportMermaidToApp,

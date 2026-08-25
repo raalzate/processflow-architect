@@ -426,5 +426,33 @@
       "src/components/graph/designer/DesignerCanvas.tsx",
       "src/components/graph/designer/ComponentDesigner.tsx"
     ]
+  },
+  "tracker": {
+    "$comment": "Gestor de trabajo. Lo lee `.githooks/commit-msg`, que NO tiene los patrones cableados: acá es GitHub (`#123`), pero el mismo hook sirve con Azure Boards (`AB#123`) o Jira (`PROJ-123`) cambiando `issuePattern`. Lo de `specs/` (dónde viven los artefactos) NO se duplica acá: lo cubre `sdd.github.allowedInRepo` + `scripts/sdd-github.mjs check`, que ya es la fuente de verdad.",
+    "kind": "github",
+    "issuePattern": "(^|[^A-Za-z0-9_])#[0-9]+",
+    "issueExample": "#123 · Refs #123 · Closes #123",
+    "newIssueHint": [
+      "Bug o mejora acotada:  gh issue create --label bug --title \"…\" --body \"…\"",
+      "Tamaño feature:        npm run sdd:new <spec.md>   (ver docs/harness/sdd.md)"
+    ]
+  },
+  "commitMsg": {
+    "$comment": "Qué cuenta como CÓDIGO para exigir issue. La documentación, las notas de release y las capturas no piden registro: son el registro, no el cambio. `escapeLine` exige motivo — un `sin-issue:` pelado sería la misma omisión con otro nombre.",
+    "codePattern": "^(src/|main/|main\\.ts|preload\\.ts|mcp-server/|scripts/|\\.githooks/|\\.claude/)",
+    "ignoreExtensions": [
+      ".md",
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".svg"
+    ],
+    "skipSubjects": [
+      "Merge ",
+      "Revert ",
+      "fixup! ",
+      "squash! "
+    ],
+    "escapeLine": "sin-issue:"
   }
 }

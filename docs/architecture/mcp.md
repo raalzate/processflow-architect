@@ -63,20 +63,23 @@ nunca ve una herramienta que su transporte no soporta.
 
 | Herramienta | Qué hace |
 |---|---|
-| `create_diagram` | abre un modelo nuevo (nombre + notación) → `diagramId`. |
-| `list_diagrams` | los modelos en curso del workspace. |
+| `create_diagram` | abre un modelo nuevo (nombre + notación) → `diagramId`, y lo deja **fijado**. |
+| `list_diagrams` | los modelos en curso del workspace **con su vocabulario** (notación, conteos y nombres de los elementos): es lo que evita construir la segunda versión de la verdad con sinónimos. |
 | `get_diagram` | resumen + vista previa Mermaid. |
-| `import_diagram` | carga un `GraphData` exportado como modelo editable (retomar contexto). |
+| `import_diagram` | carga un `GraphData` exportado como modelo editable (retomar contexto) y lo deja fijado. |
+| `use_diagram` | fija el modelo sobre el que actúan las demás herramientas cuando no pasás `diagramId`. Se guarda en el workspace: sobrevive reinicios y el modo HTTP, que es **stateless**. |
 
 ### 3 · Construcción
 
 | Herramienta | Qué hace |
 |---|---|
-| `add_container` | contenedor (Agregado, Pool, Límite de Sistema, Paquete…). |
+| `add_container` | contenedor (Agregado, Pool, Límite de Sistema, Paquete…). **No se anidan**: la profundidad va en otra vista enlazada con `viewRef` ([ADR 0002](../decisions/0002-anidamiento-de-contenedores.md)), y el error lo explica cuando se intenta. |
 | `add_node` | nodo, opcionalmente dentro de un contenedor. |
 | `add_edge` | conecta dos elementos y clasifica la relación (interna / política / big picture). |
 | `update_element` / `update_edge` | corrigen sin borrar y recrear (conserva id, citas y geometría). |
 | `remove_element` / `remove_edge` | borran nodo/contenedor (con sus aristas) o una relación. |
+
+Los tres primeros aceptan `estado` (`existente` · `modificado` · `nuevo` · `sin_cambios` · `eliminado`), el vocabulario que distingue **documentar lo que hay** de **diseñar lo que viene**. Por defecto es `nuevo`: sin declararlo, el lienzo pinta como propuesta un sistema que ya está en producción. Sale de un solo lugar (`ESTADOS` en `src/lib/mcp/diagram-builder.ts`).
 | `relayout_diagram` | rehace la disposición con estrategia y densidad (`src/lib/mcp/layout-presets.ts`). |
 | `render_mermaid` | vista previa Mermaid del modelo. |
 
@@ -107,16 +110,37 @@ recortan al dibujar.
 
 | Herramienta | Qué hace |
 |---|---|
-| `export_to_app` | escribe el `.json` (`GraphData`) y —en modo app— lo **inyecta al lienzo** por IPC. En stdio queda el archivo para «Importar diagrama». |
-| `export_as_view` **app** | suma una **pestaña** (vista custom con su propia notación) al proyecto ACTIVO, sin crear proyecto aparte. |
+| `export_to_app` | escribe el `.json` (`GraphData`) y —en modo app— lo entrega al lienzo por IPC. Por defecto **ACTUALIZA** un proyecto existente (`project`, o el de la configuración, o el abierto): conserva la geometría que el humano movió y fusiona sus notas (`src/lib/mcp/project-update.ts`). `mode: "new"` crea uno aparte. `projectName` nombra el diseño. En stdio queda el archivo para «Importar diagrama». |
+| `export_as_view` **app** | suma una **pestaña** (vista custom con su propia notación) al proyecto ACTIVO, sin crear proyecto aparte. Con `replace: true` **actualiza** la pestaña que ya se llama así —conserva la geometría del humano y no consume cupo—; si no existe, avisa con las que hay. Las notas, hotspots y responsables son del PROYECTO: la app los fusiona al recibir la vista (`src/lib/mcp/project-meta.ts`) sin pisar lo que ya había. |
 | `export_mermaid_view` **app** | suma una pestaña de vista **Mermaid** al proyecto activo. |
+
+### 5b · Configuración del servidor
+
+Además del workspace, el servidor acepta dos defaults para no repetir lo mismo en cada llamada:
+
+| Ajuste | stdio (`.mcp.json`) | app (HTTP) | Qué hace |
+|---|---|---|---|
+| Workspace | `PROCESSFLOW_WORKSPACE` | `userData/mcp-workspace` | dónde viven los modelos en curso y las exportaciones. |
+| Modelo por defecto | `--diagram <id>` o `PROCESSFLOW_DIAGRAM` | `PROCESSFLOW_DIAGRAM` | `diagramId` deja de ser obligatorio. Lo pisa `use_diagram`, y sobre todo el `diagramId` explícito. |
+| Proyecto destino | `--project "<nombre>"` o `PROCESSFLOW_PROJECT` | `PROCESSFLOW_PROJECT` | a qué proyecto de la app **actualiza** `export_to_app`. |
+
+```jsonc
+// .mcp.json — atar la sesión a un modelo y a un proyecto de la app
+"processflow-architect": {
+  "type": "stdio",
+  "command": "npx",
+  "args": ["tsx", "mcp-server/index.ts", "--diagram", "enrollment-v2", "--project", "Enrollment v2"]
+}
+```
+
+Precedencia del modelo: **parámetro de la llamada → `use_diagram` → configuración → el único que haya → error que lista lo que hay** (`src/lib/mcp/active-diagram.ts`).
 
 ### 6 · Skills — el arnés del agente externo
 
 | Herramienta | Qué hace |
 |---|---|
 | `list_skills` | skills instalables, qué traen y dónde van. |
-| `install_skill` | los escribe en `.claude/skills` (proyecto) o `~/.claude/skills` (usuario) **con la config del transporte real inyectada**: URL o stdio, herramientas realmente disponibles, workspace, notación por defecto y límites. |
+| `install_skill` | los escribe en `.claude/skills` (proyecto) o `~/.claude/skills` (usuario) **con la config del transporte real inyectada**: URL o stdio, herramientas realmente disponibles, workspace, notación por defecto y límites. Sin `overwrite` no pisa, pero **compara**: avisa cuál difiere del que generaría en vez de saltarlo en silencio. |
 
 Hoy hay dos (`SKILL_IDS` en `src/lib/mcp-skill.ts`): `documento-a-processflow` (documento →
 portafolio de diagramas) y `disenar-diagrama` (un diagrama trazado a su fuente). El

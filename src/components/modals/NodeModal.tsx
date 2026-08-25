@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -155,14 +156,13 @@ const NodeModal: React.FC<NodeModalProps> = ({
           <div className="flex justify-between items-start">
             <div className="flex items-center gap-2">
               {historyCount > 0 && (
-                <Button
+                <IconAction
                   variant="ghost"
-                  size="icon"
                   onClick={onBack}
                   className="h-8 w-8"
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
+                  label="Volver al elemento anterior"
+                  icon={<ArrowLeft className="h-5 w-5" />}
+                />
               )}
               <div>
                 {(node.nivel == "process_level" && (

@@ -8,7 +8,7 @@ lo que se supone va en "deuda conocida".
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
 - **Versión publicada:** 0.6.4 — release **publicado** (Latest) con los 3 instaladores
-- **Versión en el repo:** 0.6.4 — notas en `docs/releases/0.6.4.md`; 0.6.2 quedó en borrador. El workflow deja el release en BORRADOR a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v<versión> --draft=false`)
+- **Versión en el repo:** 0.6.5 — notas en `docs/releases/0.6.5.md`; **falta mergear el PR #145 y empujar el tag `v0.6.5`**. El workflow deja el release en BORRADOR a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v<versión> --draft=false`)
 
 ## Señales
 
@@ -21,7 +21,7 @@ lo que se supone va en "deuda conocida".
 | Índice del repo (graphify) | `npm run graph:check` | verde — 2 253 nodos / 5 575 aristas / 188 comunidades sobre 334 archivos (262 de código por AST + 51 docs + 8 imágenes por extracción semántica). Mide dos cosas: atraso contra HEAD y encogimiento contra `graph.baseline`; se omite donde no hay índice (CI) |
 | Release con instaladores | `node scripts/repo-lint.mjs` (regla RELEASEJOB) | verde — el job que publica baja los artefactos DESPUÉS del checkout y `fail_on_unmatched_files` está en `true`: el borrador vacío de v0.6.3 (checkout limpiando `installers/`) no puede repetirse en verde |
 | Notas de release en el repo | `node scripts/repo-lint.mjs --release-check 0.6.1` | verde — `docs/releases/0.6.1.md` con las tres secciones; con una versión inventada el freno RELEASE muerde |
-| Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 31 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA, ENRUTADO, RELEASEJOB y «no escribe temporales en `src/`»), el hook `commit-msg` en un repo git temporal, 11 casos de ruteo |
+| Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 24 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA, «no escribe temporales en `src/`» y los 9 casos de `commit-msg`, dos de ellos con la config de OTRA forja), 8 casos de ruteo |
 | Link-check de docs | `node scripts/docs-linkcheck.mjs` | verde |
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
@@ -38,6 +38,15 @@ lo que se supone va en "deuda conocida".
 | Relaciones de arista (UML) | `npx vitest run src/lib/__tests__/edge-relations.test.ts` | verde — herencia/realización/composición/agregación/dependencia: marca por punta y trazo; `dashed` a mano gana |
 | Autoguardado de la ficha (parche, no borrador) | `npx vitest run src/components/graph/designer/__tests__/inspector-draft.test.ts` | verde — sólo viajan los campos editados: arrastrar el nodo con la ficha abierta ya no lo devuelve a su sitio anterior |
 | Portapapeles del lienzo (copiar/pegar) | `npx vitest run src/components/graph/designer/__tests__/clipboard.test.ts` | verde — copia contenedor+contenido, sólo enlaces con ambas puntas, ids/nombres nuevos al pegar, `agregado` reapuntado |
+| Estado comparativo por MCP (#144 A) | `npx vitest run main/services/__tests__/mcp-tools.test.ts` | verde — `estado` en `add_node`/`add_container`/`update_element` sobrevive `add → export → import → export`; sin declararlo sigue siendo `nuevo` |
+| Metadatos del proyecto al recibir una vista (#144 B) | `npx vitest run src/lib/mcp/__tests__/project-meta.test.ts` | verde — notas, hotspots y responsables de `export_as_view` se suman al proyecto activo sin pisar lo del humano ni duplicar lo que ya estaba |
+| Botón sólo-icono con nombre accesible (#143) | `node scripts/repo-lint.mjs` (regla BOTONMUDO) | verde — un `<Button size="icon">` sin `aria-label` ni `sr-only` pone el gate en rojo; el patrón único es `IconAction` (tooltip y `aria-label` del mismo texto) |
+| Vocabulario de acciones de la UI (#143) | `npx vitest run src/lib/__tests__/action-labels.test.ts` | verde — un verbo por acción en `src/lib/action-labels.ts`; «Añadir»/«Crear» ya no vuelven como sinónimos |
+| Panel y lienzo leen el mismo modelo (#142) | `npx vitest run src/lib/__tests__/graph-processor-sueltos.test.ts` | verde — con bandas pobladas Y `big_picture.nodos` el panel ya no pierde los sueltos ni sus aristas; invariante `entrada === salida + descartados` y contrato contra `graphDataToCanvas` |
+| Diagrama de trabajo fijado | `npx vitest run src/lib/mcp/__tests__/active-diagram.test.ts main/services/__tests__/mcp-tools.test.ts` | verde — `diagramId` es opcional: manda el explícito, después `use_diagram` (persistido en el workspace, el HTTP es stateless), después la configuración (`--diagram`/`PROCESSFLOW_DIAGRAM`), después el único que haya; con varios, el error los lista |
+| Actualizar el proyecto de la app | `npx vitest run src/lib/mcp/__tests__/project-update.test.ts` | verde — `export_to_app` funde sobre el proyecto existente: conserva la geometría que el humano movió, fusiona sus notas y cuenta nuevos/conservados/quitados; un `project` inexistente avisa en vez de crear una copia |
+| Actualizar una vista por MCP (#147) | `npx vitest run src/lib/mcp/__tests__/project-update.test.ts main/services/__tests__/mcp-tools.test.ts` | verde — `export_as_view` con `replace` actualiza la pestaña existente (conserva geometría, no consume cupo); una vista inexistente o del sistema avisa con las opciones y no entrega |
+| Decisión sobre el anidamiento (ADR 0002) | `npx vitest run src/lib/mcp/__tests__/diagram-builder.test.ts` | verde — anidar contenedores se rechaza con el mensaje que enseña la salida (otra vista + `viewRef`); si el mensaje deja de decirlo, la prueba muerde |
 | Filtros del lienzo | script manual (Puppeteer) sobre el renderer | verde — ocultan nodos y sus aristas con aviso del conteo; el menú sigue la notación de la VISTA (Pool en BPMN, Límite de Sistema en C4) y el filtro es por vista |
 | Enrutado efectivo de una arista | `npx vitest run src/components/graph/designer/__tests__/link-geometry.test.ts` | verde — `routingOf` es la única función que lo resuelve: lo que resalta la ficha es lo que dibuja el lienzo (issue #112). La regla ENRUTADO del lint rechaza un `routing ??` a mano en `src/components/**` |
 | Estilo de relaciones en lote | `npx vitest run src/components/graph/designer/__tests__/link-style.test.ts` | verde — sólo viajan los campos del parche (anclas, quiebres y etiqueta corrida sobreviven) y pisar un enrutado puesto a mano se informa, no pasa en silencio |

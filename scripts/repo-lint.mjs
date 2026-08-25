@@ -16,6 +16,7 @@
  *   DEPSHOOK  un useMemo/useCallback que lee `notationId` lo declara en sus dependencias.
  *   TOKENS    la UI usa los tokens del tema, no colores crudos de Tailwind ni tamaños en px.
  *   SVGFILL   un <text> de SVG pinta con `fill`: sin él, una clase text-* cae a negro.
+ *   BOTONMUDO un botón sólo-icono lleva nombre accesible (usá `IconAction`).
  *   ENRUTADO  el enrutado efectivo de una arista se resuelve con `routingOf`, sin fallback a mano.
  *   PLATAFORMA  detectar el sistema operativo sólo en src/lib/platform.ts (y sin API deprecada).
  *   DEPS      sin SDKs de nube en package.json (las llamadas van con fetch desde el main).
@@ -225,6 +226,34 @@ function checkFile(relPath, contenidoDado = null) {
         lineOf(content, m.index),
         "SVGFILL",
         "`<text>` de SVG sin `fill`: una clase `text-*` no pinta el texto y el navegador cae a negro. Poné `fill=\"currentColor\"` (el color lo sigue dando la clase) o un `fill-*` explícito.",
+      );
+    }
+  }
+
+  // BOTONMUDO — un botón sólo-icono sin nombre accesible es un botón MUDO para el
+  // lector de pantalla: el icono no se lee. El patrón del repo es `IconAction`,
+  // que arma tooltip y `aria-label` del MISMO string para que no se desincronicen;
+  // `title` no alcanza (no es nombre accesible fiable y se pierde en el táctil).
+  if (relPath.endsWith(".tsx") && !isTest(relPath)) {
+    for (const m of content.matchAll(/<Button\b/g)) {
+      const abre = content.indexOf(">", m.index);
+      if (abre === -1) continue;
+      // El elemento completo: la etiqueta de apertura y, si lo hay, su contenido.
+      const cierra = content.indexOf("</Button>", abre);
+      const elemento = content.slice(m.index, cierra === -1 ? abre + 1 : cierra + 9);
+      // La etiqueta de apertura sin el contenido (un comentario JSX puede traer
+      // un `>`, así que se corta por el primer salto de línea con `>` al final).
+      const apertura = elemento.slice(0, elemento.indexOf(">") + 1);
+      const soloIcono = /size=\{?"icon"/.test(apertura) || /size=\{?"icon"/.test(elemento.slice(0, 400));
+      if (!soloIcono) continue;
+      if (/aria-label/.test(elemento)) continue;
+      // `sr-only` es nombre accesible legítimo: texto para el lector, no a la vista.
+      if (/sr-only/.test(elemento)) continue;
+      fail(
+        relPath,
+        lineOf(content, m.index),
+        "BOTONMUDO",
+        "botón sólo-icono sin nombre accesible: el lector de pantalla anuncia «botón» y nada más. Usá `IconAction` (`src/components/ui/icon-action.tsx`) con su `label` —arma tooltip y `aria-label` del mismo texto— o poné `aria-label` si el botón envuelve otra cosa con `asChild`.",
       );
     }
   }

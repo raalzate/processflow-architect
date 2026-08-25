@@ -166,19 +166,28 @@ for (const [hook, name, payload, expected] of blocks) {
    * Repo git NUEVO por caso: los archivos staged de un caso anterior seguían
    * ahí (nada se commitea) y el caso "sólo documentación" veía código staged.
    */
-  const correr = (archivos, mensaje) => {
+  const correr = (archivos, mensaje, configOverride = null) => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-commitmsg-"));
     try {
       const git = (...args) => spawnSync("git", args, { cwd: tmp, encoding: "utf8" });
       git("init", "-q");
       git("config", "user.email", "selftest@example.com");
       git("config", "user.name", "selftest");
+      // El hook lee `tracker` y `commitMsg` del config del CWD: los patrones ya no
+      // están cableados en el bash. `configOverride` es lo que permite probar que
+      // el freno sirve con otra forja sin tocar el config del repo.
+      fs.mkdirSync(path.join(tmp, ".claude"), { recursive: true });
+      const cfg = JSON.parse(fs.readFileSync(abs(".claude/harness.config.json"), "utf8"));
+      if (configOverride) Object.assign(cfg, configOverride);
+      fs.writeFileSync(path.join(tmp, ".claude/harness.config.json"), JSON.stringify(cfg));
       for (const [rel, contenido] of Object.entries(archivos)) {
         const dest = path.join(tmp, rel);
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, contenido);
       }
-      git("add", "-A");
+      // Sólo los archivos del caso: un `git add -A` staged también el config copiado
+      // acá arriba, que cae bajo `codePattern` y ensuciaba el caso de documentación.
+      for (const rel of Object.keys(archivos)) git("add", rel);
       const msgFile = path.join(tmp, "MSG");
       fs.writeFileSync(msgFile, mensaje);
       const res = spawnSync("bash", [hook, msgFile], { cwd: tmp, encoding: "utf8" });
@@ -202,6 +211,21 @@ for (const [hook, name, payload, expected] of blocks) {
     if (res.status === esperado) ok(`commit-msg: ${nombre}`);
     else bad(`commit-msg: ${nombre}`, `esperaba exit ${esperado}, salió ${res.status}. stderr: ${res.stderr.trim().slice(0, 160)}`);
   }
+
+  /**
+   * El freno no conoce GitHub: lee `tracker.issuePattern`. Con la config de otra
+   * forja (Azure Boards, `AB#123`) tiene que aceptar SU referencia y rechazar la
+   * de acá. Es lo que separa un mecanismo portable de uno cableado, y sin este
+   * caso el config podría dejar de leerse sin que nada se ponga rojo.
+   */
+  const otraForja = { tracker: { kind: "azure-devops", issuePattern: "\\bAB#[0-9]+\\b", issueExample: "AB#123" } };
+  const conAB = correr({ "src/lib/a.ts": "export const a = 1;\n" }, "fix: algo\n\nFixes AB#77", otraForja);
+  if (conAB.status === 0) ok("commit-msg: acepta la referencia de otra forja (AB#77)");
+  else bad("commit-msg: acepta la referencia de otra forja", `exit ${conAB.status}: ${conAB.stderr.trim().slice(0, 160)}`);
+
+  const conGH = correr({ "src/lib/b.ts": "export const b = 2;\n" }, "fix: algo\n\nRefs #77", otraForja);
+  if (conGH.status === 1) ok("commit-msg: con otra forja, `#77` ya no alcanza");
+  else bad("commit-msg: con otra forja, `#77` ya no alcanza", `exit ${conGH.status}: el patrón del config no se está leyendo`);
 }
 
 /**
@@ -263,6 +287,15 @@ frenoDelLint(
   "src/components/__selftest-svg.tsx",
   'export const X = () => <svg><text className="text-sm">hola</text></svg>;\n',
   "SVGFILL",
+);
+
+// BOTONMUDO: un botón sólo-icono sin nombre accesible es mudo para el lector de
+// pantalla. Compila, se ve bien y sólo lo nota quien no puede ver el icono.
+frenoDelLint(
+  "repo-lint: detecta un botón sólo-icono sin nombre accesible",
+  "src/components/__selftest-boton.tsx",
+  'export const X = () => <Button variant="ghost" size="icon" onClick={f}><Trash2 /></Button>;\n',
+  "BOTONMUDO",
 );
 
 // INCIDENTE: P12 medible en lo que una máquina puede ver — un gotcha sin la línea

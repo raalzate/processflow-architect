@@ -140,6 +140,9 @@ export function canvasToGraphData(
       color: c.color,
       borderColor: c.borderColor,
       metadata: c.metadata,
+      // El contenedor también declara si ya existe o es nuevo: se conserva o el
+      // ida y vuelta por el lienzo lo devuelve a "nuevo".
+      estado_comparativo: c.estado_comparativo,
     }));
   const aggByName = new Map(agregados.map((a) => [a.nombre_agregado, a]));
 
@@ -285,7 +288,7 @@ export function graphDataToCanvas(content: GraphData | null | undefined): {
           : "Agregado",
       descripcion: agg.descripcion || agg.entidad_raiz || "",
       agregado: agg.nombre_agregado,
-      estado_comparativo: "nuevo",
+      estado_comparativo: agg.estado_comparativo || "nuevo",
       color: (agg as any).color,
       borderColor: (agg as any).borderColor,
       // Lo guardado puede venir de un import o de una versión vieja: se normaliza

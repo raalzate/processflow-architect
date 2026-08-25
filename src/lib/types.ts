@@ -144,6 +144,12 @@ export interface Agregado {
   borderColor?: string;
   /** Referencias y datos externos del contenedor (ver `GraphNode.metadata`). */
   metadata?: ElementMetadata[];
+  /**
+   * Estado del contenedor frente a lo que ya existe (mismo vocabulario que
+   * `GraphNode.estado_comparativo`). Distingue documentar lo que hay de diseñar
+   * lo que viene; sin esto el lienzo pintaba como nuevo todo contenedor.
+   */
+  estado_comparativo?: GraphNode["estado_comparativo"];
 }
 
 export interface BigPicture {

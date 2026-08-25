@@ -1,5 +1,6 @@
 
 import type { GraphData, GraphNode, GraphLink } from "./types";
+import { looseGroupLabel } from "./notations";
 
 /**
  * Árbol del modelo para el panel lateral. El nombre y la descripción del
@@ -23,24 +24,34 @@ export function processGraphData(jsonData: GraphData): {
   links: GraphLink[];
   aggregates: string[];
   nodeTree: NodeTree;
+  /**
+   * Lo que el filtro de "sólo nodos conectados" dejó afuera. Descartar en
+   * silencio es lo que hacía invisible la pérdida: el panel mostraba menos
+   * elementos que el lienzo y nada lo contaba. Quien renderiza decide si lo
+   * muestra; la suite lo usa para el invariante de conservación.
+   */
+  descartados: GraphNode[];
 } {
   // Gracefully handle cases where the JSON is malformed
   if (!jsonData) {
     throw new Error("El archivo JSON está vacío o es inválido.");
   }
 
-  // Fallback: si el modelo no produjo contenedores (o vienen vacíos) pero SÍ hay
-  // nodos sueltos en `big_picture`, los exponemos en un grupo "Visión General"
-  // para que el lienzo NUNCA quede vacío. El nombre es neutral a propósito: este
-  // grupo aparece igual en modelos BPMN/C4/UML, no solo en Event Storming.
+  // `big_picture.nodos` NO es una red de emergencia: son los elementos SIN
+  // CONTENEDOR (así los manda el MCP, así los dibuja el lienzo). Tratarlos como
+  // fallback —sólo si ningún agregado tenía nodos— los borraba del panel en
+  // cuanto había una banda poblada, que en un C4 es siempre: el lienzo mostraba
+  // 16 elementos y el panel 13. Entran SIEMPRE, en su propio grupo, y con sus
+  // aristas (que por el mismo camino también se perdían).
   let agregados = Array.isArray(jsonData.agregados) ? jsonData.agregados : [];
-  const aggHasNodes = agregados.some((a: any) => (a?.nodos?.length ?? 0) > 0);
   const bp: any = (jsonData as any).big_picture;
-  if (!aggHasNodes && bp && (bp.nodos?.length ?? 0) > 0) {
+  if (bp && (bp.nodos?.length ?? 0) > 0) {
     agregados = [
       {
-        nombre_agregado: "Visión General",
-        descripcion: bp.descripcion || "Elementos sin contenedor",
+        // El rótulo sale del registro de notaciones (P6): en C4 los actores
+        // sueltos están fuera de un Límite de Sistema, no de un Agregado.
+        nombre_agregado: looseGroupLabel((jsonData as any).notation),
+        descripcion: "Elementos sin contenedor",
         nodos: bp.nodos || [],
         aristas: bp.aristas || [],
       } as any,
@@ -50,6 +61,7 @@ export function processGraphData(jsonData: GraphData): {
 
   const allNodes: GraphNode[] = [];
   const allLinks: GraphLink[] = [];
+  const descartados: GraphNode[] = [];
   const nodeIds = new Set<string>();
   const nodeTree: NodeTree = {};
 
@@ -86,8 +98,10 @@ export function processGraphData(jsonData: GraphData): {
 
     if (agregado.nodos) {
       agregado.nodos.forEach((node) => {
-        // Exclude any node that is not connected to anything
+        // Un nodo sin ninguna relación no se dibuja, pero se CUENTA: la pérdida
+        // silenciosa es la que nadie ve hasta que falta un elemento en el panel.
         if (!nodesWithLinks.has(node.id)) {
+          descartados.push({ ...node, agregado: aggregateName } as GraphNode);
           return;
         }
         if (!nodeIds.has(node.id)) {
@@ -123,6 +137,8 @@ export function processGraphData(jsonData: GraphData): {
   // (nodos sin aristas, o aristas con ids que no casan), incluimos TODOS los nodos
   // para que el grafo nunca se cargue en blanco.
   if (allNodes.length === 0) {
+    // Se recuperan TODOS: lo descartado deja de estarlo.
+    descartados.length = 0;
     agregados.forEach((agregado) => {
       const aggregateDescription = agregado.descripcion;
       const aggregateName = agregado.nombre_agregado + (aggregateDescription ? ` - ${aggregateDescription}` : "");
@@ -168,7 +184,7 @@ export function processGraphData(jsonData: GraphData): {
   });
 
 
-  return { nodes: allNodes, links: allLinks, aggregates, nodeTree: sortedNodeTree };
+  return { nodes: allNodes, links: allLinks, aggregates, nodeTree: sortedNodeTree, descartados };
 }
 
 

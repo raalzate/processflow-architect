@@ -2,6 +2,8 @@
 import * as React from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Trash2, Eye } from "lucide-react";
@@ -63,22 +65,20 @@ const CheckboxNodeItem: React.FC<Props> = ({
       </div>
 
       <div className="flex-shrink-0 ml-auto flex items-center gap-1">
-        <Button
+        <IconAction
           variant="ghost"
-          size="icon"
           className="text-muted-foreground hover:text-primary"
           onClick={handleViewClick}
-        >
-          <Eye className="h-4 w-4" />
-        </Button>
-        <Button
+          label={accion("abrir", "el elemento")}
+          icon={<Eye className="h-4 w-4" />}
+        />
+        <IconAction
           variant="ghost"
-          size="icon"
           className="text-muted-foreground hover:text-destructive"
           onClick={handleDeleteClick}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+          label={accion("eliminar", "el elemento")}
+          icon={<Trash2 className="h-4 w-4" />}
+        />
       </div>
     </div>
   );
