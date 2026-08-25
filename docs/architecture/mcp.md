@@ -63,10 +63,11 @@ nunca ve una herramienta que su transporte no soporta.
 
 | Herramienta | Qué hace |
 |---|---|
-| `create_diagram` | abre un modelo nuevo (nombre + notación) → `diagramId`. |
+| `create_diagram` | abre un modelo nuevo (nombre + notación) → `diagramId`, y lo deja **fijado**. |
 | `list_diagrams` | los modelos en curso del workspace **con su vocabulario** (notación, conteos y nombres de los elementos): es lo que evita construir la segunda versión de la verdad con sinónimos. |
 | `get_diagram` | resumen + vista previa Mermaid. |
-| `import_diagram` | carga un `GraphData` exportado como modelo editable (retomar contexto). |
+| `import_diagram` | carga un `GraphData` exportado como modelo editable (retomar contexto) y lo deja fijado. |
+| `use_diagram` | fija el modelo sobre el que actúan las demás herramientas cuando no pasás `diagramId`. Se guarda en el workspace: sobrevive reinicios y el modo HTTP, que es **stateless**. |
 
 ### 3 · Construcción
 
@@ -109,9 +110,30 @@ recortan al dibujar.
 
 | Herramienta | Qué hace |
 |---|---|
-| `export_to_app` | escribe el `.json` (`GraphData`) y —en modo app— lo **inyecta al lienzo** por IPC. En stdio queda el archivo para «Importar diagrama». `projectName` nombra el proyecto en la app (simétrico con `viewName`). |
+| `export_to_app` | escribe el `.json` (`GraphData`) y —en modo app— lo entrega al lienzo por IPC. Por defecto **ACTUALIZA** un proyecto existente (`project`, o el de la configuración, o el abierto): conserva la geometría que el humano movió y fusiona sus notas (`src/lib/mcp/project-update.ts`). `mode: "new"` crea uno aparte. `projectName` nombra el diseño. En stdio queda el archivo para «Importar diagrama». |
 | `export_as_view` **app** | suma una **pestaña** (vista custom con su propia notación) al proyecto ACTIVO, sin crear proyecto aparte. Las notas, hotspots y responsables son del PROYECTO: la app los fusiona al recibir la vista (`src/lib/mcp/project-meta.ts`) sin pisar lo que ya había. |
 | `export_mermaid_view` **app** | suma una pestaña de vista **Mermaid** al proyecto activo. |
+
+### 5b · Configuración del servidor
+
+Además del workspace, el servidor acepta dos defaults para no repetir lo mismo en cada llamada:
+
+| Ajuste | stdio (`.mcp.json`) | app (HTTP) | Qué hace |
+|---|---|---|---|
+| Workspace | `PROCESSFLOW_WORKSPACE` | `userData/mcp-workspace` | dónde viven los modelos en curso y las exportaciones. |
+| Modelo por defecto | `--diagram <id>` o `PROCESSFLOW_DIAGRAM` | `PROCESSFLOW_DIAGRAM` | `diagramId` deja de ser obligatorio. Lo pisa `use_diagram`, y sobre todo el `diagramId` explícito. |
+| Proyecto destino | `--project "<nombre>"` o `PROCESSFLOW_PROJECT` | `PROCESSFLOW_PROJECT` | a qué proyecto de la app **actualiza** `export_to_app`. |
+
+```jsonc
+// .mcp.json — atar la sesión a un modelo y a un proyecto de la app
+"processflow-architect": {
+  "type": "stdio",
+  "command": "npx",
+  "args": ["tsx", "mcp-server/index.ts", "--diagram", "enrollment-v2", "--project", "Enrollment v2"]
+}
+```
+
+Precedencia del modelo: **parámetro de la llamada → `use_diagram` → configuración → el único que haya → error que lista lo que hay** (`src/lib/mcp/active-diagram.ts`).
 
 ### 6 · Skills — el arnés del agente externo
 

@@ -832,3 +832,193 @@ describe("higiene del skill y de los metadatos · D", () => {
     expect(JSON.stringify(malo.error.issues)).toContain("LISTA de objetos");
   });
 });
+
+// -----------------------------------------------------------------------------
+// Fijar el diagrama de trabajo: `diagramId` deja de repetirse en cada llamada.
+// -----------------------------------------------------------------------------
+
+describe("use_diagram · diagrama de trabajo fijado", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-fijar-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  function toolsDe(opts: Record<string, unknown> = {}) {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws, ...opts } as any);
+    return tools;
+  }
+  const idDe = (res: any) => /diagramId="([^"]+)"/.exec(res.content[0].text)![1];
+
+  it("create_diagram fija el recién creado y las llamadas siguientes omiten el id", async () => {
+    const tools = toolsDe();
+    const creado = await tools.get("create_diagram")!.handler({ name: "Seguros", notation: "ddd" });
+    expect(creado.content[0].text).toContain("FIJADO");
+    const res = await tools.get("add_node")!.handler({ name: "Cobrar", type: "Comando" });
+    expect(res.isError).toBeUndefined();
+    const visto = await tools.get("get_diagram")!.handler({});
+    expect(visto.content[0].text).toContain("Cobrar");
+    expect(idDe(creado)).toBe("seguros");
+  });
+
+  it("el fijado sobrevive a otro servidor (vive en el workspace, no en memoria)", async () => {
+    await toolsDe().get("create_diagram")!.handler({ name: "Seguros", notation: "ddd" });
+    // Otro registro = otra petición del transporte HTTP, que es stateless.
+    const otro = toolsDe();
+    await otro.get("add_node")!.handler({ name: "Anular", type: "Comando" });
+    expect((await otro.get("get_diagram")!.handler({})).content[0].text).toContain("Anular");
+  });
+
+  it("el `diagramId` explícito gana sobre el fijado", async () => {
+    const tools = toolsDe();
+    await tools.get("create_diagram")!.handler({ name: "Uno", notation: "ddd" });
+    const dos = idDe(await tools.get("create_diagram")!.handler({ name: "Dos", notation: "ddd" }));
+    // "Dos" quedó fijado; la llamada apunta a "uno" a propósito.
+    await tools.get("add_node")!.handler({ diagramId: "uno", name: "SoloEnUno", type: "Comando" });
+    expect((await tools.get("get_diagram")!.handler({ diagramId: "uno" })).content[0].text).toContain("SoloEnUno");
+    expect((await tools.get("get_diagram")!.handler({})).content[0].text).not.toContain("SoloEnUno");
+    expect(dos).toBe("dos");
+  });
+
+  it("use_diagram cambia el fijado, lo informa y lo suelta", async () => {
+    const tools = toolsDe();
+    await tools.get("create_diagram")!.handler({ name: "Uno", notation: "ddd" });
+    await tools.get("create_diagram")!.handler({ name: "Dos", notation: "ddd" });
+
+    expect((await tools.get("use_diagram")!.handler({})).content[0].text).toContain('"dos"');
+    await tools.get("use_diagram")!.handler({ diagramId: "uno" });
+    await tools.get("add_node")!.handler({ name: "EnUno", type: "Comando" });
+    expect((await tools.get("get_diagram")!.handler({ diagramId: "uno" })).content[0].text).toContain("EnUno");
+
+    await tools.get("use_diagram")!.handler({ clear: true });
+    const sinFijar = await tools.get("add_node")!.handler({ name: "X", type: "Comando" });
+    expect(sinFijar.isError).toBe(true);
+    expect(sinFijar.content[0].text).toContain("use_diagram");
+  });
+
+  it("un id inexistente en use_diagram devuelve las opciones", async () => {
+    const tools = toolsDe();
+    await tools.get("create_diagram")!.handler({ name: "Uno", notation: "ddd" });
+    const res = await tools.get("use_diagram")!.handler({ diagramId: "fantasma" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain('"uno"');
+  });
+
+  it("la configuración del servidor sirve de default cuando no hay fijado", async () => {
+    const tools = toolsDe({ defaultDiagramId: "uno" });
+    await tools.get("create_diagram")!.handler({ name: "Uno", notation: "ddd" });
+    await tools.get("create_diagram")!.handler({ name: "Dos", notation: "ddd" });
+    await tools.get("use_diagram")!.handler({ clear: true });
+    await tools.get("add_node")!.handler({ name: "PorConfig", type: "Comando" });
+    expect((await tools.get("get_diagram")!.handler({ diagramId: "uno" })).content[0].text).toContain("PorConfig");
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Entregar al PROYECTO de la app: actualizar el que ya existe en vez de dejar
+// una copia nueva por cada diseño.
+// -----------------------------------------------------------------------------
+
+describe("export_to_app · actualizar el proyecto de la app", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-proy-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  const estado = (activo: string | null, otros: string[] = []) => ({
+    projectName: activo,
+    counts: { containers: 0, nodes: 0, edges: 0 },
+    views: [],
+    viewsLimit: 50,
+    projects: otros,
+    updatedAt: "2026-08-25T00:00:00.000Z",
+  });
+
+  async function conApp(opts: Record<string, unknown>) {
+    const entregas: { name: string; target?: { project: string } }[] = [];
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: ws,
+      exportToApp: async (name: string, _g: any, target?: { project: string }) => {
+        entregas.push({ name, target });
+        return true;
+      },
+      ...opts,
+    } as any);
+    await tools.get("create_diagram")!.handler({ name: "Enrollment v2", notation: "c4" });
+    await tools.get("add_node")!.handler({ name: "Portal", type: "Sistema Externo" });
+    return { tools, entregas };
+  }
+
+  it("por defecto ACTUALIZA el proyecto abierto en la app", async () => {
+    const { tools, entregas } = await conApp({ getAppState: () => estado("Enrollment v2") });
+    const res = await tools.get("export_to_app")!.handler({});
+    expect(res.isError).toBeUndefined();
+    expect(entregas[0].target).toEqual({ project: "Enrollment v2" });
+    expect(res.content[0].text).toContain("ACTUALIZADO");
+  });
+
+  it("`project` manda al proyecto nombrado, aunque no sea el abierto", async () => {
+    const { tools, entregas } = await conApp({
+      getAppState: () => estado("Otro", ["Otro", "Enrollment v2"]),
+    });
+    await tools.get("export_to_app")!.handler({ project: "Enrollment v2" });
+    expect(entregas[0].target).toEqual({ project: "Enrollment v2" });
+  });
+
+  it("la configuración del servidor fija el proyecto destino sin repetirlo", async () => {
+    const { tools, entregas } = await conApp({
+      defaultProject: "Enrollment v2",
+      getAppState: () => estado("Otro", ["Otro", "Enrollment v2"]),
+    });
+    await tools.get("export_to_app")!.handler({});
+    expect(entregas[0].target).toEqual({ project: "Enrollment v2" });
+  });
+
+  it('mode="new" sigue creando un proyecto aparte', async () => {
+    const { tools, entregas } = await conApp({ getAppState: () => estado("Enrollment v2") });
+    const res = await tools.get("export_to_app")!.handler({ mode: "new" });
+    expect(entregas[0].target).toBeUndefined();
+    expect(res.content[0].text).toContain("NUEVO");
+  });
+
+  it("un proyecto que no existe NO se crea a escondidas: avisa y deja el .json", async () => {
+    const { tools, entregas } = await conApp({ getAppState: () => estado("Otro", ["Otro"]) });
+    const res = await tools.get("export_to_app")!.handler({ project: "Fantasma" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain('"Otro"');
+    expect(res.content[0].text).toContain("El .json quedó en:");
+    expect(entregas).toHaveLength(0);
+  });
+
+  it("sin proyecto abierto y sin pedir uno, crea el primero (pantalla de bienvenida)", async () => {
+    const { tools, entregas } = await conApp({ getAppState: () => estado(null, []) });
+    const res = await tools.get("export_to_app")!.handler({});
+    expect(res.isError).toBeUndefined();
+    expect(entregas[0].target).toBeUndefined();
+    expect(res.content[0].text).toContain("NUEVO");
+  });
+
+  it("pero si PIDIÓ un proyecto por nombre y no existe, no inventa uno", async () => {
+    const { tools, entregas } = await conApp({ getAppState: () => estado(null, []) });
+    const res = await tools.get("export_to_app")!.handler({ project: "Enrollment v2" });
+    expect(res.isError).toBe(true);
+    expect(entregas).toHaveLength(0);
+  });
+
+  it("en modo stdio (sin app) el .json se escribe igual y nadie habla de proyectos", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws } as any);
+    await tools.get("create_diagram")!.handler({ name: "Solo", notation: "ddd" });
+    const out = path.join(ws, "solo.json");
+    const res = await tools.get("export_to_app")!.handler({ outPath: out });
+    expect(res.isError).toBeUndefined();
+    expect(JSON.parse(await fs.readFile(out, "utf8")).nombre_proyecto).toBe("Solo");
+  });
+});

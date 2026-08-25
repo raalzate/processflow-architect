@@ -46,6 +46,8 @@ import {
   type Estado,
   type DiagramModel,
 } from "../../src/lib/mcp/diagram-builder";
+import { resolveDiagramId } from "../../src/lib/mcp/active-diagram";
+import { resolveProjectRef } from "../../src/lib/mcp/project-update";
 import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
 import { toMermaid } from "../../src/lib/mcp/to-mermaid";
 import { qualityFindings, formatFindings, MAX_NODES } from "../../src/lib/mcp/quality";
@@ -80,7 +82,15 @@ export interface McpToolsOptions {
    * renderer para cargarlo en el lienzo al momento. Devuelve true si la
    * ventana lo recibió.
    */
-  exportToApp?: (name: string, graph: GraphData) => Promise<boolean>;
+  exportToApp?: (
+    name: string,
+    graph: GraphData,
+    /**
+     * Presente cuando la entrega ACTUALIZA un proyecto existente en vez de
+     * crear otro: `project` es el nombre resuelto del proyecto de la app.
+     */
+    target?: { project: string }
+  ) => Promise<boolean>;
   /**
    * Presente sólo en el modo app: entrega el diagrama al renderer como VISTA
    * custom del proyecto ACTIVO (pestaña nueva con su propia notación), en vez
@@ -105,6 +115,19 @@ export interface McpToolsOptions {
    * escritor. Nunca rechaza: el fallo viaja como `{ ok: false, error }`.
    */
   readApp?: (request: AppReadRequest) => Promise<AppReadResult>;
+  /**
+   * Diagrama por defecto de este servidor (`PROCESSFLOW_DIAGRAM` o `--diagram`
+   * en `.mcp.json`). Sirve para atar una sesión de trabajo a un diagrama sin
+   * repetir `diagramId` en cada llamada; lo pisa `use_diagram` y, sobre todo,
+   * el `diagramId` explícito de la llamada.
+   */
+  defaultDiagramId?: string;
+  /**
+   * Proyecto de la app al que van las entregas por defecto
+   * (`PROCESSFLOW_PROJECT` / `--project`). Con esto, `export_to_app` ACTUALIZA
+   * ese proyecto en vez de crear uno nuevo en cada entrega.
+   */
+  defaultProject?: string;
   /** Transporte por el que llegó el cliente (se inyecta en el skill instalado). */
   transport?: "http" | "stdio";
   /** URL del servidor cuando el transporte es HTTP. */
@@ -124,6 +147,18 @@ const fail = (t: string) => ({ content: [{ type: "text" as const, text: t }], is
  * Estado del elemento frente a lo que YA existe. El vocabulario sale de
  * `ESTADOS` (`src/lib/mcp/diagram-builder.ts`), no de una lista a mano acá.
  */
+/**
+ * A qué diagrama apunta la llamada. Opcional: si no viene, manda el fijado con
+ * `use_diagram`, después el de la configuración del servidor y, si hay uno solo
+ * en el workspace, ese. La regla vive en `src/lib/mcp/active-diagram.ts`.
+ */
+const diagramIdSchema = z
+  .string()
+  .optional()
+  .describe(
+    "Id del diagrama. Opcional: sin él se usa el fijado con use_diagram, el de la configuración del servidor, o el único que haya en el workspace."
+  );
+
 const estadoSchema = z
   .enum(ESTADOS as unknown as [string, ...string[]])
   .optional()
@@ -207,6 +242,42 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     } catch {
       return [];
     }
+  }
+
+  // El fijado vive en el WORKSPACE, no en memoria: el transporte HTTP es
+  // stateless (un servidor MCP por petición) y una variable de módulo se
+  // perdería entre llamadas.
+  const ACTIVE_FILE = path.join(DIAGRAMS_DIR, "..", "active.json");
+
+  async function readPinned(): Promise<string | undefined> {
+    try {
+      const raw = JSON.parse(await fs.readFile(ACTIVE_FILE, "utf8"));
+      return typeof raw?.diagramId === "string" ? raw.diagramId : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async function writePinned(id: string | null): Promise<void> {
+    await ensureDir(path.dirname(ACTIVE_FILE));
+    if (id === null) {
+      await fs.rm(ACTIVE_FILE, { force: true });
+      return;
+    }
+    await fs.writeFile(ACTIVE_FILE, JSON.stringify({ diagramId: id }, null, 2), "utf8");
+  }
+
+  /**
+   * A qué diagrama se refiere esta llamada. La regla (y sus errores accionables)
+   * vive en `src/lib/mcp/active-diagram.ts`; acá sólo se junta el estado.
+   */
+  async function activeId(explicit?: string): Promise<string> {
+    return resolveDiagramId({
+      explicit,
+      pinned: await readPinned(),
+      configured: opts.defaultDiagramId,
+      disponibles: await listModels(),
+    }).id;
   }
 
   async function freshId(base: string): Promise<string> {
@@ -297,8 +368,11 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         descripcion: description,
       });
       await saveModel(id, model);
+      // Se fija solo: lo normal tras crear es trabajar sobre él, y repetir el id
+      // en cada llamada es la fricción que hacía que el agente se equivocara.
+      await writePinned(id);
       return text(
-        `Diagrama creado. diagramId="${id}", notación=${notation}.\n` +
+        `Diagrama creado y FIJADO. diagramId="${id}", notación=${notation}. Las próximas llamadas pueden omitir \`diagramId\`; cambialo con use_diagram.\n` +
           `Siguiente: usa describe_notation("${notation}") para ver los tipos válidos, luego add_container/add_node/add_edge.`
       );
     }
@@ -354,14 +428,66 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
   );
 
   server.registerTool(
+    "use_diagram",
+    {
+      title: "Fijar el diagrama de trabajo",
+      description:
+        "Fija el diagrama sobre el que actúan las demás herramientas cuando no pasás `diagramId`. Queda guardado en el workspace (sobrevive reinicios y el modo HTTP). Llamala sin argumentos para ver cuál está fijado, o con `clear: true` para soltarlo.",
+      inputSchema: {
+        diagramId: z
+          .string()
+          .optional()
+          .describe("Id a fijar. Sin él, informa el fijado actual."),
+        clear: z.boolean().optional().describe("true suelta el diagrama fijado."),
+      },
+    },
+    async ({ diagramId, clear }) => {
+      if (clear) {
+        await writePinned(null);
+        return text("Diagrama fijado: ninguno. Las llamadas vuelven a necesitar `diagramId` (salvo que haya uno solo en el workspace).");
+      }
+      const existentes = await listModels();
+      if (!diagramId) {
+        const actual = await readPinned();
+        const cfg = opts.defaultDiagramId ? ` · configuración del servidor: "${opts.defaultDiagramId}"` : "";
+        return text(
+          `Fijado: ${actual ? `"${actual}"` : "ninguno"}${cfg}\nEn el workspace: ${
+            existentes.length ? existentes.map((d) => `"${d}"`).join(", ") : "(ninguno)"
+          }`
+        );
+      }
+      if (!existentes.includes(diagramId)) {
+        return fail(
+          `No existe el diagrama "${diagramId}". En el workspace hay: ${
+            existentes.length ? existentes.map((d) => `"${d}"`).join(", ") : "(ninguno)"
+          }.`
+        );
+      }
+      await writePinned(diagramId);
+      const model = await loadModel(diagramId);
+      return text(
+        `Diagrama fijado: "${diagramId}" (${model.meta.nombre_proyecto}, ${model.meta.notation}). Las próximas llamadas pueden omitir \`diagramId\`.`
+      );
+    }
+  );
+
+  server.registerTool(
     "get_diagram",
     {
       title: "Ver diagrama",
       description:
         "Devuelve un resumen del diagrama (conteos, errores/avisos) y su vista previa Mermaid.",
-      inputSchema: { diagramId: z.string() },
+      inputSchema: { diagramId: diagramIdSchema },
     },
-    async ({ diagramId }) => {
+    async ({ diagramId: diagramIdEntrada }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       return text(
         `${summarize(diagramId, model)}\n\n\`\`\`mermaid\n${toMermaid(model)}\n\`\`\``
@@ -378,7 +504,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Añade un contenedor (Agregado, Contexto Delimitado, Pool, Carril, Límite de Sistema, Paquete, …). Devuelve su nombre para usarlo como `container` de los nodos hijos.",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         name: z.string().describe("Nombre del contenedor (también su clave como padre)."),
         type: z.string().describe("Tipo contenedor válido de la notación (ver describe_notation)."),
         description: z.string().optional(),
@@ -394,7 +520,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId, name, type, description, estado, source, metadata }) => {
+    async ({ diagramId: diagramIdEntrada, name, type, description, estado, source, metadata }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       try {
         const r = addContainer(model, {
@@ -420,7 +554,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Añade un nodo (Comando, Evento, Tarea, Clase, …). Si indicas `container` (nombre de un contenedor existente) el nodo queda dentro de él. Devuelve el `id` del nodo (para conectarlo con add_edge).",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         name: z.string(),
         type: z.string().describe("Tipo NO contenedor válido de la notación."),
         container: z.string().optional().describe("Nombre de un contenedor existente."),
@@ -439,7 +573,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId, name, type, container, description, estado, tags, id, source, metadata }) => {
+    async ({ diagramId: diagramIdEntrada, name, type, container, description, estado, tags, id, source, metadata }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       try {
         const r = addNode(model, {
@@ -468,7 +610,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Crea una arista entre dos elementos (por id). El clasificador la ubica sola: interna al contenedor, política entre contenedores o del big picture.",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         from: z.string().describe("Id del elemento origen."),
         to: z.string().describe("Id del elemento destino."),
         label: z.string().optional().describe("Etiqueta de la relación (ej. 'dispara', 'usa [HTTPS]')."),
@@ -481,7 +623,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId, from, to, label, arrow, dashed }) => {
+    async ({ diagramId: diagramIdEntrada, from, to, label, arrow, dashed }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       try {
         const next = addEdge(model, { fuente: from, destino: to, descripcion: label, arrow, dashed });
@@ -500,7 +650,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Cambia nombre, descripción, ESTADO (existente/modificado/nuevo), cita de la fuente, tags o METADATOS (repositorio, wiki, dueño) de un elemento existente SIN perder su id ni sus relaciones. Es la herramienta para arreglar lo que reporta validate_diagram (nombres que el lienzo recorta, elementos sin fuente) en vez de borrar y recrear. Renombrar un contenedor arrastra a sus hijos.",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         id: z.string().describe("Id del elemento (nodo o contenedor)."),
         name: z.string().optional().describe("Nombre nuevo (corto: el lienzo recorta)."),
         type: z
@@ -524,7 +674,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId, id, name, type, description, estado, source, tags, metadata, metadataRemove }) => {
+    async ({ diagramId: diagramIdEntrada, id, name, type, description, estado, source, tags, metadata, metadataRemove }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       try {
         const next = updateNode(model, id, {
@@ -553,7 +711,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Cambia la etiqueta o el estilo de una relación existente (por sus extremos). Úsala para acortar etiquetas largas —se dibujan sueltas sobre la línea y tapan los nodos vecinos— dejando el detalle en la descripción de los elementos que conecta.",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         from: z.string(),
         to: z.string(),
         label: z.string().optional().describe("Etiqueta nueva, corta: verbo + [tecnología]."),
@@ -561,7 +719,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         arrow: z.enum(["end", "both", "none"]).optional(),
       },
     },
-    async ({ diagramId, from, to, label, dashed, arrow }) => {
+    async ({ diagramId: diagramIdEntrada, from, to, label, dashed, arrow }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       try {
         const next = updateEdge(model, from, to, {
@@ -583,9 +749,17 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       title: "Eliminar una relación",
       description:
         "Borra UNA relación por sus extremos, sin tocar los elementos. Para reconectar: p. ej. una Política que apunta directo a un Evento se corrige quitando ese atajo y pasando por el Comando que dispara.",
-      inputSchema: { diagramId: z.string(), from: z.string(), to: z.string() },
+      inputSchema: { diagramId: diagramIdSchema, from: z.string(), to: z.string() },
     },
-    async ({ diagramId, from, to }) => {
+    async ({ diagramId: diagramIdEntrada, from, to }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       try {
         await saveModel(diagramId, removeEdge(model, from, to));
@@ -602,9 +776,17 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       title: "Eliminar elemento",
       description:
         "Elimina un nodo o contenedor por id y las aristas que lo tocan. Los hijos de un contenedor borrado quedan sueltos.",
-      inputSchema: { diagramId: z.string(), id: z.string() },
+      inputSchema: { diagramId: diagramIdSchema, id: z.string() },
     },
-    async ({ diagramId, id }) => {
+    async ({ diagramId: diagramIdEntrada, id }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       await saveModel(diagramId, removeNode(model, id));
       return text(`Elemento "${id}" eliminado.`);
@@ -619,9 +801,17 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       title: "Validar diagrama",
       description:
         "Dos revisiones en una: VALIDEZ (tipos, ids duplicados, aristas colgantes, nodos aislados que el lienzo descartaría) y CALIDAD DE MODELADO por notación (¿hay inicio y fin?, ¿cada rama de la decisión dice su condición?, ¿la cadena Comando→Evento existe?, ¿las relaciones C4 declaran tecnología?, ¿los nombres caben en el lienzo?). Los errores y los hallazgos `grave` se corrigen antes de exportar.",
-      inputSchema: { diagramId: z.string() },
+      inputSchema: { diagramId: diagramIdSchema },
     },
-    async ({ diagramId }) => {
+    async ({ diagramId: diagramIdEntrada }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       const v = validate(model);
       const findings = qualityFindings(model);
@@ -647,14 +837,22 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Devuelve el artefacto que el HUMANO revisa antes de que el diagrama entre a la app, siempre con la misma estructura: 1) la historia en Mermaid, 2) tabla «elemento ← fuente» agrupada por contenedor, 3) decisiones tomadas y lo que quedó pendiente en la fuente, 4) hallazgos de validez y calidad, 5) veredicto. Muéstralo al usuario y espera su aprobación: con veredicto ❌ no exportes.",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         sourceLabel: z
           .string()
           .optional()
           .describe("Cómo se llama el material revisado (\"PRD Aurora v3\", \"repo backend\")."),
       },
     },
-    async ({ diagramId, sourceLabel }) => {
+    async ({ diagramId: diagramIdEntrada, sourceLabel }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       const packet = reviewPacket(model, sourceLabel);
       return text(packet.markdown);
@@ -666,9 +864,17 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Sugerir el conjunto de vistas",
       description: `Mira el modelo (roles de sus elementos y tamaño) y propone el conjunto de vistas ideal: CORTES cuando pasa el tamaño legible (~${MAX_NODES} elementos) y COMPLEMENTOS cuando el material sostiene otra mirada (paisaje de sistemas, proceso operativo, visión de dominio). Úsala antes de exportar un diagrama grande: una vista ilegible no se revisa.`,
-      inputSchema: { diagramId: z.string() },
+      inputSchema: { diagramId: diagramIdSchema },
     },
-    async ({ diagramId }) => {
+    async ({ diagramId: diagramIdEntrada }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       return text(formatViewPlan(suggestViews(model)));
     }
@@ -683,7 +889,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Registra en el diagrama una decisión de diseño que la FUENTE no cierra (alternativas sin decidir, contradicciones, vacíos que cambian la topología). Registra primero y pregunta TODO junto en una sola ronda. Lo que quede sin resolver viaja al humano en las notas del proyecto y en review_diagram: declarado, no inventado.",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         question: z.string().describe("La duda, tal como se le preguntaría al usuario."),
         options: z
           .array(z.string())
@@ -693,7 +899,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         source: z.string().optional().describe("Cita de dónde nace la duda."),
       },
     },
-    async ({ diagramId, question, options, affects, source }) => {
+    async ({ diagramId: diagramIdEntrada, question, options, affects, source }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       const r = recordAmbiguity(model, { pregunta: question, opciones: options, afecta: affects, source });
       await saveModel(diagramId, r.model);
@@ -710,12 +924,20 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Cierra una ambigüedad con la respuesta del usuario. Queda en el modelo como «decisión tomada» y aparece en review_diagram y en las notas del proyecto: el humano ve POR QUÉ el diagrama dice lo que dice.",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         id: z.string().describe("Id devuelto por record_ambiguity."),
         resolution: z.string().describe("Qué se decidió (y quién lo decidió, si aplica)."),
       },
     },
-    async ({ diagramId, id, resolution }) => {
+    async ({ diagramId: diagramIdEntrada, id, resolution }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       try {
         const next = resolveAmbiguity(model, id, resolution);
@@ -739,7 +961,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Declara los campos del proyecto que el humano ve en «Metadatos»: zonas a discutir (hotspots), responsables y notas. Un hotspot es lo que el equipo TIENE que discutir (una decisión sin dueño, un flujo contradictorio), no cualquier detalle pendiente: para eso está record_ambiguity. Las notas que el humano ya escribió en la app NO se pisan — quedan arriba y el resumen de ambigüedades se agrega debajo. Pasar una lista vacía borra ese campo; omitirlo lo deja como estaba.",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         hotspots: z
           .array(z.string())
           .optional()
@@ -754,7 +976,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .describe("Notas del proyecto. Reemplaza las notas propias, no el resumen de ambigüedades."),
       },
     },
-    async ({ diagramId, hotspots, responsables, notes }) => {
+    async ({ diagramId: diagramIdEntrada, hotspots, responsables, notes }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       try {
         const next = setProjectMeta(model, { hotspots, responsables, notas: notes });
@@ -777,7 +1007,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Declara una proyección (read model) de la vista de datos: qué pantalla o consulta se arma con qué eventos. No es una caja del lienzo: sale en la «Vista de Datos» del proyecto y en su Markdown. Un nombre repetido REEMPLAZA al anterior (dos proyecciones con el mismo nombre no se distinguen).",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         name: z.string().describe("Nombre de la proyección (p. ej. «Panel de pólizas»)."),
         description: z.string().optional().describe("Para qué sirve, en una línea."),
         projects: z
@@ -791,7 +1021,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         technologies: z.array(z.string()).optional().describe("Tecnologías con las que se implementa."),
       },
     },
-    async ({ diagramId, name, description, projects, uiPolicies, technologies }) => {
+    async ({ diagramId: diagramIdEntrada, name, description, projects, uiPolicies, technologies }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       try {
         const r = addReadModel(model, {
@@ -818,11 +1056,19 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Quita una proyección de la vista de datos por su nombre. Si no existe, la respuesta lista las que sí hay.",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         name: z.string().describe("Nombre exacto del read model (ver get_diagram)."),
       },
     },
-    async ({ diagramId, name }) => {
+    async ({ diagramId: diagramIdEntrada, name }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       try {
         const next = removeReadModel(model, name);
@@ -841,7 +1087,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       description:
         "Descarta la geometría del diagrama y la recalcula, sin tocar elementos ni relaciones. Úsala con diagramas construidos hace tiempo o importados desde la app (traen posiciones guardadas y por eso volverían a exportarse con la disposición vieja), o para probar otra disposición: `density` cambia cuánto aire tiene y `strategy` cómo se ordena. Son los MISMOS presets que ofrece el botón «Organizar» del lienzo.",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         density: z
           .enum(["compacto", "comodo", "expandido"])
           .optional()
@@ -854,7 +1100,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId, density, strategy }) => {
+    async ({ diagramId: diagramIdEntrada, density, strategy }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       const next = relayout(model, { density, strategy });
       await saveModel(diagramId, next);
@@ -875,9 +1129,17 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Vista previa Mermaid",
       description: "Devuelve el diagrama en Mermaid para revisarlo visualmente (sequenceDiagram si hay Líneas de Vida, flowchart en el resto de casos).",
-      inputSchema: { diagramId: z.string() },
+      inputSchema: { diagramId: diagramIdSchema },
     },
-    async ({ diagramId }) => {
+    async ({ diagramId: diagramIdEntrada }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       return text("```mermaid\n" + toMermaid(model) + "\n```");
     }
@@ -1146,15 +1408,27 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Exportar a la app",
       description: opts.exportToApp
-        ? "Serializa el diagrama (GraphData) y lo CARGA DIRECTO en el lienzo de Processflow Architect (la app está conectada). También escribe un .json de respaldo en el workspace."
+        ? "Serializa el diagrama (GraphData) y lo entrega al lienzo de Processflow Architect (la app está conectada). Por defecto ACTUALIZA el proyecto abierto —o el que diga `project` / la configuración del servidor— conservando la geometría que el humano movió y fusionando sus notas; con `mode=\"new\"` crea un proyecto aparte. También escribe un .json de respaldo."
         : "Serializa el diagrama al formato GraphData y lo escribe como .json en el workspace. Ese archivo se abre en Processflow Architect con «Importar diagrama (JSON)». Devuelve la ruta absoluta.",
       inputSchema: {
-        diagramId: z.string(),
+        diagramId: diagramIdSchema,
         projectName: z
           .string()
           .optional()
           .describe(
             "Nombre del PROYECTO en la app (por defecto el del diagrama). Útil cuando un diagrama es un nivel de algo mayor: un C4 con L1+L2+L3 no debería llamarse «… · C4 L1 Contexto». Simétrico con `viewName` de export_as_view."
+          ),
+        project: z
+          .string()
+          .optional()
+          .describe(
+            "Proyecto de la app a ACTUALIZAR: su nombre, o \"activo\" para el que está abierto. Por defecto, el de la configuración del servidor (`PROCESSFLOW_PROJECT`) o el activo. Sólo aplica con mode=\"update\"."
+          ),
+        mode: z
+          .enum(["update", "new"])
+          .optional()
+          .describe(
+            "update (por defecto con la app conectada): funde el diseño sobre un proyecto que ya existe, conservando su geometría y sus notas. new: crea un proyecto aparte — dos diseños del mismo dominio dejan dos proyectos y el humano tiene que adivinar cuál vale."
           ),
         outPath: z
           .string()
@@ -1162,7 +1436,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .describe("Ruta de salida (por defecto <workspace>/<diagramId>.json)."),
       },
     },
-    async ({ diagramId, projectName, outPath }) => {
+    async ({ diagramId: diagramIdEntrada, projectName, project, mode, outPath }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
       const model = await loadModel(diagramId);
       const v = validate(model);
       const nombre = projectName?.trim() || model.meta.nombre_proyecto;
@@ -1178,10 +1460,35 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
 
       // Modo app: entrega directa al lienzo.
       if (opts.exportToApp) {
-        const delivered = await opts.exportToApp(nombre, graph);
+        // Actualizar es el default: crear un proyecto nuevo en cada entrega es
+        // lo que dejaba tres «Enrollment v2» y ninguno claramente vigente.
+        const actualiza = (mode ?? "update") === "update";
+        let destino: { project: string } | undefined;
+        if (actualiza) {
+          const estado = opts.getAppState?.() ?? null;
+          try {
+            destino = {
+              project: resolveProjectRef(project ?? opts.defaultProject, {
+                activo: estado?.projectName ?? null,
+                proyectos: estado?.projects ?? [],
+              }),
+            };
+          } catch (e: any) {
+            // Pidió un proyecto POR NOMBRE y no existe: se avisa. Entregar a
+            // otro (o crear una copia) es peor que no entregar.
+            if (project ?? opts.defaultProject) return fail(`${e.message}\n\nEl .json quedó en: ${dest}`);
+            // Nadie dijo a cuál y no hay ninguno abierto (pantalla de
+            // bienvenida): crear el primero es exactamente lo que se quiere.
+            destino = undefined;
+          }
+        }
+
+        const delivered = await opts.exportToApp(nombre, graph, destino);
         if (delivered) {
           return text(
-            `✅ Diagrama cargado en el lienzo de la app como proyecto "${nombre}".\nRespaldo: ${dest}${warn}${err}`
+            destino
+              ? `✅ Proyecto "${destino.project}" ACTUALIZADO en la app con el diseño "${nombre}". Se conservó la posición de los elementos que ya estaban y sus notas.\nRespaldo: ${dest}${warn}${err}`
+              : `✅ Diagrama cargado en el lienzo de la app como proyecto NUEVO "${nombre}".\nRespaldo: ${dest}${warn}${err}`
           );
         }
         return text(
@@ -1204,14 +1511,22 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         description:
           "Carga el diagrama como una VISTA nueva (pestaña) del proyecto ACTIVO en la app, con su propia notación — en vez de crear un proyecto aparte (para eso está export_to_app). Úsala para complementar un modelo con vistas BPMN/C4/UML del mismo dominio. Requiere un proyecto abierto en la app.",
         inputSchema: {
-          diagramId: z.string(),
+          diagramId: diagramIdSchema,
           viewName: z
             .string()
             .optional()
             .describe("Nombre de la pestaña (por defecto, el nombre del diagrama)."),
         },
       },
-      async ({ diagramId, viewName }) => {
+      async ({ diagramId: diagramIdEntrada, viewName }) => {
+      // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
+      // configuración, o el único del workspace (`active-diagram.ts`).
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
         const model = await loadModel(diagramId);
         const v = validate(model);
         const graph: GraphData = toGraphData(model);
@@ -1306,8 +1621,10 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       const model = rehacer ? relayout(importado) : importado;
       const id = await freshId(slugify(data.nombre_proyecto || "importado"));
       await saveModel(id, model);
+      // Igual que create_diagram: retomar un diseño es empezar a trabajar en él.
+      await writePinned(id);
       return text(
-        `Importado como diagramId="${id}" (${model.nodes.length} elementos, ${model.edges.length} aristas)${
+        `Importado y FIJADO como diagramId="${id}" (${model.nodes.length} elementos, ${model.edges.length} aristas)${
           rehacer ? ", con el layout rehecho" : ". Trae la disposición del archivo; usa relayout_diagram si querés recalcularla"
         }.`
       );

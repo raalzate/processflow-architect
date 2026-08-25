@@ -14,6 +14,7 @@ import { readMcpPrefs } from "@/lib/mcp-settings";
 import { describeAppState } from "@/lib/mcp/app-state";
 import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
 import { mergeProjectMeta, describeMetaAgregada } from "@/lib/mcp/project-meta";
+import { mergeProjectGraph } from "@/lib/mcp/project-update";
 import { artifactBodyMarkdown } from "@/lib/artifacts/to-markdown";
 import { readStoredArtifacts } from "@/context/AgentContext";
 import { readStoredCustomViews } from "@/context/ViewsContext";
@@ -72,8 +73,15 @@ const MemoizedAppHeader = React.memo(() => {
 //    `get_app_state` lo sirva al agente: sin esa ingesta previa, el agente
 //    exporta a ciegas y duplica o pisa el trabajo del humano.
 const McpImportBridge = () => {
-  const { handleCreateProjectFromContent, handleDesignUpdate, currentFileId, graphData, savedFiles, allNodes } =
-    useGraphContext();
+  const {
+    handleCreateProjectFromContent,
+    handleDesignUpdate,
+    handleFileSelect,
+    currentFileId,
+    graphData,
+    savedFiles,
+    allNodes,
+  } = useGraphContext();
   const { createView, views } = useViews();
   const { toast } = useToast();
 
@@ -170,7 +178,7 @@ const McpImportBridge = () => {
     const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
     if (!electron?.onMcpImportDiagram) return;
 
-    const off = electron.onMcpImportDiagram(({ name, content, view, mermaid }) => {
+    const off = electron.onMcpImportDiagram(({ name, content, view, mermaid, target }) => {
       try {
         if (mermaid) {
           // Vista Mermaid: content es el código. Requiere proyecto activo.
@@ -230,6 +238,35 @@ const McpImportBridge = () => {
           });
           return;
         }
+        if (target?.project) {
+          // Actualizar EN EL SITIO: el proyecto conserva su id, su historial y la
+          // posición que el humano les dio a las cajas. Crear otro proyecto en
+          // cada entrega es lo que dejaba tres copias y ninguna vigente.
+          const destino =
+            savedFiles.find((f) => f.content?.nombre_proyecto === target.project) ??
+            (graphData?.nombre_proyecto === target.project && currentFileId
+              ? savedFiles.find((f) => f.id === currentFileId)
+              : undefined);
+          if (destino) {
+            const base = destino.id === currentFileId ? graphData ?? destino.content : destino.content;
+            const { graph, resumen } = mergeProjectGraph(base, content as GraphData);
+            handleDesignUpdate(destino.id, graph);
+            if (destino.id !== currentFileId) handleFileSelect(destino.id);
+            toast({
+              title: `Proyecto "${target.project}" actualizado por MCP`,
+              description: `${resumen.agregados} nuevos · ${resumen.conservados} conservados · ${resumen.quitados} que ya no están en el diseño.`,
+            });
+            return;
+          }
+          // El proyecto se renombró o se borró entre la resolución y la entrega.
+          handleCreateProjectFromContent(name, content as GraphData);
+          toast({
+            variant: "destructive",
+            title: `No encontré el proyecto "${target.project}"`,
+            description: `"${name}" se cargó como proyecto nuevo para no perder el diseño.`,
+          });
+          return;
+        }
         handleCreateProjectFromContent(name, content as GraphData);
         toast({
           title: "Diagrama recibido por MCP",
@@ -249,7 +286,16 @@ const McpImportBridge = () => {
     if (enabled) electron.mcpServerStart?.(port).catch(() => {});
 
     return off;
-  }, [handleCreateProjectFromContent, handleDesignUpdate, createView, currentFileId, graphData, toast]);
+  }, [
+    handleCreateProjectFromContent,
+    handleDesignUpdate,
+    handleFileSelect,
+    createView,
+    currentFileId,
+    graphData,
+    savedFiles,
+    toast,
+  ]);
 
   return null;
 };

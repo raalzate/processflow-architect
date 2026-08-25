@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       content: any;
       view?: { notation?: string };
       mermaid?: boolean;
+      target?: { project: string };
     }) => void
   ) => {
     const listener = (_e: any, data: any) => callback(data);

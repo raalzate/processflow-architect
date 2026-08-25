@@ -118,6 +118,20 @@ Convenciones: nombres en el idioma de la fuente, **`name` de máx ~21 caracteres
 `[tecnología]`; se dibuja suelta sobre la línea y tapa los nodos vecinos). El
 detalle va en `description`. Ids autogenerados salvo necesidad.
 
+### El diagrama fijado y el proyecto destino
+
+`create_diagram` e `import_diagram` dejan **fijado** el modelo: las llamadas
+siguientes pueden omitir `diagramId`. Con varios modelos en curso, `use_diagram`
+cambia cuál es el activo (queda guardado en el workspace). Pasar `diagramId`
+explícito siempre gana.
+
+`export_to_app` **actualiza** el proyecto de la app —el que diga `project`, el de
+la configuración del servidor, o el abierto— en vez de crear una copia: conserva
+la posición que el humano les dio a las cajas y fusiona sus notas. Usá
+`mode: "new"` sólo cuando de verdad querés un proyecto aparte. Si el proyecto que
+nombraste no existe, la herramienta avisa en vez de inventar uno: mirá
+`get_app_state` antes de entregar.
+
 ### Estado: documentar lo que HAY vs diseñar lo que VIENE
 
 `add_node`, `add_container` y `update_element` aceptan `estado`: `existente` (ya

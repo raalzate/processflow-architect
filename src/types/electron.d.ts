@@ -76,6 +76,11 @@ export interface ElectronAPI {
       view?: { notation?: string };
       /** true cuando llega vía export_mermaid_view: crear vista Mermaid (content = código). */
       mermaid?: boolean;
+      /**
+       * Presente cuando `export_to_app` ACTUALIZA un proyecto existente (por
+       * nombre) en vez de crear otro. Ver `src/lib/mcp/project-update.ts`.
+       */
+      target?: { project: string };
     }) => void
   ) => () => void;
 

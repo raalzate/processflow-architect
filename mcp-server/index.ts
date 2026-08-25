@@ -19,14 +19,47 @@ import { registerProcessflowTools } from "../main/services/mcp-tools";
 // Configurable por env; por defecto el cwd (Claude Code corre en la raíz del repo).
 const WORKSPACE = process.env.PROCESSFLOW_WORKSPACE || process.cwd();
 
+/** Valor de `--flag <valor>` (o `--flag=valor`) en los argumentos del proceso. */
+function argumento(nombre: string): string | undefined {
+  const args = process.argv.slice(2);
+  const i = args.indexOf(`--${nombre}`);
+  if (i >= 0 && args[i + 1] && !args[i + 1].startsWith("--")) return args[i + 1];
+  const pegado = args.find((a) => a.startsWith(`--${nombre}=`));
+  return pegado?.slice(nombre.length + 3) || undefined;
+}
+
+/**
+ * Diagrama por defecto del servidor: se declara en `.mcp.json`
+ * (`"args": ["tsx", "mcp-server/index.ts", "--diagram", "<id>"]`) o por env.
+ * Ata la sesión a un diagrama sin repetir `diagramId` en cada llamada; lo pisan
+ * `use_diagram` y el `diagramId` explícito.
+ */
+const DEFAULT_DIAGRAM = argumento("diagram") || process.env.PROCESSFLOW_DIAGRAM || undefined;
+
+/**
+ * Proyecto de la APP al que van las entregas (`--project "Enrollment v2"` en
+ * `.mcp.json`, o `PROCESSFLOW_PROJECT`). Con esto `export_to_app` actualiza ese
+ * proyecto en vez de crear uno nuevo por entrega. Sólo tiene efecto con la app
+ * conectada (modo HTTP); en stdio la entrega es un `.json`.
+ */
+const DEFAULT_PROJECT = argumento("project") || process.env.PROCESSFLOW_PROJECT || undefined;
+
 async function main() {
   const server = new McpServer({ name: "processflow-architect", version: "0.1.0" });
-  registerProcessflowTools(server, { workspace: WORKSPACE });
+  registerProcessflowTools(server, {
+    workspace: WORKSPACE,
+    defaultDiagramId: DEFAULT_DIAGRAM,
+    defaultProject: DEFAULT_PROJECT,
+  });
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // No escribir en stdout: es el canal del protocolo. Los logs van a stderr.
-  process.stderr.write(`[processflow-mcp] listo (stdio). Workspace: ${WORKSPACE}\n`);
+  process.stderr.write(
+    `[processflow-mcp] listo (stdio). Workspace: ${WORKSPACE}${
+      DEFAULT_DIAGRAM ? ` · diagrama por defecto: ${DEFAULT_DIAGRAM}` : ""
+    }\n`
+  );
 }
 
 main().catch((e) => {

@@ -26,10 +26,15 @@ function appWorkspace(): string {
 }
 
 /** Igual que en mcp-http: entrega el diagrama exportado al lienzo del renderer. */
-async function exportToApp(name: string, graph: GraphData): Promise<boolean> {
+async function exportToApp(
+  name: string,
+  graph: GraphData,
+  target?: { project: string }
+): Promise<boolean> {
   const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
   if (!win) return false;
-  win.webContents.send("mcp-import-diagram", { name, content: graph });
+  // `target` presente ⇒ ACTUALIZAR ese proyecto; ausente ⇒ proyecto nuevo.
+  win.webContents.send("mcp-import-diagram", { name, content: graph, target });
   if (win.isMinimized()) win.restore();
   win.focus();
   return true;
