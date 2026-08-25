@@ -4,11 +4,11 @@ Lo imprime el hook `SessionStart`. Sirve para no releer el repo entero para resp
 Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verificado con un comando**;
 lo que se supone va en "deuda conocida".
 
-- **Fecha del último gate completo:** 2026-08-24
+- **Fecha del último gate completo:** 2026-08-25
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.6.4 — release **publicado** (Latest) con los 3 instaladores
-- **Versión en el repo:** 0.6.5 — notas en `docs/releases/0.6.5.md`; **falta mergear el PR #145 y empujar el tag `v0.6.5`**. El workflow deja el release en BORRADOR a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v<versión> --draft=false`)
+- **Versión publicada:** 0.6.4 — release publicado (Latest). **0.6.5 está en BORRADOR** con los 3 instaladores construidos (`gh release edit v0.6.5 --draft=false` para publicarlo: es un paso humano a propósito)
+- **Versión en el repo:** 0.6.5 — notas en `docs/releases/0.6.5.md`; PR #145 mergeado y tag `v0.6.5` empujado. El workflow dejó el release en BORRADOR (`draft: true`) con dmg, exe y AppImage
 
 ## Señales
 
