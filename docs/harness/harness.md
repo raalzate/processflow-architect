@@ -61,9 +61,11 @@ repo es cambiar ese único archivo.
 
 | Momento | Hook | Qué hace |
 |---|---|---|
+| `UserPromptSubmit` | `ask-first.mjs` | marca el turno cuando el pedido es informativo (pregunta, reporte sin imperativo): **no se actúa sobre una pregunta** |
 | `UserPromptSubmit` | `sdd-router.mjs` | clasifica el pedido: tamaño feature → ruta SDD, falla concreta → bugfix, cambio de IA → `AiTask` y llaves fuera del renderer; se calla en lo trivial |
 | `UserPromptSubmit` | `graph-first.mjs` | si hay índice de graphify construido, empuja a consultarlo (`graphify query`) antes de abrir archivos; callado si el grafo no existe o el pedido no es una pregunta de código |
 | `SessionStart` | `session-start.mjs` | imprime rama, HEAD, cambios sin commitear y `STATUS.md`; avisa si el pre-commit no está instalado o si hay gate pendiente |
+| `PreToolUse` Write\|Edit | `action-guard.mjs` | deniega editar dentro del repo mientras el turno esté marcado como informativo; lo limpia el próximo pedido del humano. Escribir fuera del repo (scratchpad) sigue permitido |
 | `PreToolUse` Write\|Edit | `protected-paths.mjs` | deniega editar `.env*`, `package-lock.json`, `.git/`, `build/`, `dist/`, `.next/`, `coverage/`, `node_modules/` |
 | `PreToolUse` Write\|Edit | `reuse-guard.mjs` | bloquea boilerplate que ya tiene abstracción (`docs/architecture/reuse-patterns.md`) |
 | `PreToolUse` Bash | `bash-guard.mjs` | deniega `--no-verify`, `--force`, `reset --hard`, `git add .`, `git clean -f`, `sed -i` masivo sobre fuente, `rm -rf` de directorios fuente, `find -delete` |

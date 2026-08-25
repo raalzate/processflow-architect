@@ -154,6 +154,43 @@ for (const [hook, name, payload, expected] of blocks) {
 }
 
 /**
+ * «Una pregunta se contesta; una acción se pide». El freno que faltaba: el usuario
+ * preguntaba y el agente se iba a editar archivos. El clasificador es lo único que lo
+ * separa de un estorbo, así que se prueba con pedidos REALES en las dos direcciones.
+ */
+{
+  const marker = abs(config.askFirst?.marker ?? ".git/agent-answer-first");
+  const habia = fs.existsSync(marker);
+  const previo = habia ? fs.readFileSync(marker, "utf8") : null;
+  const edicion = {
+    hook_event_name: "PreToolUse",
+    tool_name: "Write",
+    cwd: REPO_ROOT,
+    tool_input: { file_path: abs("src/lib/ejemplo-selftest.ts"), content: "x" },
+  };
+  const tras = (prompt) => {
+    runHook("ask-first.mjs", { hook_event_name: "UserPromptSubmit", prompt });
+    return runHook("action-guard.mjs", edicion).status === 2;
+  };
+  const casos = [
+    ["¿por qué el lienzo queda vacío?", true],
+    ["qué hace graph-processor", true],
+    ["cómo se agrega una notación", true],
+    ["pero lo probaste en el binario empaquetado?", true],
+    ["arreglá el filtro de notación", false],
+    ["dale, hacelo", false],
+    ["¿podés arreglar el lienzo?", false],
+  ];
+  for (const [prompt, debe] of casos) {
+    const frena = tras(prompt);
+    if (frena === debe) ok(`ask-first: «${prompt.slice(0, 34)}» ${debe ? "frena" : "deja actuar"}`);
+    else bad(`ask-first: «${prompt.slice(0, 34)}»`, `esperaba ${debe ? "bloqueo" : "paso libre"}`);
+  }
+  if (previo !== null) fs.writeFileSync(marker, previo);
+  else fs.rmSync(marker, { force: true });
+}
+
+/**
  * `.githooks/commit-msg` en un repo git DE VERDAD (temporal, fuera del árbol):
  * el hook lee `git diff --cached`, así que probarlo con payloads falsos no
  * probaría nada. Es el freno que faltaba cuando cuatro arreglos de una sesión

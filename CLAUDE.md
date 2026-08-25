@@ -7,6 +7,9 @@
 
 ## El arnés (leer antes de tocar nada)
 
+- **Una pregunta se contesta; una acción se pide.** Si el pedido es informativo, el hook
+  `ask-first` marca el turno y `action-guard` bloquea toda edición del repo hasta que el humano
+  pida el cambio. Contestá y, si hace falta un cambio, proponelo: no lo hagas por tu cuenta.
 - **Nada se entrega sin `npm run gate` verde.** Es la única definición de entregable:
   self-test del arnés · link-check de docs · lint de convenciones · typecheck · tests
   con cobertura · build de producción. `npm run gate:fast` omite el build: es señal de
