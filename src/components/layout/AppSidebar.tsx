@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import { cn } from "@/lib/utils";
 import {
   Copy,
@@ -223,35 +225,35 @@ function TaskListPanel() {
           <ClipboardList className="w-5 h-5" /> Elementos Principales
         </div>
         <div className="flex items-center gap-1">
-            <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleGenerateAi}
-            disabled={isGenerating}
-            title="Generar lista con IA"
-            >
-            {isGenerating ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-                <Sparkles className="w-4 h-4 text-primary" />
-            )}
-            </Button>
-            <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={async () =>
+            <IconAction
+              variant="ghost"
+              className="h-7 w-7"
+              onClick={handleGenerateAi}
+              disabled={isGenerating}
+              label={accion("sugerir", "la lista")}
+              icon={
+                isGenerating ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-primary" />
+                )
+              }
+            />
+            <IconAction
+              variant="ghost"
+              className="h-7 w-7"
+              onClick={async () =>
                 handleCopy(await formatTaskListToMarkdown(mergedTasks, graphData?.notas, false), "tasklist")
-            }
-            title="Copiar lista de elementos"
-            >
-            {copiedStates["tasklist"] ? (
-                <CopyCheck className="w-4 h-4 text-success" />
-            ) : (
-                <Copy className="w-4 h-4" />
-            )}
-            </Button>
+              }
+              label={accion("copiar", "la lista de elementos")}
+              icon={
+                copiedStates["tasklist"] ? (
+                  <CopyCheck className="w-4 h-4 text-success" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )
+              }
+            />
         </div>
       </SidebarGroupLabel>
         <p className="text-xs italic px-2 mb-2 text-muted-foreground">
@@ -402,21 +404,19 @@ function DomainModelPanel() {
         <div className="flex items-center gap-2">
           <Workflow className="w-5 h-5" /> {getNotation(graphData.notation).modelLabel}
         </div>
-        <Button
+        <IconAction
           variant="ghost"
-          size="icon"
           className="h-7 w-7"
-          onClick={() =>
-            handleCopy(formatNodeTreeToMarkdown(graphData!), "nodetree")
+          onClick={() => handleCopy(formatNodeTreeToMarkdown(graphData!), "nodetree")}
+          label={accion("copiar", "el flujo de elementos")}
+          icon={
+            copiedStates["nodetree"] ? (
+              <CopyCheck className="w-4 h-4 text-success" />
+            ) : (
+              <Copy className="w-4 h-4" />
+            )
           }
-          title="Copiar flujo de elementos"
-        >
-          {copiedStates["nodetree"] ? (
-            <CopyCheck className="w-4 h-4 text-success" />
-          ) : (
-            <Copy className="w-4 h-4" />
-          )}
-        </Button>
+        />
       
       </SidebarGroupLabel>
       <p className="text-xs italic px-2 mb-2 text-muted-foreground">

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import {
   FilePlus2,
   Filter,
@@ -112,17 +114,21 @@ const McpStatusButton = () => {
     };
   }, []);
 
+  // Un solo texto para el tooltip y para el nombre accesible: mantenerlos por
+  // separado es garantizar que se desincronicen (ver `IconAction`). Este botón
+  // no usa `IconAction` porque con `asChild` envuelve un enlace.
+  const rotulo = running
+    ? `Servidor MCP activo — ${url} (clic: guía MCP)`
+    : "Servidor MCP apagado — actívalo en Ajustes (clic: guía MCP)";
+
   return (
     <Button
       asChild
       variant="ghost"
       size="icon"
       className="relative"
-      title={
-        running
-          ? `Servidor MCP activo — ${url} (clic: guía MCP)`
-          : "Servidor MCP apagado — actívalo en Ajustes (clic: guía MCP)"
-      }
+      aria-label={rotulo}
+      title={rotulo}
     >
       <Link href="/mcp">
         <Plug className="h-4 w-4" />
@@ -418,14 +424,13 @@ const GlobalSearch: React.FC<{
           />
           {/* Botón para limpiar la búsqueda */}
           {searchQuery && (
-            <Button
+            <IconAction
               variant="ghost"
-              size="icon"
               className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
               onClick={() => onSearchQueryChange("")}
-            >
-              <X className="h-4 w-4" />
-            </Button>
+              label={accion("limpiar", "la búsqueda")}
+              icon={<X className="h-4 w-4" />}
+            />
           )}
         </div>
       </PopoverTrigger>

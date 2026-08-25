@@ -17,6 +17,7 @@ import {
   MonitorCog,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
 import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -265,9 +266,13 @@ export default function SettingsPage() {
                       {m.downloaded && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => e.stopPropagation()}>
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
+                            <IconAction
+                              variant="ghost"
+                              className="h-7 w-7 shrink-0"
+                              onClick={(e) => e.stopPropagation()}
+                              label="Acciones del modelo"
+                              icon={<MoreHorizontal className="h-4 w-4" />}
+                            />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                             <DropdownMenuItem onClick={() => handleRevealModel(m.id as LitertModelId)}>

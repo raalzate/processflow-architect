@@ -4,6 +4,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { useAgent } from "@/context/AgentContext";
 import { useViews } from "@/context/ViewsContext";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -674,15 +676,13 @@ export function AgentChatPanel() {
             {/* «+»: elegir el artefacto en vez de esperar que la frase lo delate. */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
+                <IconAction
                   variant="ghost"
-                  size="icon"
                   className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
                   disabled={busy}
-                  title="Pedir un artefacto (documento o diagrama)"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
+                  label="Pedir un artefacto (documento o diagrama)"
+                  icon={<Plus className="h-4 w-4" />}
+                />
               </DropdownMenuTrigger>
               {/* Sólo documentos: los diagramas se diseñan en el lienzo o llegan
                   por MCP, no hacía falta pedirlos desde acá. */}
@@ -707,38 +707,35 @@ export function AgentChatPanel() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Button
+            <IconAction
               variant="ghost"
-              size="icon"
               className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
               onClick={() => fileRef.current?.click()}
               disabled={busy}
-              title="Adjuntar documento (PDF, imagen, texto)"
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
+              label="Adjuntar documento (PDF, imagen, texto)"
+              icon={<Paperclip className="h-4 w-4" />}
+            />
 
-            <Button
-              size="icon"
+            <IconAction
               className="ml-auto h-8 w-8 rounded-full"
               onClick={submit}
               disabled={!canSend}
-              title="Enviar (Enter)"
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
+              label="Enviar (Enter)"
+              icon={busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            />
           </div>
         </div>
 
         <div className="mt-1 flex items-center justify-between px-1">
           <span className="text-2xs text-muted-foreground">Enter para enviar · Shift+Enter salto de línea</span>
           {messages.length > 0 && (
-            <button
+            <IconAction
+              variant="ghost"
               onClick={clearChat}
-              className="flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
-            >
-              <Trash2 className="h-3 w-3" /> Limpiar
-            </button>
+              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+              label={accion("limpiar", "la conversación")}
+              icon={<Trash2 className="h-3 w-3" />}
+            />
           )}
         </div>
       </div>

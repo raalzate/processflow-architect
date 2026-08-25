@@ -3,6 +3,8 @@
 import React from "react";
 import { SidebarGroup, SidebarGroupLabel } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import { cn } from "@/lib/utils";
 import { Bot, Copy, CopyCheck, FileDown } from "lucide-react";
 import { useGraphContext } from "@/context/GraphContext";
@@ -27,31 +29,27 @@ export function AiAgentsPanel() {
           <AiProvenanceBadge />
         </div>
         <div className="flex items-center">
-          <Button
+          <IconAction
             variant="ghost"
-            size="icon"
             className="h-7 w-7"
             onClick={handleDownloadPdf}
             disabled={isGeneratingPdf}
-            title="Descargar análisis en PDF"
-          >
-            <FileDown
-              className={cn("w-4 h-4", isGeneratingPdf && "animate-pulse")}
-            />
-          </Button>
-          <Button
+            label={accion("descargar", "el análisis en PDF")}
+            icon={<FileDown className={cn("w-4 h-4", isGeneratingPdf && "animate-pulse")} />}
+          />
+          <IconAction
             variant="ghost"
-            size="icon"
             className="h-7 w-7"
             onClick={handleCopyAll}
-            title="Copiar todo el análisis"
-          >
-            {copiedStates["all"] ? (
-              <CopyCheck className="w-4 h-4 text-success" />
-            ) : (
-              <Copy className="w-4 h-4" />
-            )}
-          </Button>
+            label={accion("copiar", "todo el análisis")}
+            icon={
+              copiedStates["all"] ? (
+                <CopyCheck className="w-4 h-4 text-success" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )
+            }
+          />
         </div>
       </SidebarGroupLabel>
       <div className="w-full p-1">

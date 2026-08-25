@@ -37,6 +37,8 @@ import {
   Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -437,9 +439,14 @@ const MetadataField: React.FC<{
           placeholder="https://github.com/acme/pagos-svc"
           className="h-8 flex-1"
         />
-        <Button type="button" variant="outline" size="sm" className="h-8" onClick={agregar}>
-          <Plus className="mr-1 h-3.5 w-3.5" /> Agregar
-        </Button>
+        <IconAction
+          type="button"
+          variant="outline"
+          className="h-8 w-8"
+          onClick={agregar}
+          label={accion("agregar", "metadato")}
+          icon={<Plus className="h-3.5 w-3.5" />}
+        />
       </div>
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </div>
@@ -632,22 +639,21 @@ const EditNodeDialog: React.FC<{
   // Botón "Sugerir" reutilizable (IA local). Sólo gira el del campo activo; los
   // demás quedan deshabilitados mientras corre una sugerencia.
   const SugBtn = ({ field, onClick, disabled }: { field: string; onClick: () => void; disabled?: boolean }) => (
-    <Button
+    <IconAction
       type="button"
       variant="ghost"
-      size="sm"
-      className="h-7 text-ai hover:bg-ai/10 hover:text-ai"
+      className="h-7 w-7 text-ai hover:bg-ai/10 hover:text-ai"
       onClick={onClick}
       disabled={busy || disabled}
-      title="Sugerir con IA (ver el motor en el badge del título)"
-    >
-      {busyField === field ? (
-        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-      ) : (
-        <Sparkles className="w-4 h-4 mr-1" />
-      )}
-      Sugerir
-    </Button>
+      label={accion("sugerir")}
+      icon={
+        busyField === field ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Sparkles className="w-4 h-4" />
+        )
+      }
+    />
   );
 
   return (
@@ -812,19 +818,17 @@ const EditNodeDialog: React.FC<{
                   ))}
                 </SelectContent>
               </Select>
-              <Button
+              <IconAction
                 type="button"
                 variant="outline"
-                size="sm"
-                className="shrink-0 gap-1"
-                title="Crear una vista nueva y enlazarla a este elemento"
+                className="h-9 w-9 shrink-0"
+                label={accion("agregar", "vista enlazada a este elemento")}
+                icon={<Plus className="h-4 w-4" />}
                 onClick={() => {
                   const id = onCreateSubView(draft.nombre?.trim() || "Subproceso");
                   if (id) setDraft((d) => (d ? { ...d, viewRef: id } : d));
                 }}
-              >
-                <Plus className="h-4 w-4" /> Crear
-              </Button>
+              />
             </div>
             {draft.viewRef && (
               <Button
@@ -945,18 +949,15 @@ const EditLinkDialog: React.FC<{
         <div className="py-4">
           <div className="flex items-center justify-between">
             <Label htmlFor="link-desc">Descripción</Label>
-            <Button
+            <IconAction
               type="button"
               variant="ghost"
-              size="sm"
-              className="h-7 text-ai hover:bg-ai/10 hover:text-ai"
+              className="h-7 w-7 text-ai hover:bg-ai/10 hover:text-ai"
               onClick={suggestLabel}
               disabled={busy}
-              title="Sugerir etiqueta con IA"
-            >
-              {busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
-              Sugerir
-            </Button>
+              label={accion("sugerir", "la etiqueta")}
+              icon={busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            />
           </div>
           <Input
             id="link-desc"
@@ -1218,18 +1219,15 @@ const MetadataDialog: React.FC<{
           <div>
             <div className="flex items-center justify-between">
               <Label>Descripción del Big Picture</Label>
-              <Button
+              <IconAction
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="h-7 text-ai hover:bg-ai/10 hover:text-ai"
+                className="h-7 w-7 text-ai hover:bg-ai/10 hover:text-ai"
                 onClick={suggestBigPicture}
                 disabled={busy}
-                title="Sugerir con IA a partir del diseño"
-              >
-                {busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
-                Sugerir
-              </Button>
+                label={accion("sugerir", "a partir del diseño")}
+                icon={busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              />
             </div>
             <Textarea
               value={draft.bigPictureDescripcion}
@@ -1264,10 +1262,12 @@ const MetadataDialog: React.FC<{
           <div className="border-t pt-3">
             <div className="flex items-center justify-between mb-2">
               <Label className="text-sm font-semibold">Read Models</Label>
-              <Button
+              <IconAction
                 type="button"
                 variant="outline"
-                size="sm"
+                className="h-8 w-8"
+                label={accion("agregar", "read model")}
+                icon={<Plus className="w-4 h-4" />}
                 onClick={() =>
                   setDraft((d) => ({
                     ...d,
@@ -1277,9 +1277,7 @@ const MetadataDialog: React.FC<{
                     ],
                   }))
                 }
-              >
-                <Plus className="w-4 h-4 mr-1" /> Añadir
-              </Button>
+              />
             </div>
             <div className="space-y-3">
               {draft.read_models.map((rm, i) => (
@@ -3074,24 +3072,20 @@ export const ComponentDesigner: React.FC<{
         <div className="flex items-center gap-2">
           {/* Deshacer / Rehacer (visibles) */}
           <div className="flex items-center gap-1">
-            <Button
+            <IconAction
               variant="outline"
-              size="icon"
               onClick={doUndo}
               disabled={!canUndo}
-              title={`Deshacer (${modKey}+Z)`}
-            >
-              <Undo2 className="h-4 w-4" />
-            </Button>
-            <Button
+              label={`Deshacer (${modKey}+Z)`}
+              icon={<Undo2 className="h-4 w-4" />}
+            />
+            <IconAction
               variant="outline"
-              size="icon"
               onClick={doRedo}
               disabled={!canRedo}
-              title={`Rehacer (${modKey}+Shift+Z)`}
-            >
-              <Redo2 className="h-4 w-4" />
-            </Button>
+              label={`Rehacer (${modKey}+Shift+Z)`}
+              icon={<Redo2 className="h-4 w-4" />}
+            />
           </div>
 
           <div className="w-px h-6 bg-border mx-1" />
@@ -3108,19 +3102,17 @@ export const ComponentDesigner: React.FC<{
 
           <div className="w-px h-6 bg-border mx-1" />
 
-          <Button
+          <IconAction
             variant="outline"
-            size="icon"
             onClick={deleteSelected}
             disabled={selectedIds.size === 0}
-            title={
+            label={
               selectedIds.size > 1
-                ? `Eliminar ${selectedIds.size} seleccionados (Supr)`
-                : "Eliminar seleccionado (Supr)"
+                ? accion("eliminar", `${selectedIds.size} seleccionados (Supr)`)
+                : accion("eliminar", "lo seleccionado (Supr)")
             }
-          >
-            <Trash className="h-4 w-4" />
-          </Button>
+            icon={<Trash className="h-4 w-4" />}
+          />
           {selectedIds.size > 1 && (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
               {selectedIds.size} seleccionados
@@ -3223,20 +3215,22 @@ export const ComponentDesigner: React.FC<{
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button
+          <IconAction
             variant="outline"
-            size="icon"
             onClick={() => setHelpOpen(true)}
-            title="Ayuda y atajos"
-          >
-            <HelpCircle className="h-4 w-4" />
-          </Button>
+            label={accion("ayuda")}
+            icon={<HelpCircle className="h-4 w-4" />}
+          />
 
           <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={nodes.size === 0}>
-                <Trash2 className="mr-2 h-4 w-4" /> Limpiar
-              </Button>
+              {/* Sólo icono: el diálogo de confirmación es el que explica y frena. */}
+              <IconAction
+                variant="destructive"
+                disabled={nodes.size === 0}
+                label={accion("limpiar", "el lienzo")}
+                icon={<Trash2 className="h-4 w-4" />}
+              />
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>

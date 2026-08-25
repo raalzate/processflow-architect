@@ -10,6 +10,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -140,9 +142,13 @@ export function ReferenceContextDialog({
                 </Badge>
               </Label>
               {docs.length > 0 && (
-                <Button variant="ghost" size="sm" className="h-7 text-destructive" onClick={clear}>
-                  <Trash2 className="mr-1 h-3.5 w-3.5" /> Quitar todos
-                </Button>
+                <IconAction
+                  variant="ghost"
+                  className="h-7 w-7 text-destructive"
+                  onClick={clear}
+                  label={accion("quitar", "todos los documentos")}
+                  icon={<Trash2 className="h-3.5 w-3.5" />}
+                />
               )}
             </div>
             {docs.length === 0 ? (

@@ -6,6 +6,8 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/ui/icon-action";
+import { accion } from "@/lib/action-labels";
 import { Box, Boxes, Filter, Pencil } from "lucide-react";
 import type { GraphNode } from "@/lib/types";
 import CheckboxNodeItem from "./CheckboxNodeItem";
@@ -125,9 +127,13 @@ const MergeTypeSection: React.FC<Props> = ({
                     ))}
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="icon" disabled={!primaryNode} onClick={() => { if (primaryNode) onRequestPrimaryEdit(primaryNode); }}>
-                <Pencil className="h-4 w-4" />
-              </Button>
+              <IconAction
+                variant="outline"
+                disabled={!primaryNode}
+                onClick={() => { if (primaryNode) onRequestPrimaryEdit(primaryNode); }}
+                label={accion("editar", "el elemento principal")}
+                icon={<Pencil className="h-4 w-4" />}
+              />
             </div>
           </CardContent>
         </Card>

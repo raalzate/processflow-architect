@@ -265,6 +265,15 @@ frenoDelLint(
   "SVGFILL",
 );
 
+// BOTONMUDO: un botón sólo-icono sin nombre accesible es mudo para el lector de
+// pantalla. Compila, se ve bien y sólo lo nota quien no puede ver el icono.
+frenoDelLint(
+  "repo-lint: detecta un botón sólo-icono sin nombre accesible",
+  "src/components/__selftest-boton.tsx",
+  'export const X = () => <Button variant="ghost" size="icon" onClick={f}><Trash2 /></Button>;\n',
+  "BOTONMUDO",
+);
+
 // INCIDENTE: P12 medible en lo que una máquina puede ver — un gotcha sin la línea
 // `Mecanismo:` es prosa que se va a volver a pagar.
 frenoDelLint(
