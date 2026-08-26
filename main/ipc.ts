@@ -1,5 +1,6 @@
-import { ipcMain, IpcMainInvokeEvent, clipboard } from 'electron';
+import { ipcMain, IpcMainInvokeEvent, clipboard, BrowserWindow } from 'electron';
 import { handleMdToPdf } from './services/pdf';
+import { popupAppMenu } from './window';
 import {
   listLitertModels,
   downloadLitertModel,
@@ -63,6 +64,12 @@ export function registerIpcHandlers() {
   // Organizaciones del workspace del MCP: el header las necesita para marcar con
   // «·MCP» la que ve el agente. Sin esa marca, la divergencia entre lo que filtra
   // el humano y lo que escribe el agente es invisible.
+  // Menú de la app desde la barra de título propia (Windows/Linux, donde el marco
+  // que lo llevaba está oculto).
+  ipcMain.on('window-menu-popup', (e, x?: number, y?: number) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    if (win) popupAppMenu(win, x, y);
+  });
   ipcMain.handle('mcp-orgs-status', async () => mcpOrgsStatus());
   // CRUD de organizaciones desde el header. Eliminar SUELTA los diagramas a la
   // carpeta plana: quitar una etiqueta no puede costar trabajo.

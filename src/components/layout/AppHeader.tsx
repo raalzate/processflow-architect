@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { TITLEBAR_SEARCH_SLOT } from "@/components/layout/AppTitleBar";
 import Link from "next/link";
 import {
   AlertDialog,
@@ -692,6 +694,22 @@ const FileManagement: React.FC<
 };
 
 /**
+ * Lleva el buscador a la barra de título cuando existe (app de escritorio), y lo deja
+ * donde estaba cuando no (navegador). El portal evita mudar el estado de búsqueda a
+ * otro componente: el buscador sigue colgando del contexto que ya tenía, sólo se pinta
+ * en otro lado.
+ */
+const EnLaBarraDeTitulo: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [hueco, setHueco] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    // La barra se monta en el layout: al primer render del header puede no estar.
+    setHueco(document.getElementById(TITLEBAR_SEARCH_SLOT));
+  }, []);
+  if (!hueco) return <>{children}</>;
+  return createPortal(children, hueco);
+};
+
+/**
  * Componente de búsqueda global que muestra resultados en un Popover.
  */
 const GlobalSearch: React.FC<{
@@ -820,15 +838,18 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-          {/* Búsqueda Global */}
+          {/* Búsqueda global: en la app de escritorio se pinta en la barra de
+              título (issue #169); en el navegador, acá mismo. */}
           {mounted ? (
-            <GlobalSearch
-              searchQuery={searchQuery}
-              onSearchQueryChange={setSearchQuery}
-              searchResults={searchResults}
-              onSelect={onSearchSelect}
-              isDisabled={fileManagementProps.currentFileId === null}
-            />
+            <EnLaBarraDeTitulo>
+              <GlobalSearch
+                searchQuery={searchQuery}
+                onSearchQueryChange={setSearchQuery}
+                searchResults={searchResults}
+                onSelect={onSearchSelect}
+                isDisabled={fileManagementProps.currentFileId === null}
+              />
+            </EnLaBarraDeTitulo>
           ) : (
             <div className="w-48 md:w-64 h-10 bg-muted rounded-md" />
           )}

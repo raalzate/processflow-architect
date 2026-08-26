@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('mcp-server-stop'),
   mcpServerStatus: (): Promise<{ running: boolean; port: number; url: string }> =>
     ipcRenderer.invoke('mcp-server-status'),
+  /** Abre el menú de la app desde la barra de título propia. */
+  windowMenuPopup: (x?: number, y?: number): void => ipcRenderer.send('window-menu-popup', x, y),
   mcpOrgsStatus: (): Promise<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }> =>
     ipcRenderer.invoke('mcp-orgs-status'),
   mcpOrgCreate: (nombre: string): Promise<{ ok: boolean; slug?: string; error?: string }> =>

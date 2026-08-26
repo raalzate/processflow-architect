@@ -70,6 +70,8 @@ export interface ElectronAPI {
   mcpServerStop: () => Promise<McpServerStatus>;
   mcpServerStatus: () => Promise<McpServerStatus>;
   /** Organizaciones del workspace del MCP y cuál ve el agente (para el chip del header). */
+  /** Abre el menú de la app (Windows/Linux, donde el marco con el menú está oculto). */
+  windowMenuPopup?: (x?: number, y?: number) => void;
   mcpOrgsStatus?: () => Promise<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }>;
   /** Crea una organización en el workspace del MCP; devuelve su slug. */
   mcpOrgCreate?: (nombre: string) => Promise<{ ok: boolean; slug?: string; error?: string }>;

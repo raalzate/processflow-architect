@@ -1,11 +1,18 @@
 import { BrowserWindow, Menu, MenuItemConstructorOptions, shell } from 'electron';
 import path from 'path';
 import { isDev, appServe } from './config';
+import { titleBarOptions } from '../src/lib/window-chrome';
 
 export function createMainWindow() {
     const win = new BrowserWindow({
         width: 1200,
         height: 800,
+        // Barra de título propia (issue #169): el buscador se muda ahí. Los CONTROLES
+        // de ventana los sigue dibujando el sistema en las tres plataformas —semáforos
+        // en macOS, overlay nativo en Windows/Linux—, así que un fallo nuestro nunca
+        // deja la ventana sin forma de cerrarse. La decisión por plataforma vive en
+        // `src/lib/window-chrome.ts`, con pruebas.
+        ...titleBarOptions(process.platform),
         icon: path.join(__dirname, '..', 'assets', 'icon.png'), // Ajusta ruta
         webPreferences: {
             preload: path.join(__dirname, '..', 'preload.js'), // Ajusta ruta
@@ -36,6 +43,20 @@ export function createMainWindow() {
     });
     setupMenu(win);
     return win;
+}
+
+/**
+ * Abre el menú de la aplicación donde lo pida el renderer. En Windows/Linux la barra
+ * de menú vivía en el marco que acabamos de ocultar: sin esto, «Archivo», «Diseño» y
+ * «Ayuda» sólo quedarían accesibles por atajo.
+ */
+export function popupAppMenu(win: BrowserWindow, x?: number, y?: number) {
+    const menu = Menu.getApplicationMenu();
+    if (!menu) return;
+    menu.popup({
+        window: win,
+        ...(typeof x === 'number' && typeof y === 'number' ? { x: Math.round(x), y: Math.round(y) } : {}),
+    });
 }
 
 function setupMenu(win: BrowserWindow) {
