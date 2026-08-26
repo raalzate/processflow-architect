@@ -15,16 +15,15 @@
  *
  * Subcomandos:
  *
- *   node scripts/sdd-github.mjs migrate [--apply]     migra specs/ a issues (dry-run por defecto)
  *   node scripts/sdd-github.mjs mirror-docs [--apply] espeja gotchas y ADRs a issues (no borra archivos)
  *   node scripts/sdd-github.mjs new <archivo.md>      abre la issue madre de una feature nueva
  *   node scripts/sdd-github.mjs tasks <issue> <tasks.md>   crea las issues de tarea y las enlaza
  *   node scripts/sdd-github.mjs status                 qué hay abierto, por feature
- *   node scripts/sdd-github.mjs check                  señal del gate (ver abajo)
  *
- * `check` es la parte que impide volver atrás: si aparece un artefacto SDD dentro del
- * repo (`specs/**` fuera de lo permitido), el gate se pone rojo y dice dónde va.
- * No toca la red: el gate corre en CI y offline.
+ * Todo subcomando toca la red (`gh`): esto NO es una señal del gate. Hubo un `check`
+ * que prohibía artefactos SDD bajo `specs/` y un `migrate` que traía esas carpetas
+ * acá; se fueron con el directorio (#156). Que la ruta SDD viva en Issues es hoy
+ * convención escrita (docs/harness/sdd.md), no un freno.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -44,17 +43,6 @@ const ghCli = (args, opciones = {}) =>
   execFileSync("gh", [...args, "--repo", gh.repo], { cwd: REPO_ROOT, encoding: "utf8", ...opciones }).trim();
 
 // ── Lectura de los artefactos ────────────────────────────────────────────────
-
-/** Carpetas de feature: `specs/001-nombre`, ordenadas por su número. */
-function featureDirs() {
-  const dir = abs(sdd.specsDir);
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && /^\d{3}-/.test(e.name))
-    .map((e) => e.name)
-    .sort();
-}
 
 /** Título de un artefacto: su primer `# …`, sin el prefijo `spec · NNN — `. */
 function tituloDe(md, fallback) {
@@ -88,105 +76,66 @@ function parseTasks(md) {
 const RECORTE = 240;
 const recorta = (s) => (s.length <= RECORTE ? s : `${s.slice(0, RECORTE - 1)}…`);
 
-// ── migrate ──────────────────────────────────────────────────────────────────
-
-function migrate({ apply }) {
-  const features = featureDirs();
-  if (!features.length) {
-    console.log("No hay carpetas de feature en `%s`: nada que migrar.", sdd.specsDir);
-    return;
-  }
-  console.log(`${apply ? "Migrando" : "DRY-RUN — se migrarían"} ${features.length} feature(s) a ${gh.repo}\n`);
-  if (apply) asegurarLabelsBase();
-
-  for (const feature of features) {
-    const numero = feature.slice(0, 3);
-    const specPath = `${sdd.specsDir}/${feature}/spec.md`;
-    if (!fs.existsSync(abs(specPath))) {
-      console.log(`· ${feature}: sin spec.md, se salta`);
-      continue;
-    }
-    const spec = leer(specPath);
-    const titulo = `[sdd] ${numero} · ${tituloDe(spec, feature)}`;
-    const labelFeature = `${gh.featureLabelPrefix}${numero}`;
-
-    const tasksPath = `${sdd.specsDir}/${feature}/tasks.md`;
-    const tareas = fs.existsSync(abs(tasksPath)) ? parseTasks(leer(tasksPath)) : [];
-    const anexos = gh.artifactOrder.filter((n) => n !== "spec" && n !== "tasks" && fs.existsSync(abs(`${sdd.specsDir}/${feature}/${n}.md`)));
-
-    if (!apply) {
-      console.log(`· ${titulo}`);
-      console.log(`    labels: ${gh.featureLabel}, ${labelFeature}`);
-      console.log(`    cuerpo: spec.md (${spec.length} car.) · comentarios: ${anexos.join(", ") || "—"}`);
-      console.log(`    tareas: ${tareas.length} (${tareas.filter((t) => t.hecha).length} ya hechas → se cerrarían)`);
-      continue;
-    }
-
-    asegurarLabel(labelFeature, `Feature SDD ${numero}`);
-    const cuerpo = [
-      `> Migrado de \`${specPath}\` (la ruta SDD vive en GitHub: ver \`docs/harness/sdd.md\`).`,
-      "",
-      spec,
-    ].join("\n");
-    const url = ghCli([
-      "issue",
-      "create",
-      "--title",
-      titulo,
-      "--body",
-      cuerpo,
-      "--label",
-      `${gh.featureLabel},${labelFeature}`,
-    ]);
-    const madre = url.split("/").pop();
-    console.log(`· #${madre} ${titulo}`);
-
-    for (const anexo of anexos) {
-      const md = leer(`${sdd.specsDir}/${feature}/${anexo}.md`);
-      ghCli(["issue", "comment", madre, "--body", `## ${anexo}\n\n${md}`]);
-      console.log(`    comentario: ${anexo}.md`);
-    }
-
-    const hijos = [];
-    for (const t of tareas) {
-      const hijoUrl = ghCli([
-        "issue",
-        "create",
-        "--title",
-        `${numero} · ${t.id} — ${recorta(t.descripcion)}`,
-        "--body",
-        [
-          `Tarea de #${madre}.`,
-          "",
-          t.descripcion,
-          "",
-          `- **Requisitos:** ${t.requisitos || "—"}`,
-          `- **Verificación:** ${t.verificacion || "—"}`,
-        ].join("\n"),
-        "--label",
-        `${gh.taskLabel},${labelFeature}`,
-      ]);
-      const hijo = hijoUrl.split("/").pop();
-      hijos.push({ ...t, numero: hijo });
-      if (t.hecha) ghCli(["issue", "close", hijo, "--reason", "completed"]);
-    }
-    if (hijos.length) {
-      ghCli([
-        "issue",
-        "comment",
-        madre,
-        "--body",
-        ["## Tareas", "", ...hijos.map((h) => `- [${h.hecha ? "x" : " "}] #${h.numero} — ${h.id}`)].join("\n"),
-      ]);
-      console.log(`    ${hijos.length} tarea(s), ${hijos.filter((h) => h.hecha).length} cerradas`);
-    }
-  }
-}
-
 /** Los dos labels base. Sin ellos `issue create --label` falla entero, no avisa y no crea. */
 function asegurarLabelsBase() {
   asegurarLabel(gh.featureLabel, "Feature de la ruta SDD (spec en el cuerpo)");
   asegurarLabel(gh.taskLabel, "Tarea de una feature SDD");
+}
+
+/**
+ * Los labels de un issue, ya creado. Se lee de la API porque NO se puede confiar en
+ * `--label` ni en el código de salida: si la cuenta activa de `gh` no tiene permiso de
+ * triage, GitHub descarta los labels y crea el issue igual, y `gh issue edit` imprime
+ * «failed to update 1 issue» **saliendo 0** (#158). Lo único que dice la verdad es releer.
+ */
+function labelsDe(numero) {
+  try {
+    return ghCli(["issue", "view", numero, "--json", "labels", "--jq", ".labels[].name"])
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Exige que el issue quede con `esperados`. Reintenta una vez con `issue edit` y, si
+ * tampoco entran, MUERE con la causa y el remedio: un issue sin label es un issue que
+ * nadie encuentra, y el fallo original de #157 fue justamente pasar en verde.
+ */
+function exigirLabels(urlONumero, esperados) {
+  const numero = String(urlONumero).split("/").pop();
+  const faltan = () => esperados.filter((l) => !labelsDe(numero).includes(l));
+
+  if (!faltan().length) return;
+  try {
+    ghCli(["issue", "edit", numero, "--add-label", faltan().join(",")], { stdio: "pipe" });
+  } catch {
+    /* el diagnóstico real lo da la relectura de abajo, no esta excepción */
+  }
+  const restan = faltan();
+  if (!restan.length) return;
+
+  const cuenta = (() => {
+    try {
+      return execFileSync("gh", ["api", "user", "--jq", ".login"], { encoding: "utf8" }).trim();
+    } catch {
+      return "(desconocida)";
+    }
+  })();
+  console.error(
+    [
+      `El issue #${numero} quedó SIN los labels ${restan.map((l) => `\`${l}\``).join(", ")}.`,
+      "",
+      `Causa habitual: la cuenta activa de \`gh\` (${cuenta}) no tiene permiso de triage/write en ${gh.repo},`,
+      "así que GitHub descarta los labels y crea el issue igual, sin fallar.",
+      "",
+      `Remedio: \`gh auth status\` para ver las cuentas, \`gh auth switch -u <dueño>\` y después`,
+      `\`gh issue edit ${numero} --repo ${gh.repo} --add-label ${restan.join(",")}\`.`,
+    ].join("\n"),
+  );
+  process.exit(1);
 }
 
 /** Crea el label si falta. `gh label create` falla si ya existe: eso no es un error. */
@@ -217,6 +166,7 @@ function nuevaFeature(archivo) {
     "--label",
     [gh.featureLabel, labelFeature].filter(Boolean).join(","),
   ]);
+  exigirLabels(url, [gh.featureLabel, labelFeature].filter(Boolean));
   console.log(url);
 }
 
@@ -242,6 +192,7 @@ function tareasDesde(issueMadre, archivo) {
       "--label",
       [gh.taskLabel, labelFeature].filter(Boolean).join(","),
     ]);
+    exigirLabels(url, [gh.taskLabel, labelFeature].filter(Boolean));
     hijos.push({ ...t, numero: url.split("/").pop() });
   }
   ghCli([
@@ -331,6 +282,7 @@ function mirrorDocs({ apply }) {
       bloque.trim(),
     ].join("\n");
     const url = ghCli(["issue", "create", "--title", `[gotcha] ${recorta(titulo)}`, "--body", cuerpo, "--label", gh.gotchaLabel]);
+    exigirLabels(url, [gh.gotchaLabel]);
     const numero = url.split("/").pop();
     ghCli(["issue", "close", numero, "--reason", "completed"]);
     // La línea va justo después del encabezado: queda visible al leer el gotcha.
@@ -347,6 +299,7 @@ function mirrorDocs({ apply }) {
     const titulo = tituloDe(contenido, archivo.replace(/\.md$/, ""));
     const cuerpo = [`Decisión versionada en \`${ruta}\`: el archivo manda y viaja con el clon.`, "", contenido].join("\n");
     const url = ghCli(["issue", "create", "--title", `[adr] ${recorta(titulo)}`, "--body", cuerpo, "--label", gh.adrLabel]);
+    exigirLabels(url, [gh.adrLabel]);
     const numero = url.split("/").pop();
     ghCli(["issue", "close", numero, "--reason", "completed"]);
     const lineas = contenido.split("\n");
@@ -357,47 +310,10 @@ function mirrorDocs({ apply }) {
   }
 }
 
-// ── check (señal del gate, sin red) ──────────────────────────────────────────
-
-function check() {
-  const dir = abs(sdd.specsDir);
-  if (!fs.existsSync(dir)) {
-    console.log(`sdd-github: ok — no hay \`${sdd.specsDir}/\`; la ruta SDD vive en ${gh.repo}.`);
-    return;
-  }
-  const permitidos = new Set(gh.allowedInRepo ?? []);
-  const sobrantes = [];
-  const caminar = (d) => {
-    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-      const p = path.relative(REPO_ROOT, path.join(d, e.name)).split(path.sep).join("/");
-      if (e.isDirectory()) caminar(path.join(d, e.name));
-      else if (!permitidos.has(p)) sobrantes.push(p);
-    }
-  };
-  caminar(dir);
-  if (sobrantes.length) {
-    console.error(
-      [
-        `sdd-github: ${sobrantes.length} artefacto(s) SDD dentro del repo:`,
-        ...sobrantes.map((s) => `  - ${s}`),
-        "",
-        `Los artefactos de una feature son Issues de ${gh.repo}: la issue madre lleva el spec (y el plan/checklist/testify como comentarios) y cada tarea es su propio issue.`,
-        "Abrí la feature con `npm run sdd:new <archivo.md>` y sus tareas con `npm run sdd:tasks <issue> <tasks.md>`; después borrá el archivo del repo.",
-        "Criterio completo: docs/harness/sdd.md.",
-      ].join("\n"),
-    );
-    process.exit(1);
-  }
-  console.log(`sdd-github: ok — \`${sdd.specsDir}/\` sólo tiene lo declarado; la ruta SDD vive en ${gh.repo}.`);
-}
-
 // ── Ejecución ────────────────────────────────────────────────────────────────
 
 const [subcomando, ...resto] = process.argv.slice(2);
 switch (subcomando) {
-  case "migrate":
-    migrate({ apply: resto.includes("--apply") });
-    break;
   case "new":
     if (!resto[0]) {
       console.error("Uso: node scripts/sdd-github.mjs new <archivo.md>");
@@ -418,10 +334,7 @@ switch (subcomando) {
   case "status":
     status();
     break;
-  case "check":
-    check();
-    break;
   default:
-    console.error("Subcomandos: migrate [--apply] · mirror-docs [--apply] · new <archivo.md> · tasks <issue> <tasks.md> · status · check");
+    console.error("Subcomandos: mirror-docs [--apply] · new <archivo.md> · tasks <issue> <tasks.md> · status");
     process.exit(1);
 }

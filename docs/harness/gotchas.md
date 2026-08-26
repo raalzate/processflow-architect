@@ -261,3 +261,23 @@ Regla:   un cambio de código llega al historial con una issue referenciada (`#1
 Mecanismo: `.githooks/commit-msg` (bloqueante: mira el diff staged y el mensaje) + ruta `issue` del
          `sdd-router`, que se desactiva sola en lo trivial (ruta `none`). Probados por
          `scripts/harness-selftest.mjs`: 7 casos del hook en un repo git temporal y 3 de ruteo.
+
+### GOTCHA: el issue se crea sin labels y el script pasa en verde
+
+Issue: #158
+
+Síntoma: `npm run sdd:new 006-organizaciones.md` imprimió la URL de la issue madre #157 y terminó
+         en verde, pero el issue quedó **sin labels**: ni `sdd:feature` ni `feature:006`, aunque el
+         script los pasa en `--label` y el label `feature:006` sí quedó creado. El timeline de #157
+         no tiene un solo evento `labeled`. Igual pasó con un `gh issue create --label bug` a mano.
+Causa:   la cuenta activa de `gh` era `doctiling`, que puede ABRIR issues en el repo pero no
+         etiquetar (`AddLabelsToLabelable` pide triage/write). GitHub descarta los labels y crea el
+         issue igual. Peor: `gh issue edit --add-label` imprime «failed to update 1 issue» y **sale
+         con código 0**, así que ni el reintento falla solo. Las features viejas (#1, #25) están
+         etiquetadas porque las creó la cuenta dueña.
+Regla:   todo issue nace etiquetado (`tracker.labels` mapea el tipo → label), y quien crea issues
+         por script VERIFICA releyendo la API: ni `--label` ni el exit code son evidencia.
+Mecanismo: `exigirLabels()` en `scripts/sdd-github.mjs` — relee los labels del issue recién creado,
+         reintenta con `issue edit` y, si faltan, muere (exit 1) nombrando la cuenta activa y el
+         remedio (`gh auth switch -u <dueño>`). La directriz la imprime el hook `sdd-router` con los
+         nombres del config, y el self-test exige que ese recordatorio siga saliendo.

@@ -403,27 +403,9 @@ frenoDelLint(
   "PLATAFORMA",
 );
 
-// SDD en GitHub: un spec/plan/tasks dentro del repo tiene que poner el gate en rojo.
-// Sin este freno, la próxima feature nace en `specs/` por costumbre y volvemos a un
-// tablero que sólo lee quien clonó. El cebo va fuera de `src/` y se borra siempre.
-{
-  const cebo = abs(`${config.sdd.specsDir}/__selftest-spec.md`);
-  try {
-    fs.writeFileSync(cebo, "# spec · 999 — cebo del self-test\n");
-    const res = spawnSync("node", [abs("scripts/sdd-github.mjs"), "check"], { cwd: REPO_ROOT, encoding: "utf8" });
-    const salida = `${res.stdout}${res.stderr}`;
-    if (res.status === 1 && /artefacto\(s\) SDD dentro del repo/.test(salida)) {
-      ok("sdd-github: caza un artefacto SDD dentro del repo");
-    } else {
-      bad("sdd-github: artefacto SDD en el repo", `exit ${res.status}: ${salida.trim().slice(0, 240)}`);
-    }
-  } finally {
-    fs.rmSync(cebo, { force: true });
-  }
-  const limpio = spawnSync("node", [abs("scripts/sdd-github.mjs"), "check"], { cwd: REPO_ROOT, encoding: "utf8" });
-  if (limpio.status === 0) ok("sdd-github: verde con el repo limpio de artefactos SDD");
-  else bad("sdd-github: repo limpio", `${limpio.stdout}${limpio.stderr}`.trim().slice(0, 240));
-}
+// Acá vivía el freno de `specs/`: un cebo que exigía rojo si aparecía un spec dentro
+// del repo. Se fue con el directorio (#156). La ruta SDD en Issues es hoy convención
+// escrita en docs/harness/sdd.md, sin mecanismo que la haga cumplir.
 
 // El índice de graphify: el hook empuja a consultarlo SÓLO si existe, y la señal
 // del gate se omite donde no está (CI). Las dos mitades se prueban acá porque un
@@ -576,6 +558,22 @@ for (const [prompt, expected] of routeCases) {
   else bad(`«${prompt.slice(0, 40)}…»`, `esperaba ${expected ?? "silencio"}, obtuvo ${routed ?? "silencio"}`);
 }
 
+// La directriz de labels tiene que viajar CON el pedido de registro: un issue sin label
+// no se encuentra después, y el modo en que esto falla es silencioso (#158 — GitHub
+// descarta los labels si la cuenta activa no tiene triage, y crea el issue igual).
+// Se exige que el recordatorio nombre los labels DEL CONFIG, no un literal cableado.
+{
+  const labels = Object.values(config.tracker?.labels ?? {});
+  const res = runHook("sdd-router.mjs", {
+    hook_event_name: "UserPromptSubmit",
+    prompt: "agregá un botón para exportar a CSV",
+  });
+  const faltan = labels.filter((l) => !res.stdout.includes(l));
+  if (!labels.length) bad("directriz de labels", "`tracker.labels` está vacío: el router no tiene qué recordar");
+  else if (!faltan.length && /\*\*label\*\*/.test(res.stdout)) ok(`sdd-router recuerda los ${labels.length} labels del config`);
+  else bad("directriz de labels", `el ruteo no nombra: ${faltan.join(", ") || "la línea **label**"}`);
+}
+
 // ── 5. Subagentes y comandos ─────────────────────────────────────────────────
 section("5. subagentes y comandos");
 for (const [dir, expected] of [
@@ -598,9 +596,8 @@ else bad("kit de SDD instalado", `faltan: ${missingSkills.join(", ")}. Instalá 
 
 // El puntero de feature activa no puede quedar colgado. Desde que los artefactos
 // viven en GitHub el puntero guarda el NÚMERO DE LA ISSUE MADRE (`#113`), no una
-// carpeta: validarlo contra `specs/<n>` era imposible de satisfacer —el freno de
-// `sdd-github check` prohíbe justamente esas carpetas—, así que se valida la
-// FORMA. Resolver la issue exigiría red, y este paso corre en el gate y en CI.
+// carpeta —`specs/` ya no existe (#156)—, así que se valida la FORMA. Resolver la
+// issue exigiría red, y este paso corre en el gate y en CI.
 const pointer = abs(config.sdd.activeFeaturePointer);
 if (fs.existsSync(pointer)) {
   const active = fs.readFileSync(pointer, "utf8").trim();

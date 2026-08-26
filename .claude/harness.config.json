@@ -286,8 +286,7 @@
       "sofka-06-analyze",
       "sofka-07-implement"
     ],
-    "specsDir": "specs",
-    "$github": "Los artefactos SDD viven en GitHub, no en el repo: la issue madre lleva el spec (plan/checklist/testify/analyze como comentarios) y cada tarea es su propio issue, asignable y cerrable. `allowedInRepo` es lo único que puede quedar bajo specs/; cualquier otro archivo ahí pone el gate en rojo (scripts/sdd-github.mjs check).",
+    "$github": "Los artefactos SDD viven en GitHub, no en el repo: la issue madre lleva el spec (plan/checklist/testify/analyze como comentarios) y cada tarea es su propio issue, asignable y cerrable. `specs/` se borró y con él el freno del gate que lo vigilaba (#156): esto es convención escrita en docs/harness/sdd.md, no un mecanismo.",
     "github": {
       "repo": "raalzate/processflow-architect",
       "featureLabel": "sdd:feature",
@@ -301,9 +300,6 @@
         "testify",
         "analyze",
         "tasks"
-      ],
-      "allowedInRepo": [
-        "specs/README.md"
       ],
       "gotchaLabel": "gotcha",
       "adrLabel": "adr",
@@ -394,7 +390,7 @@
         "message": "Este pedido cambia código: **preguntá al humano si se registra la issue ANTES de tocar producción** (bug/mejora acotada con `gh issue create`, o ruta SDD con `npm run sdd:new` si crea superficie nueva). No lo decidas solo y no lo dejes para el final: el hook `commit-msg` exige `#<número>` en el mensaje o una línea `sin-issue: <motivo>`, así que un cambio sin registrar no llega al historial."
       }
     ],
-    "$activeFeaturePointer": "Número de la issue MADRE de la feature en curso (p. ej. `#25`), o vacío si no hay ninguna. Antes apuntaba a una carpeta de specs/; los artefactos ahora viven en GitHub."
+    "$activeFeaturePointer": "Número de la issue MADRE de la feature en curso (p. ej. `#25`), o vacío si no hay ninguna. Antes apuntaba a una carpeta de `specs/`, que ya no existe; los artefactos viven en GitHub."
   },
   "tokens": {
     "palettes": [
@@ -428,14 +424,22 @@
     ]
   },
   "tracker": {
-    "$comment": "Gestor de trabajo. Lo lee `.githooks/commit-msg`, que NO tiene los patrones cableados: acá es GitHub (`#123`), pero el mismo hook sirve con Azure Boards (`AB#123`) o Jira (`PROJ-123`) cambiando `issuePattern`. Lo de `specs/` (dónde viven los artefactos) NO se duplica acá: lo cubre `sdd.github.allowedInRepo` + `scripts/sdd-github.mjs check`, que ya es la fuente de verdad.",
+    "$comment": "Gestor de trabajo. Lo lee `.githooks/commit-msg`, que NO tiene los patrones cableados: acá es GitHub (`#123`), pero el mismo hook sirve con Azure Boards (`AB#123`) o Jira (`PROJ-123`) cambiando `issuePattern`. Dónde viven los artefactos SDD no se duplica acá: es `sdd.github` + docs/harness/sdd.md.",
     "kind": "github",
     "issuePattern": "(^|[^A-Za-z0-9_])#[0-9]+",
     "issueExample": "#123 · Refs #123 · Closes #123",
     "newIssueHint": [
-      "Bug o mejora acotada:  gh issue create --label bug --title \"…\" --body \"…\"",
+      "Bug:                   gh issue create --label bug --title \"…\" --body \"…\"",
+      "Mejora acotada:        gh issue create --label enhancement --title \"…\" --body \"…\"",
+      "Sólo documentación:    gh issue create --label documentation --title \"…\" --body \"…\"",
       "Tamaño feature:        npm run sdd:new <spec.md>   (ver docs/harness/sdd.md)"
-    ]
+    ],
+    "$labels": "Directriz: TODO issue nace etiquetado; el label es lo que hace encontrable el tablero. `labels` mapea el tipo de trabajo al label exacto (los de la ruta SDD los declara `sdd.github`). Aplicar un label exige permiso de triage/write: si la cuenta activa de `gh` no lo tiene, GitHub DESCARTA los labels y crea el issue igual, sin fallar (#158). Por eso los scripts que crean issues verifican DESPUÉS de crear, y `sdd-router` recuerda el label al pedir el registro.",
+    "labels": {
+      "bug": "bug",
+      "enhancement": "enhancement",
+      "docs": "documentation"
+    }
   },
   "commitMsg": {
     "$comment": "Qué cuenta como CÓDIGO para exigir issue. La documentación, las notas de release y las capturas no piden registro: son el registro, no el cambio. `escapeLine` exige motivo — un `sin-issue:` pelado sería la misma omisión con otro nombre.",

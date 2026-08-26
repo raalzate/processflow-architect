@@ -14,7 +14,7 @@ lo que se supone va en "deuda conocida".
 
 | Señal | Comando | Resultado |
 |---|---|---|
-| Ruta SDD en GitHub | `npm run sdd:check` | verde — las 5 features migradas a issues (#1 · #25 · #45 · #62 · #79) con 89 issues de tarea, **todas cerradas**; `specs/` sólo tiene su README y cualquier otro archivo ahí pone el gate en rojo |
+| Ruta SDD en GitHub | `npm run sdd:status` (usa red) | verde — las 5 features migradas a issues (#1 · #25 · #45 · #62 · #79) con 89 issues de tarea, **todas cerradas**. `specs/` se borró y con él el freno del gate que lo vigilaba (#156): que un spec no vuelva al repo ya **no** lo verifica ningún comando |
 | Registros espejados en GitHub | `node scripts/sdd-github.mjs mirror-docs` | verde — 16 gotchas (#95–#110) y el ADR 0001 (#111) tienen su issue cerrado con `Issue: #N` en el archivo; el comando es idempotente y **no** borra archivos (son el mecanismo: regla INCIDENTE + P12) |
 | Frontera de red de la suite | `npx vitest run src/lib/__tests__/network-boundary.test.ts` | verde — `fetch` y `http/https.request` revientan dentro de un test (con el destino en el mensaje) y simular la red sigue siendo posible |
 | Superficie de extensión de la IA (P5) | `npx vitest run src/lib/ai/__tests__/tasks-registry.test.ts` | verde — barrido por `import *`: toda `AiTask` declarada tiene id kebab único, tier válido, forma de ejecutarse, y el router la rutea en los tres modos sin conocerla |
@@ -24,7 +24,8 @@ lo que se supone va en "deuda conocida".
 | No se actúa sobre una pregunta | incluido en el self-test | verde — 7 pedidos reales de este repo por las dos direcciones; `ask-first` marca el turno informativo y `action-guard` deniega toda edición dentro del repo hasta el próximo pedido del humano |
 | El trabajo entra a `main` por PR | `gh api repos/…/branches/main/protection` | verde — **verificado el 2026-08-25**: PR obligatorio, 0 aprobaciones requeridas, check «Gate (arnés · docs · lint · typecheck · tests · build)» exigido, aplica a admins, force-push deshabilitado. El gate **no** verifica esto (necesita red y permisos): es una señal verificada a mano |
 | Freno local del push directo | incluido en el self-test | verde — `pre-push` frena `main` y deja pasar una rama de feature |
-| Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 24 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA, «no escribe temporales en `src/`» y los 9 casos de `commit-msg`, dos de ellos con la config de OTRA forja), 8 casos de ruteo |
+| Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 24 frenos probados (se fue el de `specs/` con el directorio, #156; entró la directriz de labels, #158) (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA, «no escribe temporales en `src/`» y los 9 casos de `commit-msg`, dos de ellos con la config de OTRA forja), 8 casos de ruteo |
+| Directriz de labels | incluido en el self-test | verde — `sdd-router` nombra los labels de `tracker.labels` al pedir el registro, y `exigirLabels()` de `scripts/sdd-github.mjs` relee la API tras crear un issue: #157 nació sin labels y el script pasó en verde porque la cuenta activa de `gh` no tenía permiso de triage (#158) |
 | Link-check de docs | `node scripts/docs-linkcheck.mjs` | verde |
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
