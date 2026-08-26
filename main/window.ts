@@ -2,6 +2,7 @@ import { BrowserWindow, Menu, MenuItemConstructorOptions, shell } from 'electron
 import path from 'path';
 import { isDev, appServe } from './config';
 import { titleBarOptions } from '../src/lib/window-chrome';
+import { DESIGNER_MENU, type DesignerMenuItem } from '../src/lib/designer-actions';
 
 export function createMainWindow() {
     const win = new BrowserWindow({
@@ -59,6 +60,22 @@ export function popupAppMenu(win: BrowserWindow, x?: number, y?: number) {
     });
 }
 
+/** Traduce un item del catálogo al formato de Electron (recursivo por los submenús). */
+function menuItem(
+    item: DesignerMenuItem,
+    designerAction: (action: string) => void
+): MenuItemConstructorOptions {
+    if (item.separator) return { type: 'separator' };
+    if (item.submenu) {
+        return { label: item.label, submenu: item.submenu.map((i) => menuItem(i, designerAction)) };
+    }
+    return {
+        label: item.label,
+        ...(item.accelerator ? { accelerator: item.accelerator } : {}),
+        click: () => designerAction(item.id!)
+    };
+}
+
 function setupMenu(win: BrowserWindow) {
     const navigateTo = (route: string) => win.webContents.send('navigate', route);
     const designerAction = (action: string) => win.webContents.send('designer-action', action);
@@ -85,61 +102,10 @@ function setupMenu(win: BrowserWindow) {
         },
         {
             label: 'Diseño',
-            submenu: [
-                {
-                    label: 'Deshacer (Ctrl+Z)',
-                    click: () => designerAction('undo')
-                },
-                {
-                    label: 'Rehacer (Ctrl+Shift+Z)',
-                    click: () => designerAction('redo')
-                },
-                {
-                    label: 'Eliminar selección (Supr)',
-                    click: () => designerAction('delete')
-                },
-                { type: 'separator' },
-                {
-                    label: 'Copiar (Ctrl+C)',
-                    click: () => designerAction('copy')
-                },
-                {
-                    label: 'Cortar (Ctrl+X)',
-                    click: () => designerAction('cut')
-                },
-                {
-                    label: 'Pegar (Ctrl+V)',
-                    click: () => designerAction('paste')
-                },
-                {
-                    label: 'Duplicar (Ctrl+D)',
-                    click: () => designerAction('duplicate')
-                },
-                {
-                    label: 'Seleccionar todo (Ctrl+A)',
-                    click: () => designerAction('select-all')
-                },
-                {
-                    label: 'Cancelar / deseleccionar (Esc)',
-                    click: () => designerAction('cancel')
-                },
-                { type: 'separator' },
-                {
-                    label: 'Contexto de referencia',
-                    accelerator: 'CmdOrCtrl+B',
-                    click: () => designerAction('context')
-                },
-                {
-                    label: 'Metadatos del proyecto',
-                    accelerator: 'CmdOrCtrl+M',
-                    click: () => designerAction('metadata')
-                },
-                {
-                    label: 'Ayuda y atajos',
-                    accelerator: 'CmdOrCtrl+/',
-                    click: () => designerAction('help')
-                }
-            ]
+            // El menú se arma desde el catálogo ÚNICO (`src/lib/designer-actions.ts`),
+            // el mismo que ofrece la barra del lienzo: una lista escrita a mano acá se
+            // quedaba atrás en cuanto la barra ganaba una acción (issue #171).
+            submenu: DESIGNER_MENU.map((item) => menuItem(item, designerAction))
         },
         {
             label: 'Vista',

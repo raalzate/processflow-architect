@@ -177,6 +177,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { DesignerActionId } from "@/lib/designer-actions";
 
 /** Orden en que se ofrecen los enrutados (el mismo que la ficha del enlace). */
 const ROUTING_ORDER = ["straight", "curved", "orthogonal"] as const;
@@ -2077,27 +2078,17 @@ export const ComponentDesigner: React.FC<{
   }, [revision, meta, currentFileId, notationId]);
 
   // --- Acciones desde el menú nativo de Electron ---
+  // El QUÉ hace cada acción vive en el mapa `acciones`, más abajo (junto a los
+  // exportadores, por su orden de declaración). Acá sólo se enchufa el canal, y se
+  // lee por ref para no re-suscribirse en cada render.
+  const accionesRef = useRef<Record<DesignerActionId, () => void> | null>(null);
   useEffect(() => {
-    const api = (typeof window !== "undefined" ? window.electronAPI : undefined) as any;
+    const api = typeof window !== "undefined" ? window.electronAPI : undefined;
     if (!api?.onDesignerAction) return;
-    const off = api.onDesignerAction((action: string) => {
-      switch (action) {
-        case "undo": doUndo(); break;
-        case "redo": doRedo(); break;
-        case "delete": deleteSelected(); break;
-        case "cancel": cancelOrDeselect(); break;
-        case "copy": doCopy(); break;
-        case "cut": doCut(); break;
-        case "paste": doPaste(); break;
-        case "duplicate": doDuplicate(); break;
-        case "select-all": selectAll(); break;
-        case "context": setReferenceOpen(true); break;
-        case "metadata": setMetaOpen(true); break;
-        case "help": setHelpOpen(true); break;
-      }
+    return api.onDesignerAction((action: string) => {
+      accionesRef.current?.[action as DesignerActionId]?.();
     });
-    return off;
-  }, [doUndo, doRedo, deleteSelected, cancelOrDeselect, doCopy, doCut, doPaste, doDuplicate, selectAll]);
+  }, []);
 
   // --- Atajos de teclado ---
   useEffect(() => {
@@ -2862,47 +2853,76 @@ export const ComponentDesigner: React.FC<{
     }
   }, [fitToContent, meta, toast, notationId, zoom, syncViewport]);
 
-  // --- Acciones desde la paleta de comandos (⌘K) ---
-  // La paleta despacha un CustomEvent en vez de acoplarse al estado interno del
-  // diseñador. Cubre las mismas acciones del menú + las propias del lienzo.
-  // (Va aquí, tras definir handleClear/handleExportSvg, para no caer en su TDZ.)
+  /**
+   * Manejador de CADA acción del catálogo (`src/lib/designer-actions.ts`). El tipo
+   * `Record<DesignerActionId, …>` es el mecanismo: agregar un id al catálogo sin
+   * implementarlo acá no compila, así que el menú no puede tener entradas muertas.
+   *
+   * Lo consumen las dos entradas externas —el menú nativo y la paleta (⌘K)—; la barra
+   * del lienzo llama a los mismos callbacks directamente.
+   *
+   * Va aquí, tras `handleClear`/`handleExportSvg`, para no caer en su TDZ.
+   */
+  const acciones: Record<DesignerActionId, () => void> = useMemo(
+    () => ({
+      undo: doUndo,
+      redo: doRedo,
+      delete: deleteSelected,
+      cancel: cancelOrDeselect,
+      copy: doCopy,
+      cut: doCut,
+      paste: doPaste,
+      duplicate: doDuplicate,
+      "select-all": selectAll,
+      fit: fitToContent,
+      arrange: () => applyArrangement({}),
+      "arrange-ai": () => {
+        void suggestArrangementWithAi();
+      },
+      "routing-selection-straight": () => applyLinkStyle("selection", { routing: "straight" }),
+      "routing-selection-curved": () => applyLinkStyle("selection", { routing: "curved" }),
+      "routing-selection-orthogonal": () => applyLinkStyle("selection", { routing: "orthogonal" }),
+      "routing-view-straight": () => applyLinkStyle("view", { routing: "straight" }),
+      "routing-view-curved": () => applyLinkStyle("view", { routing: "curved" }),
+      "routing-view-orthogonal": () => applyLinkStyle("view", { routing: "orthogonal" }),
+      "dash-selection-on": () => applyLinkStyle("selection", { dashed: true }),
+      "dash-selection-off": () => applyLinkStyle("selection", { dashed: false }),
+      context: () => setReferenceOpen(true),
+      metadata: () => setMetaOpen(true),
+      help: () => setHelpOpen(true),
+      export: handleExportSvg,
+      "export-png": handleExportPng,
+      // No borra directo: abre la confirmación, igual que desde la barra.
+      clear: () => setClearConfirmOpen(true),
+    }),
+    [
+      doUndo,
+      doRedo,
+      deleteSelected,
+      cancelOrDeselect,
+      doCopy,
+      doCut,
+      doPaste,
+      doDuplicate,
+      selectAll,
+      fitToContent,
+      applyArrangement,
+      suggestArrangementWithAi,
+      applyLinkStyle,
+      handleExportSvg,
+      handleExportPng,
+    ]
+  );
+  accionesRef.current = acciones;
+
+  // Paleta de comandos (⌘K): despacha un CustomEvent para no acoplarse al estado
+  // interno del diseñador.
   useEffect(() => {
-    const onAction = (e: Event) => {
-      const action = (e as CustomEvent<string>).detail;
-      switch (action) {
-        case "undo": doUndo(); break;
-        case "redo": doRedo(); break;
-        case "delete": deleteSelected(); break;
-        case "cancel": cancelOrDeselect(); break;
-        case "copy": doCopy(); break;
-        case "cut": doCut(); break;
-        case "paste": doPaste(); break;
-        case "duplicate": doDuplicate(); break;
-        case "select-all": selectAll(); break;
-        case "context": setReferenceOpen(true); break;
-        case "metadata": setMetaOpen(true); break;
-        case "help": setHelpOpen(true); break;
-        case "fit": fitToContent(); break;
-        case "export": handleExportSvg(); break;
-        // No borra directo: abre la confirmación (igual que el botón "Limpiar").
-        case "clear": setClearConfirmOpen(true); break;
-      }
-    };
+    const onAction = (e: Event) =>
+      acciones[(e as CustomEvent<string>).detail as DesignerActionId]?.();
     window.addEventListener("designer-action", onAction);
     return () => window.removeEventListener("designer-action", onAction);
-  }, [
-    doUndo,
-    doRedo,
-    deleteSelected,
-    cancelOrDeselect,
-    fitToContent,
-    handleExportSvg,
-    doCopy,
-    doCut,
-    doPaste,
-    doDuplicate,
-    selectAll,
-  ]);
+  }, [acciones]);
 
   const isolated = useMemo(() => findIsolatedNodes(nodes, links), [nodes, links]);
 
