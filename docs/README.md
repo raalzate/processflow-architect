@@ -37,4 +37,3 @@ ningún otro `.md`— apunte a la nada.
 | Archivo | Qué es |
 |---|---|
 | `docs/RELEASE.md` | empaquetado, firma y publicación |
-| `specs/README.md` | artefactos de las features que arrancaron con SDD |

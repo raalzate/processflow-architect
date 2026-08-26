@@ -183,8 +183,7 @@ processflow-architect/
 ├── mcp-server/             ← servidor MCP (stdio · http) para Claude Code / Codex
 ├── scripts/                ← el gate y sus señales (lint, self-test, link-check, capturas)
 ├── .claude/ · .githooks/   ← el arnés: hooks del agente y del repo
-├── docs/                   ← arquitectura, arnés, gotchas, releases
-└── specs/                  ← sólo un README: los artefactos SDD son Issues de GitHub
+└── docs/                   ← arquitectura, arnés, gotchas, releases
 ```
 
 ---
@@ -246,7 +245,7 @@ Reglas de fondo: la lógica pura vive en `src/lib/` y va con prueba (TDD); la su
 - → [Puente MCP: cómo Claude Code diseña y exporta al lienzo](docs/architecture/mcp.md) · [servidor](mcp-server/README.md)
 - → [Guía de releases y firma de código](docs/RELEASE.md)
 - → [Compresión del grafo para el contexto de la IA (TOON)](docs/compresion-toon.md)
-- → [Ruta SDD: las features viven en Issues](specs/README.md)
+- → [Ruta SDD: las features viven en Issues](docs/harness/sdd.md)
 - → Guía MCP · **in-app** (menú Ayuda → Guía MCP)
 
 ---
