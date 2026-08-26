@@ -2,7 +2,12 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { TITLEBAR_SEARCH_SLOT } from "@/components/layout/AppTitleBar";
+import { cn } from "@/lib/utils";
+import {
+  TITLEBAR_SEARCH_SLOT,
+  TITLEBAR_TITLE_SLOT,
+  TITLEBAR_RIGHT_SLOT,
+} from "@/components/layout/AppTitleBar";
 import Link from "next/link";
 import {
   AlertDialog,
@@ -389,6 +394,12 @@ const FileManagement: React.FC<
 
   return (
     <div className="flex items-center gap-2">
+      {/* El nombre del proyecto también en la barra de título: es donde el sistema
+          operativo lo espera, y le da anclaje a la franja. */}
+      <EnLaBarraDeTitulo slot={TITLEBAR_TITLE_SLOT}>
+        {(enLaBarra) => (enLaBarra && currentName ? <span title={currentName}>{currentName}</span> : null)}
+      </EnLaBarraDeTitulo>
+
       {/* Chip de organización: filtra la VISTA (no mueve nada) y muestra «·MCP» cuando
           esta organización es la que ve el agente. Ese sufijo es lo ÚNICO que hace
           visible la divergencia entre lo que mira el humano y dónde escribe el agente. */}
@@ -577,8 +588,16 @@ const FileManagement: React.FC<
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Guía MCP + indicador de estado del servidor embebido (punto verde = activo). */}
-      <McpStatusButton />
+      {/* Guía MCP + indicador de estado del servidor embebido (punto verde = activo).
+          En la app va a la barra de título: es un indicador, no necesita el ancho del
+          header, y ahí libera sitio para el selector de proyecto. */}
+      <EnLaBarraDeTitulo slot={TITLEBAR_RIGHT_SLOT}>
+        {(enLaBarra) => (
+          <span style={enLaBarra ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}>
+            <McpStatusButton />
+          </span>
+        )}
+      </EnLaBarraDeTitulo>
 
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent className="max-w-md">
@@ -699,14 +718,17 @@ const FileManagement: React.FC<
  * otro componente: el buscador sigue colgando del contexto que ya tenía, sólo se pinta
  * en otro lado.
  */
-const EnLaBarraDeTitulo: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const EnLaBarraDeTitulo: React.FC<{
+  slot?: string;
+  children: (enLaBarra: boolean) => React.ReactNode;
+}> = ({ slot = TITLEBAR_SEARCH_SLOT, children }) => {
   const [hueco, setHueco] = useState<HTMLElement | null>(null);
   useEffect(() => {
     // La barra se monta en el layout: al primer render del header puede no estar.
-    setHueco(document.getElementById(TITLEBAR_SEARCH_SLOT));
-  }, []);
-  if (!hueco) return <>{children}</>;
-  return createPortal(children, hueco);
+    setHueco(document.getElementById(slot));
+  }, [slot]);
+  if (!hueco) return <>{children(false)}</>;
+  return createPortal(children(true), hueco);
 };
 
 /**
@@ -718,12 +740,16 @@ const GlobalSearch: React.FC<{
   searchResults: GraphNode[];
   onSelect: (node: GraphNode) => void;
   isDisabled: boolean;
+  /** true dentro de la barra de título: campo bajo y ancho, y clicable sobre la
+   *  franja arrastrable (sin esto, el clic movería la ventana en vez de enfocar). */
+  compact?: boolean;
 }> = ({
   searchQuery,
   onSearchQueryChange,
   searchResults,
   onSelect,
   isDisabled,
+  compact = false,
 }) => {
   const handleSelect = (node: GraphNode) => {
     onSelect(node);
@@ -732,14 +758,27 @@ const GlobalSearch: React.FC<{
   return (
     <Popover open={searchQuery.length > 1 && searchResults.length > 0}>
       <PopoverTrigger asChild>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <div
+          className={cn("relative", compact && "w-full max-w-[520px]")}
+          style={compact ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}
+        >
+          <Search
+            className={cn(
+              "absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground",
+              compact && "left-2.5 h-3.5 w-3.5"
+            )}
+          />
           <Input
             type="text"
             placeholder="Buscar elementos..."
             value={searchQuery}
             onChange={(e) => onSearchQueryChange(e.target.value)}
-            className="pl-9 pr-8 w-48 md:w-64"
+            className={cn(
+              "pl-9 pr-8",
+              compact
+                ? "h-7 w-full rounded-md border-transparent bg-muted/60 pl-8 text-xs hover:bg-muted focus-visible:border-input"
+                : "w-48 md:w-64"
+            )}
             disabled={isDisabled}
           />
           {/* Botón para limpiar la búsqueda */}
@@ -842,13 +881,16 @@ const AppHeader: React.FC<AppHeaderProps> = ({
               título (issue #169); en el navegador, acá mismo. */}
           {mounted ? (
             <EnLaBarraDeTitulo>
-              <GlobalSearch
-                searchQuery={searchQuery}
-                onSearchQueryChange={setSearchQuery}
-                searchResults={searchResults}
-                onSelect={onSearchSelect}
-                isDisabled={fileManagementProps.currentFileId === null}
-              />
+              {(enLaBarra) => (
+                <GlobalSearch
+                  searchQuery={searchQuery}
+                  onSearchQueryChange={setSearchQuery}
+                  searchResults={searchResults}
+                  onSelect={onSearchSelect}
+                  isDisabled={fileManagementProps.currentFileId === null}
+                  compact={enLaBarra}
+                />
+              )}
             </EnLaBarraDeTitulo>
           ) : (
             <div className="w-48 md:w-64 h-10 bg-muted rounded-md" />

@@ -13,6 +13,12 @@ import {
 /** Id del hueco donde el header inyecta su buscador (portal). */
 export const TITLEBAR_SEARCH_SLOT = "titlebar-search-slot";
 
+/** Id del hueco del nombre del proyecto activo (portal, lo llena el header). */
+export const TITLEBAR_TITLE_SLOT = "titlebar-title-slot";
+
+/** Id del hueco de la DERECHA: indicadores que no necesitan el ancho del header. */
+export const TITLEBAR_RIGHT_SLOT = "titlebar-right-slot";
+
 /** Ancho que se le deja al overlay nativo de Windows/Linux (3 botones). */
 const ANCHO_CONTROLES = 140;
 
@@ -56,7 +62,7 @@ export function AppTitleBar() {
       className="flex flex-shrink-0 select-none items-center gap-2 border-b bg-card px-2"
       style={{ ...arrastrable, height: TITLEBAR_HEIGHT }}
     >
-      <div style={{ width: reservaIzquierda(plataforma) }} />
+      <div style={{ ...arrastrable, width: reservaIzquierda(plataforma) }} />
 
       {necesitaBotonDeMenu(plataforma) && (
         // En Windows/Linux el menú vivía en el marco que ocultamos: sin este botón,
@@ -76,10 +82,33 @@ export function AppTitleBar() {
         </button>
       )}
 
-      {/* Hueco del buscador: lo llena el header por portal cuando hay proyecto. */}
-      <div id={TITLEBAR_SEARCH_SLOT} className="flex flex-1 justify-center" style={clicable} />
+      {/* Nombre del proyecto: da contexto y hace que la franja no sea una caja
+          flotando sola. Lo llena el header por portal; es texto, así que arrastra
+          con la barra. */}
+      <div
+        id={TITLEBAR_TITLE_SLOT}
+        className="max-w-[220px] truncate text-xs font-medium text-muted-foreground"
+        style={arrastrable}
+      />
 
-      <div style={{ width: reservaControlesDerecha(plataforma) ? ANCHO_CONTROLES : 8 }} />
+      {/* Hueco del buscador. ARRASTRABLE: el `no-drag` es del campo (lo pone el
+          header), no de este contenedor. Cuando lo tenía, ocupaba todo el centro y la
+          ventana se quedaba sin superficie para moverse ni para maximizar con doble
+          clic (#170). */}
+      {/* `-webkit-app-region` NO se hereda: sin declararlo acá, este contenedor —que
+          ocupa casi toda la franja— queda en `none` y la ventana sigue sin poder
+          moverse. El `no-drag` lo pone el campo, no este hueco. */}
+      <div
+        id={TITLEBAR_SEARCH_SLOT}
+        className="flex flex-1 items-center justify-center px-2"
+        style={arrastrable}
+      />
+
+      {/* Indicadores de la derecha (estado del servidor MCP): el header ya no tiene
+          ancho que gastar en ellos y acá sobra franja. */}
+      <div id={TITLEBAR_RIGHT_SLOT} className="flex items-center gap-1" style={arrastrable} />
+
+      <div style={{ ...arrastrable, width: reservaControlesDerecha(plataforma) ? ANCHO_CONTROLES : 8 }} />
     </div>
   );
 }
