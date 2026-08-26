@@ -47,6 +47,18 @@ import {
   type DiagramModel,
 } from "../../src/lib/mcp/diagram-builder";
 import { resolveDiagramId } from "../../src/lib/mcp/active-diagram";
+import {
+  resolveOrg,
+  diagramsDirRel,
+  orgDirRel,
+  orgSlug,
+  isValidOrgSlug,
+  formatOrgList,
+  planOrgDeletion,
+  conflictoBorrado,
+  SIN_ORG,
+  type OrgRef,
+} from "../../src/lib/mcp/orgs";
 import { resolveProjectRef, resolveViewRef, vistaInexistente } from "../../src/lib/mcp/project-update";
 import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
 import { toMermaid, idsQueCambian } from "../../src/lib/mcp/to-mermaid";
@@ -83,6 +95,12 @@ const NOTATION = z.enum(["ddd", "bpmn", "c4", "uml"]);
 export interface McpToolsOptions {
   /** Directorio donde persisten los modelos en curso y las exportaciones. */
   workspace: string;
+  /**
+   * Organización por defecto del servidor (`--org` / `PROCESSFLOW_ORG`). Ata la sesión
+   * a un grupo de diagramas: con ella puesta, el agente NO ve los de otras orgs. La
+   * pisan `use_org` y el `org` explícito de la llamada.
+   */
+  defaultOrg?: string;
   /**
    * Presente sólo en el modo app (HTTP embebido): entrega el diagrama al
    * renderer para cargarlo en el lienzo al momento. Devuelve true si la
@@ -217,7 +235,12 @@ const metadataSchema = z
   .optional());
 
 export function registerProcessflowTools(server: McpServer, opts: McpToolsOptions) {
-  const DIAGRAMS_DIR = path.join(opts.workspace, ".processflow", "diagrams");
+  // Raíz del workspace. La carpeta de diagramas ya NO es una constante: cuelga de la
+  // organización activa (`.processflow/diagrams` sin org, `.processflow/orgs/<slug>/
+  // diagrams` con org). El aislamiento es la ruta, no un filtro que cada herramienta
+  // tenga que recordar aplicar.
+  const PROCESSFLOW_DIR = path.join(opts.workspace, ".processflow");
+  const ORGS_DIR = path.join(PROCESSFLOW_DIR, "orgs");
 
   // Registro observable: `install_skill` inyecta en el skill la lista de
   // herramientas que este transporte expone de verdad (export_as_view sólo
@@ -235,37 +258,89 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
   };
 
   const ensureDir = (dir: string) => fs.mkdir(dir, { recursive: true });
-  const modelPath = (id: string) => path.join(DIAGRAMS_DIR, `${id}.json`);
 
-  async function saveModel(id: string, model: DiagramModel): Promise<void> {
-    await ensureDir(DIAGRAMS_DIR);
-    await fs.writeFile(modelPath(id), JSON.stringify(model, null, 2), "utf8");
+  /** Slugs de las organizaciones que existen hoy. Un directorio con nombre inválido se ignora. */
+  async function listOrgSlugs(): Promise<string[]> {
+    try {
+      const entradas = await fs.readdir(ORGS_DIR, { withFileTypes: true });
+      return entradas
+        .filter((e) => e.isDirectory() && isValidOrgSlug(e.name))
+        .map((e) => e.name)
+        .sort();
+    } catch {
+      return [];
+    }
   }
 
-  async function loadModel(id: string): Promise<DiagramModel> {
+  /**
+   * Organización de ESTA llamada. `undefined` = la que corresponda por precedencia
+   * (parámetro → fijada → configuración → sin organización); `null` = la carpeta plana
+   * a propósito. La regla vive en `src/lib/mcp/orgs.ts`.
+   */
+  async function activeOrg(explicit?: string | null): Promise<string | null> {
+    return resolveOrg({
+      explicit,
+      pinned: await readPinnedOrg(),
+      configured: opts.defaultOrg,
+      disponibles: await listOrgSlugs(),
+    }).slug;
+  }
+
+  const diagramsDirOf = (org: string | null) => path.join(PROCESSFLOW_DIR, diagramsDirRel(org));
+  const modelPathIn = (org: string | null, id: string) => path.join(diagramsDirOf(org), `${id}.json`);
+
+  async function saveModel(id: string, model: DiagramModel, org?: string | null): Promise<void> {
+    const destino = org === undefined ? await activeOrg() : org;
+    await ensureDir(diagramsDirOf(destino));
+    await fs.writeFile(modelPathIn(destino, id), JSON.stringify(model, null, 2), "utf8");
+  }
+
+  async function loadModel(id: string, org?: string | null): Promise<DiagramModel> {
+    const desde = org === undefined ? await activeOrg() : org;
     try {
-      const raw = await fs.readFile(modelPath(id), "utf8");
+      const raw = await fs.readFile(modelPathIn(desde, id), "utf8");
       return JSON.parse(raw) as DiagramModel;
     } catch {
+      // Si está en OTRA org, decirlo: «no existe» mandaría a crear un duplicado.
+      const otra = await orgQueTiene(id, desde);
       throw new Error(
-        `No existe el diagrama "${id}". Usa create_diagram o list_diagrams primero.`
+        otra !== undefined
+          ? `El diagrama "${id}" no está en ${nombreOrg(desde)}, sino en ${nombreOrg(otra)}. Cambiá con use_org, o pasá \`org\` en la llamada.`
+          : `No existe el diagrama "${id}". Usa create_diagram o list_diagrams primero.`
       );
     }
   }
 
-  async function listModels(): Promise<string[]> {
+  async function listModels(org?: string | null): Promise<string[]> {
+    const desde = org === undefined ? await activeOrg() : org;
     try {
-      const files = await fs.readdir(DIAGRAMS_DIR);
+      const files = await fs.readdir(diagramsDirOf(desde));
       return files.filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, ""));
     } catch {
       return [];
     }
   }
 
+  /** Cómo se nombra una org en un mensaje al agente. */
+  const nombreOrg = (org: string | null) => (org === null ? SIN_ORG : `la organización "${org}"`);
+
+  /**
+   * ¿En qué otra org vive este id? Sólo para el mensaje de error: buscar el id en TODO
+   * el workspace es lo que convierte «no existe» en algo accionable. `undefined` = en
+   * ninguna otra.
+   */
+  async function orgQueTiene(id: string, excepto: string | null): Promise<string | null | undefined> {
+    for (const candidata of [null, ...(await listOrgSlugs())]) {
+      if (candidata === excepto) continue;
+      if ((await listModels(candidata)).includes(id)) return candidata;
+    }
+    return undefined;
+  }
+
   // El fijado vive en el WORKSPACE, no en memoria: el transporte HTTP es
   // stateless (un servidor MCP por petición) y una variable de módulo se
   // perdería entre llamadas.
-  const ACTIVE_FILE = path.join(DIAGRAMS_DIR, "..", "active.json");
+  const ACTIVE_FILE = path.join(PROCESSFLOW_DIR, "active.json");
 
   async function readPinned(): Promise<string | undefined> {
     try {
@@ -285,17 +360,33 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     }
   }
 
-  /** Escribe una clave del archivo de fijados conservando la otra. */
-  async function writeActive(patch: { diagramId?: string | null; project?: string | null }): Promise<void> {
+  async function readPinnedOrg(): Promise<string | undefined> {
+    try {
+      const raw = JSON.parse(await fs.readFile(ACTIVE_FILE, "utf8"));
+      return typeof raw?.org === "string" ? raw.org : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Escribe una clave del archivo de fijados conservando las otras. */
+  async function writeActive(patch: {
+    diagramId?: string | null;
+    project?: string | null;
+    org?: string | null;
+  }): Promise<void> {
     const actual = {
       diagramId: await readPinned(),
       project: await readPinnedProject(),
+      org: await readPinnedOrg(),
     };
     const proximo: Record<string, string> = {};
     const diagram = patch.diagramId === undefined ? actual.diagramId : patch.diagramId;
     const project = patch.project === undefined ? actual.project : patch.project;
+    const org = patch.org === undefined ? actual.org : patch.org;
     if (diagram) proximo.diagramId = diagram;
     if (project) proximo.project = project;
+    if (org) proximo.org = org;
 
     await ensureDir(path.dirname(ACTIVE_FILE));
     if (!Object.keys(proximo).length) {
@@ -388,6 +479,216 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     }
   );
 
+  // -- 1b. Organizaciones (agrupan diagramas y aíslan lo que ve el agente) -----
+
+  server.registerTool(
+    "list_orgs",
+    {
+      title: "Listar organizaciones",
+      description:
+        "Las organizaciones del workspace, con cuántos diagramas tiene cada una y cuál está activa. Una organización agrupa diagramas y AÍSLA lo que ves: con una activa, list_diagrams sólo muestra los suyos.",
+      inputSchema: {},
+    },
+    async () => {
+      const slugs = await listOrgSlugs();
+      const orgs: OrgRef[] = [];
+      for (const slug of slugs) {
+        let nombre = slug;
+        try {
+          const meta = JSON.parse(await fs.readFile(path.join(PROCESSFLOW_DIR, orgDirRel(slug), "org.json"), "utf8"));
+          if (typeof meta?.nombre === "string" && meta.nombre.trim()) nombre = meta.nombre;
+        } catch {
+          // Carpeta sin org.json (creada a mano): el slug alcanza como nombre.
+        }
+        orgs.push({ slug, nombre, diagramas: (await listModels(slug)).length });
+      }
+      const sinOrg = (await listModels(null)).length;
+      const extra = sinOrg ? `\n\n${SIN_ORG} tiene ${sinOrg} diagrama(s) (la carpeta plana de antes de las organizaciones).` : "";
+      return text(`${formatOrgList(orgs, await activeOrg())}${extra}`);
+    }
+  );
+
+  server.registerTool(
+    "create_org",
+    {
+      title: "Crear una organización",
+      description:
+        "Crea una organización (una carpeta propia de diagramas) y la deja FIJADA. Sirve para separar clientes o dominios: lo que se cree después vive ahí y no se mezcla con el resto.",
+      inputSchema: {
+        name: z.string().describe('Nombre legible: "Acme Salud".'),
+        description: z.string().optional().describe("Para qué es esta organización."),
+      },
+    },
+    async ({ name, description }) => {
+      const slug = orgSlug(name);
+      if (!slug) return fail(`"${name}" no deja un nombre de carpeta usable. Usá letras o dígitos, por ejemplo "Acme Salud".`);
+      if ((await listOrgSlugs()).includes(slug)) {
+        return fail(`Ya existe la organización "${slug}". Fijala con use_org("${slug}") en vez de crear otra.`);
+      }
+      await ensureDir(diagramsDirOf(slug));
+      await fs.writeFile(
+        path.join(PROCESSFLOW_DIR, orgDirRel(slug), "org.json"),
+        JSON.stringify({ nombre: name, descripcion: description, createdAt: new Date().toISOString() }, null, 2),
+        "utf8"
+      );
+      // Se fija sola, como create_diagram: lo normal tras crearla es trabajar ahí.
+      await writeActive({ org: slug });
+      return text(
+        `Organización creada y FIJADA: "${slug}" (${name}). Los diagramas nuevos van a \`.processflow/${diagramsDirRel(slug)}\` y list_diagrams sólo muestra los suyos. Traé uno existente con move_diagram.`
+      );
+    }
+  );
+
+  server.registerTool(
+    "use_org",
+    {
+      title: "Fijar la organización de trabajo",
+      description:
+        "Fija la organización sobre la que actúan las demás herramientas. Queda guardada en el workspace (sobrevive reinicios y el modo HTTP). Sin argumentos informa cuál está fijada; con `clear: true` vuelve a los diagramas sin organización.",
+      inputSchema: {
+        org: z.string().optional().describe("Slug a fijar (ver list_orgs)."),
+        clear: z.boolean().optional().describe(`true suelta la organización y trabaja en ${SIN_ORG}.`),
+      },
+    },
+    async ({ org, clear }) => {
+      const disponibles = await listOrgSlugs();
+      if (clear) {
+        await writeActive({ org: null });
+        return text(`Organización fijada: ninguna. Se trabaja en ${SIN_ORG} (la carpeta plana).`);
+      }
+      if (!org) {
+        const actual = await readPinnedOrg();
+        const cfg = opts.defaultOrg ? ` · configuración del servidor: "${opts.defaultOrg}"` : "";
+        return text(
+          `Fijada: ${actual ? `"${actual}"` : `ninguna (${SIN_ORG})`}${cfg}\nEn el workspace: ${
+            disponibles.length ? disponibles.map((o) => `"${o}"`).join(", ") : "(ninguna)"
+          }`
+        );
+      }
+      if (!disponibles.includes(org)) {
+        return fail(
+          `No existe la organización "${org}". Las que hay: ${
+            disponibles.length ? disponibles.map((o) => `"${o}"`).join(", ") : "(ninguna)"
+          }. Crea una con create_org.`
+        );
+      }
+      await writeActive({ org });
+      const cuantos = (await listModels(org)).length;
+      return text(`Organización fijada: "${org}" · ${cuantos} diagrama(s). Las demás herramientas ven SÓLO estos.`);
+    }
+  );
+
+  server.registerTool(
+    "rename_org",
+    {
+      title: "Renombrar una organización",
+      description:
+        "Cambia el nombre legible de una organización. El slug (su carpeta) NO cambia: renombrar carpetas con diagramas adentro es cómo se pierde trabajo, y el slug es lo que usan `use_org` y las rutas.",
+      inputSchema: {
+        org: z.string().describe("Slug de la organización (ver list_orgs)."),
+        name: z.string().describe("Nombre nuevo, para leer."),
+      },
+    },
+    async ({ org, name }) => {
+      if (!(await listOrgSlugs()).includes(org)) {
+        return fail(`No existe la organización "${org}". Mirá list_orgs.`);
+      }
+      const limpio = name.trim();
+      if (!limpio) return fail("El nombre no puede quedar vacío.");
+      const metaPath = path.join(PROCESSFLOW_DIR, orgDirRel(org), "org.json");
+      let meta: Record<string, unknown> = {};
+      try {
+        meta = JSON.parse(await fs.readFile(metaPath, "utf8"));
+      } catch {
+        // Carpeta creada a mano, sin org.json: se escribe uno.
+      }
+      await fs.writeFile(metaPath, JSON.stringify({ ...meta, nombre: limpio }, null, 2), "utf8");
+      return text(`Organización "${org}" ahora se llama "${limpio}". El slug sigue siendo "${org}".`);
+    }
+  );
+
+  server.registerTool(
+    "delete_org",
+    {
+      title: "Eliminar una organización",
+      description:
+        "Elimina una organización y SUELTA su contenido: los diagramas vuelven a los que no tienen organización, no se borran. Se niega si al soltarlos pisaría un diagrama con el mismo id.",
+      inputSchema: {
+        org: z.string().describe("Slug de la organización a eliminar."),
+      },
+    },
+    async ({ org }) => {
+      if (!(await listOrgSlugs()).includes(org)) {
+        return fail(`No existe la organización "${org}". Mirá list_orgs.`);
+      }
+      const plan = planOrgDeletion(await listModels(org), await listModels(null));
+      if (plan.conflictos.length) return fail(conflictoBorrado(org, plan.conflictos));
+
+      if (plan.aMover.length) await ensureDir(diagramsDirOf(null));
+      for (const id of plan.aMover) {
+        await fs.rename(modelPathIn(org, id), modelPathIn(null, id));
+      }
+      await fs.rm(path.join(PROCESSFLOW_DIR, orgDirRel(org)), { recursive: true, force: true });
+      // El fijado apuntaba a una carpeta que ya no está: dejarlo colgado haría fallar
+      // TODA llamada siguiente con «la organización fijada ya no existe».
+      if ((await readPinnedOrg()) === org) await writeActive({ org: null });
+      return text(
+        `Organización "${org}" eliminada. ${
+          plan.aMover.length
+            ? `Sus ${plan.aMover.length} diagrama(s) volvieron a ${SIN_ORG}: ${plan.aMover.join(", ")}.`
+            : "No tenía diagramas."
+        }`
+      );
+    }
+  );
+
+  server.registerTool(
+    "move_diagram",
+    {
+      title: "Mover un diagrama de organización",
+      description:
+        "Mueve un diagrama en curso a otra organización (o a los diagramas sin organización). Mueve el archivo: el diagrama deja de verse desde donde estaba.",
+      inputSchema: {
+        diagramId: z.string().describe("Id del diagrama a mover."),
+        org: z
+          .string()
+          .optional()
+          .describe(`Organización destino. Omitila (o mandá cadena vacía) para dejarlo en ${SIN_ORG}.`),
+      },
+    },
+    async ({ diagramId, org }) => {
+      const destino = org ? org : null;
+      const disponibles = await listOrgSlugs();
+      if (destino && !disponibles.includes(destino)) {
+        return fail(`No existe la organización "${destino}". Crea una con create_org, o mirá list_orgs.`);
+      }
+      // Buscar el diagrama en TODO el workspace: pedir además de dónde sale sería
+      // fricción, y el agente casi nunca sabe en qué carpeta cayó.
+      const grupos: (string | null)[] = [null, ...disponibles];
+      let desde: string | null | undefined;
+      for (const g of grupos) {
+        if ((await listModels(g)).includes(diagramId)) {
+          desde = g;
+          break;
+        }
+      }
+      if (desde === undefined) {
+        return fail(`No existe el diagrama "${diagramId}" en ninguna organización. Mirá list_diagrams con org="*".`);
+      }
+      if (desde === destino) return text(`El diagrama "${diagramId}" ya está en ${nombreOrg(destino)}.`);
+      if ((await listModels(destino)).includes(diagramId)) {
+        return fail(
+          `${nombreOrg(destino)} ya tiene un diagrama "${diagramId}". Los ids son únicos POR organización: renombrá uno de los dos antes de mover.`
+        );
+      }
+      await ensureDir(diagramsDirOf(destino));
+      await fs.rename(modelPathIn(desde, diagramId), modelPathIn(destino, diagramId));
+      // El fijado apuntaba a un diagrama que ya no está donde el fijado dice.
+      if ((await readPinned()) === diagramId && (await activeOrg()) !== destino) await writePinned(null);
+      return text(`Diagrama "${diagramId}" movido de ${nombreOrg(desde)} a ${nombreOrg(destino)}.`);
+    }
+  );
+
   // -- 2. Ciclo de vida del diagrama ------------------------------------------
 
   server.registerTool(
@@ -437,27 +738,45 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .positive()
           .default(40)
           .describe("Tope de nombres por diagrama; el resto se resume como «… y N más»."),
+        org: z
+          .string()
+          .optional()
+          .describe(
+            'Organización a listar. Por defecto, la activa. "*" recorre TODAS: es el escape para no inventar un sinónimo de algo que ya existe en otro grupo, no una forma de trabajar sobre ellos.'
+          ),
       },
     },
-    async ({ names, limit }) => {
-      const ids = await listModels();
-      if (!ids.length) return text("No hay diagramas. Crea uno con create_diagram.");
-      if (!names) return text(ids.map((i) => `- ${i}`).join("\n"));
+    async ({ names, limit, org }) => {
+      // "*" no pasa por la resolución de org: es un barrido de lectura, no una sesión.
+      const grupos: (string | null)[] =
+        org === "*" ? [null, ...(await listOrgSlugs())] : [await activeOrg(org)];
+      const pares: { org: string | null; id: string }[] = [];
+      for (const g of grupos) for (const id of await listModels(g)) pares.push({ org: g, id });
+
+      if (!pares.length) {
+        return text(
+          org === "*"
+            ? "No hay diagramas en ninguna organización. Crea uno con create_diagram."
+            : `No hay diagramas en ${nombreOrg(grupos[0])}. Crea uno con create_diagram, o mirá otras con list_orgs.`
+        );
+      }
+      const etiqueta = (g: string | null) => (grupos.length > 1 ? `[${g ?? "sin-org"}] ` : "");
+      if (!names) return text(pares.map((p) => `- ${etiqueta(p.org)}${p.id}`).join("\n"));
 
       const lineas: string[] = [];
-      for (const id of ids) {
+      for (const { org: g, id } of pares) {
         let model: DiagramModel;
         try {
-          model = await loadModel(id);
+          model = await loadModel(id, g);
         } catch {
-          lineas.push(`- ${id} (ilegible)`);
+          lineas.push(`- ${etiqueta(g)}${id} (ilegible)`);
           continue;
         }
         const vocab = model.nodes.map((n) => n.nombre);
         const visibles = vocab.slice(0, limit);
         const resto = vocab.length - visibles.length;
         lineas.push(
-          `- ${id} · ${model.meta.nombre_proyecto} · ${model.meta.notation} · ${model.nodes.length} elementos, ${model.edges.length} aristas` +
+          `- ${etiqueta(g)}${id} · ${model.meta.nombre_proyecto} · ${model.meta.notation} · ${model.nodes.length} elementos, ${model.edges.length} aristas` +
             (visibles.length
               ? `\n  ${visibles.join(" · ")}${resto > 0 ? ` · … y ${resto} más` : ""}`
               : "")

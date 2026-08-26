@@ -66,11 +66,20 @@ export function countGraph(graph: GraphData | null | undefined): AppState["count
 export function describeAppState(input: {
   graph: GraphData | null;
   views: DesignView[];
-  savedFiles?: Pick<SavedFile, "name">[];
+  savedFiles?: Pick<SavedFile, "name" | "orgId">[];
   viewsLimit: number;
   now: string;
+  /**
+   * Organización que ve el agente. `undefined` = todas (comportamiento de antes);
+   * `null` = sólo los proyectos sin organización. El recorte se hace ACÁ, donde se
+   * arma el retrato: filtrar al formatear dejaría la fuga a un `console.log` de
+   * distancia.
+   */
+  org?: string | null;
 }): AppState {
-  const { graph, views, savedFiles = [], viewsLimit, now } = input;
+  const { graph, views, savedFiles = [], viewsLimit, now, org } = input;
+  const visibles =
+    org === undefined ? savedFiles : savedFiles.filter((f) => (f.orgId ?? null) === org);
   return {
     projectName: graph?.nombre_proyecto ?? null,
     notation: graph?.notation as NotationId | undefined,
@@ -84,7 +93,7 @@ export function describeAppState(input: {
       elements: v.graph ? countGraph(v.graph).nodes : 0,
     })),
     viewsLimit,
-    projects: savedFiles.map((f) => f.name),
+    projects: visibles.map((f) => f.name),
     updatedAt: now,
   };
 }

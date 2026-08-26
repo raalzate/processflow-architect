@@ -61,6 +61,10 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     setCurrentFileId,
     addFile,
     deleteFile,
+    orgFilter,
+    setOrgFilter,
+    setFileOrg,
+    clearOrgFromProjects,
   } = useSavedFiles();
 
   // Gestiona el parsing del JSON y deriva datos base (nodos, links, etc.)
@@ -395,6 +399,11 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     // Estado de Archivos
     savedFiles,
     currentFileId,
+    // Organizaciones: agrupan los proyectos; el filtro es de VISTA (no mueve nada).
+    orgFilter,
+    setOrgFilter,
+    setFileOrg,
+    clearOrgFromProjects,
 
     // Estado de Búsqueda
     searchQuery,

@@ -103,7 +103,9 @@ ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
 | El kit nombrado existe de verdad | self-test: cada fase debe corresponder a una skill instalada en `sdd.skillRoots` (omitido en CI) |
 | El clasificador no se degrada | 8 casos de ruteo en `scripts/harness-selftest.mjs`, paso 4 del gate |
 | El puntero de feature activa resuelve | self-test: puntero colgado = gate rojo |
-| Los artefactos SDD no vuelven al repo | `node scripts/sdd-github.mjs check` en el gate: cualquier archivo bajo `specs/` fuera de `sdd.github.allowedInRepo` es rojo, y el self-test lo prueba con un cebo |
+| Los artefactos SDD no vuelven al repo | **nada**: `specs/` se borró y con él el freno del gate que lo vigilaba (#156). Es convención escrita, y el próximo spec que nazca como archivo no lo va a frenar ningún comando |
+| Todo issue **creado por script** nace etiquetado | `exigirLabels()` en `scripts/sdd-github.mjs`: relee los labels del issue recién creado, reintenta y muere con exit 1 nombrando la cuenta activa y el remedio. Ni `--label` ni el código de salida son evidencia (#158) |
+| El agente recuerda el label al pedir el registro | el hook `sdd-router` imprime `tracker.labels` (bug · enhancement · documentation); el self-test exige que esos nombres sigan saliendo. Para un issue hecho **a mano** no hay más que esto: es directriz, no freno |
 | Los artefactos no se pierden al entregar | son issues: se cierran, no se borran, y quedan enlazadas desde el commit |
 | El commit de código queda registrado | `.githooks/commit-msg`: referencia (`tracker.issuePattern`) o `sin-issue: <motivo>`. Los patrones viven en el config, así que el freno no está atado a GitHub |
 
@@ -111,7 +113,7 @@ ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
 
 - **Las cinco features vividas están migradas a issues** (2026-08-21): `#1` 001, `#25` 002, `#45`
   003, `#62` 004, `#79` 005, con 89 issues de tarea (83 cerradas al migrar, según el checklist de
-  cada `tasks.md`). Las carpetas de `specs/` se borraron; el índice está en `specs/README.md`.
+  cada `tasks.md`). `specs/` se borró entero, índice incluido: el índice es la lista de issues con la etiqueta `sdd:feature` (`npm run sdd:status`).
   Las skills `sofka-0x` no están versionadas en el repo, así que las fases se ejecutaron siguiendo
   su contrato con las herramientas del repo (vitest en lugar de un runner de Gherkin).
 - **El registro ya no depende del criterio** (2026-08-24): `.githooks/commit-msg` frena cualquier

@@ -261,3 +261,38 @@ Regla:   un cambio de código llega al historial con una issue referenciada (`#1
 Mecanismo: `.githooks/commit-msg` (bloqueante: mira el diff staged y el mensaje) + ruta `issue` del
          `sdd-router`, que se desactiva sola en lo trivial (ruta `none`). Probados por
          `scripts/harness-selftest.mjs`: 7 casos del hook en un repo git temporal y 3 de ruteo.
+
+### GOTCHA: el issue se crea sin labels y el script pasa en verde
+
+Issue: #158
+
+Síntoma: `npm run sdd:new 006-organizaciones.md` imprimió la URL de la issue madre #157 y terminó
+         en verde, pero el issue quedó **sin labels**: ni `sdd:feature` ni `feature:006`, aunque el
+         script los pasa en `--label` y el label `feature:006` sí quedó creado. El timeline de #157
+         no tiene un solo evento `labeled`. Igual pasó con un `gh issue create --label bug` a mano.
+Causa:   la cuenta activa de `gh` era `doctiling`, que puede ABRIR issues en el repo pero no
+         etiquetar (`AddLabelsToLabelable` pide triage/write). GitHub descarta los labels y crea el
+         issue igual. Peor: `gh issue edit --add-label` imprime «failed to update 1 issue» y **sale
+         con código 0**, así que ni el reintento falla solo. Las features viejas (#1, #25) están
+         etiquetadas porque las creó la cuenta dueña.
+Regla:   todo issue nace etiquetado (`tracker.labels` mapea el tipo → label), y quien crea issues
+         por script VERIFICA releyendo la API: ni `--label` ni el exit code son evidencia.
+Mecanismo: `exigirLabels()` en `scripts/sdd-github.mjs` — relee los labels del issue recién creado,
+         reintenta con `issue edit` y, si faltan, muere (exit 1) nombrando la cuenta activa y el
+         remedio (`gh auth switch -u <dueño>`). La directriz la imprime el hook `sdd-router` con los
+         nombres del config, y el self-test exige que ese recordatorio siga saliendo.
+
+### GOTCHA: la feature nueva nace con un número de otra
+
+Issue: #172
+
+Síntoma: `npm run sdd:new 006-organizaciones.md` abrió la issue madre con la etiqueta `feature:006`,
+         que ya era de #113 («Metadatos y referencias en la caja», 12 tareas). Corregir a 007 chocó
+         con #133. Terminó en 008 después de renombrar **8 issues a mano**, dos veces.
+Causa:   `nuevaFeature()` sacaba el `NNN` del NOMBRE DEL ARCHIVO y no lo contrastaba con nada. El
+         número lo elegía quien escribía el spec, y el tablero no opinaba.
+Regla:   una feature nueva no nace con un número usado; si el número está tomado, el comando para y
+         dice cuál es el primero libre. Sin número en el nombre, tampoco arranca.
+Mecanismo: `scripts/sdd-github.mjs` (`new`) consulta las etiquetas `feature:*` del repo antes de
+         crear nada y sale con código 1 nombrando el primer libre. Probado a mano contra el repo:
+         `003` (usado) y un archivo sin número frenan; el mensaje trae la lista de usados.

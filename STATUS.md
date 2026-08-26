@@ -4,17 +4,17 @@ Lo imprime el hook `SessionStart`. Sirve para no releer el repo entero para resp
 Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verificado con un comando**;
 lo que se supone va en "deuda conocida".
 
-- **Fecha del último gate completo:** 2026-08-25
+- **Fecha del último gate completo:** 2026-08-26
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
 - **Versión publicada:** 0.6.6 — release **publicado** (Latest) con los 3 instaladores (dmg arm64 · exe · AppImage)
-- **Versión en el repo:** 0.6.6 — notas en `docs/releases/0.6.6.md`. El workflow deja el release en BORRADOR a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v<versión> --draft=false`)
+- **Versión en el repo:** 0.7.0 — notas en `docs/releases/0.7.0.md`. El workflow deja el release en BORRADOR a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v<versión> --draft=false`)
 
 ## Señales
 
 | Señal | Comando | Resultado |
 |---|---|---|
-| Ruta SDD en GitHub | `npm run sdd:check` | verde — las 5 features migradas a issues (#1 · #25 · #45 · #62 · #79) con 89 issues de tarea, **todas cerradas**; `specs/` sólo tiene su README y cualquier otro archivo ahí pone el gate en rojo |
+| Ruta SDD en GitHub | `npm run sdd:status` (usa red) | verde — las 5 features migradas a issues (#1 · #25 · #45 · #62 · #79) con 89 issues de tarea, **todas cerradas**. `specs/` se borró y con él el freno del gate que lo vigilaba (#156): que un spec no vuelva al repo ya **no** lo verifica ningún comando |
 | Registros espejados en GitHub | `node scripts/sdd-github.mjs mirror-docs` | verde — 16 gotchas (#95–#110) y el ADR 0001 (#111) tienen su issue cerrado con `Issue: #N` en el archivo; el comando es idempotente y **no** borra archivos (son el mecanismo: regla INCIDENTE + P12) |
 | Frontera de red de la suite | `npx vitest run src/lib/__tests__/network-boundary.test.ts` | verde — `fetch` y `http/https.request` revientan dentro de un test (con el destino en el mensaje) y simular la red sigue siendo posible |
 | Superficie de extensión de la IA (P5) | `npx vitest run src/lib/ai/__tests__/tasks-registry.test.ts` | verde — barrido por `import *`: toda `AiTask` declarada tiene id kebab único, tier válido, forma de ejecutarse, y el router la rutea en los tres modos sin conocerla |
@@ -22,14 +22,22 @@ lo que se supone va en "deuda conocida".
 | Release con instaladores | `node scripts/repo-lint.mjs` (regla RELEASEJOB) | verde — el job que publica baja los artefactos DESPUÉS del checkout y `fail_on_unmatched_files` está en `true`: el borrador vacío de v0.6.3 (checkout limpiando `installers/`) no puede repetirse en verde |
 | Notas de release en el repo | `node scripts/repo-lint.mjs --release-check 0.6.1` | verde — `docs/releases/0.6.1.md` con las tres secciones; con una versión inventada el freno RELEASE muerde |
 | No se actúa sobre una pregunta | incluido en el self-test | verde — 7 pedidos reales de este repo por las dos direcciones; `ask-first` marca el turno informativo y `action-guard` deniega toda edición dentro del repo hasta el próximo pedido del humano |
-| Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 24 frenos probados (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA, «no escribe temporales en `src/`» y los 9 casos de `commit-msg`, dos de ellos con la config de OTRA forja), 8 casos de ruteo |
+| El trabajo entra a `main` por PR | `gh api repos/…/branches/main/protection` | verde — **verificado el 2026-08-25**: PR obligatorio, 0 aprobaciones requeridas, check «Gate (arnés · docs · lint · typecheck · tests · build)» exigido, aplica a admins, force-push deshabilitado. El gate **no** verifica esto (necesita red y permisos): es una señal verificada a mano |
+| Freno local del push directo | incluido en el self-test | verde — `pre-push` frena `main` y deja pasar una rama de feature |
+| Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 24 frenos probados (se fue el de `specs/` con el directorio, #156; entró la directriz de labels, #158) (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA, «no escribe temporales en `src/`» y los 9 casos de `commit-msg`, dos de ellos con la config de OTRA forja), 8 casos de ruteo |
+| Directriz de labels | incluido en el self-test | verde — `sdd-router` nombra los labels de `tracker.labels` al pedir el registro, y `exigirLabels()` de `scripts/sdd-github.mjs` relee la API tras crear un issue: #157 nació sin labels y el script pasó en verde porque la cuenta activa de `gh` no tenía permiso de triage (#158) |
+| Organizaciones (aislamiento del MCP) | `npx vitest run src/lib/mcp/__tests__/orgs.test.ts main/services/__tests__/mcp-tools.test.ts` | verde — 22 + 87 pruebas: el slug no puede salir del workspace (`..`, `a/b`), `list_diagrams` no ve otra org, los ids son únicos POR org, y **eliminar una organización suelta sus diagramas a la carpeta plana** en vez de borrarlos (se niega si pisaría uno) |
+| CRUD de organizaciones contra la app viva | script manual por CDP + IPC | verde — crear, renombrar y eliminar desde el header; una org con un diagrama adentro se eliminó y el diagrama quedó en `.processflow/diagrams/`, con `active.json` sin `org` |
+| Barra de título propia | `npx vitest run src/lib/__tests__/window-chrome.test.ts` | verde — 6 pruebas: **ninguna plataforma dibuja sus propios controles de ventana** (semáforos en macOS, overlay nativo en Windows/Linux), así que un fallo nuestro no deja la ventana atrapada. El arrastre REAL sólo se verificó en macOS y a mano |
+| Menú y barra ofrecen lo mismo | `npx vitest run src/lib/__tests__/designer-actions.test.ts` | verde — catálogo único; el diseñador implementa `Record<DesignerActionId, …>`, así que un id sin manejador **no compila** |
+| Freno de numeración SDD | manual: `node scripts/sdd-github.mjs new <NNN-…>` con un NNN usado | verde — sale 1 nombrando el primer libre; sin `NNN` en el nombre tampoco arranca (#172) |
 | Link-check de docs | `node scripts/docs-linkcheck.mjs` | verde |
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
 | Typecheck | `npm run typecheck` | verde (renderer + electron) |
 | Tests | `npm run test:coverage` | verde — 82 archivos, 1332 pruebas, **offline** (`vitest.setup.ts` cierra la red) |
 | E2E del MCP (stdio) | script manual contra `mcp-server/index.ts` | verde — arnés completo (ingesta → citas → ambigüedades → calidad → revisión → export → install_skill) |
-| Lectura de la app por MCP (modo app) | script manual por CDP contra la app viva | verde — 30 tools registradas; `list_artifacts`, `get_artifact` (con revisión), `list_views`, `get_view` (+`importAs`) y sus errores con opciones, también contra OTRO proyecto |
+| Lectura de la app por MCP (modo app) | script manual por CDP contra la app viva | verde — 43 tools registradas; `list_artifacts`, `get_artifact` (con revisión), `list_views`, `get_view` (+`importAs`) y sus errores con opciones, también contra OTRO proyecto |
 | Editor de artefactos con documento largo | script manual por CDP contra la app viva | verde — 11 021 caracteres: índice de 49 encabezados con salto, buscar/reemplazar (72 coincidencias), stats, borrador recuperable |
 | Integridad del registro de notaciones | `npx vitest run src/lib/__tests__/notations-registry.test.ts` | verde — todo tipo declarado está en la paleta y viceversa, sin repetidos, con icono en `ICON_MAP` y con ayuda |
 | Registro de un cambio en el historial | `node scripts/harness-selftest.mjs` | verde — `.githooks/commit-msg` frena un commit que toca código sin `#<issue>` ni línea `sin-issue: <motivo>`; 7 casos en un repo git temporal (docs solo, merge, declaración sin motivo) y la ruta `issue` del router recuerda preguntar antes de tocar producción |

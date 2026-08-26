@@ -59,6 +59,28 @@ nunca ve una herramienta que su transporte no soporta.
 | `list_artifacts` **app** | artefactos que generó la IA local (drivers, riesgos, propuesta, roadmap, ADRs): título, tipo, revisión vigente, tamaño. |
 | `get_artifact` **app** | el Markdown del artefacto (el mismo que ve el humano), con su revisión y el histórico declarado. |
 
+### 1b · Organizaciones
+
+Agrupan diagramas y **aíslan** lo que el agente ve. La agrupación es una carpeta
+(`.processflow/orgs/<slug>/diagrams/`), no una etiqueta: el filtro es estructural —se lee un
+solo directorio— en vez de depender de que cada herramienta se acuerde de filtrar. Sin
+organización, los diagramas viven en la carpeta plana de siempre y nada cambia.
+
+| Herramienta | Qué hace |
+|---|---|
+| `list_orgs` | las organizaciones del workspace, con cuántos diagramas tiene cada una y cuál está activa. |
+| `create_org` | crea una (carpeta + `org.json`) y la deja **fijada**: lo que se cree después vive ahí. |
+| `use_org` | fija la organización de trabajo; `clear: true` vuelve a los diagramas sin organización. |
+| `move_diagram` | mueve un diagrama a otra organización (o fuera de todas). Mueve el archivo. |
+
+Precedencia (igual que la del diagrama, en `src/lib/mcp/orgs.ts`): el `org` de la llamada →
+la fijada con `use_org` → la del servidor (`--org` / `PROCESSFLOW_ORG`) → sin organización.
+**No** adivina cuando hay una sola: aislar es el punto. Los ids son únicos **por**
+organización, y pedir uno que está en otra devuelve un error que dice en cuál está.
+
+`list_diagrams` acepta `org: "*"` para barrer todas: es el escape que conserva su razón de
+ser —no inventar un sinónimo de algo que ya existe en otro grupo—, sólo de lectura.
+
 ### 2 · Ciclo de vida del diagrama
 
 | Herramienta | Qué hace |

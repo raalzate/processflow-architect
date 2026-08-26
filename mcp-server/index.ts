@@ -44,12 +44,21 @@ const DEFAULT_DIAGRAM = argumento("diagram") || process.env.PROCESSFLOW_DIAGRAM 
  */
 const DEFAULT_PROJECT = argumento("project") || process.env.PROCESSFLOW_PROJECT || undefined;
 
+/**
+ * Organización por defecto (`--org "acme"` en `.mcp.json`, o `PROCESSFLOW_ORG`).
+ * Agrupa los diagramas en `.processflow/orgs/<slug>/diagrams/` y AÍSLA la sesión: con
+ * ella puesta, el agente no ve los diagramas de otras organizaciones. La pisan
+ * `use_org` y el `org` explícito de cada llamada.
+ */
+const DEFAULT_ORG = argumento("org") || process.env.PROCESSFLOW_ORG || undefined;
+
 async function main() {
   const server = new McpServer({ name: "processflow-architect", version: "0.1.0" });
   registerProcessflowTools(server, {
     workspace: WORKSPACE,
     defaultDiagramId: DEFAULT_DIAGRAM,
     defaultProject: DEFAULT_PROJECT,
+    defaultOrg: DEFAULT_ORG,
   });
 
   const transport = new StdioServerTransport();
@@ -57,8 +66,8 @@ async function main() {
   // No escribir en stdout: es el canal del protocolo. Los logs van a stderr.
   process.stderr.write(
     `[processflow-mcp] listo (stdio). Workspace: ${WORKSPACE}${
-      DEFAULT_DIAGRAM ? ` · diagrama por defecto: ${DEFAULT_DIAGRAM}` : ""
-    }\n`
+      DEFAULT_ORG ? ` · organización: ${DEFAULT_ORG}` : ""
+    }${DEFAULT_DIAGRAM ? ` · diagrama por defecto: ${DEFAULT_DIAGRAM}` : ""}\n`
   );
 }
 

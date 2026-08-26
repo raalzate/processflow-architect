@@ -74,7 +74,8 @@ repo es cambiar ese único archivo.
 
 En el repo, además: `.githooks/pre-commit` (rutas protegidas + `repo-lint` de los archivos staged),
 `.githooks/commit-msg` (un commit que toca código referencia su issue —`#123`— o declara
-`sin-issue: <motivo>`; los patrones salen de `tracker` + `commitMsg` del config, no del bash) y `.githooks/post-commit` (reindexa con `graphify update`), instalados con
+`sin-issue: <motivo>`; los patrones salen de `tracker` + `commitMsg` del config, no del bash) y `.githooks/pre-push` (el trabajo entra a `main` por PR: falla antes de la red y dice cómo mover los
+commits a una rama) y `.githooks/post-commit` (reindexa con `graphify update`), instalados con
 `npm run hooks:install` —
 `core.hooksPath` debe valer `.githooks`; `.git/hooks/` sólo tiene `.sample` a propósito.
 

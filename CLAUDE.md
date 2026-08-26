@@ -10,6 +10,9 @@
 - **Una pregunta se contesta; una acción se pide.** Si el pedido es informativo, el hook
   `ask-first` marca el turno y `action-guard` bloquea toda edición del repo hasta que el humano
   pida el cambio. Contestá y, si hace falta un cambio, proponelo: no lo hagas por tu cuenta.
+- **El trabajo entra a `main` por pull request.** La rama está protegida en GitHub (PR obligatorio
+  + el check del gate en verde, también para admins) y `.githooks/pre-push` avisa antes de la red.
+  Nunca empujes directo a `main`: creá la rama, abrí el PR.
 - **Nada se entrega sin `npm run gate` verde.** Es la única definición de entregable:
   self-test del arnés · link-check de docs · lint de convenciones · typecheck · tests
   con cobertura · build de producción. `npm run gate:fast` omite el build: es señal de

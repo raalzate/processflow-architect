@@ -197,6 +197,12 @@ export interface GraphData {
 export interface SavedFile {
   id: string;
   name: string;
+  /**
+   * Organización a la que pertenece (slug), si el humano lo agrupó. Opcional a
+   * propósito: los proyectos de antes de las organizaciones no tienen el campo y
+   * cuentan como «sin organización». Nunca se infiere del nombre.
+   */
+  orgId?: string;
   content: GraphData;
   proposalResult?: TechnicalElementsOutput;
   driversResult?: ArchitectureDriversOutput;

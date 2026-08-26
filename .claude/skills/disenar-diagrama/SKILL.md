@@ -33,7 +33,9 @@ revisión → exportar`.
 5. `list_diagrams` / `get_diagram` — ¿hay un diseño en curso que retomar?
    `list_diagrams` devuelve los NOMBRES de los elementos de cada diagrama: si uno
    ya describe lo que ibas a crear, reusá ESE nombre en vez de un sinónimo.
-   `import_diagram` si el usuario trae un `.json` exportado.
+   `import_diagram` si el usuario trae un `.json` exportado. Ojo: si hay
+   organizaciones (`list_orgs`), sólo ves la ACTIVA — `use_org` para cambiar, o
+   `list_diagrams(org: "*")` para barrer todas antes de dar algo por inexistente.
 
 Reutilizar es la regla: rehacer a mano algo que ya está en la app es trabajo
 duplicado y, peor, una segunda versión de la verdad que el humano tiene que

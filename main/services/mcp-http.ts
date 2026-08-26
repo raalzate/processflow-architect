@@ -26,6 +26,15 @@ import { registerProcessflowTools } from "./mcp-tools";
 import { getAppState } from "./mcp-app-state";
 import { readFromApp } from "./mcp-app-read";
 import { actOnApp } from "./mcp-app-action";
+import {
+  isValidOrgSlug,
+  orgSlug,
+  orgDirRel,
+  diagramsDirRel,
+  planOrgDeletion,
+  conflictoBorrado,
+} from "../../src/lib/mcp/orgs";
+import { promises as fsp } from "node:fs";
 import type { GraphData } from "../../src/lib/types";
 import type { NotationId } from "../../src/lib/notations";
 
@@ -89,6 +98,7 @@ function buildMcpServer(): McpServer {
     // entorno, y lo normal es fijar el diagrama con `use_diagram`.
     defaultDiagramId: process.env.PROCESSFLOW_DIAGRAM || undefined,
     defaultProject: process.env.PROCESSFLOW_PROJECT || undefined,
+    defaultOrg: process.env.PROCESSFLOW_ORG || undefined,
     exportToApp,
     exportViewToApp,
     exportMermaidToApp,
@@ -170,6 +180,123 @@ export interface McpHttpStatus {
   running: boolean;
   port: number;
   url: string;
+}
+
+/**
+ * Organizaciones del workspace del MCP y cuál está FIJADA para el agente.
+ *
+ * El renderer no toca disco, y sin esto el header no puede mostrar el sufijo «·MCP»:
+ * el humano vería una organización en la app mientras el agente escribe en otra, sin
+ * ninguna señal de la divergencia. Es lectura, no configuración.
+ */
+export async function mcpOrgsStatus(): Promise<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }> {
+  const raiz = path.join(appWorkspace(), ".processflow");
+  let pinned: string | null = null;
+  try {
+    const activo = JSON.parse(await fsp.readFile(path.join(raiz, "active.json"), "utf8"));
+    if (typeof activo?.org === "string") pinned = activo.org;
+  } catch {
+    /* sin fijado: el agente trabaja en la carpeta plana */
+  }
+  const orgs: { slug: string; nombre: string }[] = [];
+  try {
+    for (const e of await fsp.readdir(path.join(raiz, "orgs"), { withFileTypes: true })) {
+      if (!e.isDirectory() || !isValidOrgSlug(e.name)) continue;
+      let nombre = e.name;
+      try {
+        const meta = JSON.parse(await fsp.readFile(path.join(raiz, "orgs", e.name, "org.json"), "utf8"));
+        if (typeof meta?.nombre === "string" && meta.nombre.trim()) nombre = meta.nombre;
+      } catch {
+        /* carpeta sin org.json: el slug alcanza */
+      }
+      orgs.push({ slug: e.name, nombre });
+    }
+  } catch {
+    /* todavía no hay organizaciones */
+  }
+  return { pinned, orgs: orgs.sort((a, b) => a.slug.localeCompare(b.slug)) };
+}
+
+/**
+ * CRUD de organizaciones desde la UI. La app no puede hablar con sus propias tools MCP
+ * (el transporte es para agentes externos), así que estas operaciones tocan el MISMO
+ * workspace con las MISMAS reglas puras: el slug se valida, y eliminar SUELTA los
+ * diagramas a la carpeta plana en vez de borrarlos.
+ */
+export async function mcpOrgCreate(nombre: string): Promise<{ ok: boolean; slug?: string; error?: string }> {
+  const slug = orgSlug(nombre);
+  if (!slug) return { ok: false, error: `"${nombre}" no deja un nombre de carpeta usable.` };
+  const raiz = path.join(appWorkspace(), ".processflow");
+  const dir = path.join(raiz, orgDirRel(slug));
+  try {
+    await fsp.access(dir);
+    return { ok: false, error: `Ya existe una organización "${slug}".` };
+  } catch {
+    /* no existe: se crea */
+  }
+  await fsp.mkdir(path.join(raiz, diagramsDirRel(slug)), { recursive: true });
+  await fsp.writeFile(
+    path.join(dir, "org.json"),
+    JSON.stringify({ nombre, createdAt: new Date().toISOString() }, null, 2),
+    "utf8"
+  );
+  return { ok: true, slug };
+}
+
+export async function mcpOrgRename(slug: string, nombre: string): Promise<{ ok: boolean; error?: string }> {
+  if (!isValidOrgSlug(slug)) return { ok: false, error: "Organización inválida." };
+  const limpio = nombre.trim();
+  if (!limpio) return { ok: false, error: "El nombre no puede quedar vacío." };
+  const metaPath = path.join(appWorkspace(), ".processflow", orgDirRel(slug), "org.json");
+  let meta: Record<string, unknown> = {};
+  try {
+    meta = JSON.parse(await fsp.readFile(metaPath, "utf8"));
+  } catch {
+    /* carpeta sin org.json: se escribe uno */
+  }
+  try {
+    await fsp.writeFile(metaPath, JSON.stringify({ ...meta, nombre: limpio }, null, 2), "utf8");
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "No se pudo renombrar." };
+  }
+}
+
+export async function mcpOrgDelete(slug: string): Promise<{ ok: boolean; movidos?: string[]; error?: string }> {
+  if (!isValidOrgSlug(slug)) return { ok: false, error: "Organización inválida." };
+  const raiz = path.join(appWorkspace(), ".processflow");
+  const listar = async (rel: string) => {
+    try {
+      return (await fsp.readdir(path.join(raiz, rel)))
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => f.replace(/\.json$/, ""));
+    } catch {
+      return [];
+    }
+  };
+  const plan = planOrgDeletion(await listar(diagramsDirRel(slug)), await listar(diagramsDirRel(null)));
+  if (plan.conflictos.length) return { ok: false, error: conflictoBorrado(slug, plan.conflictos) };
+
+  if (plan.aMover.length) await fsp.mkdir(path.join(raiz, diagramsDirRel(null)), { recursive: true });
+  for (const id of plan.aMover) {
+    await fsp.rename(
+      path.join(raiz, diagramsDirRel(slug), `${id}.json`),
+      path.join(raiz, diagramsDirRel(null), `${id}.json`)
+    );
+  }
+  await fsp.rm(path.join(raiz, orgDirRel(slug)), { recursive: true, force: true });
+  // Un fijado colgado haría fallar toda llamada del agente con «ya no existe».
+  const activeFile = path.join(raiz, "active.json");
+  try {
+    const activo = JSON.parse(await fsp.readFile(activeFile, "utf8"));
+    if (activo?.org === slug) {
+      delete activo.org;
+      await fsp.writeFile(activeFile, JSON.stringify(activo, null, 2), "utf8");
+    }
+  } catch {
+    /* sin fijados */
+  }
+  return { ok: true, movidos: plan.aMover };
 }
 
 export function mcpHttpStatus(): McpHttpStatus {

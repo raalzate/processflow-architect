@@ -1,7 +1,24 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { cn } from "@/lib/utils";
+import {
+  TITLEBAR_SEARCH_SLOT,
+  TITLEBAR_TITLE_SLOT,
+  TITLEBAR_RIGHT_SLOT,
+} from "@/components/layout/AppTitleBar";
 import Link from "next/link";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -20,6 +37,8 @@ import {
   FolderOpen,
   ChevronDown,
   Pencil,
+  Building2,
+  FolderPlus,
 } from "lucide-react";
 import {
   Dialog,
@@ -33,7 +52,9 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -43,6 +64,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -62,6 +86,17 @@ import { BetaBadge } from "@/components/layout/AppCredits";
 import { parseDiagramJson } from "@/lib/import-diagram";
 import { normalizeProjectName } from "@/lib/project-rename";
 import {
+  ORG_TODAS,
+  SIN_ORG_LABEL,
+  groupByOrg,
+  filterByOrg,
+  orgChipLabel,
+  emptyOrgHint,
+  orgOptions,
+  visibleSelection,
+  type OrgFilter,
+} from "@/lib/project-orgs";
+import {
   INITIAL_NOTATION_ID,
   NOTATION_LIST,
   getNotation,
@@ -72,6 +107,13 @@ import {
 interface AppHeaderProps {
   savedFiles: SavedFile[];
   currentFileId: string | null;
+  /** Organización por la que se filtra la lista de proyectos («*» = todas). */
+  orgFilter: OrgFilter;
+  onOrgFilterChange: (filtro: OrgFilter) => void;
+  /** Mueve un proyecto a otra organización (`null` lo saca de todas). */
+  onFileOrgChange: (id: string, orgId: string | null) => void;
+  /** Saca una organización de todos los proyectos (al eliminarla). */
+  onOrgCleared: (orgId: string) => void;
   onFileSelect: (id: string) => void;
   onCreateProject: (nombre: string, notation?: NotationId) => void;
   /** Importa un GraphData ya generado (p. ej. exportado por el MCP / Claude Code). */
@@ -154,6 +196,10 @@ const FileManagement: React.FC<
     AppHeaderProps,
     | "savedFiles"
     | "currentFileId"
+    | "orgFilter"
+    | "onOrgFilterChange"
+    | "onFileOrgChange"
+    | "onOrgCleared"
     | "onFileSelect"
     | "onCreateProject"
     | "onImportJson"
@@ -164,6 +210,10 @@ const FileManagement: React.FC<
 > = ({
   savedFiles,
   currentFileId,
+  orgFilter,
+  onOrgFilterChange,
+  onFileOrgChange,
+  onOrgCleared,
   onFileSelect,
   onCreateProject,
   onImportJson,
@@ -181,6 +231,105 @@ const FileManagement: React.FC<
   // Renombrar el proyecto activo (issue #127): el nombre se lee en este selector,
   // así que se cambia acá — por el menú Proyecto o con doble clic sobre el nombre,
   // el mismo gesto que ya enseña la barra de vistas.
+  // Organizaciones del workspace del MCP: sólo para saber cuál ve el AGENTE («·MCP»)
+  // y para ofrecer una recién creada que todavía no tiene proyectos. El renderer no
+  // toca disco: esto llega por IPC y en la web simplemente no hay.
+  const [mcpOrgs, setMcpOrgs] = useState<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }>({
+    pinned: null,
+    orgs: [],
+  });
+  useEffect(() => {
+    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    if (!electron?.mcpOrgsStatus) return;
+    let alive = true;
+    const check = () =>
+      electron.mcpOrgsStatus!()
+        .then((s) => alive && setMcpOrgs(s))
+        .catch(() => {});
+    check();
+    const timer = setInterval(check, 5000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const orgNames = useMemo(
+    () => Object.fromEntries(mcpOrgs.orgs.map((o) => [o.slug, o.nombre])),
+    [mcpOrgs.orgs]
+  );
+  const opciones = useMemo(
+    () => orgOptions(savedFiles, mcpOrgs.orgs.map((o) => o.slug)),
+    [savedFiles, mcpOrgs.orgs]
+  );
+  const visibles = useMemo(() => filterByOrg(savedFiles, orgFilter), [savedFiles, orgFilter]);
+  const grupos = useMemo(() => groupByOrg(visibles, orgNames), [visibles, orgNames]);
+  // El vacío se anuncia CON su salida: un desplegable mudo obliga a adivinar que la
+  // culpa es del filtro (misma garantía que «el lienzo nunca queda en blanco»).
+  const vacio = emptyOrgHint(visibles.length, orgFilter, orgNames);
+
+  // CRUD de organizaciones. Vive en el workspace del MCP (la app y el agente comparten
+  // esa verdad), así que las tres operaciones van por IPC; en la web no existen.
+  const orgApi = typeof window !== "undefined" ? window.electronAPI : undefined;
+  const [orgDialog, setOrgDialog] = useState<null | { modo: "crear" | "renombrar"; valor: string }>(null);
+  const [orgBorrar, setOrgBorrar] = useState<string | null>(null);
+
+  const refrescarOrgs = async () => {
+    if (!orgApi?.mcpOrgsStatus) return;
+    try {
+      setMcpOrgs(await orgApi.mcpOrgsStatus());
+    } catch {
+      /* la app puede estar sin servidor: el chip sigue con lo último conocido */
+    }
+  };
+
+  const submitOrgDialog = async () => {
+    if (!orgDialog) return;
+    const nombre = orgDialog.valor.trim();
+    if (!nombre) return;
+    if (orgDialog.modo === "crear") {
+      const r = await orgApi?.mcpOrgCreate?.(nombre);
+      if (!r?.ok) {
+        toast({ variant: "destructive", title: "No se pudo crear", description: r?.error });
+        return;
+      }
+      await refrescarOrgs();
+      onOrgFilterChange(r.slug!);
+      toast({ title: `Organización "${nombre}" creada`, description: "Mové proyectos con el menú Proyecto." });
+    } else {
+      if (orgFilter === ORG_TODAS || orgFilter === null) return;
+      const r = await orgApi?.mcpOrgRename?.(orgFilter, nombre);
+      if (!r?.ok) {
+        toast({ variant: "destructive", title: "No se pudo renombrar", description: r?.error });
+        return;
+      }
+      await refrescarOrgs();
+      toast({ title: `Ahora se llama "${nombre}"` });
+    }
+    setOrgDialog(null);
+  };
+
+  const confirmarBorrado = async () => {
+    if (!orgBorrar) return;
+    const r = await orgApi?.mcpOrgDelete?.(orgBorrar);
+    if (!r?.ok) {
+      toast({ variant: "destructive", title: "No se pudo eliminar", description: r?.error });
+      setOrgBorrar(null);
+      return;
+    }
+    // Los proyectos de la app pierden la etiqueta; sus datos quedan intactos.
+    onOrgCleared(orgBorrar);
+    await refrescarOrgs();
+    if (orgFilter === orgBorrar) onOrgFilterChange(ORG_TODAS);
+    toast({
+      title: "Organización eliminada",
+      description: r.movidos?.length
+        ? `Sus ${r.movidos.length} diagrama(s) volvieron a los que no tienen organización.`
+        : "No tenía diagramas.",
+    });
+    setOrgBorrar(null);
+  };
+
   const current = savedFiles.find((f) => f.id === currentFileId) ?? null;
   const currentName = current?.content.nombre_proyecto ?? "";
   const [renaming, setRenaming] = useState(false);
@@ -245,6 +394,82 @@ const FileManagement: React.FC<
 
   return (
     <div className="flex items-center gap-2">
+      {/* El nombre del proyecto también en la barra de título: es donde el sistema
+          operativo lo espera, y le da anclaje a la franja. */}
+      <EnLaBarraDeTitulo slot={TITLEBAR_TITLE_SLOT}>
+        {(enLaBarra) => (enLaBarra && currentName ? <span title={currentName}>{currentName}</span> : null)}
+      </EnLaBarraDeTitulo>
+
+      {/* Chip de organización: filtra la VISTA (no mueve nada) y muestra «·MCP» cuando
+          esta organización es la que ve el agente. Ese sufijo es lo ÚNICO que hace
+          visible la divergencia entre lo que mira el humano y dónde escribe el agente. */}
+      {mounted && (opciones.length > 0 || mcpOrgs.pinned) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10 gap-1 shrink-0"
+              title={
+                mcpOrgs.pinned
+                  ? `Filtro de organización · el MCP ve "${orgChipLabel(mcpOrgs.pinned, orgNames)}"`
+                  : "Filtro de organización"
+              }
+            >
+              <Building2 className="h-4 w-4" />
+              <span className="max-w-[140px] truncate">{orgChipLabel(orgFilter, orgNames)}</span>
+              {orgFilter !== ORG_TODAS && orgFilter === mcpOrgs.pinned && (
+                <span className="text-2xs font-semibold text-muted-foreground">·MCP</span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuLabel>Organización</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => onOrgFilterChange(ORG_TODAS)}>
+              Todas
+              {orgFilter === ORG_TODAS && <span className="ml-auto text-xs">✓</span>}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {opciones.map((slug) => (
+              <DropdownMenuItem key={slug ?? "sin-org"} onClick={() => onOrgFilterChange(slug)}>
+                <span className="truncate">{slug === null ? SIN_ORG_LABEL : orgChipLabel(slug, orgNames)}</span>
+                {slug !== null && slug === mcpOrgs.pinned && (
+                  <span className="ml-1 text-2xs font-semibold text-muted-foreground">·MCP</span>
+                )}
+                {orgFilter === slug && <span className="ml-auto text-xs">✓</span>}
+              </DropdownMenuItem>
+            ))}
+            {orgApi?.mcpOrgCreate && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setOrgDialog({ modo: "crear", valor: "" })}>
+                  <FolderPlus className="mr-2 h-4 w-4" /> Nueva organización…
+                </DropdownMenuItem>
+                {/* Renombrar y eliminar actúan sobre la organización que está puesta:
+                    sin una elegida no hay sujeto, así que se deshabilitan. */}
+                <DropdownMenuItem
+                  disabled={orgFilter === ORG_TODAS || orgFilter === null}
+                  onClick={() =>
+                    setOrgDialog({
+                      modo: "renombrar",
+                      valor: orgFilter && orgFilter !== ORG_TODAS ? orgChipLabel(orgFilter, orgNames) : "",
+                    })
+                  }
+                >
+                  <Pencil className="mr-2 h-4 w-4" /> Renombrar…
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={orgFilter === ORG_TODAS || orgFilter === null}
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => orgFilter && orgFilter !== ORG_TODAS && setOrgBorrar(orgFilter)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" /> Eliminar…
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       {mounted && renaming ? (
         // Edición en el lugar: Enter guarda, Esc cancela, salir del campo guarda.
         <Input
@@ -262,9 +487,11 @@ const FileManagement: React.FC<
         />
       ) : mounted ? (
         <Select
-          value={currentFileId || ""}
+          // Con el proyecto activo fuera del filtro hay que SOLTAR la selección: si
+          // no, el trigger se queda en blanco y el humano no sabe que fue el filtro.
+          value={visibleSelection(currentFileId, visibles)}
           onValueChange={onFileSelect}
-          disabled={savedFiles.length === 0}
+          disabled={visibles.length === 0}
         >
           <SelectTrigger
             className="w-[280px] md:w-[320px]"
@@ -272,13 +499,19 @@ const FileManagement: React.FC<
             // El nombre se recorta con «…» en el trigger: el title lo da entero.
             title={currentName ? `${currentName} — doble clic para renombrar` : "Seleccionar proyecto"}
           >
-            <SelectValue placeholder="Seleccionar proyecto..." />
+            <SelectValue placeholder={vacio ?? "Seleccionar proyecto..."} />
           </SelectTrigger>
           <SelectContent>
-            {savedFiles.map((file) => (
-              <SelectItem key={file.id} value={file.id}>
-                {file.content.nombre_proyecto}  ({file.content.fecha_analisis})
-              </SelectItem>
+            {grupos.map((g) => (
+              <SelectGroup key={g.slug ?? "sin-org"}>
+                {/* La etiqueta del grupo sólo aporta cuando hay más de uno a la vista. */}
+                {grupos.length > 1 && <SelectLabel>{g.label}</SelectLabel>}
+                {g.files.map((file) => (
+                  <SelectItem key={file.id} value={file.id}>
+                    {file.content.nombre_proyecto}  ({file.content.fecha_analisis})
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             ))}
           </SelectContent>
         </Select>
@@ -321,6 +554,30 @@ const FileManagement: React.FC<
           <DropdownMenuItem disabled={!currentFileId} onClick={startRename}>
             <Pencil className="mr-2 h-4 w-4" /> Renombrar proyecto
           </DropdownMenuItem>
+          {/* Mover es un item del menú que ya existe, no un botón más en la barra. */}
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger disabled={!currentFileId}>
+              <Building2 className="mr-2 h-4 w-4" /> Mover a organización
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {opciones
+                .filter((slug) => slug !== null)
+                .map((slug) => (
+                  <DropdownMenuItem
+                    key={slug}
+                    onClick={() => currentFileId && onFileOrgChange(currentFileId, slug)}
+                  >
+                    {orgChipLabel(slug, orgNames)}
+                    {current?.orgId === slug && <span className="ml-auto text-xs">✓</span>}
+                  </DropdownMenuItem>
+                ))}
+              {opciones.some((slug) => slug !== null) && <DropdownMenuSeparator />}
+              <DropdownMenuItem onClick={() => currentFileId && onFileOrgChange(currentFileId, null)}>
+                {SIN_ORG_LABEL}
+                {!current?.orgId && <span className="ml-auto text-xs">✓</span>}
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
           <DropdownMenuItem
             disabled={!currentFileId}
             className="text-destructive focus:text-destructive"
@@ -331,8 +588,16 @@ const FileManagement: React.FC<
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Guía MCP + indicador de estado del servidor embebido (punto verde = activo). */}
-      <McpStatusButton />
+      {/* Guía MCP + indicador de estado del servidor embebido (punto verde = activo).
+          En la app va a la barra de título: es un indicador, no necesita el ancho del
+          header, y ahí libera sitio para el selector de proyecto. */}
+      <EnLaBarraDeTitulo slot={TITLEBAR_RIGHT_SLOT}>
+        {(enLaBarra) => (
+          <span style={enLaBarra ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}>
+            <McpStatusButton />
+          </span>
+        )}
+      </EnLaBarraDeTitulo>
 
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent className="max-w-md">
@@ -385,8 +650,85 @@ const FileManagement: React.FC<
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Crear / renombrar organización: un solo diálogo, dos modos. */}
+      <Dialog open={!!orgDialog} onOpenChange={(abierto) => !abierto && setOrgDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5" />
+              {orgDialog?.modo === "renombrar" ? "Renombrar organización" : "Nueva organización"}
+            </DialogTitle>
+            <DialogDescription>
+              {orgDialog?.modo === "renombrar"
+                ? "Cambia el nombre que se lee. La carpeta donde viven sus diagramas no se toca."
+                : "Agrupa proyectos y diagramas. El agente puede fijarla para ver sólo los suyos."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label htmlFor="org-name">Nombre</Label>
+            <Input
+              id="org-name"
+              autoFocus
+              value={orgDialog?.valor ?? ""}
+              onChange={(e) => setOrgDialog((d) => (d ? { ...d, valor: e.target.value } : d))}
+              onKeyDown={(e) => e.key === "Enter" && submitOrgDialog()}
+              placeholder="Ej: Acme Salud"
+              className="mt-1"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOrgDialog(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={submitOrgDialog} disabled={!orgDialog?.valor.trim()}>
+              {orgDialog?.modo === "renombrar" ? "Renombrar" : "Crear"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Eliminar: la confirmación dice qué pasa con lo de adentro, porque lo que la
+          gente teme —con razón— es perder el trabajo al quitar una etiqueta. */}
+      <AlertDialog open={!!orgBorrar} onOpenChange={(abierto) => !abierto && setOrgBorrar(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              ¿Eliminar «{orgBorrar ? orgChipLabel(orgBorrar, orgNames) : ""}»?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              No se borra nada de lo que tiene adentro: sus diagramas vuelven a los que no
+              tienen organización y los proyectos quedan como «{SIN_ORG_LABEL}». Sólo
+              desaparece la organización.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarBorrado}>Eliminar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
+};
+
+/**
+ * Lleva el buscador a la barra de título cuando existe (app de escritorio), y lo deja
+ * donde estaba cuando no (navegador). El portal evita mudar el estado de búsqueda a
+ * otro componente: el buscador sigue colgando del contexto que ya tenía, sólo se pinta
+ * en otro lado.
+ */
+const EnLaBarraDeTitulo: React.FC<{
+  slot?: string;
+  children: (enLaBarra: boolean) => React.ReactNode;
+}> = ({ slot = TITLEBAR_SEARCH_SLOT, children }) => {
+  const [hueco, setHueco] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    // La barra se monta en el layout: al primer render del header puede no estar.
+    setHueco(document.getElementById(slot));
+  }, [slot]);
+  if (!hueco) return <>{children(false)}</>;
+  return createPortal(children(true), hueco);
 };
 
 /**
@@ -398,12 +740,16 @@ const GlobalSearch: React.FC<{
   searchResults: GraphNode[];
   onSelect: (node: GraphNode) => void;
   isDisabled: boolean;
+  /** true dentro de la barra de título: campo bajo y ancho, y clicable sobre la
+   *  franja arrastrable (sin esto, el clic movería la ventana en vez de enfocar). */
+  compact?: boolean;
 }> = ({
   searchQuery,
   onSearchQueryChange,
   searchResults,
   onSelect,
   isDisabled,
+  compact = false,
 }) => {
   const handleSelect = (node: GraphNode) => {
     onSelect(node);
@@ -412,14 +758,27 @@ const GlobalSearch: React.FC<{
   return (
     <Popover open={searchQuery.length > 1 && searchResults.length > 0}>
       <PopoverTrigger asChild>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <div
+          className={cn("relative", compact && "w-full max-w-[520px]")}
+          style={compact ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}
+        >
+          <Search
+            className={cn(
+              "absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground",
+              compact && "left-2.5 h-3.5 w-3.5"
+            )}
+          />
           <Input
             type="text"
             placeholder="Buscar elementos..."
             value={searchQuery}
             onChange={(e) => onSearchQueryChange(e.target.value)}
-            className="pl-9 pr-8 w-48 md:w-64"
+            className={cn(
+              "pl-9 pr-8",
+              compact
+                ? "h-7 w-full rounded-md border-transparent bg-muted/60 pl-8 text-xs hover:bg-muted focus-visible:border-input"
+                : "w-48 md:w-64"
+            )}
             disabled={isDisabled}
           />
           {/* Botón para limpiar la búsqueda */}
@@ -518,15 +877,21 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-          {/* Búsqueda Global */}
+          {/* Búsqueda global: en la app de escritorio se pinta en la barra de
+              título (issue #169); en el navegador, acá mismo. */}
           {mounted ? (
-            <GlobalSearch
-              searchQuery={searchQuery}
-              onSearchQueryChange={setSearchQuery}
-              searchResults={searchResults}
-              onSelect={onSearchSelect}
-              isDisabled={fileManagementProps.currentFileId === null}
-            />
+            <EnLaBarraDeTitulo>
+              {(enLaBarra) => (
+                <GlobalSearch
+                  searchQuery={searchQuery}
+                  onSearchQueryChange={setSearchQuery}
+                  searchResults={searchResults}
+                  onSelect={onSearchSelect}
+                  isDisabled={fileManagementProps.currentFileId === null}
+                  compact={enLaBarra}
+                />
+              )}
+            </EnLaBarraDeTitulo>
           ) : (
             <div className="w-48 md:w-64 h-10 bg-muted rounded-md" />
           )}

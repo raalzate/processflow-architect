@@ -1299,3 +1299,178 @@ describe("use_project", () => {
     expect(res.isError).toBeUndefined();
   });
 });
+
+/**
+ * Organizaciones (feature 008). Lo que se prueba es el AISLAMIENTO: que un diagrama de
+ * otra organización no aparezca por ninguna puerta —ni listando, ni resolviendo un id—
+ * y que un workspace sin organizaciones siga comportándose como antes.
+ */
+describe("organizaciones · E", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-org-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  const toolsDe = (defaultOrg?: string) => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws, defaultOrg });
+    return tools;
+  };
+  const crear = async (tools: any, name: string) => {
+    const txt = (await tools.get("create_diagram")!.handler({ name, notation: "ddd" })).content[0].text;
+    return /diagramId="([^"]+)"/.exec(txt)![1];
+  };
+
+  it("E1 · sin organizaciones el workspace se comporta como antes (carpeta plana)", async () => {
+    const tools = toolsDe();
+    const id = await crear(tools, "Suelto");
+    expect(await fs.readFile(path.join(ws, ".processflow", "diagrams", `${id}.json`), "utf8")).toBeTruthy();
+    expect((await tools.get("list_diagrams")!.handler({ names: false, limit: 40 })).content[0].text).toContain(id);
+  });
+
+  it("E2 · create_org crea la carpeta, la fija, y lo nuevo nace adentro", async () => {
+    const tools = toolsDe();
+    const creada = (await tools.get("create_org")!.handler({ name: "Acme Salud" })).content[0].text;
+    expect(creada).toContain("acme-salud");
+
+    const id = await crear(tools, "Enrollment");
+    await fs.access(path.join(ws, ".processflow", "orgs", "acme-salud", "diagrams", `${id}.json`));
+    // El fijado sobrevive porque vive en disco, no en memoria (el HTTP es stateless).
+    const activo = JSON.parse(await fs.readFile(path.join(ws, ".processflow", "active.json"), "utf8"));
+    expect(activo.org).toBe("acme-salud");
+  });
+
+  it("E3 · list_diagrams NO ve los de otra organización, y con org=\"*\" los ve todos", async () => {
+    const tools = toolsDe();
+    const suelto = await crear(tools, "Suelto");
+    await tools.get("create_org")!.handler({ name: "Acme" });
+    const deAcme = await crear(tools, "Enrollment");
+    await tools.get("create_org")!.handler({ name: "Contoso" });
+    const deContoso = await crear(tools, "Onboarding");
+
+    const enContoso = (await tools.get("list_diagrams")!.handler({ names: false, limit: 40 })).content[0].text;
+    expect(enContoso).toContain(deContoso);
+    expect(enContoso).not.toContain(deAcme);
+    expect(enContoso).not.toContain(suelto);
+
+    const todos = (await tools.get("list_diagrams")!.handler({ names: false, limit: 40, org: "*" })).content[0].text;
+    for (const id of [suelto, deAcme, deContoso]) expect(todos).toContain(id);
+    expect(todos).toContain("[sin-org]");
+  });
+
+  it("E4 · los ids son únicos POR organización y el error dice dónde está el ajeno", async () => {
+    const tools = toolsDe();
+    await tools.get("create_org")!.handler({ name: "Acme" });
+    const enAcme = await crear(tools, "Enrollment");
+    await tools.get("create_org")!.handler({ name: "Contoso" });
+    const enContoso = await crear(tools, "Enrollment");
+    // Mismo nombre en dos orgs ⇒ mismo id: la unicidad es por carpeta, no global.
+    expect(enContoso).toBe(enAcme);
+
+    await tools.get("use_org")!.handler({ org: "acme" });
+    const res = await tools.get("get_diagram")!.handler({ diagramId: "no-existe-aca" });
+    expect(res.isError).toBe(true);
+  });
+
+  it("E5 · use_diagram/get_diagram de OTRA org no devuelve el contenido ajeno", async () => {
+    const tools = toolsDe();
+    await tools.get("create_org")!.handler({ name: "Acme" });
+    const deAcme = await crear(tools, "Solo De Acme");
+    await tools.get("create_org")!.handler({ name: "Contoso" });
+
+    const res = await tools.get("use_diagram")!.handler({ diagramId: deAcme });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/No existe el diagrama/);
+  });
+
+  it("E6 · move_diagram mueve el archivo y lo saca de donde estaba", async () => {
+    const tools = toolsDe();
+    const suelto = await crear(tools, "Viajero");
+    await tools.get("create_org")!.handler({ name: "Acme" });
+
+    const movido = await tools.get("move_diagram")!.handler({ diagramId: suelto, org: "acme" });
+    expect(movido.isError).toBeUndefined();
+    await fs.access(path.join(ws, ".processflow", "orgs", "acme", "diagrams", `${suelto}.json`));
+    await expect(fs.access(path.join(ws, ".processflow", "diagrams", `${suelto}.json`))).rejects.toBeTruthy();
+
+    // Y de vuelta a la carpeta plana.
+    await tools.get("move_diagram")!.handler({ diagramId: suelto });
+    await fs.access(path.join(ws, ".processflow", "diagrams", `${suelto}.json`));
+  });
+
+  it("E7 · una organización inexistente falla con la lista de las que hay", async () => {
+    const tools = toolsDe();
+    await tools.get("create_org")!.handler({ name: "Acme" });
+    const res = await tools.get("use_org")!.handler({ org: "otra" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("acme");
+  });
+
+  it("E8 · la org del servidor (--org) aísla sin que nadie llame use_org", async () => {
+    const previo = toolsDe();
+    await previo.get("create_org")!.handler({ name: "Acme" });
+    const deAcme = await crear(previo, "Enrollment");
+    await previo.get("use_org")!.handler({ clear: true });
+    const suelto = await crear(previo, "Suelto");
+
+    const tools = toolsDe("acme");
+    const salida = (await tools.get("list_diagrams")!.handler({ names: false, limit: 40 })).content[0].text;
+    expect(salida).toContain(deAcme);
+    expect(salida).not.toContain(suelto);
+  });
+
+  it("E10 · delete_org SUELTA los diagramas a la carpeta plana, no los borra", async () => {
+    const tools = toolsDe();
+    await tools.get("create_org")!.handler({ name: "Acme" });
+    const id = await crear(tools, "Enrollment");
+
+    const res = await tools.get("delete_org")!.handler({ org: "acme" });
+    expect(res.isError).toBeUndefined();
+    // El diagrama sigue existiendo, en la carpeta plana.
+    await fs.access(path.join(ws, ".processflow", "diagrams", `${id}.json`));
+    await expect(fs.access(path.join(ws, ".processflow", "orgs", "acme"))).rejects.toBeTruthy();
+    // Y el fijado no queda colgado: si no, TODA llamada siguiente fallaría.
+    const activo = JSON.parse(await fs.readFile(path.join(ws, ".processflow", "active.json"), "utf8"));
+    expect(activo.org).toBeUndefined();
+  });
+
+  it("E11 · delete_org se niega si al soltar pisaría un diagrama con el mismo id", async () => {
+    const tools = toolsDe();
+    const enPlana = await crear(tools, "Enrollment");
+    await tools.get("create_org")!.handler({ name: "Acme" });
+    const enOrg = await crear(tools, "Enrollment");
+    expect(enOrg).toBe(enPlana);
+
+    const res = await tools.get("delete_org")!.handler({ org: "acme" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain(enOrg);
+    // Nada se movió ni se borró: el borrado que se niega no deja a medias.
+    await fs.access(path.join(ws, ".processflow", "orgs", "acme", "diagrams", `${enOrg}.json`));
+  });
+
+  it("E12 · rename_org cambia el nombre legible y NO el slug", async () => {
+    const tools = toolsDe();
+    await tools.get("create_org")!.handler({ name: "Acme" });
+    const res = await tools.get("rename_org")!.handler({ org: "acme", name: "Acme Salud" });
+    expect(res.isError).toBeUndefined();
+    const meta = JSON.parse(
+      await fs.readFile(path.join(ws, ".processflow", "orgs", "acme", "org.json"), "utf8")
+    );
+    expect(meta.nombre).toBe("Acme Salud");
+    // La carpeta no se toca: renombrarla con diagramas adentro es cómo se pierde trabajo.
+    await fs.access(path.join(ws, ".processflow", "orgs", "acme", "diagrams"));
+  });
+
+  it("E9 · list_orgs dice cuántos diagramas tiene cada una y cuál está activa", async () => {
+    const tools = toolsDe();
+    await tools.get("create_org")!.handler({ name: "Acme Salud" });
+    await crear(tools, "Enrollment");
+    const salida = (await tools.get("list_orgs")!.handler({})).content[0].text;
+    expect(salida).toMatch(/acme-salud ← activa/);
+    expect(salida).toMatch(/Acme Salud/);
+    expect(salida).toMatch(/1 diagrama/);
+  });
+});

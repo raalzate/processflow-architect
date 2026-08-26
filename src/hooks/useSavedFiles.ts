@@ -3,7 +3,9 @@ import type { SavedFile } from "@/lib/types";
 import {
   STORAGE_SAVED_FILES,
   STORAGE_LAST_FILE_ID,
+  STORAGE_ORG_FILTER,
 } from "@/lib/graph-constants";
+import { ORG_TODAS, type OrgFilter } from "@/lib/project-orgs";
 
 export function useSavedFiles(initial: SavedFile[] = []) {
   const [savedFiles, setSavedFiles] = useState<SavedFile[]>(() => {
@@ -11,8 +13,12 @@ export function useSavedFiles(initial: SavedFile[] = []) {
       const raw = localStorage.getItem(STORAGE_SAVED_FILES);
       if (!raw) return initial;
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed as SavedFile[];
-      if (parsed && typeof parsed === "object") return [parsed as SavedFile];
+      // Los proyectos de antes de las organizaciones no tienen `orgId`, y uno con
+      // basura ahí no puede volverse una organización fantasma: se normaliza al leer.
+      const sanear = (f: SavedFile): SavedFile =>
+        typeof f?.orgId === "string" && f.orgId.trim() ? { ...f, orgId: f.orgId.trim() } : { ...f, orgId: undefined };
+      if (Array.isArray(parsed)) return (parsed as SavedFile[]).map(sanear);
+      if (parsed && typeof parsed === "object") return [sanear(parsed as SavedFile)];
       return initial;
     } catch {
       return initial;
@@ -86,6 +92,49 @@ export function useSavedFiles(initial: SavedFile[] = []) {
     }
   }, []);
 
+  // Filtro de organización del header. Es estado de VISTA: se persiste para que la
+  // app abra donde el humano la dejó, y no mueve ni renombra nada.
+  const [orgFilter, setOrgFilterState] = useState<OrgFilter>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_ORG_FILTER);
+      if (raw === null) return ORG_TODAS;
+      return raw === "" ? null : (raw as OrgFilter);
+    } catch {
+      return ORG_TODAS;
+    }
+  });
+
+  const setOrgFilter = useCallback((filtro: OrgFilter) => {
+    setOrgFilterState(filtro);
+    try {
+      localStorage.setItem(STORAGE_ORG_FILTER, filtro === null ? "" : filtro);
+    } catch (e) {
+      console.error("Error saving org filter", e);
+    }
+  }, []);
+
+  /** Mueve un proyecto a otra organización (o lo saca de todas, con `null`). */
+  const setFileOrg = useCallback(
+    (id: string, orgId: string | null) => {
+      saveFilesToStorage(
+        savedFiles.map((f) => (f.id === id ? { ...f, orgId: orgId ?? undefined } : f))
+      );
+    },
+    [savedFiles, saveFilesToStorage]
+  );
+
+  /**
+   * Saca una organización de TODOS los proyectos de una vez. En bloque y no fila por
+   * fila: N llamadas seguidas a `setFileOrg` trabajarían sobre la misma lista vieja y
+   * la última pisaría a las anteriores.
+   */
+  const clearOrgFromProjects = useCallback(
+    (orgId: string) => {
+      saveFilesToStorage(savedFiles.map((f) => (f.orgId === orgId ? { ...f, orgId: undefined } : f)));
+    },
+    [savedFiles, saveFilesToStorage]
+  );
+
   return {
     savedFiles,
     setSavedFiles: saveFilesToStorage,
@@ -93,5 +142,9 @@ export function useSavedFiles(initial: SavedFile[] = []) {
     setCurrentFileId: selectFile,
     addFile,
     deleteFile,
+    orgFilter,
+    setOrgFilter,
+    setFileOrg,
+    clearOrgFromProjects,
   };
 }

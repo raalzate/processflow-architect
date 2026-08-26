@@ -55,8 +55,12 @@ puede cumplirlas); por stdio no se registran.
 | | `get_view` **app** | Contenido de una vista (resumen + Mermaid); con `importAs`, la trae como diagrama editable para continuarla. |
 | | `list_artifacts` **app** | Documentos que generó la IA local: drivers, riesgos, propuesta, roadmap, ADRs… |
 | | `get_artifact` **app** | El Markdown de un artefacto, con su revisión y el histórico. |
+| Organizaciones | `list_orgs` | Las organizaciones del workspace, con sus diagramas y cuál está activa. |
+| | `create_org` | Crear una (carpeta propia de diagramas) y dejarla fijada. |
+| | `use_org` | Fijar la organización de trabajo; `clear` vuelve a los diagramas sin organización. |
+| | `move_diagram` | Mover un diagrama a otra organización (o fuera de todas). |
 | Ciclo de vida | `create_diagram` | Abrir un diagrama (nombre + notación) → `diagramId`. |
-| | `list_diagrams` / `get_diagram` | Listar / ver resumen + vista previa Mermaid. |
+| | `list_diagrams` / `get_diagram` | Listar / ver resumen + vista previa Mermaid. `list_diagrams` sólo muestra la organización activa; `org: "*"` recorre todas. |
 | | `import_diagram` | Cargar un `.json` exportado como diagrama editable (retomar contexto). |
 | Construcción | `add_container` | Contenedor (Agregado, Pool, Límite de Sistema, Paquete…). |
 | | `add_node` | Nodo (Comando, Evento, Tarea, Clase…), opcionalmente dentro de un contenedor. |

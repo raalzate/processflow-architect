@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/layout/AppHeader";
+import { ORG_TODAS } from "@/lib/project-orgs";
 import NodeModal from "@/components/modals/NodeModal";
 import { Toaster } from "@/components/ui/toaster";
 import { SidebarInset } from "@/components/ui/sidebar";
@@ -48,12 +49,20 @@ const MemoizedAppHeader = React.memo(() => {
     handleRenameProject,
     handleDownloadJson,
     handleSearchSelect,
+    orgFilter,
+    setOrgFilter,
+    setFileOrg,
+    clearOrgFromProjects,
   } = useGraphContext();
 
   return (
     <AppHeader
       savedFiles={savedFiles}
       currentFileId={currentFileId}
+      orgFilter={orgFilter}
+      onOrgFilterChange={setOrgFilter}
+      onFileOrgChange={setFileOrg}
+      onOrgCleared={clearOrgFromProjects}
       onFileSelect={handleFileSelect}
       onCreateProject={handleCreateProject}
       onImportJson={handleCreateProjectFromContent}
@@ -82,6 +91,7 @@ const McpImportBridge = () => {
     graphData,
     savedFiles,
     allNodes,
+    orgFilter,
   } = useGraphContext();
   const { createView, views, updateViewGraph, setViewNotation, setActiveView, deleteView, renameView } =
     useViews();
@@ -97,9 +107,12 @@ const McpImportBridge = () => {
         savedFiles,
         viewsLimit: MAX_CUSTOM_VIEWS,
         now: new Date().toISOString(),
+        // El agente ve lo mismo que el humano tiene filtrado: si el header está en
+        // una organización, `get_app_state` no debe ofrecerle proyectos de otra.
+        org: orgFilter === ORG_TODAS ? undefined : orgFilter,
       })
     );
-  }, [graphData, views, savedFiles]);
+  }, [graphData, views, savedFiles, orgFilter]);
 
   // Lectura bajo demanda (`list_artifacts`, `get_artifact`, `list_views`,
   // `get_view`): el main pregunta y este efecto contesta. El proyecto activo sale

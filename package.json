@@ -1,6 +1,6 @@
 {
   "name": "processflow-architect",
-  "version": "0.6.6",
+  "version": "0.7.0",
   "private": true,
   "license": "Apache-2.0",
   "description": "A comprehensive application designed to model, visualize, and manage process flows within complex architectural environments. It enables users to define end-to-end workflows",
@@ -31,7 +31,6 @@
     "sdd:new": "node scripts/sdd-github.mjs new",
     "sdd:tasks": "node scripts/sdd-github.mjs tasks",
     "sdd:status": "node scripts/sdd-github.mjs status",
-    "sdd:check": "node scripts/sdd-github.mjs check",
     "screenshots": "tsx scripts/screenshots.ts",
     "skills:sync": "node scripts/sync-skills.mjs",
     "skills:check": "node scripts/sync-skills.mjs --check",

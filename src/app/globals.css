@@ -168,5 +168,34 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Alto de la barra de título propia. Cero en el navegador, donde no existe. */
+    --titlebar-h: 0px;
   }
+  body[data-titlebar="on"] {
+    --titlebar-h: 40px;
+  }
+}
+
+@layer utilities {
+  /* `h-screen` es 100vh, que incluye la franja de la barra de título: con la barra
+     puesta, cada pantalla se pasaba 40px y el contenido tapaba los controles de
+     ventana. Se corrige acá, en un solo lugar, en vez de en cada pantalla. */
+  .h-screen {
+    height: calc(100vh - var(--titlebar-h));
+  }
+
+  /* Lo mismo para las medidas de viewport del sidebar (shadcn usa `svh`). */
+  .h-svh {
+    height: calc(100svh - var(--titlebar-h));
+  }
+  .min-h-svh {
+    min-height: calc(100svh - var(--titlebar-h));
+  }
+}
+
+/* El panel lateral es `fixed inset-y-0`: sale del flujo y, sin esto, se dibuja SOBRE
+   la barra de título —los semáforos de macOS quedan encima de su encabezado y dejan
+   de poder pulsarse—. Se lo baja la altura exacta de la barra. */
+body[data-titlebar="on"] .fixed.inset-y-0 {
+  top: var(--titlebar-h);
 }
