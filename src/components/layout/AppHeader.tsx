@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,7 @@ import {
   FolderOpen,
   ChevronDown,
   Pencil,
+  Building2,
 } from "lucide-react";
 import {
   Dialog,
@@ -33,7 +34,9 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -43,6 +46,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -62,6 +68,16 @@ import { BetaBadge } from "@/components/layout/AppCredits";
 import { parseDiagramJson } from "@/lib/import-diagram";
 import { normalizeProjectName } from "@/lib/project-rename";
 import {
+  ORG_TODAS,
+  SIN_ORG_LABEL,
+  groupByOrg,
+  filterByOrg,
+  orgChipLabel,
+  emptyOrgHint,
+  orgOptions,
+  type OrgFilter,
+} from "@/lib/project-orgs";
+import {
   INITIAL_NOTATION_ID,
   NOTATION_LIST,
   getNotation,
@@ -72,6 +88,11 @@ import {
 interface AppHeaderProps {
   savedFiles: SavedFile[];
   currentFileId: string | null;
+  /** Organización por la que se filtra la lista de proyectos («*» = todas). */
+  orgFilter: OrgFilter;
+  onOrgFilterChange: (filtro: OrgFilter) => void;
+  /** Mueve un proyecto a otra organización (`null` lo saca de todas). */
+  onFileOrgChange: (id: string, orgId: string | null) => void;
   onFileSelect: (id: string) => void;
   onCreateProject: (nombre: string, notation?: NotationId) => void;
   /** Importa un GraphData ya generado (p. ej. exportado por el MCP / Claude Code). */
@@ -154,6 +175,9 @@ const FileManagement: React.FC<
     AppHeaderProps,
     | "savedFiles"
     | "currentFileId"
+    | "orgFilter"
+    | "onOrgFilterChange"
+    | "onFileOrgChange"
     | "onFileSelect"
     | "onCreateProject"
     | "onImportJson"
@@ -164,6 +188,9 @@ const FileManagement: React.FC<
 > = ({
   savedFiles,
   currentFileId,
+  orgFilter,
+  onOrgFilterChange,
+  onFileOrgChange,
   onFileSelect,
   onCreateProject,
   onImportJson,
@@ -181,6 +208,43 @@ const FileManagement: React.FC<
   // Renombrar el proyecto activo (issue #127): el nombre se lee en este selector,
   // así que se cambia acá — por el menú Proyecto o con doble clic sobre el nombre,
   // el mismo gesto que ya enseña la barra de vistas.
+  // Organizaciones del workspace del MCP: sólo para saber cuál ve el AGENTE («·MCP»)
+  // y para ofrecer una recién creada que todavía no tiene proyectos. El renderer no
+  // toca disco: esto llega por IPC y en la web simplemente no hay.
+  const [mcpOrgs, setMcpOrgs] = useState<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }>({
+    pinned: null,
+    orgs: [],
+  });
+  useEffect(() => {
+    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    if (!electron?.mcpOrgsStatus) return;
+    let alive = true;
+    const check = () =>
+      electron.mcpOrgsStatus!()
+        .then((s) => alive && setMcpOrgs(s))
+        .catch(() => {});
+    check();
+    const timer = setInterval(check, 5000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const orgNames = useMemo(
+    () => Object.fromEntries(mcpOrgs.orgs.map((o) => [o.slug, o.nombre])),
+    [mcpOrgs.orgs]
+  );
+  const opciones = useMemo(
+    () => orgOptions(savedFiles, mcpOrgs.orgs.map((o) => o.slug)),
+    [savedFiles, mcpOrgs.orgs]
+  );
+  const visibles = useMemo(() => filterByOrg(savedFiles, orgFilter), [savedFiles, orgFilter]);
+  const grupos = useMemo(() => groupByOrg(visibles, orgNames), [visibles, orgNames]);
+  // El vacío se anuncia CON su salida: un desplegable mudo obliga a adivinar que la
+  // culpa es del filtro (misma garantía que «el lienzo nunca queda en blanco»).
+  const vacio = emptyOrgHint(visibles.length, orgFilter, orgNames);
+
   const current = savedFiles.find((f) => f.id === currentFileId) ?? null;
   const currentName = current?.content.nombre_proyecto ?? "";
   const [renaming, setRenaming] = useState(false);
@@ -245,6 +309,48 @@ const FileManagement: React.FC<
 
   return (
     <div className="flex items-center gap-2">
+      {/* Chip de organización: filtra la VISTA (no mueve nada) y muestra «·MCP» cuando
+          esta organización es la que ve el agente. Ese sufijo es lo ÚNICO que hace
+          visible la divergencia entre lo que mira el humano y dónde escribe el agente. */}
+      {mounted && (opciones.length > 0 || mcpOrgs.pinned) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10 gap-1 shrink-0"
+              title={
+                mcpOrgs.pinned
+                  ? `Filtro de organización · el MCP ve "${orgChipLabel(mcpOrgs.pinned, orgNames)}"`
+                  : "Filtro de organización"
+              }
+            >
+              <Building2 className="h-4 w-4" />
+              <span className="max-w-[140px] truncate">{orgChipLabel(orgFilter, orgNames)}</span>
+              {orgFilter !== ORG_TODAS && orgFilter === mcpOrgs.pinned && (
+                <span className="text-2xs font-semibold text-muted-foreground">·MCP</span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuLabel>Organización</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => onOrgFilterChange(ORG_TODAS)}>
+              Todas
+              {orgFilter === ORG_TODAS && <span className="ml-auto text-xs">✓</span>}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {opciones.map((slug) => (
+              <DropdownMenuItem key={slug ?? "sin-org"} onClick={() => onOrgFilterChange(slug)}>
+                <span className="truncate">{slug === null ? SIN_ORG_LABEL : orgChipLabel(slug, orgNames)}</span>
+                {slug !== null && slug === mcpOrgs.pinned && (
+                  <span className="ml-1 text-2xs font-semibold text-muted-foreground">·MCP</span>
+                )}
+                {orgFilter === slug && <span className="ml-auto text-xs">✓</span>}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       {mounted && renaming ? (
         // Edición en el lugar: Enter guarda, Esc cancela, salir del campo guarda.
         <Input
@@ -264,7 +370,7 @@ const FileManagement: React.FC<
         <Select
           value={currentFileId || ""}
           onValueChange={onFileSelect}
-          disabled={savedFiles.length === 0}
+          disabled={visibles.length === 0}
         >
           <SelectTrigger
             className="w-[280px] md:w-[320px]"
@@ -272,13 +378,19 @@ const FileManagement: React.FC<
             // El nombre se recorta con «…» en el trigger: el title lo da entero.
             title={currentName ? `${currentName} — doble clic para renombrar` : "Seleccionar proyecto"}
           >
-            <SelectValue placeholder="Seleccionar proyecto..." />
+            <SelectValue placeholder={vacio ?? "Seleccionar proyecto..."} />
           </SelectTrigger>
           <SelectContent>
-            {savedFiles.map((file) => (
-              <SelectItem key={file.id} value={file.id}>
-                {file.content.nombre_proyecto}  ({file.content.fecha_analisis})
-              </SelectItem>
+            {grupos.map((g) => (
+              <SelectGroup key={g.slug ?? "sin-org"}>
+                {/* La etiqueta del grupo sólo aporta cuando hay más de uno a la vista. */}
+                {grupos.length > 1 && <SelectLabel>{g.label}</SelectLabel>}
+                {g.files.map((file) => (
+                  <SelectItem key={file.id} value={file.id}>
+                    {file.content.nombre_proyecto}  ({file.content.fecha_analisis})
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             ))}
           </SelectContent>
         </Select>
@@ -321,6 +433,30 @@ const FileManagement: React.FC<
           <DropdownMenuItem disabled={!currentFileId} onClick={startRename}>
             <Pencil className="mr-2 h-4 w-4" /> Renombrar proyecto
           </DropdownMenuItem>
+          {/* Mover es un item del menú que ya existe, no un botón más en la barra. */}
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger disabled={!currentFileId}>
+              <Building2 className="mr-2 h-4 w-4" /> Mover a organización
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {opciones
+                .filter((slug) => slug !== null)
+                .map((slug) => (
+                  <DropdownMenuItem
+                    key={slug}
+                    onClick={() => currentFileId && onFileOrgChange(currentFileId, slug)}
+                  >
+                    {orgChipLabel(slug, orgNames)}
+                    {current?.orgId === slug && <span className="ml-auto text-xs">✓</span>}
+                  </DropdownMenuItem>
+                ))}
+              {opciones.some((slug) => slug !== null) && <DropdownMenuSeparator />}
+              <DropdownMenuItem onClick={() => currentFileId && onFileOrgChange(currentFileId, null)}>
+                {SIN_ORG_LABEL}
+                {!current?.orgId && <span className="ml-auto text-xs">✓</span>}
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
           <DropdownMenuItem
             disabled={!currentFileId}
             className="text-destructive focus:text-destructive"

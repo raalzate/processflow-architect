@@ -24,5 +24,7 @@ export const STORAGE_API_KEY = "gemini_api_key";
 export const STORAGE_MODEL = "gemini_model";
 export const STORAGE_SAVED_FILES = "saved_json_files";
 export const STORAGE_LAST_FILE_ID = "last_opened_file_id";
+/** Organización por la que el header filtra los proyectos («*» = todas). */
+export const STORAGE_ORG_FILTER = "projects_org_filter";
 export const STORAGE_TOKEN_USAGE = "token_usage";
 export const STORAGE_TOKEN_LIMIT = "token_limit";

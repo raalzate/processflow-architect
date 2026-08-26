@@ -69,6 +69,8 @@ export interface ElectronAPI {
   mcpServerStart: (port?: number) => Promise<McpServerStatus & { error?: string }>;
   mcpServerStop: () => Promise<McpServerStatus>;
   mcpServerStatus: () => Promise<McpServerStatus>;
+  /** Organizaciones del workspace del MCP y cuál ve el agente (para el chip del header). */
+  mcpOrgsStatus?: () => Promise<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }>;
   onMcpImportDiagram: (
     callback: (data: {
       name: string;

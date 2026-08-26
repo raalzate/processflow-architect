@@ -50,6 +50,9 @@ En este orden, siempre:
    ellos ya describe lo que ibas a crear, reusá ESE nombre en vez de inventar un
    sinónimo («Servicio de listas» y «OFAC Screening» son el mismo sistema con dos
    nombres, y eso es la segunda versión de la verdad).
+   Si el workspace tiene organizaciones (`list_orgs`), `list_diagrams` muestra SÓLO
+   la activa: antes de concluir «no hay nada», mirá si estás parado donde va este
+   trabajo (`use_org`) o barré todas con `list_diagrams(org: "*")`.
 6. `describe_notation` de cada notación que vayas a usar — los `type` válidos
    salen SOLO de ahí.
 

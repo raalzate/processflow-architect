@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('mcp-server-stop'),
   mcpServerStatus: (): Promise<{ running: boolean; port: number; url: string }> =>
     ipcRenderer.invoke('mcp-server-status'),
+  mcpOrgsStatus: (): Promise<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }> =>
+    ipcRenderer.invoke('mcp-orgs-status'),
   onMcpImportDiagram: (
     callback: (data: {
       name: string;

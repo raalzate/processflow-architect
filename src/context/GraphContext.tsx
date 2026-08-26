@@ -12,6 +12,7 @@ import {
   type TechnicalElementsOutput
 } from "@/lib/types";
 import type { NotationId } from "@/lib/notations";
+import type { OrgFilter } from "@/lib/project-orgs";
 
 
 
@@ -59,6 +60,11 @@ export interface GraphContextType {
   // Estado de Archivos
   savedFiles: SavedFile[];
   currentFileId: string | null;
+  /** Organización por la que el header filtra («*» = todas, null = sin organización). */
+  orgFilter: OrgFilter;
+  setOrgFilter: (filtro: OrgFilter) => void;
+  /** Mueve un proyecto a otra organización; `null` lo saca de todas. */
+  setFileOrg: (id: string, orgId: string | null) => void;
 
   // Estado de Búsqueda
   searchQuery: string;

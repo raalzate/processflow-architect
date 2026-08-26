@@ -14,7 +14,7 @@ import {
   type RemoteProvider,
   type RemoteGenerateArgs,
 } from './services/ai-remote';
-import { startMcpHttp, stopMcpHttp, mcpHttpStatus } from './services/mcp-http';
+import { startMcpHttp, stopMcpHttp, mcpHttpStatus, mcpOrgsStatus } from './services/mcp-http';
 import { setAppState } from './services/mcp-app-state';
 import { initAppReadBridge } from './services/mcp-app-read';
 import { initAppActionBridge } from './services/mcp-app-action';
@@ -52,6 +52,10 @@ export function registerIpcHandlers() {
   ipcMain.handle('mcp-server-start', async (_e, port?: number) => startMcpHttp(port));
   ipcMain.handle('mcp-server-stop', async () => stopMcpHttp());
   ipcMain.handle('mcp-server-status', async () => mcpHttpStatus());
+  // Organizaciones del workspace del MCP: el header las necesita para marcar con
+  // «·MCP» la que ve el agente. Sin esa marca, la divergencia entre lo que filtra
+  // el humano y lo que escribe el agente es invisible.
+  ipcMain.handle('mcp-orgs-status', async () => mcpOrgsStatus());
 
   // Estado del lienzo publicado por el renderer: lo lee `get_app_state` para que
   // el agente externo no diseñe ni exporte a ciegas. Es `on` (fire-and-forget):
