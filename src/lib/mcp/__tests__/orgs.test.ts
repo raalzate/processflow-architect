@@ -13,6 +13,8 @@ import {
   orgDirRel,
   resolveOrg,
   formatOrgList,
+  planOrgDeletion,
+  conflictoBorrado,
   SIN_ORG,
 } from "../orgs";
 
@@ -144,5 +146,26 @@ describe("formatOrgList", () => {
 
   it("sin organizaciones explica cómo crear una", () => {
     expect(formatOrgList([], null)).toMatch(/create_org/);
+  });
+});
+
+describe("planOrgDeletion · eliminar una organización no borra trabajo", () => {
+  it("suelta los diagramas a la carpeta plana", () => {
+    expect(planOrgDeletion(["enrollment", "payments"], ["borrador"])).toEqual({
+      aMover: ["enrollment", "payments"],
+      conflictos: [],
+    });
+  });
+
+  it("una organización vacía no mueve nada", () => {
+    expect(planOrgDeletion([], ["borrador"])).toEqual({ aMover: [], conflictos: [] });
+  });
+
+  it("señala los ids que se pisarían en vez de moverlos encima", () => {
+    // Los ids son únicos POR organización: dos carpetas pueden tener "enrollment".
+    const plan = planOrgDeletion(["enrollment", "payments"], ["enrollment"]);
+    expect(plan).toEqual({ aMover: ["payments"], conflictos: ["enrollment"] });
+    expect(conflictoBorrado("acme", plan.conflictos)).toMatch(/"enrollment"/);
+    expect(conflictoBorrado("acme", plan.conflictos)).toMatch(/move_diagram/);
   });
 });

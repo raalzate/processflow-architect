@@ -14,7 +14,15 @@ import {
   type RemoteProvider,
   type RemoteGenerateArgs,
 } from './services/ai-remote';
-import { startMcpHttp, stopMcpHttp, mcpHttpStatus, mcpOrgsStatus } from './services/mcp-http';
+import {
+  startMcpHttp,
+  stopMcpHttp,
+  mcpHttpStatus,
+  mcpOrgsStatus,
+  mcpOrgCreate,
+  mcpOrgRename,
+  mcpOrgDelete,
+} from './services/mcp-http';
 import { setAppState } from './services/mcp-app-state';
 import { initAppReadBridge } from './services/mcp-app-read';
 import { initAppActionBridge } from './services/mcp-app-action';
@@ -56,6 +64,11 @@ export function registerIpcHandlers() {
   // «·MCP» la que ve el agente. Sin esa marca, la divergencia entre lo que filtra
   // el humano y lo que escribe el agente es invisible.
   ipcMain.handle('mcp-orgs-status', async () => mcpOrgsStatus());
+  // CRUD de organizaciones desde el header. Eliminar SUELTA los diagramas a la
+  // carpeta plana: quitar una etiqueta no puede costar trabajo.
+  ipcMain.handle('mcp-org-create', async (_e, nombre: string) => mcpOrgCreate(nombre));
+  ipcMain.handle('mcp-org-rename', async (_e, slug: string, nombre: string) => mcpOrgRename(slug, nombre));
+  ipcMain.handle('mcp-org-delete', async (_e, slug: string) => mcpOrgDelete(slug));
 
   // Estado del lienzo publicado por el renderer: lo lee `get_app_state` para que
   // el agente externo no diseñe ni exporte a ciegas. Es `on` (fire-and-forget):

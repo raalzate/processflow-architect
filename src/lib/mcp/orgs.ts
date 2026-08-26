@@ -123,6 +123,35 @@ export function resolveOrg(entrada: EntradaResolucionOrg): ResolucionOrg {
   return { slug: null, origen: "ninguna" };
 }
 
+/** Qué hay que hacer para eliminar una organización sin perder nada. */
+export interface PlanBorrado {
+  /** Diagramas que vuelven a la carpeta plana. */
+  aMover: string[];
+  /** Ids que YA existen en la carpeta plana: moverlos pisaría trabajo ajeno. */
+  conflictos: string[];
+}
+
+/**
+ * Eliminar una organización SUELTA su contenido, no lo borra: los diagramas vuelven a
+ * la carpeta plana. Quitar una etiqueta no puede costar trabajo.
+ *
+ * El único caso que se niega es el choque de ids —los ids son únicos por organización,
+ * así que dos carpetas pueden tener «enrollment»—: mover encima sería exactamente la
+ * pérdida que esta regla existe para evitar.
+ */
+export function planOrgDeletion(enLaOrg: string[], enLaPlana: string[]): PlanBorrado {
+  const plana = new Set(enLaPlana);
+  const conflictos = enLaOrg.filter((id) => plana.has(id));
+  return { aMover: enLaOrg.filter((id) => !plana.has(id)), conflictos };
+}
+
+/** Mensaje del borrado que se niega, con lo que el humano tiene que resolver. */
+export function conflictoBorrado(slug: string, conflictos: string[]): string {
+  return `No se puede eliminar "${slug}": ${conflictos.length} diagrama(s) tienen el mismo id que uno de ${SIN_ORG} (${conflictos
+    .map((c) => `"${c}"`)
+    .join(", ")}). Al soltarlos se pisarían. Movelos con move_diagram a otra organización, o renombrá el que estorba, y volvé a intentar.`;
+}
+
 /** Listado legible de organizaciones, con la activa marcada. */
 export function formatOrgList(orgs: OrgRef[], activa: string | null): string {
   if (!orgs.length) {

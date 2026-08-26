@@ -39,6 +39,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('mcp-server-status'),
   mcpOrgsStatus: (): Promise<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }> =>
     ipcRenderer.invoke('mcp-orgs-status'),
+  mcpOrgCreate: (nombre: string): Promise<{ ok: boolean; slug?: string; error?: string }> =>
+    ipcRenderer.invoke('mcp-org-create', nombre),
+  mcpOrgRename: (slug: string, nombre: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('mcp-org-rename', slug, nombre),
+  mcpOrgDelete: (slug: string): Promise<{ ok: boolean; movidos?: string[]; error?: string }> =>
+    ipcRenderer.invoke('mcp-org-delete', slug),
   onMcpImportDiagram: (
     callback: (data: {
       name: string;

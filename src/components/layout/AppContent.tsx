@@ -52,6 +52,7 @@ const MemoizedAppHeader = React.memo(() => {
     orgFilter,
     setOrgFilter,
     setFileOrg,
+    clearOrgFromProjects,
   } = useGraphContext();
 
   return (
@@ -61,6 +62,7 @@ const MemoizedAppHeader = React.memo(() => {
       orgFilter={orgFilter}
       onOrgFilterChange={setOrgFilter}
       onFileOrgChange={setFileOrg}
+      onOrgCleared={clearOrgFromProjects}
       onFileSelect={handleFileSelect}
       onCreateProject={handleCreateProject}
       onImportJson={handleCreateProjectFromContent}

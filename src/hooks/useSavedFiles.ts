@@ -123,6 +123,18 @@ export function useSavedFiles(initial: SavedFile[] = []) {
     [savedFiles, saveFilesToStorage]
   );
 
+  /**
+   * Saca una organización de TODOS los proyectos de una vez. En bloque y no fila por
+   * fila: N llamadas seguidas a `setFileOrg` trabajarían sobre la misma lista vieja y
+   * la última pisaría a las anteriores.
+   */
+  const clearOrgFromProjects = useCallback(
+    (orgId: string) => {
+      saveFilesToStorage(savedFiles.map((f) => (f.orgId === orgId ? { ...f, orgId: undefined } : f)));
+    },
+    [savedFiles, saveFilesToStorage]
+  );
+
   return {
     savedFiles,
     setSavedFiles: saveFilesToStorage,
@@ -133,5 +145,6 @@ export function useSavedFiles(initial: SavedFile[] = []) {
     orgFilter,
     setOrgFilter,
     setFileOrg,
+    clearOrgFromProjects,
   };
 }

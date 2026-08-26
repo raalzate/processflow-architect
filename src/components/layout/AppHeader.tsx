@@ -2,6 +2,16 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -21,6 +31,7 @@ import {
   ChevronDown,
   Pencil,
   Building2,
+  FolderPlus,
 } from "lucide-react";
 import {
   Dialog,
@@ -94,6 +105,8 @@ interface AppHeaderProps {
   onOrgFilterChange: (filtro: OrgFilter) => void;
   /** Mueve un proyecto a otra organización (`null` lo saca de todas). */
   onFileOrgChange: (id: string, orgId: string | null) => void;
+  /** Saca una organización de todos los proyectos (al eliminarla). */
+  onOrgCleared: (orgId: string) => void;
   onFileSelect: (id: string) => void;
   onCreateProject: (nombre: string, notation?: NotationId) => void;
   /** Importa un GraphData ya generado (p. ej. exportado por el MCP / Claude Code). */
@@ -179,6 +192,7 @@ const FileManagement: React.FC<
     | "orgFilter"
     | "onOrgFilterChange"
     | "onFileOrgChange"
+    | "onOrgCleared"
     | "onFileSelect"
     | "onCreateProject"
     | "onImportJson"
@@ -192,6 +206,7 @@ const FileManagement: React.FC<
   orgFilter,
   onOrgFilterChange,
   onFileOrgChange,
+  onOrgCleared,
   onFileSelect,
   onCreateProject,
   onImportJson,
@@ -245,6 +260,68 @@ const FileManagement: React.FC<
   // El vacío se anuncia CON su salida: un desplegable mudo obliga a adivinar que la
   // culpa es del filtro (misma garantía que «el lienzo nunca queda en blanco»).
   const vacio = emptyOrgHint(visibles.length, orgFilter, orgNames);
+
+  // CRUD de organizaciones. Vive en el workspace del MCP (la app y el agente comparten
+  // esa verdad), así que las tres operaciones van por IPC; en la web no existen.
+  const orgApi = typeof window !== "undefined" ? window.electronAPI : undefined;
+  const [orgDialog, setOrgDialog] = useState<null | { modo: "crear" | "renombrar"; valor: string }>(null);
+  const [orgBorrar, setOrgBorrar] = useState<string | null>(null);
+
+  const refrescarOrgs = async () => {
+    if (!orgApi?.mcpOrgsStatus) return;
+    try {
+      setMcpOrgs(await orgApi.mcpOrgsStatus());
+    } catch {
+      /* la app puede estar sin servidor: el chip sigue con lo último conocido */
+    }
+  };
+
+  const submitOrgDialog = async () => {
+    if (!orgDialog) return;
+    const nombre = orgDialog.valor.trim();
+    if (!nombre) return;
+    if (orgDialog.modo === "crear") {
+      const r = await orgApi?.mcpOrgCreate?.(nombre);
+      if (!r?.ok) {
+        toast({ variant: "destructive", title: "No se pudo crear", description: r?.error });
+        return;
+      }
+      await refrescarOrgs();
+      onOrgFilterChange(r.slug!);
+      toast({ title: `Organización "${nombre}" creada`, description: "Mové proyectos con el menú Proyecto." });
+    } else {
+      if (orgFilter === ORG_TODAS || orgFilter === null) return;
+      const r = await orgApi?.mcpOrgRename?.(orgFilter, nombre);
+      if (!r?.ok) {
+        toast({ variant: "destructive", title: "No se pudo renombrar", description: r?.error });
+        return;
+      }
+      await refrescarOrgs();
+      toast({ title: `Ahora se llama "${nombre}"` });
+    }
+    setOrgDialog(null);
+  };
+
+  const confirmarBorrado = async () => {
+    if (!orgBorrar) return;
+    const r = await orgApi?.mcpOrgDelete?.(orgBorrar);
+    if (!r?.ok) {
+      toast({ variant: "destructive", title: "No se pudo eliminar", description: r?.error });
+      setOrgBorrar(null);
+      return;
+    }
+    // Los proyectos de la app pierden la etiqueta; sus datos quedan intactos.
+    onOrgCleared(orgBorrar);
+    await refrescarOrgs();
+    if (orgFilter === orgBorrar) onOrgFilterChange(ORG_TODAS);
+    toast({
+      title: "Organización eliminada",
+      description: r.movidos?.length
+        ? `Sus ${r.movidos.length} diagrama(s) volvieron a los que no tienen organización.`
+        : "No tenía diagramas.",
+    });
+    setOrgBorrar(null);
+  };
 
   const current = savedFiles.find((f) => f.id === currentFileId) ?? null;
   const currentName = current?.content.nombre_proyecto ?? "";
@@ -349,6 +426,34 @@ const FileManagement: React.FC<
                 {orgFilter === slug && <span className="ml-auto text-xs">✓</span>}
               </DropdownMenuItem>
             ))}
+            {orgApi?.mcpOrgCreate && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setOrgDialog({ modo: "crear", valor: "" })}>
+                  <FolderPlus className="mr-2 h-4 w-4" /> Nueva organización…
+                </DropdownMenuItem>
+                {/* Renombrar y eliminar actúan sobre la organización que está puesta:
+                    sin una elegida no hay sujeto, así que se deshabilitan. */}
+                <DropdownMenuItem
+                  disabled={orgFilter === ORG_TODAS || orgFilter === null}
+                  onClick={() =>
+                    setOrgDialog({
+                      modo: "renombrar",
+                      valor: orgFilter && orgFilter !== ORG_TODAS ? orgChipLabel(orgFilter, orgNames) : "",
+                    })
+                  }
+                >
+                  <Pencil className="mr-2 h-4 w-4" /> Renombrar…
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={orgFilter === ORG_TODAS || orgFilter === null}
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => orgFilter && orgFilter !== ORG_TODAS && setOrgBorrar(orgFilter)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" /> Eliminar…
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -524,6 +629,64 @@ const FileManagement: React.FC<
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Crear / renombrar organización: un solo diálogo, dos modos. */}
+      <Dialog open={!!orgDialog} onOpenChange={(abierto) => !abierto && setOrgDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5" />
+              {orgDialog?.modo === "renombrar" ? "Renombrar organización" : "Nueva organización"}
+            </DialogTitle>
+            <DialogDescription>
+              {orgDialog?.modo === "renombrar"
+                ? "Cambia el nombre que se lee. La carpeta donde viven sus diagramas no se toca."
+                : "Agrupa proyectos y diagramas. El agente puede fijarla para ver sólo los suyos."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label htmlFor="org-name">Nombre</Label>
+            <Input
+              id="org-name"
+              autoFocus
+              value={orgDialog?.valor ?? ""}
+              onChange={(e) => setOrgDialog((d) => (d ? { ...d, valor: e.target.value } : d))}
+              onKeyDown={(e) => e.key === "Enter" && submitOrgDialog()}
+              placeholder="Ej: Acme Salud"
+              className="mt-1"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOrgDialog(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={submitOrgDialog} disabled={!orgDialog?.valor.trim()}>
+              {orgDialog?.modo === "renombrar" ? "Renombrar" : "Crear"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Eliminar: la confirmación dice qué pasa con lo de adentro, porque lo que la
+          gente teme —con razón— es perder el trabajo al quitar una etiqueta. */}
+      <AlertDialog open={!!orgBorrar} onOpenChange={(abierto) => !abierto && setOrgBorrar(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              ¿Eliminar «{orgBorrar ? orgChipLabel(orgBorrar, orgNames) : ""}»?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              No se borra nada de lo que tiene adentro: sus diagramas vuelven a los que no
+              tienen organización y los proyectos quedan como «{SIN_ORG_LABEL}». Sólo
+              desaparece la organización.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarBorrado}>Eliminar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

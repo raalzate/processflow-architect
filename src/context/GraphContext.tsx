@@ -65,6 +65,8 @@ export interface GraphContextType {
   setOrgFilter: (filtro: OrgFilter) => void;
   /** Mueve un proyecto a otra organización; `null` lo saca de todas. */
   setFileOrg: (id: string, orgId: string | null) => void;
+  /** Saca una organización de todos los proyectos (al eliminarla). */
+  clearOrgFromProjects: (orgId: string) => void;
 
   // Estado de Búsqueda
   searchQuery: string;

@@ -1422,6 +1422,48 @@ describe("organizaciones · E", () => {
     expect(salida).not.toContain(suelto);
   });
 
+  it("E10 · delete_org SUELTA los diagramas a la carpeta plana, no los borra", async () => {
+    const tools = toolsDe();
+    await tools.get("create_org")!.handler({ name: "Acme" });
+    const id = await crear(tools, "Enrollment");
+
+    const res = await tools.get("delete_org")!.handler({ org: "acme" });
+    expect(res.isError).toBeUndefined();
+    // El diagrama sigue existiendo, en la carpeta plana.
+    await fs.access(path.join(ws, ".processflow", "diagrams", `${id}.json`));
+    await expect(fs.access(path.join(ws, ".processflow", "orgs", "acme"))).rejects.toBeTruthy();
+    // Y el fijado no queda colgado: si no, TODA llamada siguiente fallaría.
+    const activo = JSON.parse(await fs.readFile(path.join(ws, ".processflow", "active.json"), "utf8"));
+    expect(activo.org).toBeUndefined();
+  });
+
+  it("E11 · delete_org se niega si al soltar pisaría un diagrama con el mismo id", async () => {
+    const tools = toolsDe();
+    const enPlana = await crear(tools, "Enrollment");
+    await tools.get("create_org")!.handler({ name: "Acme" });
+    const enOrg = await crear(tools, "Enrollment");
+    expect(enOrg).toBe(enPlana);
+
+    const res = await tools.get("delete_org")!.handler({ org: "acme" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain(enOrg);
+    // Nada se movió ni se borró: el borrado que se niega no deja a medias.
+    await fs.access(path.join(ws, ".processflow", "orgs", "acme", "diagrams", `${enOrg}.json`));
+  });
+
+  it("E12 · rename_org cambia el nombre legible y NO el slug", async () => {
+    const tools = toolsDe();
+    await tools.get("create_org")!.handler({ name: "Acme" });
+    const res = await tools.get("rename_org")!.handler({ org: "acme", name: "Acme Salud" });
+    expect(res.isError).toBeUndefined();
+    const meta = JSON.parse(
+      await fs.readFile(path.join(ws, ".processflow", "orgs", "acme", "org.json"), "utf8")
+    );
+    expect(meta.nombre).toBe("Acme Salud");
+    // La carpeta no se toca: renombrarla con diagramas adentro es cómo se pierde trabajo.
+    await fs.access(path.join(ws, ".processflow", "orgs", "acme", "diagrams"));
+  });
+
   it("E9 · list_orgs dice cuántos diagramas tiene cada una y cuál está activa", async () => {
     const tools = toolsDe();
     await tools.get("create_org")!.handler({ name: "Acme Salud" });

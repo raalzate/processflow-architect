@@ -71,6 +71,11 @@ export interface ElectronAPI {
   mcpServerStatus: () => Promise<McpServerStatus>;
   /** Organizaciones del workspace del MCP y cuál ve el agente (para el chip del header). */
   mcpOrgsStatus?: () => Promise<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }>;
+  /** Crea una organización en el workspace del MCP; devuelve su slug. */
+  mcpOrgCreate?: (nombre: string) => Promise<{ ok: boolean; slug?: string; error?: string }>;
+  mcpOrgRename?: (slug: string, nombre: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Elimina una organización SOLTANDO sus diagramas (no los borra). */
+  mcpOrgDelete?: (slug: string) => Promise<{ ok: boolean; movidos?: string[]; error?: string }>;
   onMcpImportDiagram: (
     callback: (data: {
       name: string;

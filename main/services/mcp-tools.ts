@@ -54,6 +54,8 @@ import {
   orgSlug,
   isValidOrgSlug,
   formatOrgList,
+  planOrgDeletion,
+  conflictoBorrado,
   SIN_ORG,
   type OrgRef,
 } from "../../src/lib/mcp/orgs";
@@ -573,6 +575,70 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       await writeActive({ org });
       const cuantos = (await listModels(org)).length;
       return text(`Organización fijada: "${org}" · ${cuantos} diagrama(s). Las demás herramientas ven SÓLO estos.`);
+    }
+  );
+
+  server.registerTool(
+    "rename_org",
+    {
+      title: "Renombrar una organización",
+      description:
+        "Cambia el nombre legible de una organización. El slug (su carpeta) NO cambia: renombrar carpetas con diagramas adentro es cómo se pierde trabajo, y el slug es lo que usan `use_org` y las rutas.",
+      inputSchema: {
+        org: z.string().describe("Slug de la organización (ver list_orgs)."),
+        name: z.string().describe("Nombre nuevo, para leer."),
+      },
+    },
+    async ({ org, name }) => {
+      if (!(await listOrgSlugs()).includes(org)) {
+        return fail(`No existe la organización "${org}". Mirá list_orgs.`);
+      }
+      const limpio = name.trim();
+      if (!limpio) return fail("El nombre no puede quedar vacío.");
+      const metaPath = path.join(PROCESSFLOW_DIR, orgDirRel(org), "org.json");
+      let meta: Record<string, unknown> = {};
+      try {
+        meta = JSON.parse(await fs.readFile(metaPath, "utf8"));
+      } catch {
+        // Carpeta creada a mano, sin org.json: se escribe uno.
+      }
+      await fs.writeFile(metaPath, JSON.stringify({ ...meta, nombre: limpio }, null, 2), "utf8");
+      return text(`Organización "${org}" ahora se llama "${limpio}". El slug sigue siendo "${org}".`);
+    }
+  );
+
+  server.registerTool(
+    "delete_org",
+    {
+      title: "Eliminar una organización",
+      description:
+        "Elimina una organización y SUELTA su contenido: los diagramas vuelven a los que no tienen organización, no se borran. Se niega si al soltarlos pisaría un diagrama con el mismo id.",
+      inputSchema: {
+        org: z.string().describe("Slug de la organización a eliminar."),
+      },
+    },
+    async ({ org }) => {
+      if (!(await listOrgSlugs()).includes(org)) {
+        return fail(`No existe la organización "${org}". Mirá list_orgs.`);
+      }
+      const plan = planOrgDeletion(await listModels(org), await listModels(null));
+      if (plan.conflictos.length) return fail(conflictoBorrado(org, plan.conflictos));
+
+      if (plan.aMover.length) await ensureDir(diagramsDirOf(null));
+      for (const id of plan.aMover) {
+        await fs.rename(modelPathIn(org, id), modelPathIn(null, id));
+      }
+      await fs.rm(path.join(PROCESSFLOW_DIR, orgDirRel(org)), { recursive: true, force: true });
+      // El fijado apuntaba a una carpeta que ya no está: dejarlo colgado haría fallar
+      // TODA llamada siguiente con «la organización fijada ya no existe».
+      if ((await readPinnedOrg()) === org) await writeActive({ org: null });
+      return text(
+        `Organización "${org}" eliminada. ${
+          plan.aMover.length
+            ? `Sus ${plan.aMover.length} diagrama(s) volvieron a ${SIN_ORG}: ${plan.aMover.join(", ")}.`
+            : "No tenía diagramas."
+        }`
+      );
     }
   );
 
