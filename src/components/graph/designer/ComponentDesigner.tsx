@@ -35,6 +35,7 @@ import {
   ChevronUp,
   ChevronDown,
   Link2,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -59,7 +60,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import * as DrawerPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
@@ -172,6 +172,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -1456,7 +1459,6 @@ export const ComponentDesigner: React.FC<{
   const [capturing, setCapturing] = useState(false);
   // El menú de exportar es CONTROLADO: hay que poder cerrarlo (y esperar a que
   // su portal se desmonte) antes de rasterizar la pantalla.
-  const [exportOpen, setExportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // Durante la captura a PNG nadie está seleccionado: el borde azul y las
   // manijas del elemento en foco salían dibujados en la imagen exportada.
@@ -2828,7 +2830,6 @@ export const ComponentDesigner: React.FC<{
     // Vista actual: se restaura al terminar. Exportar no debería dejar al
     // usuario en otro zoom/scroll del que tenía.
     const vista = { zoom, left: wrapper.scrollLeft, top: wrapper.scrollTop };
-    setExportOpen(false);
     setCapturing(true);
     fitToContent();
     // El menú es un portal fuera del lienzo: si se captura antes de que se
@@ -3121,117 +3122,115 @@ export const ComponentDesigner: React.FC<{
 
           <div className="w-px h-6 bg-border mx-1" />
 
-          {/* Estilo de las relaciones en LOTE (issue #128): el enrutado se
-              cambiaba de a una arista, y en un C4 de 30 relaciones eso eran 30
-              fichas. Tres ámbitos: la selección, toda la vista, y con qué nacen
-              las nuevas. Cada aplicación es UN paso de Deshacer. */}
+          {/* Un solo menú para lo que no se usa a cada rato (issue #168). La barra
+              tenía siete controles en fila y ya no daba más ancho: cada acción nueva
+              empujaba a la siguiente fuera de la vista. Quedan afuera deshacer/rehacer,
+              Organizar y borrar la selección —eso sí se usa todo el tiempo—; el resto
+              entra acá, a un gesto de distancia y con su atajo intacto. */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={links.size === 0}
-                title="Enrutado y trazo de varias relaciones a la vez"
-              >
-                <Workflow className="mr-2 h-4 w-4" /> Relaciones
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64">
-              <DropdownMenuLabel>
-                {selectedLinkCount > 0
-                  ? `Enrutado de la selección (${selectedLinkCount})`
-                  : "Enrutado de la selección"}
-              </DropdownMenuLabel>
-              {ROUTING_ORDER.map((r) => (
-                <DropdownMenuItem
-                  key={`sel-${r}`}
-                  disabled={selectedLinkCount === 0}
-                  onClick={() => applyLinkStyle("selection", { routing: r })}
-                >
-                  {ROUTING_LABEL[r]}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>{`Toda la vista (${links.size})`}</DropdownMenuLabel>
-              {ROUTING_ORDER.map((r) => (
-                <DropdownMenuItem
-                  key={`all-${r}`}
-                  onClick={() => applyLinkStyle("view", { routing: r })}
-                >
-                  {ROUTING_LABEL[r]}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Trazo de la selección</DropdownMenuLabel>
-              <DropdownMenuItem
-                disabled={selectedLinkCount === 0}
-                onClick={() => applyLinkStyle("selection", { dashed: false })}
-              >
-                Continua
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={selectedLinkCount === 0}
-                onClick={() => applyLinkStyle("selection", { dashed: true })}
-              >
-                Discontinua
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Las relaciones nuevas nacen…</DropdownMenuLabel>
-              {ROUTING_ORDER.map((r) => (
-                <DropdownMenuItem key={`new-${r}`} onClick={() => setViewRouting(r)}>
-                  {ROUTING_LABEL[r]}
-                  {newLinkRouting === r && <Check className="ml-auto h-4 w-4 opacity-70" />}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Button variant="outline" size="sm" onClick={() => setReferenceOpen(true)}>
-            <Library className="mr-2 h-4 w-4" /> Contexto
-          </Button>
-
-          <Button variant="outline" size="sm" onClick={() => setMetaOpen(true)}>
-            <Settings2 className="mr-2 h-4 w-4" /> Metadatos
-          </Button>
-
-          <DropdownMenu open={exportOpen} onOpenChange={setExportOpen}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={nodes.size === 0}
-                title="Exportar el lienzo (para presentaciones)"
-              >
-                <Download className="mr-2 h-4 w-4" /> Exportar
+              <Button variant="outline" size="sm" title="Relaciones, contexto, metadatos, exportar y más">
+                <SlidersHorizontal className="mr-2 h-4 w-4" /> Opciones
+                <ChevronDown className="ml-1 h-4 w-4 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuItem onClick={handleExportSvg}>
-                SVG · vectorial (calidad infinita)
+              {/* Estilo de las relaciones en LOTE (issue #128): el enrutado se
+                  cambiaba de a una arista, y en un C4 de 30 relaciones eso eran 30
+                  fichas. Tres ámbitos: la selección, toda la vista, y con qué nacen
+                  las nuevas. Cada aplicación es UN paso de Deshacer. */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger disabled={links.size === 0}>
+                  <Workflow className="mr-2 h-4 w-4" /> Relaciones
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-64">
+                  <DropdownMenuLabel>
+                    {selectedLinkCount > 0
+                      ? `Enrutado de la selección (${selectedLinkCount})`
+                      : "Enrutado de la selección"}
+                  </DropdownMenuLabel>
+                  {ROUTING_ORDER.map((r) => (
+                    <DropdownMenuItem
+                      key={`sel-${r}`}
+                      disabled={selectedLinkCount === 0}
+                      onClick={() => applyLinkStyle("selection", { routing: r })}
+                    >
+                      {ROUTING_LABEL[r]}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>{`Toda la vista (${links.size})`}</DropdownMenuLabel>
+                  {ROUTING_ORDER.map((r) => (
+                    <DropdownMenuItem
+                      key={`all-${r}`}
+                      onClick={() => applyLinkStyle("view", { routing: r })}
+                    >
+                      {ROUTING_LABEL[r]}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Trazo de la selección</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    disabled={selectedLinkCount === 0}
+                    onClick={() => applyLinkStyle("selection", { dashed: false })}
+                  >
+                    Continua
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={selectedLinkCount === 0}
+                    onClick={() => applyLinkStyle("selection", { dashed: true })}
+                  >
+                    Discontinua
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Las relaciones nuevas nacen…</DropdownMenuLabel>
+                  {ROUTING_ORDER.map((r) => (
+                    <DropdownMenuItem key={`new-${r}`} onClick={() => setViewRouting(r)}>
+                      {ROUTING_LABEL[r]}
+                      {newLinkRouting === r && <Check className="ml-auto h-4 w-4 opacity-70" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger disabled={nodes.size === 0}>
+                  <Download className="mr-2 h-4 w-4" /> Exportar
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-56">
+                  <DropdownMenuItem onClick={handleExportSvg}>
+                    SVG · vectorial (calidad infinita)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportPng}>
+                    PNG · imagen (para pegar en documentos)
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setReferenceOpen(true)}>
+                <Library className="mr-2 h-4 w-4" /> Contexto
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportPng}>
-                PNG · imagen (para pegar en documentos)
+              <DropdownMenuItem onClick={() => setMetaOpen(true)}>
+                <Settings2 className="mr-2 h-4 w-4" /> Metadatos
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setHelpOpen(true)}>
+                <HelpCircle className="mr-2 h-4 w-4" /> Ayuda
+              </DropdownMenuItem>
+              {/* El diálogo se controla por estado y vive FUERA del menú: colgarlo de
+                  un trigger que se desmonta al cerrarse el menú lo deja sin abrir. */}
+              <DropdownMenuItem
+                disabled={nodes.size === 0}
+                className="text-destructive focus:text-destructive"
+                onClick={() => setClearConfirmOpen(true)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" /> Reiniciar el lienzo…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <IconAction
-            variant="outline"
-            onClick={() => setHelpOpen(true)}
-            label={accion("ayuda")}
-            icon={<HelpCircle className="h-4 w-4" />}
-          />
-
           <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
-            <AlertDialogTrigger asChild>
-              {/* Sólo icono: el diálogo de confirmación es el que explica y frena. */}
-              <IconAction
-                variant="destructive"
-                disabled={nodes.size === 0}
-                label={accion("limpiar", "el lienzo")}
-                icon={<Trash2 className="h-4 w-4" />}
-              />
-            </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle className="flex items-center gap-2">
