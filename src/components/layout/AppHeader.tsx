@@ -75,6 +75,7 @@ import {
   orgChipLabel,
   emptyOrgHint,
   orgOptions,
+  visibleSelection,
   type OrgFilter,
 } from "@/lib/project-orgs";
 import {
@@ -368,7 +369,9 @@ const FileManagement: React.FC<
         />
       ) : mounted ? (
         <Select
-          value={currentFileId || ""}
+          // Con el proyecto activo fuera del filtro hay que SOLTAR la selección: si
+          // no, el trigger se queda en blanco y el humano no sabe que fue el filtro.
+          value={visibleSelection(currentFileId, visibles)}
           onValueChange={onFileSelect}
           disabled={visibles.length === 0}
         >

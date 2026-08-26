@@ -80,6 +80,22 @@ export function emptyOrgHint(visibles: number, filtro: OrgFilter, names: Record<
 }
 
 /**
+ * Qué valor debe tener el selector de proyectos con este filtro puesto.
+ *
+ * El proyecto activo puede quedar FUERA de lo visible (se filtró su organización).
+ * Pasarle igual su id al selector lo deja en blanco: no toma el placeholder —porque el
+ * valor no está vacío— y tampoco encuentra el item para pintar su texto. Devolver `""`
+ * es lo que hace aparecer el aviso con la salida.
+ */
+export function visibleSelection(
+  currentFileId: string | null,
+  visibles: Pick<SavedFile, "id">[]
+): string {
+  if (!currentFileId) return "";
+  return visibles.some((f) => f.id === currentFileId) ? currentFileId : "";
+}
+
+/**
  * Organizaciones a ofrecer en el chip: las que tienen proyectos, más las que existen
  * en el workspace del MCP aunque todavía no tengan ninguno. Sin esto, una organización
  * recién creada por el agente sería invisible hasta que alguien le ponga algo adentro.

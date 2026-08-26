@@ -16,6 +16,7 @@ import {
   orgChipLabel,
   emptyOrgHint,
   orgOptions,
+  visibleSelection,
 } from "../project-orgs";
 
 const file = (id: string, orgId?: string): SavedFile =>
@@ -108,5 +109,25 @@ describe("orgOptions", () => {
 
   it("sin proyectos ni organizaciones no ofrece nada", () => {
     expect(orgOptions([], [])).toEqual([]);
+  });
+});
+
+describe("visibleSelection · el selector no queda mudo", () => {
+  const visibles = [acme, acme2];
+
+  it("mantiene la selección cuando el proyecto activo está a la vista", () => {
+    expect(visibleSelection("enrollment", visibles)).toBe("enrollment");
+  });
+
+  it("suelta la selección cuando el filtro sacó al proyecto activo de la lista", () => {
+    // Éste es el defecto de #166: con el id puesto, el selector no toma el
+    // placeholder y tampoco encuentra el item → se renderiza en blanco, sin decir
+    // que la culpa fue del filtro ni cómo volver.
+    expect(visibleSelection("onboarding", visibles)).toBe("");
+    expect(visibleSelection("enrollment", [])).toBe("");
+  });
+
+  it("sin proyecto activo no hay selección", () => {
+    expect(visibleSelection(null, visibles)).toBe("");
   });
 });
