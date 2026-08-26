@@ -281,3 +281,18 @@ Mecanismo: `exigirLabels()` en `scripts/sdd-github.mjs` — relee los labels del
          reintenta con `issue edit` y, si faltan, muere (exit 1) nombrando la cuenta activa y el
          remedio (`gh auth switch -u <dueño>`). La directriz la imprime el hook `sdd-router` con los
          nombres del config, y el self-test exige que ese recordatorio siga saliendo.
+
+### GOTCHA: la feature nueva nace con un número de otra
+
+Issue: #172
+
+Síntoma: `npm run sdd:new 006-organizaciones.md` abrió la issue madre con la etiqueta `feature:006`,
+         que ya era de #113 («Metadatos y referencias en la caja», 12 tareas). Corregir a 007 chocó
+         con #133. Terminó en 008 después de renombrar **8 issues a mano**, dos veces.
+Causa:   `nuevaFeature()` sacaba el `NNN` del NOMBRE DEL ARCHIVO y no lo contrastaba con nada. El
+         número lo elegía quien escribía el spec, y el tablero no opinaba.
+Regla:   una feature nueva no nace con un número usado; si el número está tomado, el comando para y
+         dice cuál es el primero libre. Sin número en el nombre, tampoco arranca.
+Mecanismo: `scripts/sdd-github.mjs` (`new`) consulta las etiquetas `feature:*` del repo antes de
+         crear nada y sale con código 1 nombrando el primer libre. Probado a mano contra el repo:
+         `003` (usado) y un archivo sin número frenan; el mensaje trae la lista de usados.

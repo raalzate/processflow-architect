@@ -149,12 +149,61 @@ function asegurarLabel(nombre, descripcion) {
 
 // ── new · tasks · status ─────────────────────────────────────────────────────
 
+/** Números de feature ya usados en el repo, según las etiquetas `feature:NNN`. */
+function numerosUsados() {
+  try {
+    const salida = ghCli(["label", "list", "--limit", "200", "--json", "name", "--jq", ".[].name"]);
+    return salida
+      .split("\n")
+      .map((n) => n.trim())
+      .filter((n) => n.startsWith(gh.featureLabelPrefix))
+      .map((n) => n.slice(gh.featureLabelPrefix.length))
+      .filter((n) => /^\d{3}$/.test(n));
+  } catch {
+    // Sin red no se puede comprobar; el freno de labels de después igual muerde.
+    return [];
+  }
+}
+
+/** El primer NNN libre, mirando lo que ya existe. */
+function primerNumeroLibre(usados) {
+  const tomados = new Set(usados);
+  for (let i = 1; i < 1000; i += 1) {
+    const n = String(i).padStart(3, "0");
+    if (!tomados.has(n)) return n;
+  }
+  return "999";
+}
+
 function nuevaFeature(archivo) {
   const md = fs.readFileSync(archivo, "utf8");
   asegurarLabelsBase();
   const numero = path.basename(archivo).match(/(\d{3})/)?.[1] ?? "";
-  const labelFeature = numero ? `${gh.featureLabelPrefix}${numero}` : null;
-  if (labelFeature) asegurarLabel(labelFeature, `Feature SDD ${numero}`);
+
+  // Una feature nueva no puede nacer con un número ya usado: la etiqueta `feature:NNN`
+  // es lo que agrupa el árbol de issues, y dos features compartiéndola dejan un tablero
+  // que hay que desenredar renombrando a mano (pasó con 006 y 007, #172).
+  const usados = numerosUsados();
+  const libre = primerNumeroLibre(usados);
+  if (numero && usados.includes(numero)) {
+    console.error(
+      [
+        `El número ${numero} ya está usado: existe la etiqueta \`${gh.featureLabelPrefix}${numero}\` en ${gh.repo}.`,
+        `Usados: ${usados.sort().join(", ")}.`,
+        `Renombrá el archivo con el primero libre (${libre}) y volvé a correr el comando.`,
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+  if (!numero) {
+    console.error(
+      `El archivo no dice qué número de feature es. Renombralo empezando por NNN (el primero libre es ${libre}), por ejemplo \`${libre}-mi-feature.md\`.`,
+    );
+    process.exit(1);
+  }
+
+  const labelFeature = `${gh.featureLabelPrefix}${numero}`;
+  asegurarLabel(labelFeature, `Feature SDD ${numero}`);
   const titulo = `[sdd] ${numero ? `${numero} · ` : ""}${tituloDe(md, path.basename(archivo, ".md"))}`;
   const url = ghCli([
     "issue",
