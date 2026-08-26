@@ -4,11 +4,11 @@ Lo imprime el hook `SessionStart`. Sirve para no releer el repo entero para resp
 Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verificado con un comando**;
 lo que se supone va en "deuda conocida".
 
-- **Fecha del último gate completo:** 2026-08-25
+- **Fecha del último gate completo:** 2026-08-26
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
 - **Versión publicada:** 0.6.6 — release **publicado** (Latest) con los 3 instaladores (dmg arm64 · exe · AppImage)
-- **Versión en el repo:** 0.6.6 — notas en `docs/releases/0.6.6.md`. El workflow deja el release en BORRADOR a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v<versión> --draft=false`)
+- **Versión en el repo:** 0.7.0 — notas en `docs/releases/0.7.0.md`. El workflow deja el release en BORRADOR a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v<versión> --draft=false`)
 
 ## Señales
 
@@ -26,13 +26,18 @@ lo que se supone va en "deuda conocida".
 | Freno local del push directo | incluido en el self-test | verde — `pre-push` frena `main` y deja pasar una rama de feature |
 | Self-test del arnés | `node scripts/harness-selftest.mjs` | verde — 7 hooks, 24 frenos probados (se fue el de `specs/` con el directorio, #156; entró la directriz de labels, #158) (incluye DEPSHOOK, TOKENS, SVGFILL, PLATAFORMA, «no escribe temporales en `src/`» y los 9 casos de `commit-msg`, dos de ellos con la config de OTRA forja), 8 casos de ruteo |
 | Directriz de labels | incluido en el self-test | verde — `sdd-router` nombra los labels de `tracker.labels` al pedir el registro, y `exigirLabels()` de `scripts/sdd-github.mjs` relee la API tras crear un issue: #157 nació sin labels y el script pasó en verde porque la cuenta activa de `gh` no tenía permiso de triage (#158) |
+| Organizaciones (aislamiento del MCP) | `npx vitest run src/lib/mcp/__tests__/orgs.test.ts main/services/__tests__/mcp-tools.test.ts` | verde — 22 + 87 pruebas: el slug no puede salir del workspace (`..`, `a/b`), `list_diagrams` no ve otra org, los ids son únicos POR org, y **eliminar una organización suelta sus diagramas a la carpeta plana** en vez de borrarlos (se niega si pisaría uno) |
+| CRUD de organizaciones contra la app viva | script manual por CDP + IPC | verde — crear, renombrar y eliminar desde el header; una org con un diagrama adentro se eliminó y el diagrama quedó en `.processflow/diagrams/`, con `active.json` sin `org` |
+| Barra de título propia | `npx vitest run src/lib/__tests__/window-chrome.test.ts` | verde — 6 pruebas: **ninguna plataforma dibuja sus propios controles de ventana** (semáforos en macOS, overlay nativo en Windows/Linux), así que un fallo nuestro no deja la ventana atrapada. El arrastre REAL sólo se verificó en macOS y a mano |
+| Menú y barra ofrecen lo mismo | `npx vitest run src/lib/__tests__/designer-actions.test.ts` | verde — catálogo único; el diseñador implementa `Record<DesignerActionId, …>`, así que un id sin manejador **no compila** |
+| Freno de numeración SDD | manual: `node scripts/sdd-github.mjs new <NNN-…>` con un NNN usado | verde — sale 1 nombrando el primer libre; sin `NNN` en el nombre tampoco arranca (#172) |
 | Link-check de docs | `node scripts/docs-linkcheck.mjs` | verde |
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
 | Typecheck | `npm run typecheck` | verde (renderer + electron) |
 | Tests | `npm run test:coverage` | verde — 82 archivos, 1332 pruebas, **offline** (`vitest.setup.ts` cierra la red) |
 | E2E del MCP (stdio) | script manual contra `mcp-server/index.ts` | verde — arnés completo (ingesta → citas → ambigüedades → calidad → revisión → export → install_skill) |
-| Lectura de la app por MCP (modo app) | script manual por CDP contra la app viva | verde — 30 tools registradas; `list_artifacts`, `get_artifact` (con revisión), `list_views`, `get_view` (+`importAs`) y sus errores con opciones, también contra OTRO proyecto |
+| Lectura de la app por MCP (modo app) | script manual por CDP contra la app viva | verde — 43 tools registradas; `list_artifacts`, `get_artifact` (con revisión), `list_views`, `get_view` (+`importAs`) y sus errores con opciones, también contra OTRO proyecto |
 | Editor de artefactos con documento largo | script manual por CDP contra la app viva | verde — 11 021 caracteres: índice de 49 encabezados con salto, buscar/reemplazar (72 coincidencias), stats, borrador recuperable |
 | Integridad del registro de notaciones | `npx vitest run src/lib/__tests__/notations-registry.test.ts` | verde — todo tipo declarado está en la paleta y viceversa, sin repetidos, con icono en `ICON_MAP` y con ayuda |
 | Registro de un cambio en el historial | `node scripts/harness-selftest.mjs` | verde — `.githooks/commit-msg` frena un commit que toca código sin `#<issue>` ni línea `sin-issue: <motivo>`; 7 casos en un repo git temporal (docs solo, merge, declaración sin motivo) y la ruta `issue` del router recuerda preguntar antes de tocar producción |

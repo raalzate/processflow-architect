@@ -135,6 +135,7 @@ function seedGraph(): GraphData {
 // =============================================================================
 
 const MCP_TOOLS = [
+  "list_orgs", "create_org", "use_org", "rename_org", "delete_org", "move_diagram",
   "create_diagram", "list_diagrams", "get_diagram", "describe_notation", "list_notations",
   "add_container", "add_node", "add_edge", "remove_element", "remove_edge",
   "relayout_diagram", "render_mermaid", "validate_diagram", "review_diagram",
