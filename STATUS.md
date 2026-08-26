@@ -7,8 +7,9 @@ lo que se supone va en "deuda conocida".
 - **Fecha del último gate completo:** 2026-08-26
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.6.6 — release **publicado** (Latest) con los 3 instaladores (dmg arm64 · exe · AppImage)
-- **Versión en el repo:** 0.7.0 — notas en `docs/releases/0.7.0.md`. El workflow deja el release en BORRADOR a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v<versión> --draft=false`)
+- **Versión publicada:** 0.6.6 — sigue siendo la última **publicada** (Latest)
+- **Versión en el repo:** 0.7.0 — `v0.7.0` etiquetada y empaquetada: el release existe en **BORRADOR** con los tres instaladores adjuntos (`Processflow-Architect-0.7.0-arm64.dmg` 260 MB · `Processflow-Architect.Setup.0.7.0.exe` 206 MB · `Processflow-Architect-0.7.0.AppImage` 283 MB). El workflow lo deja así a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v0.7.0 --draft=false`), y hasta que ocurra esta línea NO cambia
+- **Sin verificar:** la barra de título propia (0.7.0) sólo se ejercitó en **macOS**. En Windows y Linux los controles de ventana son los nativos del sistema (overlay), pero el arrastre, el botón de menú y el overlay no los vio nadie
 
 ## Señales
 
