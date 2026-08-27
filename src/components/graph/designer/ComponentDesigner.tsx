@@ -372,7 +372,7 @@ const MetadataRow: React.FC<{
   return (
     <>
       <tr className="border-t align-top">
-        <td className="p-0">
+        <td className="w-40 p-0">
           <Input
             value={m.clave}
             onChange={(e) => onPatch({ clave: e.target.value })}
@@ -528,7 +528,7 @@ const MetadataField: React.FC<{
         <table className="w-full table-fixed border-collapse text-xs">
           <thead>
             <tr className="bg-muted/60 text-left text-2xs uppercase tracking-wide text-muted-foreground">
-              <th className="px-2 py-1 font-medium">Propiedad</th>
+              <th className="w-40 px-2 py-1 font-medium">Propiedad</th>
               <th className="w-24 border-l px-2 py-1 font-medium">Tipo</th>
               <th className="border-l px-2 py-1 font-medium">Valor</th>
               <th className="w-[4.5rem] border-l px-2 py-1" />
@@ -548,7 +548,7 @@ const MetadataField: React.FC<{
             ))}
             {/* Fila de alta: siempre visible al pie, como en un panel de propiedades. */}
             <tr className="border-t bg-muted/20 align-top">
-              <td className="p-0">
+              <td className="w-40 p-0">
                 <Input
                   id="meta-clave"
                   value={clave}
@@ -1020,11 +1020,17 @@ const EditNodeDialog: React.FC<{
             value={draft.borderColor}
             onChange={(c) => setDraft((d) => (d ? { ...d, borderColor: c } : d))}
           />
-          <MetadataField
-            value={draft.metadata}
-            onChange={(lista) => setDraft((d) => (d ? { ...d, metadata: lista } : d))}
-          />
             </div>
+          </div>
+
+          {/* La tabla de referencias va a ANCHO COMPLETO, fuera de la grilla:
+              metida en una columna dejaba el valor en un campo angosto y la
+              columna de al lado vacía justo cuando la ficha está ensanchada. */}
+          <div className="mt-4">
+            <MetadataField
+              value={draft.metadata}
+              onChange={(lista) => setDraft((d) => (d ? { ...d, metadata: lista } : d))}
+            />
           </div>
 
           {/* Vista embebida (subproceso): el nodo apunta a otra vista para dar
