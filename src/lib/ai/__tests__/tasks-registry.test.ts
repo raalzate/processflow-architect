@@ -14,6 +14,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as tasks from "@/lib/ai/tasks";
 import { chooseProvider, type AiTask } from "@/lib/ai/router";
+import { publicarEstadoIaLocal, resetEstadoIaLocal } from "@/lib/ai/local-capability";
 import type { AiMode } from "@/lib/ai/remote-settings";
 
 const declaradas = Object.entries(tasks).filter(
@@ -24,15 +25,24 @@ const declaradas = Object.entries(tasks).filter(
     typeof (valor as AiTask).id === "string",
 ) as [string, AiTask][];
 
-/** Motores disponibles: `localAvailable`/`remoteAvailable` miran `window.electronAPI`. */
-const conAmbosMotores = () =>
+/**
+ * Motores disponibles: `localAvailable` mira `window.electronAPI` **y** el estado
+ * del motor local, que sin publicar arranca en `desconocido` (#202) — así que acá
+ * se publica: este test habla del ruteo, no de la GPU.
+ */
+const conAmbosMotores = () => {
   vi.stubGlobal("window", {
     electronAPI: { litertGenerate: vi.fn(), remoteGenerate: vi.fn() },
     navigator: { gpu: {} },
   });
+  publicarEstadoIaLocal("disponible");
+};
 
 beforeEach(conAmbosMotores);
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  resetEstadoIaLocal();
+});
 
 describe("registro de AiTask (P5)", () => {
   it("hay tareas declaradas: si esto queda en cero, el barrido dejó de mirar", () => {

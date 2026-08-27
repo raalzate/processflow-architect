@@ -32,6 +32,12 @@ import { ViewsTabBar } from "@/components/views/ViewsTabBar";
 import { CustomViewRenderer } from "@/components/views/CustomViewRenderer";
 import { MermaidViewRenderer } from "@/components/mermaid/MermaidViewRenderer";
 import { webgpuAvailable } from "@/lib/ai/litert-engine";
+import {
+  mensajeIaLocal,
+  publicarEstadoIaLocal,
+  razonarEstadoLocal,
+} from "@/lib/ai/local-capability";
+import { loadAiSettings } from "@/lib/ai/remote-settings";
 import { CommandPalette } from "@/components/CommandPalette";
 
 // --- 1. Wrapper para el Header ---
@@ -547,44 +553,47 @@ const MemoizedNodeModal = React.memo(() => {
 
 export function AppContent() {
   // La IA local corre en el renderer con LiteRT-LM (WebGPU). El modelo se carga de
-  // forma perezosa en el primer uso del chat (no bloqueamos el arranque). Solo
-  // verificamos que WebGPU exista; si no, avisamos.
-  const [isModelReady, setIsModelReady] = useState(false);
-  const [loadingStatus, setLoadingStatus] = useState("Iniciando…");
+  // forma perezosa en el primer uso del chat (no bloqueamos el arranque). Acá sólo
+  // se AVERIGUA si el equipo puede con ella, y el resultado se publica para que el
+  // router y la UI lo consulten (`local-capability.ts`).
+  //
+  // Sin WebGPU la app entra IGUAL: antes se quedaba para siempre en el spinner y
+  // ese equipo perdía el lienzo, el merger, el MCP y la IA de nube por una
+  // capacidad opcional (#202). La ausencia degrada, no bloquea.
+  const [detectando, setDetectando] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const ok = await webgpuAvailable();
+      const enElectron = typeof window !== "undefined" && !!(window as any).electronAPI;
+      const webgpu = await webgpuAvailable();
       if (!mounted) return;
-      if (ok) {
-        setIsModelReady(true);
-      } else {
-        setLoadingStatus(
-          "Tu equipo no tiene WebGPU disponible; la IA local (LiteRT-LM) no puede ejecutarse."
-        );
-      }
+      const estado = razonarEstadoLocal({ enElectron, webgpu });
+      publicarEstadoIaLocal(estado);
+      setDetectando(false);
+      const aviso = mensajeIaLocal(estado, { remotoActivo: loadAiSettings().mode !== "local" });
+      // El aviso no se cierra solo: es una limitación del equipo, no un evento.
+      if (aviso) toast({ title: aviso.titulo, description: aviso.detalle, duration: Infinity });
     })();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [toast]);
 
-  // 2. Renderizado Condicional: Pantalla de Carga
-  if (!isModelReady) {
+  // Pantalla de carga: sólo mientras se AVERIGUA (es un instante). Ya no hay
+  // camino sin salida — cualquier resultado de la detección deja entrar.
+  if (detectando) {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full bg-background font-body gap-4">
         <div className="flex items-center gap-2 text-primary">
-           {/* Animación de giro */}
-           <Loader2 className="h-8 w-8 animate-spin" />
+          <Loader2 className="h-8 w-8 animate-spin" />
         </div>
-        <p className="text-muted-foreground text-sm animate-pulse">
-            {loadingStatus}
-        </p>
+        <p className="text-muted-foreground text-sm animate-pulse">Iniciando…</p>
       </div>
     );
   }
-    
+
   return (
     // `min-w-0`: sin esto la columna de la app no puede encogerse (es un ítem flex
     // al lado del panel), el header la empuja más ancha que la pantalla y aparece

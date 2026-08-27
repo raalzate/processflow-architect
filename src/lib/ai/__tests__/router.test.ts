@@ -436,3 +436,43 @@ describe("local mode never uses remote", () => {
     expect(r.provider).toBeNull();
   });
 });
+
+// -----------------------------------------------------------------------------
+// El equipo sin motor local (#202): la nube tiene que bastar
+// -----------------------------------------------------------------------------
+
+describe("un equipo sin WebGPU con la nube configurada", () => {
+  beforeEach(() => setAvailability(false, true));
+
+  it("modo remoto: todo lo atiende la nube, sin degradar", () => {
+    for (const t of [lightTask, heavyTask]) {
+      const { provider, fellBack } = chooseProvider(t, 10, { mode: "remote" });
+      expect(provider).toBe("remote");
+      expect(fellBack).toBe(false);
+    }
+  });
+
+  it("modo híbrido: la tarea LIGERA también sube a la nube (marcando el respaldo)", () => {
+    const { provider, fellBack, reason } = chooseProvider(lightTask, 10, { mode: "hybrid" });
+    expect(provider).toBe("remote");
+    expect(fellBack).toBe(true);
+    expect(reason).toMatch(/local no disponible/i);
+  });
+
+  it("modo híbrido: la tarea compleja va a la nube como siempre", () => {
+    expect(chooseProvider(heavyTask, 10, { mode: "hybrid" }).provider).toBe("remote");
+  });
+
+  it("y ejecuta de verdad por la nube: la GPU no interviene", async () => {
+    mRemoteGenerateText.mockResolvedValue("respuesta de la nube");
+    const res = await route(lightTask, "hola", { mode: "remote", provider: "gemini" });
+    expect(res.provider).toBe("remote");
+    expect(mRunLocal).not.toHaveBeenCalled();
+  });
+
+  it("modo local, en cambio, se queda sin motor y lo dice", () => {
+    const { provider, reason } = chooseProvider(lightTask, 10, { mode: "local" });
+    expect(provider).toBeNull();
+    expect(reason).toMatch(/no hay motor local/i);
+  });
+});

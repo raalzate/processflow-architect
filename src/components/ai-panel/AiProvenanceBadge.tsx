@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Cloud, Cpu } from "lucide-react";
+import { Cloud, Cpu, CircleSlash } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadAiSettings, type KeyStatus } from "@/lib/ai/remote-settings";
 import { describeEngine } from "@/lib/ai/provenance";
+import { estadoIaLocal } from "@/lib/ai/local-capability";
 
 /**
  * Badge de PROCEDENCIA de la IA: dice si lo que se genera saldrá del motor local
@@ -33,17 +34,21 @@ export function AiProvenanceBadge({ className }: { className?: string }) {
     };
   }, [tick]);
 
-  const engine = describeEngine(loadAiSettings(), keys);
-  const Icon = engine.isLocal ? Cpu : Cloud;
+  // El estado del motor local entra en la descripción: en un equipo sin WebGPU
+  // el badge no puede decir «IA local» (#202).
+  const engine = describeEngine(loadAiSettings(), keys, { estadoLocal: estadoIaLocal() });
+  const Icon = !engine.available ? CircleSlash : engine.isLocal ? Cpu : Cloud;
 
   return (
     <span
       title={engine.detail}
       className={cn(
         "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-2xs font-medium",
-        engine.isLocal
-          ? "border-success-border bg-success-surface text-success-foreground"
-          : "border-info-border bg-info-surface text-info-foreground",
+        !engine.available
+          ? "border-warning-border bg-warning-surface text-warning-foreground"
+          : engine.isLocal
+            ? "border-success-border bg-success-surface text-success-foreground"
+            : "border-info-border bg-info-surface text-info-foreground",
         className
       )}
     >

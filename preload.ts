@@ -106,6 +106,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteAiKey: (provider: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('ai-key-delete', provider),
   getAiKeyStatus: (): Promise<Record<string, boolean>> => ipcRenderer.invoke('ai-key-status'),
+  /** Estado de la GPU tal como lo ve Chromium (lo mismo que `chrome://gpu`). */
+  getGpuFeatureStatus: (): Promise<Record<string, string>> => ipcRenderer.invoke('gpu-feature-status'),
   remoteGenerate: (args: {
     provider: string;
     model: string;

@@ -1,4 +1,4 @@
-import { ipcMain, IpcMainInvokeEvent, clipboard, BrowserWindow } from 'electron';
+import { app, ipcMain, IpcMainInvokeEvent, clipboard, BrowserWindow } from 'electron';
 import { handleMdToPdf } from './services/pdf';
 import { popupAppMenu } from './window';
 import {
@@ -38,6 +38,18 @@ import { playgroundListTools, playgroundCallTool } from './services/mcp-playgrou
  */
 export function registerIpcHandlers() {
   ipcMain.handle('convert-md-to-pdf', handleMdToPdf);
+
+  // Estado de la GPU: la MISMA información de `chrome://gpu`. Sirve para explicar
+  // por qué el motor local no arranca en un equipo (#203) — antes la app decía
+  // «no disponible» y ni el usuario ni nosotros sabíamos la causa. El vendorId lo
+  // agrega el renderer, que es quien puede pedir el adaptador WebGPU.
+  ipcMain.handle('gpu-feature-status', async () => {
+    try {
+      return app.getGPUFeatureStatus() as unknown as Record<string, string>;
+    } catch {
+      return {};
+    }
+  });
 
   // --- Modelos LiteRT-LM (.litertlm): listado, descarga, borrado, revelar ---
   ipcMain.handle('litert-models-list', async () => listLitertModels());

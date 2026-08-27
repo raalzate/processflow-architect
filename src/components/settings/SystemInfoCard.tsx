@@ -10,6 +10,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Cpu, MemoryStick, HardDrive, MonitorCog, Gauge, CheckCircle2, XCircle } from "lucide-react";
+import { diagnosticoGpu } from "@/lib/gpu-status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { SystemInfo } from "@/types/electron";
@@ -20,18 +21,23 @@ interface GpuInfo {
   available: boolean;
   /** vendor/architecture/description del adaptador (lo que exponga el navegador). */
   detail: string;
+  /** `vendorId` PCI del adaptador, si el navegador lo expone. */
+  vendorId: number | null;
 }
 
 /** Interroga al adaptador WebGPU del renderer (la GPU que usará LiteRT-LM). */
 async function readGpuInfo(): Promise<GpuInfo> {
   try {
     const adapter = await (navigator as any).gpu?.requestAdapter?.();
-    if (!adapter) return { available: false, detail: "" };
+    if (!adapter) return { available: false, detail: "", vendorId: null };
     const info = adapter.info ?? {};
     const detail = [info.vendor, info.architecture, info.description].filter(Boolean).join(" · ");
-    return { available: true, detail };
+    // `vendorId` es lo que distingue una GPU real del «Basic Render Driver» de
+    // software de Windows (0x1414) — ver `gpu-status.ts`.
+    const vendorId = typeof info.vendorId === "number" ? info.vendorId : null;
+    return { available: true, detail, vendorId };
   } catch {
-    return { available: false, detail: "" };
+    return { available: false, detail: "", vendorId: null };
   }
 }
 
@@ -56,6 +62,9 @@ function SectionLabel({ icon: Icon, children }: { icon: React.ElementType; child
 export function SystemInfoCard() {
   const [info, setInfo] = useState<SystemInfo | null>(null);
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
+  // Estado de la GPU según Chromium (lo mismo que `chrome://gpu`): es lo que
+  // permite decir POR QUÉ falta WebGPU en vez de sólo que falta (#203).
+  const [features, setFeatures] = useState<Record<string, string> | null>(null);
 
   useEffect(() => {
     api()
@@ -63,7 +72,16 @@ export function SystemInfoCard() {
       .then(setInfo)
       .catch(() => {});
     readGpuInfo().then(setGpu);
+    api()
+      ?.getGpuFeatureStatus?.()
+      .then(setFeatures)
+      .catch(() => setFeatures({}));
   }, []);
+
+  // El diagnóstico se calcula en `src/lib/gpu-status.ts` (puro, con pruebas).
+  const diag = diagnosticoGpu(
+    features && gpu ? { features, adaptador: gpu.detail || null, vendorId: gpu.vendorId } : undefined
+  );
 
   if (!info) {
     return (
@@ -134,7 +152,22 @@ export function SystemInfoCard() {
             }
           />
           {gpu?.detail && <Row label="Adaptador" value={gpu.detail} />}
+          {features?.webgpu && <Row label="Chromium reporta" value={<code className="text-xs">{features.webgpu}</code>} />}
         </div>
+
+        {/* Por qué falta y qué se puede hacer. Sólo cuando falta: en un equipo que
+            funciona, esto sería ruido. */}
+        {diag.webgpuAcelerado === false && (
+          <div className="mt-3 rounded-md border border-warning-border bg-warning-surface p-3 text-sm">
+            <p className="font-medium text-warning-foreground">Por qué no hay WebGPU</p>
+            <p className="mt-1 text-warning-foreground/90">{diag.causaProbable}</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-warning-foreground/90">
+              {diag.recomendaciones.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <SectionLabel icon={MonitorCog}>Versiones</SectionLabel>
         <div className="divide-y">
