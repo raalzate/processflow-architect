@@ -1474,3 +1474,175 @@ describe("organizaciones · E", () => {
     expect(salida).toMatch(/1 diagrama/);
   });
 });
+
+// -----------------------------------------------------------------------------
+// Especificaciones por MCP y propiedades canónicas (#190)
+// -----------------------------------------------------------------------------
+
+describe("especificaciones por MCP", () => {
+  /** Diagrama C4 mínimo con un contenedor desplegable. */
+  async function diagramaC4(t: ReturnType<typeof toolsFor>) {
+    const created = await t.textOf("create_diagram", { name: "Pólizas", notation: "c4" });
+    const id = /diagramId="([^"]+)"/.exec(created)![1];
+    await t.call("add_node", { diagramId: id, id: "api", name: "Enrollment API", type: "Contenedor" });
+    await t.call("add_node", { diagramId: id, id: "db", name: "Policies DB", type: "Base de Datos" });
+    await t.call("add_edge", { diagramId: id, from: "api", to: "db", label: "lee y escribe" });
+    return id;
+  }
+
+  const spec = {
+    featureName: "Alta de póliza",
+    input: "el asesor da de alta sin llamar a soporte",
+    stories: [
+      {
+        titulo: "Dar de alta",
+        prioridad: "P1",
+        porQue: "es el único camino hoy",
+        pruebaIndependiente: "con un asesor y una póliza nueva",
+        escenarios: [{ given: "asesor con sesión", when: "envía el alta", then: "la póliza queda vigente" }],
+      },
+    ],
+    requirements: [{ texto: "El sistema MUST registrar el alta sin soporte" }],
+    criteria: [{ texto: "99 % de las altas se resuelven en un intento" }],
+  };
+
+  it("las cuatro herramientas están registradas", () => {
+    const { tools } = toolsFor();
+    for (const n of ["set_element_spec", "get_element_spec", "spec_to_markdown", "review_specs"]) {
+      expect(tools.has(n), n).toBe(true);
+    }
+  });
+
+  it("escribe la spec, la lee de vuelta y la exporta a markdown", async () => {
+    const t = toolsFor();
+    const diagramId = await diagramaC4(t);
+
+    const guardado = await t.textOf("set_element_spec", { diagramId, id: "api", spec });
+    expect(guardado).toContain("1 historia(s)");
+
+    const leido = await t.textOf("get_element_spec", { diagramId, id: "api" });
+    expect(JSON.parse(leido).featureName).toBe("Alta de póliza");
+
+    const md = await t.textOf("spec_to_markdown", { diagramId, id: "api" });
+    expect(md).toContain("# Feature Specification: Alta de póliza");
+    expect(md).toContain("**Given** asesor con sesión");
+    expect(md).toContain("- **FR-001**:");
+  });
+
+  it("un elemento sin spec lo dice en vez de devolver un objeto vacío", async () => {
+    const t = toolsFor();
+    const diagramId = await diagramaC4(t);
+    expect(await t.textOf("get_element_spec", { diagramId, id: "db" })).toContain("todavía no tiene");
+    expect(await t.textOf("spec_to_markdown", { diagramId })).toContain("Ningún elemento");
+  });
+
+  it("un id inexistente falla nombrando los ids válidos", async () => {
+    const t = toolsFor();
+    const diagramId = await diagramaC4(t);
+    const res = await t.call("set_element_spec", { diagramId, id: "nope", spec });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("api");
+  });
+
+  it("review_specs dice quién no tiene spec y qué falta", async () => {
+    const t = toolsFor();
+    const diagramId = await diagramaC4(t);
+    await t.call("set_element_spec", {
+      diagramId,
+      id: "api",
+      spec: { featureName: "Alta", requirements: [{ texto: "MUST registrar", needsClarification: true }] },
+    });
+    const rep = await t.textOf("review_specs", { diagramId });
+    expect(rep).toContain("Policies DB");
+    expect(rep).toMatch(/ningún criterio de éxito/);
+    expect(rep).toContain("por aclarar");
+  });
+
+  it("la spec sobrevive el guardado en disco (ida y vuelta del modelo)", async () => {
+    const t = toolsFor();
+    const diagramId = await diagramaC4(t);
+    await t.call("set_element_spec", { diagramId, id: "api", spec });
+    const otra = toolsFor(); // otro registro de herramientas, mismo workspace
+    expect(JSON.parse(await otra.textOf("get_element_spec", { diagramId, id: "api" })).featureName).toBe(
+      "Alta de póliza"
+    );
+  });
+});
+
+describe("propiedades canónicas: el freno de repo y puerto (#190)", () => {
+  async function c4ConContenedor(t: ReturnType<typeof toolsFor>) {
+    const created = await t.textOf("create_diagram", { name: "Servicios", notation: "c4" });
+    const id = /diagramId="([^"]+)"/.exec(created)![1];
+    await t.call("add_node", { diagramId: id, id: "api", name: "Enrollment API", type: "Contenedor" });
+    await t.call("add_node", { diagramId: id, id: "web", name: "Portal", type: "Contenedor" });
+    await t.call("add_edge", { diagramId: id, from: "web", to: "api", label: "consume" });
+    return id;
+  }
+
+  it("validate_diagram FALLA nombrando el elemento y la propiedad que falta", async () => {
+    const t = toolsFor();
+    const diagramId = await c4ConContenedor(t);
+    const out = await t.textOf("validate_diagram", { diagramId });
+    expect(out).toContain("Enrollment API");
+    expect(out).toContain("repo");
+    expect(out).toContain("puerto");
+  });
+
+  it("con repo y puerto declarados, deja de reclamarlos", async () => {
+    const t = toolsFor();
+    const diagramId = await c4ConContenedor(t);
+    for (const id of ["api", "web"]) {
+      await t.call("update_element", {
+        diagramId,
+        id,
+        metadata: [
+          { clave: "repo", valor: `https://github.com/acme/${id}`, tipo: "url" },
+          { clave: "puerto", valor: "8080", tipo: "numero" },
+        ],
+      });
+    }
+    const out = await t.textOf("validate_diagram", { diagramId });
+    expect(out).not.toContain("no declara");
+  });
+
+  it("«pendiente» vale como declaración consciente", async () => {
+    const t = toolsFor();
+    const diagramId = await c4ConContenedor(t);
+    for (const id of ["api", "web"]) {
+      await t.call("update_element", {
+        diagramId,
+        id,
+        metadata: [
+          { clave: "repo", valor: "pendiente" },
+          { clave: "puerto", valor: "pendiente" },
+        ],
+      });
+    }
+    expect(await t.textOf("validate_diagram", { diagramId })).not.toContain("no declara");
+  });
+
+  it("un diagrama de dominio (DDD) no se le exige repositorio", async () => {
+    const t = toolsFor();
+    const created = await t.textOf("create_diagram", { name: "Ventas", notation: "ddd" });
+    const diagramId = /diagramId="([^"]+)"/.exec(created)![1];
+    await t.call("add_container", { diagramId, name: "Cobros", type: "Contexto Delimitado" });
+    await t.call("add_node", { diagramId, id: "c1", name: "Cobrar cuota", type: tipo("ddd", "command"), container: "Cobros" });
+    await t.call("add_node", { diagramId, id: "e1", name: "Cuota cobrada", type: tipo("ddd", "event"), container: "Cobros" });
+    await t.call("add_edge", { diagramId, from: "c1", to: "e1", label: "produce" });
+    expect(await t.textOf("validate_diagram", { diagramId })).not.toContain("no declara");
+  });
+
+  it("review_diagram explica los huecos y avisa de los alias", async () => {
+    const t = toolsFor();
+    const diagramId = await c4ConContenedor(t);
+    await t.call("update_element", {
+      diagramId,
+      id: "api",
+      metadata: [{ clave: "repositorio", valor: "https://github.com/acme/api", tipo: "url" }],
+    });
+    const out = await t.textOf("review_diagram", { diagramId });
+    expect(out).toContain("Propiedades por completar");
+    expect(out).toContain("repositorio");
+    expect(out).toContain("→");
+  });
+});

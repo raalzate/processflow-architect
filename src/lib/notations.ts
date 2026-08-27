@@ -42,6 +42,17 @@ export interface NotationElement {
   icon: string;
   /** true si es un contenedor (agrupa otros nodos en el lienzo). */
   container?: boolean;
+  /**
+   * true → el elemento **tiene código y se despliega**: un servicio, una base de
+   * datos, un artefacto. A estos se les exigen las propiedades canónicas
+   * `repo` y `puerto` (ver `element-properties.ts`), porque son los datos que
+   * quien va a construir busca a mano cuando faltan.
+   *
+   * Vive acá y no en `element-properties` a propósito: los tipos los declara
+   * SÓLO este registro (`CONSTITUTION.md` §P6), así que la capacidad también.
+   * Un Evento o una Compuerta no la tienen: no hay repositorio de un evento.
+   */
+  deployable?: boolean;
   /** Forma SVG del nodo (no aplica a contenedores). Por defecto "rounded". */
   shape?: ShapeKind;
   /**
@@ -256,6 +267,9 @@ const DDD: Notation = {
     // Agrupamientos del mapa: elipse punteada alrededor de los conceptos que
     // van juntos, con el nombre en el borde de abajo (ver `containerStyle`).
     { type: "Agregado", icon: "Package", container: true, containerStyle: "blob", stroke: "stroke-stone-700", bg: "fill-stone-950/40", border: "border-stone-800", text: "text-stone-100" },
+    // El Contexto Delimitado NO es desplegable: es una frontera lógica del
+    // dominio, y un mapa estratégico de DDD legítimamente no tiene un
+    // repositorio por contexto. Lo desplegable se modela en C4/UML.
     { type: "Contexto Delimitado", icon: "Box", container: true, containerStyle: "blob", stroke: "stroke-teal-500", bg: "fill-teal-950/40", border: "border-teal-500", text: "text-teal-100" },
     { type: "Subdominio", icon: "Layers", container: true, containerStyle: "blob", stroke: "stroke-fuchsia-500", bg: "fill-fuchsia-950/40", border: "border-fuchsia-500", text: "text-fuchsia-100" },
     // --- Mapa de Contexto: Relación de Poder (Aguas Arriba/Aguas Abajo) ---
@@ -392,11 +406,12 @@ const C4: Notation = {
     // ya dice. Lo de TERCEROS sí se atenúa: es la única jerarquía que el ojo
     // necesita de un vistazo.
     { type: "Persona", icon: "User", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Sistema", icon: "Box", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Sistema", icon: "Box", shape: "rounded", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    // El sistema EXTERNO no es nuestro: no se le exige repositorio.
     { type: "Sistema Externo", icon: "HardDrive", shape: "rounded", stroke: "stroke-zinc-400", bg: "fill-zinc-500", border: "border-zinc-500", text: "text-white" },
-    { type: "Contenedor", icon: "Container", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Componente", icon: "Component", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Base de Datos", icon: "Database", shape: "cylinder", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Contenedor", icon: "Container", shape: "rounded", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Componente", icon: "Component", shape: "rect", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Base de Datos", icon: "Database", shape: "cylinder", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     // Los límites son marcos: su nombre se lee sobre el lienzo, así que el color
     // del texto cambia con el tema (en oscuro, un -900 era invisible).
     { type: "Límite de Sistema", icon: "Frame", container: true, transparent: true, stroke: "stroke-zinc-400", bg: "fill-transparent", border: "border-zinc-400", text: "text-zinc-700 dark:text-zinc-200" },
@@ -486,8 +501,8 @@ const UML: Notation = {
     { type: "Clase Plantilla", icon: "Braces", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     { type: "Clase de Asociación", icon: "Link2", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     { type: "Estereotipo", icon: "Tag", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Componente", icon: "Component", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Nodo", icon: "Server", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Componente", icon: "Component", shape: "rect", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Nodo", icon: "Server", shape: "rect", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     // Actor UML: figura humana (stick figure), como en las herramientas UML clásicas.
     { type: "Actor", icon: "PersonStanding", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     { type: "Caso de Uso", icon: "Circle", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
@@ -500,7 +515,7 @@ const UML: Notation = {
     { type: "Puerto", icon: "Square", shape: "rect", compact: true, stroke: "stroke-zinc-400", bg: "fill-zinc-600", border: "border-zinc-500", text: "text-zinc-100" },
     { type: "Interfaz Provista", icon: "Circle", shape: "ellipse", compact: true, stroke: "stroke-zinc-400", bg: "fill-zinc-600", border: "border-zinc-500", text: "text-zinc-100" },
     { type: "Interfaz Requerida", icon: "CircleDashed", shape: "ellipse", compact: true, stroke: "stroke-zinc-400", bg: "fill-zinc-600", border: "border-zinc-500", text: "text-zinc-100" },
-    { type: "Artefacto de Despliegue", icon: "FileCode2", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Artefacto de Despliegue", icon: "FileCode2", shape: "rect", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
     // Despliegue: el dispositivo es hardware; el entorno de ejecución ANIDA lo
     // que corre dentro (servidor de aplicaciones, contenedor, runtime).
     { type: "Dispositivo", icon: "Smartphone", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
@@ -616,6 +631,19 @@ export const ALL_ELEMENTS: Record<string, NotationElement> = Object.fromEntries(
 
 /** Tipo contenedor según el registro de notaciones (independiente de la notación activa). */
 export const isNotationContainer = (type: string): boolean => ALL_CONTAINER_TYPES.has(type);
+
+/** Conjunto GLOBAL de tipos DESPLEGABLES (tienen código: servicio, base, artefacto). */
+export const ALL_DEPLOYABLE_TYPES: ReadonlySet<string> = new Set(
+  NOTATION_LIST.flatMap((n) => n.elements.filter((e) => e.deployable).map((e) => e.type))
+);
+
+/**
+ * ¿Este tipo se despliega? Es lo que decide a quién se le exigen las propiedades
+ * canónicas `repo` y `puerto` (`element-properties.ts`). Preguntarlo acá —y no
+ * con una lista de tipos en el consumidor— es lo que mantiene el arnés agnóstico
+ * de notación: una notación nueva marca sus tipos y hereda la regla.
+ */
+export const isDeployableType = (type: string): boolean => ALL_DEPLOYABLE_TYPES.has(type);
 
 /**
  * Tipos de una notación para ofrecer/validar en la UI y en los prompts.
