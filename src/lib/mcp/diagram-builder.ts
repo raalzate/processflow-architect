@@ -21,6 +21,8 @@
  */
 
 import type { GraphData, GraphNode, Agregado, ReadModel } from "../types";
+import { problemasDePropiedades } from "../element-properties";
+import { sanitizeSpec, type ElementSpec } from "../element-spec";
 import {
   normalizarLista,
   quitarMetadata,
@@ -134,6 +136,12 @@ export interface BuilderNode {
    * (la cita se dobla en la descripción, ver `toDomainNode`).
    */
   metadata?: ElementMetadata[];
+  /**
+   * Especificación del elemento: qué debe hacer y cómo se verifica (ver
+   * `src/lib/element-spec.ts`). La escribe la ficha de la app o un agente por
+   * MCP; en las dos direcciones pasa por `sanitizeSpec`.
+   */
+  spec?: ElementSpec;
   /** Nombre del contenedor al que pertenece (los contenedores lo dejan vacío). */
   container?: string;
   estado_comparativo?: Estado;
@@ -738,6 +746,12 @@ export function validate(model: DiagramModel): ValidationResult {
 
   if (model.nodes.length === 0) warnings.push("El diagrama no tiene nodos.");
 
+  // Propiedades canónicas: dónde vive y por dónde se le habla. Es un ERROR, no
+  // un aviso: un diagrama de servicios sin repositorio ni puerto obliga a quien
+  // construye a buscar esos datos a mano, que es justo lo que el diagrama
+  // debería ahorrarle. Lo que no se sabe todavía se declara "pendiente".
+  for (const p of problemasDePropiedades(model)) errors.push(p.detalle);
+
   // Reglas de flujo propias de la notación (hoy BPMN: pools vs carriles).
   warnings.push(...bpmnFlowWarnings(model));
   // Trazabilidad contra la fuente (sostiene la revisión humana).
@@ -1265,6 +1279,7 @@ function toDomainNode(n: BuilderNode): Omit<GraphNode, "agregado"> {
     tipo_elemento: n.tipo_elemento as GraphNode["tipo_elemento"],
     descripcion,
     metadata: n.metadata,
+    spec: sanitizeSpec(n.spec),
     estado_comparativo: n.estado_comparativo ?? "nuevo",
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
@@ -1301,6 +1316,7 @@ export function toGraphData(input: DiagramModel): GraphData {
     color: c.color,
     borderColor: c.borderColor,
     metadata: c.metadata,
+    spec: sanitizeSpec(c.spec),
     // Un contenedor también documenta lo que YA existe: sin esto el estado que
     // declara el agente moría en la serialización (sólo lo llevaban los nodos).
     estado_comparativo: c.estado_comparativo,
@@ -1391,13 +1407,19 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       color: (agg as any).color,
       borderColor: (agg as any).borderColor,
       metadata: normalizarLista(agg.metadata),
+      spec: sanitizeSpec((agg as any).spec),
       x: agg.x,
       y: agg.y,
       width: agg.width,
       height: agg.height,
     });
     for (const n of agg.nodos || []) {
-      nodes.push({ ...(n as any), container: agg.nombre_agregado, metadata: normalizarLista((n as any).metadata) });
+      nodes.push({
+        ...(n as any),
+        container: agg.nombre_agregado,
+        metadata: normalizarLista((n as any).metadata),
+        spec: sanitizeSpec((n as any).spec),
+      });
     }
     for (const a of agg.aristas || []) {
       edges.push({
@@ -1413,7 +1435,12 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
     }
   }
   for (const n of data.big_picture?.nodos || []) {
-    nodes.push({ ...(n as any), container: "", metadata: normalizarLista((n as any).metadata) });
+    nodes.push({
+      ...(n as any),
+      container: "",
+      metadata: normalizarLista((n as any).metadata),
+      spec: sanitizeSpec((n as any).spec),
+    });
   }
   const pushEdge = (a: any) =>
     edges.push({

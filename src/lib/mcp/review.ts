@@ -25,6 +25,7 @@ import {
   validate,
 } from "./diagram-builder";
 import { qualityFindings, type QualityFinding } from "./quality";
+import { aliasEncontrados, problemasDePropiedades } from "../element-properties";
 import { formatMetadata, metadataFaltantes } from "../element-metadata";
 import { toMermaid } from "./to-mermaid";
 
@@ -112,6 +113,23 @@ export function reviewPacket(model: DiagramModel, sourceLabel?: string): ReviewP
   if (untraced.length) {
     parts.push(
       `⚠️ ${untraced.length} elemento(s) sin fuente: ${untraced.join(", ")}. Sin cita, el revisor no puede contrastarlos.`
+    );
+  }
+  // Propiedades canónicas: lo que falta (obligatorio o no) y los alias, para que
+  // el humano vea de un tirón qué hay que completar antes de que esto llegue a
+  // quien construye. Los obligatorios ya los frena `validate`; acá se explican.
+  const huecos = problemasDePropiedades(model);
+  if (huecos.length) {
+    parts.push(
+      "**Propiedades por completar** (dónde vive y por dónde se le habla):",
+      huecos.map((h) => `- ${h.motivo === "falta" ? "❌" : "⚠️"} ${h.detalle}`).join("\n")
+    );
+  }
+  const alias = aliasEncontrados(model);
+  if (alias.length) {
+    parts.push(
+      "ℹ️ Propiedades escritas con un alias (se reconocen, pero conviene normalizarlas): " +
+        alias.map((a) => `${a.elemento}: \`${a.escrita}\` → \`${a.canonica}\``).join(" · ")
     );
   }
   if (sinReferencias.length) {

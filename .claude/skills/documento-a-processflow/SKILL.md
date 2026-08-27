@@ -203,29 +203,62 @@ trae este diseño), `sin_cambios`, `eliminado`. Por defecto es `nuevo`: si está
 documentando un sistema vivo y no lo declarás, el lienzo pinta como propuesta lo
 que ya existe y se pierde justo la distinción que el humano necesita para decidir.
 
-### Metadatos: dónde vive la caja
+### Propiedades: dónde vive la caja y por dónde se le habla
 
-`add_node`, `add_container` y `update_element` aceptan `metadata`: una lista de
-`{clave, valor, url?}` con **dónde vive de verdad** el elemento — el repositorio
-del componente, la wiki que lo explica, el tablero, el equipo dueño, un SLA. Es
-lo que convierte el diagrama en algo navegable: un clic desde la ficha al código.
+`add_node`, `add_container` y `update_element` aceptan `metadata`: la tabla de
+propiedades del elemento, `{clave, valor, tipo?}` con **dónde vive de verdad** y
+los datos que lo enriquecen. Tipos: `texto` · `numero` · `booleano` · `url` ·
+`fecha`; el valor se valida según su tipo.
+
+**Claves canónicas — usá estas, no sinónimos:** `repo` (url) · `puerto` (numero) ·
+`endpoint` (url) · `owner` (texto) · `wiki` (url).
+
+`repo` y `puerto` son **obligatorias en lo desplegable** (C4: `Sistema`,
+`Contenedor`, `Componente`, `Base de Datos`; UML: `Componente`, `Nodo`,
+`Artefacto de Despliegue`) y `validate_diagram` FALLA mientras falten: son los
+datos que quien va a construir busca a mano. Un documento de negocio muchas veces
+no los trae — entonces poné el valor explícito `pendiente` y decílo en el resumen
+al humano; nunca inventes una url. En el big picture DDD y en los BPMN no se
+exigen.
 
 ```
 add_node { id: "c4-api-pagos", name: "API de Pagos", type: "Contenedor", container: "Pagos",
-  metadata: [ { clave: "repo",  valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
-              { clave: "wiki",  valor: "Dominio Pagos",  url: "https://wiki/pagos" },
-              { clave: "owner", valor: "Equipo Pagos" } ] }
+  metadata: [ { clave: "repo",   valor: "https://github.com/acme/pagos-svc", tipo: "url" },
+              { clave: "puerto", valor: "8080", tipo: "numero" },
+              { clave: "owner",  valor: "Equipo Pagos", tipo: "texto" } ] }
 ```
 
-Reglas: la clave repetida **reemplaza** su valor (no duplica); sólo las urls
-`http(s)` se vuelven enlace en la app (lo demás queda como texto); para sumar una
-referencia después usá `update_element` con `metadata` —agrega o reemplaza por
-clave, no pisa las que ya estaban— y `metadataRemove` para borrar por clave.
+Reglas: la clave repetida **reemplaza** su valor; sólo las urls `http(s)` se
+vuelven enlace en la app; para sumar una propiedad después, `update_element` con
+`metadata` (agrega o reemplaza por clave) y `metadataRemove` para borrar. Los
+alias (`repositorio`, `port`, `dueño`…) se reconocen, pero `review_diagram` avisa.
 
-No lo confundas con `source`: la cita dice de **dónde salió** el elemento en la
-documentación (sostiene la revisión); el metadato dice **dónde vive** el artefacto
-real. Pon metadatos cuando la fuente los da o cuando estás modelando desde código;
-no los inventes: una url adivinada es peor que ninguna.
+No lo confundas con `source`: la cita dice de **dónde salió** el elemento en el
+documento (sostiene la revisión); la propiedad dice **dónde vive** el artefacto
+real.
+
+### Especificación: el contrato de cada caja
+
+Un documento de negocio suele traer requisitos y criterios de aceptación. Eso NO
+va en la descripción: va en la especificación del elemento, que la app muestra en
+el tab «Spec» de su ficha.
+
+```
+set_element_spec { id: "c4-api-pagos", spec: {
+  featureName: "Cobro recurrente",
+  input: "<lo que pide el documento, con sus palabras>",
+  stories: [ { titulo: "Cobrar la cuota", prioridad: "P1",
+               porQue: "…", pruebaIndependiente: "…",
+               escenarios: [ { given: "…", when: "…", then: "…" } ] } ],
+  requirements: [ { texto: "El sistema MUST …" } ],
+  criteria: [ { texto: "… con un número medible" } ] } }
+```
+
+- Lo que el documento **no decide, no se inventa**: `needsClarification: true` en
+  ese requisito, y además registrá la ambigüedad con `record_ambiguity`.
+- `get_element_spec` antes de reescribir (no pises lo que puso una persona),
+  `spec_to_markdown` para pegar el contrato en una issue, y `review_specs` antes
+  de dar el portafolio por terminado.
 
 ## 4 · Validar calidad (no sólo validez)
 

@@ -263,29 +263,62 @@ trae este diseño), \`sin_cambios\`, \`eliminado\`. Por defecto es \`nuevo\`: si
 documentando un sistema vivo y no lo declarás, el lienzo pinta como propuesta lo
 que ya existe y se pierde justo la distinción que el humano necesita para decidir.
 
-### Metadatos: dónde vive la caja
+### Propiedades: dónde vive la caja y por dónde se le habla
 
-\`add_node\`, \`add_container\` y \`update_element\` aceptan \`metadata\`: una lista de
-\`{clave, valor, url?}\` con **dónde vive de verdad** el elemento — el repositorio
-del componente, la wiki que lo explica, el tablero, el equipo dueño, un SLA. Es
-lo que convierte el diagrama en algo navegable: un clic desde la ficha al código.
+\`add_node\`, \`add_container\` y \`update_element\` aceptan \`metadata\`: la tabla de
+propiedades del elemento, \`{clave, valor, tipo?}\` con **dónde vive de verdad** y
+los datos que lo enriquecen. Tipos: \`texto\` · \`numero\` · \`booleano\` · \`url\` ·
+\`fecha\`; el valor se valida según su tipo.
+
+**Claves canónicas — usá estas, no sinónimos:** \`repo\` (url) · \`puerto\` (numero) ·
+\`endpoint\` (url) · \`owner\` (texto) · \`wiki\` (url).
+
+\`repo\` y \`puerto\` son **obligatorias en lo desplegable** (C4: \`Sistema\`,
+\`Contenedor\`, \`Componente\`, \`Base de Datos\`; UML: \`Componente\`, \`Nodo\`,
+\`Artefacto de Despliegue\`) y \`validate_diagram\` FALLA mientras falten: son los
+datos que quien va a construir busca a mano. Un documento de negocio muchas veces
+no los trae — entonces poné el valor explícito \`pendiente\` y decílo en el resumen
+al humano; nunca inventes una url. En el big picture DDD y en los BPMN no se
+exigen.
 
 \`\`\`
 add_node { id: "c4-api-pagos", name: "API de Pagos", type: "Contenedor", container: "Pagos",
-  metadata: [ { clave: "repo",  valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
-              { clave: "wiki",  valor: "Dominio Pagos",  url: "https://wiki/pagos" },
-              { clave: "owner", valor: "Equipo Pagos" } ] }
+  metadata: [ { clave: "repo",   valor: "https://github.com/acme/pagos-svc", tipo: "url" },
+              { clave: "puerto", valor: "8080", tipo: "numero" },
+              { clave: "owner",  valor: "Equipo Pagos", tipo: "texto" } ] }
 \`\`\`
 
-Reglas: la clave repetida **reemplaza** su valor (no duplica); sólo las urls
-\`http(s)\` se vuelven enlace en la app (lo demás queda como texto); para sumar una
-referencia después usá \`update_element\` con \`metadata\` —agrega o reemplaza por
-clave, no pisa las que ya estaban— y \`metadataRemove\` para borrar por clave.
+Reglas: la clave repetida **reemplaza** su valor; sólo las urls \`http(s)\` se
+vuelven enlace en la app; para sumar una propiedad después, \`update_element\` con
+\`metadata\` (agrega o reemplaza por clave) y \`metadataRemove\` para borrar. Los
+alias (\`repositorio\`, \`port\`, \`dueño\`…) se reconocen, pero \`review_diagram\` avisa.
 
-No lo confundas con \`source\`: la cita dice de **dónde salió** el elemento en la
-documentación (sostiene la revisión); el metadato dice **dónde vive** el artefacto
-real. Pon metadatos cuando la fuente los da o cuando estás modelando desde código;
-no los inventes: una url adivinada es peor que ninguna.
+No lo confundas con \`source\`: la cita dice de **dónde salió** el elemento en el
+documento (sostiene la revisión); la propiedad dice **dónde vive** el artefacto
+real.
+
+### Especificación: el contrato de cada caja
+
+Un documento de negocio suele traer requisitos y criterios de aceptación. Eso NO
+va en la descripción: va en la especificación del elemento, que la app muestra en
+el tab «Spec» de su ficha.
+
+\`\`\`
+set_element_spec { id: "c4-api-pagos", spec: {
+  featureName: "Cobro recurrente",
+  input: "<lo que pide el documento, con sus palabras>",
+  stories: [ { titulo: "Cobrar la cuota", prioridad: "P1",
+               porQue: "…", pruebaIndependiente: "…",
+               escenarios: [ { given: "…", when: "…", then: "…" } ] } ],
+  requirements: [ { texto: "El sistema MUST …" } ],
+  criteria: [ { texto: "… con un número medible" } ] } }
+\`\`\`
+
+- Lo que el documento **no decide, no se inventa**: \`needsClarification: true\` en
+  ese requisito, y además registrá la ambigüedad con \`record_ambiguity\`.
+- \`get_element_spec\` antes de reescribir (no pises lo que puso una persona),
+  \`spec_to_markdown\` para pegar el contrato en una issue, y \`review_specs\` antes
+  de dar el portafolio por terminado.
 
 ## 4 · Validar calidad (no sólo validez)
 
@@ -664,29 +697,89 @@ trae este diseño), \`sin_cambios\`, \`eliminado\`. Por defecto es \`nuevo\`: si
 documentando un sistema vivo y no lo declarás, el lienzo pinta como propuesta lo
 que ya existe y se pierde justo la distinción que el humano necesita para decidir.
 
-### Metadatos: dónde vive la caja
+### Propiedades: dónde vive la caja y por dónde se le habla
 
-\`add_node\`, \`add_container\` y \`update_element\` aceptan \`metadata\`: una lista de
-\`{clave, valor, url?}\` con **dónde vive de verdad** el elemento — el repositorio
-del componente, la wiki que lo explica, el tablero, el equipo dueño, un SLA. Es
-lo que convierte el diagrama en algo navegable: un clic desde la ficha al código.
+\`add_node\`, \`add_container\` y \`update_element\` aceptan \`metadata\`: la tabla de
+propiedades del elemento, una lista de \`{clave, valor, tipo?}\` con **dónde vive de
+verdad** y **los datos que lo enriquecen**. Es lo que convierte el diagrama en
+algo navegable: un clic desde la ficha al código.
+
+Tipos del valor: \`texto\` · \`numero\` · \`booleano\` · \`url\` · \`fecha\`. El valor se
+**valida** según su tipo, así que \`{clave:"puerto", valor:"ocho mil",
+tipo:"numero"}\` se rechaza.
+
+**Claves canónicas — usá estas, no sinónimos:**
+
+| Clave | Tipo | ¿Obligatoria? | Para qué |
+|---|---|---|---|
+| \`repo\` | url | **sí**, en lo desplegable | dónde está el código |
+| \`puerto\` | numero | **sí**, en lo desplegable | por dónde se le habla |
+| \`endpoint\` | url | no | la dirección pública por la que se consume |
+| \`owner\` | texto | no | a quién se le pregunta |
+| \`wiki\` | url | no | dónde está explicado con más detalle |
+
+**Desplegable** = tiene código y se despliega: en C4 \`Sistema\`, \`Contenedor\`,
+\`Componente\`, \`Base de Datos\`; en UML \`Componente\`, \`Nodo\`, \`Artefacto de
+Despliegue\`. Un \`Sistema Externo\` no lo es (no es nuestro código), y un mapa de
+dominio (DDD) o un proceso (BPMN) tampoco: ahí no se exige nada.
+
+\`validate_diagram\` **falla** mientras un elemento desplegable no declare \`repo\` y
+\`puerto\`: son los datos que quien va a construir busca a mano cuando faltan. Si
+todavía no se saben, el valor explícito \`pendiente\` cuenta como declaración
+consciente — lo que no se acepta es el silencio.
 
 \`\`\`
 add_node { id: "c4-api-pagos", name: "API de Pagos", type: "Contenedor", container: "Pagos",
-  metadata: [ { clave: "repo",  valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
-              { clave: "wiki",  valor: "Dominio Pagos",  url: "https://wiki/pagos" },
-              { clave: "owner", valor: "Equipo Pagos" } ] }
+  metadata: [ { clave: "repo",     valor: "https://github.com/acme/pagos-svc", tipo: "url" },
+              { clave: "puerto",   valor: "8080", tipo: "numero" },
+              { clave: "endpoint", valor: "https://api.acme.com/pagos", tipo: "url" },
+              { clave: "owner",    valor: "Equipo Pagos", tipo: "texto" } ] }
 \`\`\`
 
 Reglas: la clave repetida **reemplaza** su valor (no duplica); sólo las urls
-\`http(s)\` se vuelven enlace en la app (lo demás queda como texto); para sumar una
-referencia después usá \`update_element\` con \`metadata\` —agrega o reemplaza por
-clave, no pisa las que ya estaban— y \`metadataRemove\` para borrar por clave.
+\`http(s)\` se vuelven enlace en la app; para sumar una propiedad después usá
+\`update_element\` con \`metadata\` —agrega o reemplaza por clave, no pisa las que ya
+estaban— y \`metadataRemove\` para borrar por clave. Los alias (\`repositorio\`,
+\`repo_url\`, \`port\`, \`dueño\`…) se reconocen, pero \`review_diagram\` avisa: escribí
+la canónica.
 
 No lo confundas con \`source\`: la cita dice de **dónde salió** el elemento en la
-documentación (sostiene la revisión); el metadato dice **dónde vive** el artefacto
-real. Pon metadatos cuando la fuente los da o cuando estás modelando desde código;
-no los inventes: una url adivinada es peor que ninguna.
+documentación (sostiene la revisión); la propiedad dice **dónde vive** el
+artefacto real. Poné propiedades cuando la fuente las da o cuando estás modelando
+desde código; no las inventes: una url adivinada es peor que ninguna, y para eso
+está \`pendiente\`.
+
+### Especificación: qué debe hacer la caja y cómo se sabe
+
+Cada elemento puede llevar su **contrato**, que en la app se ve en el tab «Spec»
+de su ficha. Se escribe con \`set_element_spec\`:
+
+\`\`\`
+set_element_spec { id: "c4-api-pagos", spec: {
+  featureName: "Cobro recurrente",
+  input: "que la cuota se cobre sola cada mes",
+  stories: [ { titulo: "Cobrar la cuota", prioridad: "P1",
+               porQue: "sin cobro no hay negocio",
+               pruebaIndependiente: "con una cuota vencida",
+               escenarios: [ { given: "una cuota vencida", when: "corre el cobro",
+                               then: "la cuota queda pagada" } ] } ],
+  edgeCases: ["¿y si la tarjeta se rechaza?"],
+  requirements: [ { texto: "El sistema MUST reintentar el cobro 3 veces" } ],
+  entities: [ { nombre: "Cuota", descripcion: "lo que se cobra cada mes" } ],
+  criteria: [ { texto: "99 % de los cobros se resuelven en un intento" } ] } }
+\`\`\`
+
+- **Reemplaza** la spec anterior: para cambiar una parte, \`get_element_spec\`,
+  editás y volvés a mandarla. Una spec vacía borra la que hubiera.
+- Lo que la fuente **no decide, no se inventa**: el requisito se marca
+  \`needsClarification: true\` y queda visible como pendiente.
+- Los requisitos van sin tecnología («El sistema MUST …») y los criterios de
+  éxito **con número**: son la parte verificable.
+- \`spec_to_markdown\` devuelve la plantilla lista para pegar en una issue o un PR
+  (de un elemento, o de todo el diagrama sin \`id\`).
+- \`review_specs\` dice qué elementos no tienen spec, cuáles tienen requisitos sin
+  ningún criterio con el que verificarlos, cuáles tienen historias sin escenarios
+  y qué quedó por aclarar. Pasalo antes de dar el diseño por terminado.
 
 Si el diagrama crece, \`suggest_views\`: dice si conviene cortarlo por
 contenedor/fase (legible hasta ~40 elementos) y qué mirada complementaria

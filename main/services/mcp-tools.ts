@@ -46,6 +46,13 @@ import {
   type Estado,
   type DiagramModel,
 } from "../../src/lib/mcp/diagram-builder";
+import {
+  getElementSpec,
+  setElementSpec,
+  specMarkdown,
+  specReport,
+} from "../../src/lib/mcp/element-spec-tools";
+import { PROPIEDADES_CANONICAS, VALOR_PENDIENTE } from "../../src/lib/element-properties";
 import { resolveDiagramId } from "../../src/lib/mcp/active-diagram";
 import {
   resolveOrg,
@@ -892,7 +899,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             "Cita de DÓNDE sale en la fuente (\"PRD §3.2 (p. 7)\", \"acta 12-mar\", \"src/pagos/service.ts\"). Sostiene la revisión humana: aparece en la tabla elemento←fuente de review_diagram."
           ),
         metadata: metadataSchema.describe(
-            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"acme/pagos-svc\", url:\"https://github.com/acme/pagos-svc\"}, {clave:\"wiki\", valor:\"Dominio Pagos\", url:\"https://wiki/pagos\"}, {clave:\"owner\", valor:\"Equipo Pagos\"}]"
+            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}${p.obligatoria ? ", OBLIGATORIA en lo desplegable" : ""})`).join(" · ") + ". Un elemento desplegable (Contenedor, Componente, Base de Datos, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
           ),
       },
     },
@@ -946,7 +953,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             "Cita de DÓNDE sale en la fuente (\"PRD §3.2 (p. 7)\", \"acta 12-mar\", \"src/pagos/service.ts\"). Aparece en la descripción del elemento y en la tabla elemento←fuente de review_diagram: sin ella el humano no puede contrastar el diagrama."
           ),
         metadata: metadataSchema.describe(
-            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"acme/pagos-svc\", url:\"https://github.com/acme/pagos-svc\"}, {clave:\"wiki\", valor:\"Dominio Pagos\", url:\"https://wiki/pagos\"}, {clave:\"owner\", valor:\"Equipo Pagos\"}]"
+            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}${p.obligatoria ? ", OBLIGATORIA en lo desplegable" : ""})`).join(" · ") + ". Un elemento desplegable (Contenedor, Componente, Base de Datos, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
           ),
       },
     },
@@ -1041,7 +1048,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         source: z.string().optional().describe("Cita de la fuente."),
         tags: z.array(z.string()).optional(),
         metadata: metadataSchema.describe(
-            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"acme/pagos-svc\", url:\"https://github.com/acme/pagos-svc\"}, {clave:\"wiki\", valor:\"Dominio Pagos\", url:\"https://wiki/pagos\"}, {clave:\"owner\", valor:\"Equipo Pagos\"}]"
+            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}${p.obligatoria ? ", OBLIGATORIA en lo desplegable" : ""})`).join(" · ") + ". Un elemento desplegable (Contenedor, Componente, Base de Datos, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
           ),
         metadataRemove: z
           .array(z.string())
@@ -1078,6 +1085,168 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       } catch (e: any) {
         return fail(e.message);
       }
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // Especificaciones de elemento (#190). Lo que DECIDEN vive en
+  // `src/lib/mcp/element-spec-tools.ts` (puro y con cobertura); acá se orquesta.
+  // ---------------------------------------------------------------------------
+
+  const escenarioSchema = z.object({
+    given: z.string().describe("Estado inicial."),
+    when: z.string().describe("La acción."),
+    then: z.string().describe("El resultado esperado."),
+  });
+
+  const specSchema = z.object({
+    featureName: z.string().optional().describe("Nombre corto de la funcionalidad."),
+    status: z
+      .enum(["borrador", "revision", "aprobada", "obsoleta"])
+      .optional()
+      .describe("Estado de la especificación. Por defecto `borrador`."),
+    input: z.string().optional().describe("Lo que se pidió, con las palabras con las que se pidió."),
+    stories: z
+      .array(
+        z.object({
+          titulo: z.string(),
+          prioridad: z.string().optional().describe("P1 es la más crítica."),
+          porQue: z.string().optional().describe("Por qué esa prioridad: qué valor entrega."),
+          pruebaIndependiente: z.string().optional().describe("Cómo se verifica esta historia SOLA."),
+          escenarios: z.array(escenarioSchema).optional(),
+        })
+      )
+      .optional()
+      .describe("Historias de usuario priorizadas. Cada una es una tajada entregable por sí sola."),
+    edgeCases: z.array(z.string()).optional().describe("Qué pasa en el borde."),
+    requirements: z
+      .array(
+        z.object({
+          texto: z.string().describe("«El sistema MUST …» — verificable y sin tecnología."),
+          needsClarification: z
+            .boolean()
+            .optional()
+            .describe("true → está escrito pero falta decidir algo. NO lo inventes: márcalo."),
+        })
+      )
+      .optional(),
+    entities: z.array(z.object({ nombre: z.string(), descripcion: z.string().optional() })).optional(),
+    criteria: z
+      .array(z.object({ texto: z.string().describe("Medida verificable, con número.") }))
+      .optional(),
+  });
+
+  server.registerTool(
+    "set_element_spec",
+    {
+      title: "Escribir la especificación de un elemento",
+      description:
+        "Escribe QUÉ DEBE HACER una caja y CÓMO SE VERIFICA: historias de usuario priorizadas con escenarios Given/When/Then, casos límite, requisitos funcionales, entidades clave y criterios de éxito medibles. Es el contrato del elemento y se ve en su ficha dentro de la app, en el tab «Spec». REEMPLAZA la especificación anterior (para cambiar una parte: leé con get_element_spec, editá y volvé a mandarla). Una especificación vacía borra la que hubiera. Lo que no decida la fuente NO se inventa: se marca `needsClarification`.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        id: z.string().describe("Id del elemento (nodo o contenedor)."),
+        spec: specSchema.describe("La especificación completa del elemento."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, id, spec }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        const next = setElementSpec(model, id, spec);
+        await saveModel(diagramId, next);
+        const guardada = next.nodes.find((n) => n.id === id)?.spec;
+        if (!guardada) return text(`Especificación de "${id}" borrada (llegó vacía).`);
+        return text(
+          `Especificación de "${id}" guardada: ${guardada.stories.length} historia(s), ${guardada.requirements.length} requisito(s), ${guardada.criteria.length} criterio(s).`
+        );
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_element_spec",
+    {
+      title: "Leer la especificación de un elemento",
+      description:
+        "Devuelve la especificación de un elemento tal como está guardada (JSON). Úsala antes de set_element_spec para no pisar lo que ya escribió una persona en la ficha.",
+      inputSchema: { diagramId: diagramIdSchema, id: z.string() },
+    },
+    async ({ diagramId: diagramIdEntrada, id }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        const spec = getElementSpec(model, id);
+        if (!spec) return text(`El elemento "${id}" todavía no tiene especificación.`);
+        return text(JSON.stringify(spec, null, 2));
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "spec_to_markdown",
+    {
+      title: "Especificación en markdown",
+      description:
+        "Devuelve la especificación con la forma de la plantilla (Feature Specification: user stories, requisitos FR-00N, criterios SC-00N), lista para pegar en una issue o en un PR. Sin `id` devuelve la de TODO el diagrama, una sección por elemento.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        id: z.string().optional().describe("Id del elemento. Omitido → todo el diagrama."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, id }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        const md = specMarkdown(model, id);
+        if (!md.trim())
+          return text(
+            id
+              ? `El elemento "${id}" no tiene especificación que exportar.`
+              : "Ningún elemento del diagrama tiene especificación todavía."
+          );
+        return text(md);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "review_specs",
+    {
+      title: "Qué falta en las especificaciones",
+      description:
+        "Reporte de las especificaciones del diagrama: qué elementos no tienen, cuáles tienen requisitos sin ningún criterio de éxito con el que verificarlos, cuáles tienen historias sin escenarios y qué quedó marcado como «necesita aclaración». No bloquea nada: es la lista de lo que hay que terminar antes de que el diagrama llegue a quien construye.",
+      inputSchema: { diagramId: diagramIdSchema },
+    },
+    async ({ diagramId: diagramIdEntrada }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      return text(specReport(model).markdown);
     }
   );
 
