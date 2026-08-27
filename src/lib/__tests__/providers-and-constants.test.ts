@@ -13,6 +13,7 @@ import {
   runLocal,
   runRemoteFlow,
 } from "@/lib/ai/providers";
+import { publicarEstadoIaLocal, resetEstadoIaLocal } from "@/lib/ai/local-capability";
 import {
   nodeTypeColors,
   nodeTypeColor,
@@ -33,6 +34,9 @@ import {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  // El estado del motor local es de módulo: sin esto, una prueba contaminaría a
+  // la siguiente (#202).
+  resetEstadoIaLocal();
 });
 
 // Helper to build a localStorage stub. providers.remoteAvailable() reads
@@ -60,9 +64,26 @@ describe("providers", () => {
       expect(localAvailable()).toBe(false);
     });
 
-    it("returns true when electronAPI is present (LiteRT corre en el renderer)", () => {
+    // Cambio de comportamiento intencional (#202): estar en Electron ya NO basta.
+    // El motor local es LiteRT-LM sobre WebGPU y en un equipo sin adaptador no
+    // arranca; decir que está disponible hacía que el router le mandara la tarea
+    // para que reventara adentro, en vez de avisar antes.
+    it("con electronAPI pero sin saber de la GPU, todavía NO está disponible", () => {
       vi.stubGlobal("window", { electronAPI: {} });
+      resetEstadoIaLocal();
+      expect(localAvailable()).toBe(false);
+    });
+
+    it("está disponible con electronAPI Y el motor local detectado", () => {
+      vi.stubGlobal("window", { electronAPI: {} });
+      publicarEstadoIaLocal("disponible");
       expect(localAvailable()).toBe(true);
+    });
+
+    it("en un equipo sin WebGPU no está disponible aunque esté en Electron", () => {
+      vi.stubGlobal("window", { electronAPI: {} });
+      publicarEstadoIaLocal("sin-webgpu");
+      expect(localAvailable()).toBe(false);
     });
   });
 

@@ -128,6 +128,8 @@ export interface ElectronAPI {
   setAiKey: (provider: string, key: string) => Promise<{ ok: boolean; error?: string }>;
   deleteAiKey: (provider: string) => Promise<{ ok: boolean }>;
   getAiKeyStatus: () => Promise<Record<string, boolean>>;
+  /** Estado de la GPU según Chromium (lo mismo que `chrome://gpu`). Ver `gpu-status.ts`. */
+  getGpuFeatureStatus?: () => Promise<Record<string, string>>;
   remoteGenerate: (args: {
     provider: string;
     model: string;

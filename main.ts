@@ -6,6 +6,7 @@ import { setupProdLogger } from './main/logger';
 import { registerPrivilegedSchemes } from './main/schemes';
 import { createMainWindow } from './main/window';
 import { registerIpcHandlers } from './main/ipc';
+import { resumenGpu } from './src/lib/gpu-status';
 
 // Schemes privilegiados: registrar AQUÍ (tras los imports, antes de ready) para
 // pisar el registro parcial que hace electron-serve al importarse. Ver main/schemes.ts.
@@ -36,6 +37,20 @@ app.whenReady().then(() => {
   });
 
   registerIpcHandlers();
+
+  // Estado de la GPU EN EL LOG del arranque. Sin esto, un reporte de «la IA local
+  // no funciona» no se puede diagnosticar sin la máquina delante (#203): acá queda
+  // escrito lo mismo que muestra `chrome://gpu`.
+  try {
+    console.log(resumenGpu({
+      features: app.getGPUFeatureStatus() as unknown as Record<string, string>,
+      adaptador: null, // el adaptador lo ve el renderer, no el main
+      vendorId: null,
+    }));
+  } catch {
+    // Un fallo leyendo el estado de la GPU no puede impedir que la app arranque.
+  }
+
   createMainWindow();
 
   // Arranque directo del servidor MCP embebido vía env (dev/headless/pruebas).

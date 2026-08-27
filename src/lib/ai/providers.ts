@@ -17,11 +17,18 @@ export type ProviderId = "local" | "remote";
 
 import { litertGenerate } from "./litert-engine";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
+import { estadoIaLocal, puedeUsarIaLocal } from "./local-capability";
 
 const api = () => (typeof window !== "undefined" ? (window as any).electronAPI : undefined);
 
-/** IA local disponible: corre en el renderer (LiteRT-LM / WebGPU) dentro de Electron. */
-export const localAvailable = (): boolean => !!api();
+/**
+ * IA local disponible: corre en el renderer (LiteRT-LM / WebGPU) dentro de
+ * Electron. Estar en Electron NO basta: sin adaptador WebGPU el motor no arranca,
+ * y decir que está disponible hacía que el router le mandara la tarea para que
+ * fallara adentro con un error del engine en vez de avisar antes (#202). El estado
+ * lo publica el renderer al arrancar (`local-capability.ts`).
+ */
+export const localAvailable = (): boolean => !!api() && puedeUsarIaLocal(estadoIaLocal());
 
 /** IA remota disponible: el main expone generación por proveedor (Gemini/OpenAI/Anthropic). */
 export const remoteAvailable = (): boolean => !!api()?.remoteGenerate;
