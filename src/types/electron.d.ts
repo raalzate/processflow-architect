@@ -10,6 +10,7 @@ export interface LitertModelStatus {
 }
 
 import type { AppState } from "@/lib/mcp/app-state";
+import type { EstadoUpdate } from "@/lib/update-check";
 import type { AppReadRequest, AppReadResult } from "@/lib/mcp/app-read";
 import type { AppActionRequest, AppActionResult } from "@/lib/mcp/app-actions";
 
@@ -128,6 +129,14 @@ export interface ElectronAPI {
   setAiKey: (provider: string, key: string) => Promise<{ ok: boolean; error?: string }>;
   deleteAiKey: (provider: string) => Promise<{ ok: boolean }>;
   getAiKeyStatus: () => Promise<Record<string, boolean>>;
+  // --- Actualizaciones de la app (#208). Ver `src/lib/update-check.ts`. ---
+  getUpdateStatus?: () => Promise<EstadoUpdate>;
+  checkForUpdates?: () => Promise<EstadoUpdate>;
+  downloadUpdate?: () => Promise<EstadoUpdate>;
+  installUpdate?: () => Promise<void>;
+  openReleasePage?: () => Promise<void>;
+  /** Suscribe al estado del updater; devuelve la función para desuscribirse. */
+  onUpdateStatus?: (cb: (estado: EstadoUpdate) => void) => () => void;
   /** Estado de la GPU según Chromium (lo mismo que `chrome://gpu`). Ver `gpu-status.ts`. */
   getGpuFeatureStatus?: () => Promise<Record<string, string>>;
   remoteGenerate: (args: {

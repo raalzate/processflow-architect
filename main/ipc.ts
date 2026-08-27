@@ -25,6 +25,13 @@ import {
   mcpOrgDelete,
 } from './services/mcp-http';
 import { setAppState } from './services/mcp-app-state';
+import {
+  checkForUpdates,
+  downloadUpdate,
+  openReleasePage,
+  quitAndInstall,
+  updateStatus,
+} from './services/updater';
 import { initAppReadBridge } from './services/mcp-app-read';
 import { initAppActionBridge } from './services/mcp-app-action';
 import type { AppState } from '../src/lib/mcp/app-state';
@@ -43,6 +50,14 @@ export function registerIpcHandlers() {
   // por qué el motor local no arranca en un equipo (#203) — antes la app decía
   // «no disponible» y ni el usuario ni nosotros sabíamos la causa. El vendorId lo
   // agrega el renderer, que es quien puede pedir el adaptador WebGPU.
+  // --- Actualizaciones (#208). Nada se descarga ni se instala sin que el
+  // usuario lo pida: estos handlers son los únicos disparadores.
+  ipcMain.handle('update-status', async () => updateStatus());
+  ipcMain.handle('update-check', async () => checkForUpdates());
+  ipcMain.handle('update-download', async () => downloadUpdate());
+  ipcMain.handle('update-install', async () => quitAndInstall());
+  ipcMain.handle('update-open-release', async () => openReleasePage());
+
   ipcMain.handle('gpu-feature-status', async () => {
     try {
       return app.getGPUFeatureStatus() as unknown as Record<string, string>;

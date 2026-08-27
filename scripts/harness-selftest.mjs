@@ -385,6 +385,16 @@ frenoDelLint(
   "RELEASEJOB",
 );
 
+// RELEASEJOB (2): un release con los tres instaladores pero SIN los `latest*.yml`
+// se publica en verde y deja el botón «Actualizar» de la app pidiendo un archivo
+// que no existe (#208). El freno lee que los metadatos estén en la lista.
+frenoDelLint(
+  "repo-lint: detecta un release sin los metadatos del updater",
+  ".github/workflows/release-build.yml",
+  "jobs:\n  release:\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/download-artifact@v4\n      - uses: softprops/action-gh-release@v2\n        with:\n          files: |\n            installers/*.dmg\n            installers/*.exe\n            installers/*.AppImage\n",
+  "RELEASEJOB",
+);
+
 // ENRUTADO: el enrutado efectivo de una arista tiene UNA respuesta. Tres defaults
 // distintos para el mismo campo dieron una ficha que marcaba «Recta» sobre un
 // enlace curvo (issue #112) — compila y pasa los tests, sólo se ve en pantalla.

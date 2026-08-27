@@ -38,6 +38,7 @@ import { ModelConfigDialog } from "@/components/settings/ModelConfigDialog";
 import { RemoteAiConfig } from "@/components/settings/RemoteAiConfig";
 import { McpServerConfig } from "@/components/settings/McpServerConfig";
 import { SystemInfoCard } from "@/components/settings/SystemInfoCard";
+import { UpdateConfig } from "@/components/settings/UpdateConfig";
 import type { LitertModelStatus } from "@/types/electron";
 
 const api = () => (typeof window !== "undefined" ? (window as any).electronAPI : undefined);
@@ -340,6 +341,12 @@ export default function SettingsPage() {
             {/* Servidor MCP embebido (opt-in): Claude Code/Codex diseñan sobre la app */}
             <section id="mcp" className="scroll-mt-4">
               <McpServerConfig />
+            </section>
+
+            {/* Actualizaciones (#208): interruptor de la búsqueda automática y
+                «Buscar ahora». Publicar un release sigue siendo un paso humano. */}
+            <section id="actualizaciones" className="scroll-mt-4">
+              <UpdateConfig />
             </section>
 
             {/* Datos del equipo relevantes para la IA local (WebGPU, RAM, disco) */}

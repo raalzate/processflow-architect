@@ -1,4 +1,5 @@
 import { BrowserWindow, Menu, MenuItemConstructorOptions, shell } from 'electron';
+import { initUpdater } from './services/updater';
 import path from 'path';
 import { isDev, appServe } from './config';
 import { titleBarOptions } from '../src/lib/window-chrome';
@@ -22,6 +23,11 @@ export function createMainWindow() {
     });
 
     win.webContents.session.setPermissionRequestHandler((wc, permission, cb) => cb(true));
+
+    // Actualizaciones (#208): la ventana es a quien se le reporta el estado. No
+    // busca nada por su cuenta — la búsqueda la dispara el renderer, que es quien
+    // sabe si el usuario la dejó activada en Ajustes.
+    void initUpdater(win);
 
     if (isDev) {
         // El puerto del dev server de Next es configurable: si 3000 está ocupado,
