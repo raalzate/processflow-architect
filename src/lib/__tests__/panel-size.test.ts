@@ -5,6 +5,10 @@ import {
   readPanelWidth,
   TOOLBOX_LIMITS,
   type PanelLimits,
+  INSPECTOR_WIDTHS,
+  inspectorMaxWidth,
+  nextInspectorWidth,
+  readInspectorWidth,
 } from "@/lib/panel-size";
 
 const L: PanelLimits = { min: 100, max: 300, default: 200 };
@@ -60,5 +64,50 @@ describe("TOOLBOX_LIMITS", () => {
     expect(TOOLBOX_LIMITS.min).toBeLessThan(TOOLBOX_LIMITS.default);
     expect(TOOLBOX_LIMITS.default).toBeLessThan(TOOLBOX_LIMITS.max);
     expect(clampPanelWidth(TOOLBOX_LIMITS.default, TOOLBOX_LIMITS)).toBe(TOOLBOX_LIMITS.default);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Ancho de la ficha de elemento (#187)
+// -----------------------------------------------------------------------------
+
+describe("anchos de la ficha de elemento", () => {
+  it("son tres, en orden, y el primero es el de hoy", () => {
+    expect(INSPECTOR_WIDTHS.map((w) => w.id)).toEqual(["normal", "ancho", "casi-completa"]);
+    expect(INSPECTOR_WIDTHS[0].maxWidth).toBe("28rem");
+  });
+
+  it("cada ancho declara su clase y su rótulo (no hay números en el componente)", () => {
+    for (const w of INSPECTOR_WIDTHS) {
+      expect(w.maxWidth).toMatch(/^(\d+(\.\d+)?rem|\d+vw)$/);
+      expect(w.label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("el ciclo avanza y vuelve al principio", () => {
+    expect(nextInspectorWidth("normal")).toBe("ancho");
+    expect(nextInspectorWidth("ancho")).toBe("casi-completa");
+    expect(nextInspectorWidth("casi-completa")).toBe("normal");
+  });
+
+  it("un id que no existe cae en el ancho de partida", () => {
+    expect(nextInspectorWidth("gigante" as never)).toBe("ancho");
+    expect(readInspectorWidth("gigante")).toBe("normal");
+    expect(readInspectorWidth(null)).toBe("normal");
+    expect(readInspectorWidth("  ")).toBe("normal");
+  });
+
+  it("lee lo guardado cuando es uno de los tres", () => {
+    expect(readInspectorWidth("ancho")).toBe("ancho");
+    expect(readInspectorWidth("casi-completa")).toBe("casi-completa");
+  });
+
+  it("resuelve el ancho a aplicar sin que el componente sepa la medida", () => {
+    expect(inspectorMaxWidth("normal")).toBe("28rem");
+    expect(inspectorMaxWidth("casi-completa")).toBe(
+      INSPECTOR_WIDTHS[2].maxWidth
+    );
+    // Un id inválido no deja la ficha sin ancho.
+    expect(inspectorMaxWidth("nada" as never)).toBe("28rem");
   });
 });

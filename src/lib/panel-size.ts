@@ -47,3 +47,58 @@ export function isAtLimit(px: number, limits: PanelLimits): "min" | "max" | null
   if (w >= limits.max) return "max";
   return null;
 }
+
+// -----------------------------------------------------------------------------
+// Ancho de la FICHA de elemento (drawer lateral) — #187
+// -----------------------------------------------------------------------------
+
+/**
+ * La ficha era de ancho fijo (448 px). Con el tab «Spec» adentro —historias con
+ * escenarios, requisitos, criterios— cada campo quedaba en una columna angosta.
+ * En vez de un arrastre fino, tres anchos con nombre: se llega al que hace falta
+ * con un clic y no hay que recordar un número.
+ *
+ * Se declaran ACÁ, no en el componente, por la misma razón que los topes de la
+ * paleta: la medida es una decisión con pruebas, no un literal perdido en un JSX.
+ */
+export type InspectorWidthId = "normal" | "ancho" | "casi-completa";
+
+export interface InspectorWidth {
+  id: InspectorWidthId;
+  /** Valor de `max-width` (unidad CSS). El drawer sólo lo aplica. */
+  maxWidth: string;
+  /** Rótulo del botón/tooltip: dice a qué ancho se PASA. */
+  label: string;
+}
+
+/** Los tres anchos, en el orden en el que cicla el botón. */
+export const INSPECTOR_WIDTHS: readonly InspectorWidth[] = [
+  { id: "normal", maxWidth: "28rem", label: "Normal" },
+  { id: "ancho", maxWidth: "55vw", label: "Ancho" },
+  { id: "casi-completa", maxWidth: "85vw", label: "Casi completa" },
+] as const;
+
+/** Clave de `localStorage` del ancho elegido para la ficha. */
+export const INSPECTOR_WIDTH_KEY = "designer_inspector_width";
+
+/** El ancho de partida: el que la ficha tenía antes de que esto existiera. */
+const INSPECTOR_DEFAULT: InspectorWidthId = "normal";
+
+/** El siguiente ancho del ciclo. Un id desconocido arranca el ciclo de nuevo. */
+export function nextInspectorWidth(actual: InspectorWidthId): InspectorWidthId {
+  // Un id desconocido vale como Normal (es de donde parte la ficha), así que el
+  // primer clic lleva a Ancho igual que si hubiera partido bien.
+  const i = INSPECTOR_WIDTHS.findIndex((w) => w.id === readInspectorWidth(actual));
+  return INSPECTOR_WIDTHS[(i + 1) % INSPECTOR_WIDTHS.length].id;
+}
+
+/** Lee lo guardado (crudo de `localStorage`): si no es uno de los tres, Normal. */
+export function readInspectorWidth(raw: string | null | undefined): InspectorWidthId {
+  const v = (raw ?? "").trim();
+  return INSPECTOR_WIDTHS.some((w) => w.id === v) ? (v as InspectorWidthId) : INSPECTOR_DEFAULT;
+}
+
+/** El `max-width` a aplicar. Un id inválido no deja la ficha sin ancho. */
+export function inspectorMaxWidth(id: InspectorWidthId): string {
+  return (INSPECTOR_WIDTHS.find((w) => w.id === id) ?? INSPECTOR_WIDTHS[0]).maxWidth;
+}

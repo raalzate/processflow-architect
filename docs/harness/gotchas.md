@@ -296,3 +296,22 @@ Regla:   una feature nueva no nace con un número usado; si el número está tom
 Mecanismo: `scripts/sdd-github.mjs` (`new`) consulta las etiquetas `feature:*` del repo antes de
          crear nada y sale con código 1 nombrando el primer libre. Probado a mano contra el repo:
          `003` (usado) y un archivo sin número frenan; el mensaje trae la lista de usados.
+
+### GOTCHA: el panel lateral bajado por la barra de título se sale de la ventana
+
+Issue: #188
+
+Síntoma: con la barra de título propia, el pie de la ficha de elemento —«Siguiente paso» y
+         «Cerrar»— quedaba **debajo del borde de la ventana**, tapado por el Dock en macOS y sin
+         forma de pulsarlo. Medido en la app viva: `innerHeight` 994, la ficha de `top: 40` a
+         `bottom: 1034`, el pie de 961 a 1034 → 40 px afuera.
+Causa:   `globals.css` baja el panel (`body[data-titlebar="on"] .fixed.inset-y-0 { top:
+         var(--titlebar-h) }`) para no dibujarse sobre los controles de ventana, pero no descontaba
+         esa altura: el drawer lleva `h-full` (100 % del viewport), así que arrancaba 40 px más
+         abajo y seguía midiendo lo mismo. `h-screen`/`h-svh` ya tenían el descuento unas líneas
+         más arriba; al panel lateral le faltó.
+Regla:   lo que se corre para dejar libre la barra de título se **acorta** en la misma medida, y la
+         corrección vive en `globals.css`, no en cada pantalla.
+Mecanismo: `src/lib/__tests__/window-chrome.test.ts` lee `globals.css` y exige que la regla de
+         `.fixed.inset-y-0` fije `top: var(--titlebar-h)` **y** `height: calc(100% -
+         var(--titlebar-h))`. Quitar el descuento pone el gate en rojo.

@@ -195,7 +195,13 @@
 
 /* El panel lateral es `fixed inset-y-0`: sale del flujo y, sin esto, se dibuja SOBRE
    la barra de título —los semáforos de macOS quedan encima de su encabezado y dejan
-   de poder pulsarse—. Se lo baja la altura exacta de la barra. */
+   de poder pulsarse—. Se lo baja la altura exacta de la barra.
+
+   Y se le DESCUENTA esa misma altura: bajarlo sin acortarlo lo empujaba 40px fuera de
+   la ventana y el pie de la ficha (Siguiente paso · Cerrar) quedaba debajo del borde,
+   tapado por el Dock (#188). Es el mismo arreglo que `h-screen`/`h-svh` de arriba, que
+   al panel le faltaba. */
 body[data-titlebar="on"] .fixed.inset-y-0 {
   top: var(--titlebar-h);
+  height: calc(100% - var(--titlebar-h));
 }

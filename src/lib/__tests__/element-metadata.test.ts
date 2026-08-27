@@ -4,6 +4,8 @@ import {
   MAX_METADATA_POR_CAJA,
   MAX_URL_CHARS,
   MAX_VALOR_CHARS,
+  METADATA_TIPOS,
+  enlaceDe,
   esEnlaceExterno,
   metadataFaltantes,
   moverMetadata,
@@ -53,7 +55,13 @@ describe("upsert por clave", () => {
       m("  REPO ", "acme/pagos-svc", "https://github.com/acme/pagos-svc")
     );
     expect(lista).toHaveLength(2);
-    expect(lista[0]).toEqual({ clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" });
+    // Todo metadato guardado lleva su tipo; el heredado con url queda de tipo url (#186).
+    expect(lista[0]).toEqual({
+      clave: "repo",
+      valor: "acme/pagos-svc",
+      url: "https://github.com/acme/pagos-svc",
+      tipo: "url",
+    });
     // La clave conserva la grafía ORIGINAL: reemplazar un valor no renombra la clave.
     expect(lista[0].clave).toBe("repo");
     expect(lista[1].clave).toBe("owner");
@@ -78,7 +86,7 @@ describe("upsert por clave", () => {
 
   it("guarda clave y valor recortados (trim), no como llegaron", () => {
     const [uno] = upsertMetadata([], m(" repo ", " acme/pagos-svc "));
-    expect(uno).toEqual({ clave: "repo", valor: "acme/pagos-svc" });
+    expect(uno).toEqual({ clave: "repo", valor: "acme/pagos-svc", tipo: "texto" });
   });
 });
 
@@ -120,7 +128,7 @@ describe("normalizar lo que llega de afuera", () => {
       "basura",
       null,
     ]);
-    expect(lista).toEqual([{ clave: "repo", valor: "b" }]);
+    expect(lista).toEqual([{ clave: "repo", valor: "b", tipo: "texto" }]);
   });
 
   it("recorta la lista al tope en vez de aceptar 500 metadatos de un import", () => {
@@ -129,8 +137,12 @@ describe("normalizar lo que llega de afuera", () => {
   });
 
   it("deja la url sólo si es texto no vacío", () => {
-    expect(normalizarLista([{ clave: "repo", valor: "a", url: "  " }])).toEqual([{ clave: "repo", valor: "a" }]);
-    expect(normalizarLista([{ clave: "repo", valor: "a", url: 42 }])).toEqual([{ clave: "repo", valor: "a" }]);
+    expect(normalizarLista([{ clave: "repo", valor: "a", url: "  " }])).toEqual([
+      { clave: "repo", valor: "a", tipo: "texto" },
+    ]);
+    expect(normalizarLista([{ clave: "repo", valor: "a", url: 42 }])).toEqual([
+      { clave: "repo", valor: "a", tipo: "texto" },
+    ]);
   });
 });
 
@@ -162,5 +174,125 @@ describe("cajas sin referencias", () => {
       { nombre: "Notificador" },
     ]);
     expect(faltantes).toEqual(["Cobros", "Notificador"]);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Tipo del valor (tabla propiedad · tipo · valor) — #186
+// -----------------------------------------------------------------------------
+
+describe("tipo del metadato", () => {
+  it("el catálogo son los cinco tipos, y `texto` es el de partida", () => {
+    expect(METADATA_TIPOS.map((t) => t.value)).toEqual(["texto", "numero", "booleano", "url", "fecha"]);
+  });
+
+  it("un metadato sin tipo declarado vale como texto", () => {
+    expect(validarMetadata({ clave: "owner", valor: "Equipo Pagos" })).toBeNull();
+  });
+
+  it("un número que no es número se rechaza nombrando el tipo", () => {
+    const problema = validarMetadata({ clave: "sla", valor: "veinticuatro", tipo: "numero" });
+    expect(problema).toMatch(/número/i);
+    expect(validarMetadata({ clave: "sla", valor: "24", tipo: "numero" })).toBeNull();
+    expect(validarMetadata({ clave: "sla", valor: "-1.5", tipo: "numero" })).toBeNull();
+  });
+
+  it("un booleano sólo acepta sí/no en sus formas escritas", () => {
+    for (const v of ["true", "false", "sí", "no"]) {
+      expect(validarMetadata({ clave: "critico", valor: v, tipo: "booleano" })).toBeNull();
+    }
+    expect(validarMetadata({ clave: "critico", valor: "quizás", tipo: "booleano" })).toMatch(/booleano/i);
+  });
+
+  it("una fecha exige ISO corto: es lo único que se ordena y se compara", () => {
+    expect(validarMetadata({ clave: "baja", valor: "2026-08-27", tipo: "fecha" })).toBeNull();
+    expect(validarMetadata({ clave: "baja", valor: "27/08/2026", tipo: "fecha" })).toMatch(/fecha/i);
+  });
+
+  it("una url con tipo url tiene que ser http(s): la frontera no se relaja", () => {
+    expect(validarMetadata({ clave: "repo", valor: "https://github.com/acme/x", tipo: "url" })).toBeNull();
+    expect(validarMetadata({ clave: "repo", valor: "javascript:alert(1)", tipo: "url" })).toMatch(/http/i);
+    expect(validarMetadata({ clave: "repo", valor: "acme/x", tipo: "url" })).toMatch(/http/i);
+  });
+
+  it("el tipo sobrevive el upsert y reemplazar la clave cambia el tipo", () => {
+    let lista = upsertMetadata(undefined, { clave: "sla", valor: "24", tipo: "numero" });
+    expect(lista[0].tipo).toBe("numero");
+    lista = upsertMetadata(lista, { clave: "sla", valor: "24h", tipo: "texto" });
+    expect(lista).toHaveLength(1);
+    expect(lista[0].tipo).toBe("texto");
+  });
+});
+
+describe("enlaceDe: qué se puede clickear", () => {
+  it("un metadato de tipo url enlaza su valor", () => {
+    expect(enlaceDe({ clave: "repo", valor: "https://github.com/acme/x", tipo: "url" })).toBe(
+      "https://github.com/acme/x"
+    );
+  });
+
+  it("el campo `url` de lo ya guardado sigue mandando (no se pierde el dato viejo)", () => {
+    expect(
+      enlaceDe({ clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" })
+    ).toBe("https://github.com/acme/pagos-svc");
+  });
+
+  it("nada enlazable devuelve null (texto, número, esquema peligroso)", () => {
+    expect(enlaceDe({ clave: "owner", valor: "Equipo Pagos" })).toBeNull();
+    expect(enlaceDe({ clave: "sla", valor: "24", tipo: "numero" })).toBeNull();
+    expect(enlaceDe({ clave: "x", valor: "javascript:alert(1)", tipo: "url" })).toBeNull();
+    expect(enlaceDe({ clave: "x", valor: "y", url: "file:///etc/passwd" })).toBeNull();
+  });
+});
+
+describe("migración de lo ya guardado", () => {
+  it("un metadato viejo con url queda de tipo url sin perder ni valor ni url", () => {
+    const lista = normalizarLista([
+      { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
+    ])!;
+    expect(lista[0]).toEqual({
+      clave: "repo",
+      valor: "acme/pagos-svc",
+      url: "https://github.com/acme/pagos-svc",
+      tipo: "url",
+    });
+  });
+
+  it("un metadato viejo sin url queda de tipo texto", () => {
+    expect(normalizarLista([{ clave: "owner", valor: "Equipo Pagos" }])![0].tipo).toBe("texto");
+  });
+
+  it("un valor que ES una url sin campo url también queda de tipo url", () => {
+    expect(normalizarLista([{ clave: "wiki", valor: "https://wiki/pagos" }])![0].tipo).toBe("url");
+  });
+
+  it("un tipo inventado no viaja: cae a texto en vez de tirar el metadato", () => {
+    const lista = normalizarLista([{ clave: "x", valor: "1", tipo: "entero" }])!;
+    expect(lista[0].tipo).toBe("texto");
+  });
+
+  it("el metadato heredado (valor legible + url aparte) sobrevive como url", () => {
+    // El fallo que esto frena: inferir `url` y después exigir que el VALOR fuera
+    // la url descartaba al abrir justo la referencia al código de la caja.
+    const lista = normalizarLista([
+      { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
+      { clave: "owner", valor: "Equipo Pagos" },
+    ])!;
+    expect(lista.map((x) => x.clave)).toEqual(["repo", "owner"]);
+    expect(validarMetadata(lista[0])).toBeNull();
+  });
+
+  it("un valor que no cumple su tipo se DEGRADA a texto, no se pierde", () => {
+    // La alternativa era descartarlo, y eso borraba en silencio lo que el
+    // usuario había escrito (o lo que dejó un agente) por una etiqueta mal
+    // puesta. La tabla lo muestra en rojo mientras el tipo y el valor no casan.
+    const lista = normalizarLista([{ clave: "sla", valor: "veinticuatro", tipo: "numero" }])!;
+    expect(lista[0]).toEqual({ clave: "sla", valor: "veinticuatro", tipo: "texto" });
+  });
+
+  it("un valor sin tipo válido igual se guarda: el dato importa más que la etiqueta", () => {
+    const lista = normalizarLista([{ clave: "baja", valor: "27/08/2026", tipo: "fecha" }])!;
+    expect(lista[0].tipo).toBe("texto");
+    expect(lista[0].valor).toBe("27/08/2026");
   });
 });

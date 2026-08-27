@@ -66,8 +66,12 @@ export function downloadDataUrl(dataUrl: string, filename: string): void {
   a.click();
 }
 
-/** Dispara la descarga de un texto como archivo. */
-function downloadText(content: string, filename: string, mime: string): void {
+/**
+ * Dispara la descarga de un texto como archivo. Exportada porque es el ÚNICO
+ * mecanismo de descarga del renderer: la ficha de elemento exporta el markdown
+ * de su especificación por acá en vez de abrir una segunda ruta de guardado.
+ */
+export function downloadText(content: string, filename: string, mime: string): void {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

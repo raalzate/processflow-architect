@@ -15,6 +15,7 @@ import {
   type GraphData,
   type Agregado,
 } from "@/lib/types";
+import type { ElementMetadata } from "@/lib/element-metadata";
 
 // -----------------------------------------------------------------------------
 // Helpers para construir fixtures válidos a partir de los tipos exportados.
@@ -1041,10 +1042,11 @@ describe("notación en el round-trip", () => {
 });
 
 describe("metadatos de la caja: ida y vuelta", () => {
-  const meta = [
-    { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
-    { clave: "wiki", valor: "Dominio Pagos", url: "https://wiki/pagos" },
-    { clave: "owner", valor: "Equipo Pagos" },
+  // El tipo viaja con el metadato (#186); el heredado con url es de tipo `url`.
+  const meta: ElementMetadata[] = [
+    { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc", tipo: "url" },
+    { clave: "wiki", valor: "Dominio Pagos", url: "https://wiki/pagos", tipo: "url" },
+    { clave: "owner", valor: "Equipo Pagos", tipo: "texto" },
   ];
 
   it("sobreviven el ciclo lienzo → GraphData → lienzo, en nodo Y en contenedor", () => {
@@ -1112,7 +1114,125 @@ describe("metadatos de la caja: ida y vuelta", () => {
       },
     };
     expect(graphDataToCanvas(data).nodes.get("cmd")!.metadata).toEqual([
-      { clave: "repo", valor: "acme/pagos-svc" },
+      { clave: "repo", valor: "acme/pagos-svc", tipo: "texto" },
     ]);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Especificación del elemento (element-spec) en el ida y vuelta
+// -----------------------------------------------------------------------------
+
+describe("especificación de la caja: ida y vuelta", () => {
+  const spec = {
+    featureName: "Cobro recurrente",
+    createdAt: "2026-08-27",
+    status: "borrador" as const,
+    input: "cobrar todos los meses",
+    stories: [
+      {
+        id: "st-1",
+        titulo: "Cobrar la cuota",
+        prioridad: "P1",
+        porQue: "sin cobro no hay negocio",
+        pruebaIndependiente: "con una cuota vencida",
+        escenarios: [{ id: "sc-1", given: "cuota vencida", when: "corre el cobro", then: "queda pagada" }],
+      },
+    ],
+    edgeCases: ["sin saldo"],
+    requirements: [{ id: "fr-1", texto: "MUST cobrar", needsClarification: true }],
+    entities: [{ id: "en-1", nombre: "Cuota", descripcion: "lo que se cobra" }],
+    criteria: [{ id: "cr-1", texto: "99 % en un intento" }],
+  };
+
+  it("sobrevive el ciclo lienzo → GraphData → lienzo, en nodo Y en contenedor", () => {
+    const nodes = nodesMap(
+      makeNode({ id: "agg-Pagos", nombre: "Pagos", tipo_elemento: "Agregado", spec }),
+      makeNode({ id: "cmd", nombre: "Pagar", agregado: "Pagos", spec })
+    );
+    const data = canvasToGraphData(nodes, new Map(), BASE);
+    expect(data.agregados[0].spec).toEqual(spec);
+    expect(data.agregados[0].nodos[0].spec).toEqual(spec);
+
+    const vuelta = graphDataToCanvas(data);
+    expect(vuelta.nodes.get("cmd")!.spec).toEqual(spec);
+    expect(vuelta.nodes.get("agg-Pagos")!.spec).toEqual(spec);
+  });
+
+  it("una spec VACÍA no se persiste: el archivo no cambia de forma", () => {
+    const vacia = {
+      featureName: "",
+      status: "borrador" as const,
+      input: "",
+      stories: [],
+      edgeCases: [],
+      requirements: [],
+      entities: [],
+      criteria: [],
+    };
+    const nodes = nodesMap(
+      makeNode({ id: "agg-Pagos", nombre: "Pagos", tipo_elemento: "Agregado", spec: vacia }),
+      makeNode({ id: "cmd", nombre: "Pagar", agregado: "Pagos", spec: vacia })
+    );
+    const data = canvasToGraphData(nodes, new Map(), BASE);
+    expect(data.agregados[0].spec).toBeUndefined();
+    expect(data.agregados[0].nodos[0].spec).toBeUndefined();
+  });
+
+  it("un modelo guardado ANTES de la feature abre sin spec y sin error", () => {
+    const viejo: GraphData = {
+      ...emptyGraphData("Viejo", "2026-08-27"),
+      agregados: [
+        {
+          nombre_agregado: "Pagos",
+          entidad_raiz: "Pago",
+          descripcion: "",
+          nodos: [
+            { id: "cmd", nombre: "Pagar", tipo_elemento: "Comando", estado_comparativo: "nuevo" } as any,
+          ],
+          aristas: [],
+        } as Agregado,
+      ],
+    };
+    const canvas = graphDataToCanvas(viejo);
+    expect(canvas.nodes.get("cmd")!.spec).toBeUndefined();
+    expect(canvas.nodes.get("agg-Pagos")!.spec).toBeUndefined();
+  });
+
+  it("lo guardado se normaliza al abrir: basura fuera, estado inventado a borrador", () => {
+    const data: GraphData = {
+      ...emptyGraphData("P", "2026-08-27"),
+      big_picture: {
+        descripcion: "",
+        hotspots: [],
+        nodos: [
+          {
+            id: "cmd",
+            nombre: "Pagar",
+            tipo_elemento: "Comando",
+            estado_comparativo: "nuevo",
+            spec: {
+              featureName: "Cobro",
+              status: "publicada",
+              stories: ["basura", { titulo: "Cobrar" }],
+              requirements: [{ texto: "" }, { texto: "MUST cobrar" }],
+            },
+          } as any,
+        ],
+        aristas: [],
+      },
+    };
+    const canvas = graphDataToCanvas(data);
+    const recuperada = canvas.nodes.get("cmd")!.spec!;
+    expect(recuperada.status).toBe("borrador");
+    expect(recuperada.stories).toHaveLength(1);
+    expect(recuperada.requirements).toHaveLength(1);
+  });
+
+  it("una arista NO lleva spec (la superficie es nodo y contenedor)", () => {
+    const nodes = nodesMap(makeNode({ id: "a" }), makeNode({ id: "b" }));
+    const links = linksMap(makeLink({ id: "l1", sourceId: "a", targetId: "b" }));
+    const data = canvasToGraphData(nodes, links, BASE);
+    expect(Object.keys(data.big_picture.aristas[0])).not.toContain("spec");
   });
 });

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 /**
  * Ocultar la barra nativa es el cambio con más riesgo de la app: los controles de
  * ventana son la única forma de cerrarla. Lo que se prueba acá es que NINGUNA
@@ -56,5 +58,31 @@ describe("reservas de espacio", () => {
     expect(necesitaBotonDeMenu("win32")).toBe(true);
     expect(necesitaBotonDeMenu("linux")).toBe(true);
     expect(necesitaBotonDeMenu("darwin")).toBe(false);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// El panel lateral con la barra de título propia (#188)
+// -----------------------------------------------------------------------------
+
+describe("el panel lateral no se sale de la ventana", () => {
+  const css = readFileSync(resolve(__dirname, "../../app/globals.css"), "utf8");
+
+  /** El bloque que corrige el panel lateral (`fixed inset-y-0`). */
+  const regla = (): string => {
+    const i = css.indexOf('body[data-titlebar="on"] .fixed.inset-y-0');
+    expect(i, "falta la regla que baja el panel lateral bajo la barra de título").toBeGreaterThan(-1);
+    return css.slice(i, css.indexOf("}", i));
+  };
+
+  it("baja el panel la altura de la barra", () => {
+    expect(regla()).toMatch(/top:\s*var\(--titlebar-h\)/);
+  });
+
+  it("y le DESCUENTA esa altura: bajarlo sin acortarlo dejaba el pie fuera de la ventana", () => {
+    // El fallo que esto frena: la ficha arrancaba en top:40 y seguía midiendo el
+    // viewport entero, así que «Siguiente paso» y «Cerrar» caían bajo el borde
+    // (tapados por el Dock en macOS) y no se podían pulsar.
+    expect(regla()).toMatch(/height:\s*calc\(100%\s*-\s*var\(--titlebar-h\)\)/);
   });
 });

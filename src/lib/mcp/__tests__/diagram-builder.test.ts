@@ -712,7 +712,7 @@ describe("metadatos de la caja (referencias: repo, wiki, owner)", () => {
     });
     const meta = m.nodes.find((n) => n.id === "api-de-pagos")!.metadata!;
     expect(meta).toHaveLength(2);
-    expect(meta[0]).toEqual({ clave: "repo", valor: "acme/pagos-v2" });
+    expect(meta[0]).toEqual({ clave: "repo", valor: "acme/pagos-v2", tipo: "texto" });
   });
 
   it("borra por clave sin tocar el resto", () => {
@@ -734,9 +734,10 @@ describe("metadatos de la caja (referencias: repo, wiki, owner)", () => {
 
     const vuelta = fromGraphData(data, "ddd");
     const nodo = vuelta.nodes.find((n) => n.nombre === "API de Pagos")!;
+    // Al abrir, todo metadato queda con su tipo: el heredado con url es `url` (#186).
     expect(nodo.metadata).toEqual([
-      { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
-      { clave: "owner", valor: "Equipo Pagos" },
+      { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc", tipo: "url" },
+      { clave: "owner", valor: "Equipo Pagos", tipo: "texto" },
     ]);
     expect(vuelta.nodes.find((n) => n.nombre === "Pagos")!.metadata?.[0].valor).toBe("Dominio Pagos");
   });
@@ -769,7 +770,7 @@ describe("metadatos: validación en la puerta", () => {
         { clave: "Repo", valor: "acme/pagos-svc" },
       ],
     }).model;
-    expect(m.nodes[0].metadata).toEqual([{ clave: "repo", valor: "acme/pagos-svc" }]);
+    expect(m.nodes[0].metadata).toEqual([{ clave: "repo", valor: "acme/pagos-svc", tipo: "texto" }]);
   });
 });
 

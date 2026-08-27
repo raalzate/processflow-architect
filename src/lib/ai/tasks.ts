@@ -17,11 +17,13 @@ import {
   promptSuggestName,
   promptSuggestTags,
   promptSuggestNext,
+  promptSuggestSpec,
   promptOrdenarBandas,
   withReference,
   SYSTEM_PROMPT_DESIGNER,
 } from "@/lib/template-prompt";
 import { getNotation, notationTypes } from "@/lib/notations";
+import { specFromLines, type ElementSpec } from "@/lib/element-spec";
 
 /**
  * Tipos que puede devolver la IA para una vista: los de SU notación. Sin
@@ -207,4 +209,32 @@ export const bigPictureDescTask: AiTask<{ resumen: string; notation?: string }, 
     system: SYSTEM_PROMPT_DESIGNER,
   }),
   parse: (raw) => stripQuotes(raw),
+};
+
+/**
+ * Borrador de la ESPECIFICACIÓN de un elemento (tab «Spec» de la ficha).
+ *
+ * `tier: "heavy"` **con** `buildPrompt` y sin `structured`: es una tarea larga,
+ * así que en modo híbrido sube a la nube, pero en el modo por defecto (`local`)
+ * la atiende LiteRT-LM y el botón funciona sin llave ni conexión (P4). Marcarla
+ * `structured` la habría dejado muerta sin API key, que es justo lo contrario de
+ * "la IA es local por defecto".
+ *
+ * `parse` NUNCA lanza: una respuesta que no dice nada devuelve `undefined` y la
+ * ficha conserva intacto lo que el usuario escribió a mano.
+ */
+export const suggestSpecTask: AiTask<
+  { tipo: string; nombre: string; descripcion?: string; referencia?: string; notation?: string },
+  ElementSpec | undefined
+> = {
+  id: "suggest-spec",
+  tier: "heavy",
+  buildPrompt: (i) => ({
+    prompt: withReference(
+      promptSuggestSpec(i.tipo, i.nombre, i.descripcion ?? "", i.notation),
+      i.referencia
+    ),
+    system: SYSTEM_PROMPT_DESIGNER,
+  }),
+  parse: (raw) => specFromLines(raw),
 };

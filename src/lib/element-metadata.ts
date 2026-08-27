@@ -17,14 +17,38 @@
  * fusionan ni se reemplazan entre sí.
  */
 
+/**
+ * Tipo del valor de un metadato. Existe porque la tabla de propiedades de una
+ * caja era todo texto libre: «24» no se distinguía de «veinticuatro» y «crítico»
+ * podía decir «quizás». El tipo hace que el valor se VALIDE y que la fila se
+ * pueda dibujar como lo que es (casilla, enlace, fecha).
+ */
+export type MetadataTipo = "texto" | "numero" | "booleano" | "url" | "fecha";
+
+/** Catálogo de tipos con su rótulo. El primero es el de partida. */
+export const METADATA_TIPOS: readonly { value: MetadataTipo; label: string }[] = [
+  { value: "texto", label: "Texto" },
+  { value: "numero", label: "Número" },
+  { value: "booleano", label: "Sí / No" },
+  { value: "url", label: "URL" },
+  { value: "fecha", label: "Fecha" },
+] as const;
+
 /** Referencia o dato externo de una caja: dónde vive, quién la mantiene, qué la explica. */
 export interface ElementMetadata {
   /** Clave corta: `repo`, `wiki`, `owner`, `SLA`. Única por caja. */
   clave: string;
   /** Valor legible: `acme/pagos-svc`, `Equipo Pagos`. */
   valor: string;
-  /** Dónde vive. Sólo `http(s)` se vuelve enlace (ver `esEnlaceExterno`). */
+  /**
+   * Dónde vive. **Heredado**: antes la url era una columna aparte del valor. Se
+   * conserva porque hay modelos guardados con ella y perderla sería perder el
+   * enlace al código; lo nuevo se escribe con `tipo: "url"` y el valor ES la
+   * url. Sólo `http(s)` se vuelve enlace (ver `esEnlaceExterno` y `enlaceDe`).
+   */
   url?: string;
+  /** Tipo del valor. Si falta, vale como `texto`. */
+  tipo?: MetadataTipo;
 }
 
 /**
@@ -57,6 +81,20 @@ export function esEnlaceExterno(url?: string | null): boolean {
   return /^https?:\/\/[^\s]+$/i.test(url);
 }
 
+/** Formas escritas que cuentan como booleano (en las dos lenguas del repo). */
+export const VALORES_BOOLEANOS: readonly string[] = ["true", "false", "sí", "si", "no"];
+
+/**
+ * La url que se puede poner en un `href` para este metadato, o `null`. Manda el
+ * campo `url` heredado (es el dato que el usuario ya tenía escrito) y si no está,
+ * el propio valor cuando el metadato es de tipo `url`.
+ */
+export function enlaceDe(m: ElementMetadata): string | null {
+  if (esEnlaceExterno(m.url)) return m.url!;
+  if (m.tipo === "url" && esEnlaceExterno(m.valor.trim())) return m.valor.trim();
+  return null;
+}
+
 /** Mensaje de por qué NO se puede guardar el metadato, o `null` si está bien. */
 export function validarMetadata(entrada: ElementMetadata): string | null {
   const clave = (entrada.clave ?? "").trim();
@@ -70,7 +108,46 @@ export function validarMetadata(entrada: ElementMetadata): string | null {
     return `El valor pasa el tope de ${MAX_VALOR_CHARS} caracteres (tiene ${valor.length}). El detalle largo va en la descripción del elemento.`;
   if (url.length > MAX_URL_CHARS)
     return `La url pasa el tope de ${MAX_URL_CHARS} caracteres (tiene ${url.length}).`;
-  return null;
+  return validarValorSegunTipo(valor, entrada.tipo, entrada.url);
+}
+
+/**
+ * El valor tiene que ser lo que su tipo promete. Se RECHAZA con mensaje en vez
+ * de convertir en silencio: una tabla que dice «número» y guarda
+ * «veinticuatro» miente sobre lo que contiene, y quien la lea después
+ * (un export, el agente, un reporte) va a tratarla como número.
+ */
+export function validarValorSegunTipo(
+  valor: string,
+  tipo?: MetadataTipo,
+  /**
+   * Url heredada de la fila. Con ella un metadato viejo —valor legible
+   * («acme/pagos-svc») + url aparte— sigue siendo un `url` VÁLIDO: exigir que el
+   * valor fuera la url descartaba al abrir justo los metadatos que ya existían,
+   * que es la referencia al código de la caja.
+   */
+  urlHeredada?: string
+): string | null {
+  switch (tipo) {
+    case "numero":
+      return Number.isFinite(Number(valor))
+        ? null
+        : `"${valor}" no es un número. Cambiá el tipo a Texto o escribí un número.`;
+    case "booleano":
+      return VALORES_BOOLEANOS.includes(valor.trim().toLowerCase())
+        ? null
+        : `"${valor}" no es un booleano: escribí ${VALORES_BOOLEANOS.join(" · ")}.`;
+    case "fecha":
+      return /^\d{4}-\d{2}-\d{2}$/.test(valor.trim())
+        ? null
+        : `"${valor}" no es una fecha con formato YYYY-MM-DD (es el único que se ordena y se compara).`;
+    case "url":
+      return esEnlaceExterno(urlHeredada?.trim()) || esEnlaceExterno(valor.trim())
+        ? null
+        : `"${valor}" no es una url http(s). Un enlace que no es http(s) no se puede abrir desde la app.`;
+    default:
+      return null;
+  }
 }
 
 /** Metadato listo para guardar: clave y valor recortados, url sólo si hay. */
@@ -78,7 +155,18 @@ function saneado(entrada: ElementMetadata): ElementMetadata {
   const url = (entrada.url ?? "").trim();
   const salida: ElementMetadata = { clave: entrada.clave.trim(), valor: entrada.valor.trim() };
   if (url) salida.url = url;
+  salida.tipo = entrada.tipo ?? tipoInferido(salida);
   return salida;
+}
+
+/**
+ * Tipo de un metadato que no lo declara: lo guardado ANTES de que el tipo
+ * existiera. Sólo se infiere `url` (por el campo heredado o porque el valor es
+ * una url); todo lo demás es texto, que es lo que era.
+ */
+function tipoInferido(m: { valor: string; url?: string }): MetadataTipo {
+  if (esEnlaceExterno(m.url) || esEnlaceExterno(m.valor.trim())) return "url";
+  return "texto";
 }
 
 /**
@@ -154,10 +242,19 @@ export function normalizarLista(valor: unknown): ElementMetadata[] | undefined {
   const salida: ElementMetadata[] = [];
   for (const cruda of valor) {
     if (!cruda || typeof cruda !== "object") continue;
-    const { clave, valor: v, url } = cruda as Record<string, unknown>;
+    const { clave, valor: v, url, tipo } = cruda as Record<string, unknown>;
     if (typeof clave !== "string" || typeof v !== "string") continue;
     const entrada: ElementMetadata = { clave, valor: v };
     if (typeof url === "string") entrada.url = url;
+    // Un tipo inventado (o escrito por un agente) no viaja: se cae al inferido
+    // en vez de descartar el metadato, que es el dato que sí importa.
+    if (METADATA_TIPOS.some((t) => t.value === tipo)) entrada.tipo = tipo as MetadataTipo;
+    // El valor no cumple el tipo que declara (la fila quedó a medio corregir, o
+    // lo escribió un agente): se DEGRADA a texto en vez de descartarse. Perder
+    // el dato del usuario para castigar una etiqueta equivocada es el peor de
+    // los dos males; la tabla lo muestra en rojo mientras está mal.
+    if (entrada.tipo && validarValorSegunTipo(entrada.valor, entrada.tipo, entrada.url))
+      entrada.tipo = "texto";
     if (validarMetadata(entrada)) continue;
     const limpio = saneado(entrada);
     const idx = salida.findIndex((x) => claveNormalizada(x.clave) === claveNormalizada(limpio.clave));
