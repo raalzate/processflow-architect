@@ -1,6 +1,6 @@
 {
   "name": "processflow-architect",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "license": "Apache-2.0",
   "description": "A comprehensive application designed to model, visualize, and manage process flows within complex architectural environments. It enables users to define end-to-end workflows",

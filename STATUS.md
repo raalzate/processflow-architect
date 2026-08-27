@@ -4,12 +4,12 @@ Lo imprime el hook `SessionStart`. Sirve para no releer el repo entero para resp
 Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verificado con un comando**;
 lo que se supone va en "deuda conocida".
 
-- **Fecha del último gate completo:** 2026-08-26
+- **Fecha del último gate completo:** 2026-08-27
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
 - **Versión publicada:** 0.6.6 — sigue siendo la última **publicada** (Latest)
-- **Versión en el repo:** 0.7.0 — `v0.7.0` etiquetada y empaquetada: el release existe en **BORRADOR** con los tres instaladores adjuntos (`Processflow-Architect-0.7.0-arm64.dmg` 260 MB · `Processflow-Architect.Setup.0.7.0.exe` 206 MB · `Processflow-Architect-0.7.0.AppImage` 283 MB). El workflow lo deja así a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v0.7.0 --draft=false`), y hasta que ocurra esta línea NO cambia
-- **Sin verificar:** la barra de título propia (0.7.0) sólo se ejercitó en **macOS**. En Windows y Linux los controles de ventana son los nativos del sistema (overlay), pero el arrastre, el botón de menú y el overlay no los vio nadie
+- **Versión en el repo:** 0.8.0 — `v0.8.0` etiquetada; el empaquetado lo hace `release-build.yml` y deja el release en **BORRADOR** a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v0.8.0 --draft=false`), y hasta que ocurra esta línea NO cambia. `v0.7.0` sigue en borrador con sus tres instaladores adjuntos y queda superada por 0.8.0
+- **Sin verificar:** el botón «Sugerir» del tab Spec con el motor **local** — Gemma 4 arranca en WebGPU pero no devolvió borrador en ~7 min de espera, y el resto del tab funciona sin IA (#175). La barra de título propia sólo se ejercitó en **macOS**: en Windows y Linux los controles de ventana son los nativos del sistema (overlay), pero el arrastre y el botón de menú no los vio nadie
 
 ## Señales
 
