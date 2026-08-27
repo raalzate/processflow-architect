@@ -14,6 +14,7 @@
  * tags y re-apuntando aristas.
  */
 
+import { mergeSpec } from "./element-spec";
 import type { GraphData, GraphNode, GraphLink } from "./types";
 import { claveNormalizada, type ElementMetadata } from "./element-metadata";
 
@@ -189,6 +190,11 @@ export function mergeNodesInGraph(
   // Quién quiera avisar del conflicto usa `metadataConflictos` con los mismos
   // nodos antes de fusionar.
   primary.metadata = mergeMetadata(primary.metadata, secondaries.map((s) => s.metadata));
+
+  // La especificación NO se fusiona campo por campo: manda la del principal y
+  // sólo se hereda si está vacía (ver `mergeSpec`). Una spec mezclada sería un
+  // contrato que nadie escribió.
+  primary.spec = mergeSpec(primary.spec, secondaries.map((s) => s.spec));
 
   // Unión de tags de tecnología.
   const tags = new Set<string>(primary.tags_tecnologia || []);

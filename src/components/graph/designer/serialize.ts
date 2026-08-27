@@ -19,6 +19,7 @@ import {
 } from "@/lib/types";
 import { type EdgeRelationKind } from "@/lib/edge-relations";
 import { normalizarLista, type ElementMetadata } from "@/lib/element-metadata";
+import { sanitizeSpec, type ElementSpec } from "@/lib/element-spec";
 import {
   isNotationContainer,
   sizeOfType,
@@ -51,6 +52,12 @@ export interface DesignerNode {
    * `DesignerNode` (`agg-<nombre>`), pero al guardar viaja a `Agregado.metadata`.
    */
   metadata?: ElementMetadata[];
+  /**
+   * Especificación del elemento (historias, requisitos, criterios). Vale igual
+   * para un nodo y para un CONTENEDOR: al guardar viaja a `Agregado.spec`.
+   * Ver `src/lib/element-spec.ts`.
+   */
+  spec?: ElementSpec;
   /** Id de la vista embebida (subproceso): abrirlo entra a esa vista. */
   viewRef?: string;
   x: number;
@@ -140,6 +147,9 @@ export function canvasToGraphData(
       color: c.color,
       borderColor: c.borderColor,
       metadata: c.metadata,
+      // Una spec vacía no viaja: se guarda `undefined` para no agregarle un
+      // objeto a cada contenedor del archivo (ver `isSpecEmpty`).
+      spec: sanitizeSpec(c.spec),
       // El contenedor también declara si ya existe o es nuevo: se conserva o el
       // ida y vuelta por el lienzo lo devuelve a "nuevo".
       estado_comparativo: c.estado_comparativo,
@@ -238,6 +248,7 @@ function toDomainNode(n: DesignerNode): Omit<GraphNode, "agregado"> {
     color: n.color,
     borderColor: n.borderColor,
     metadata: n.metadata,
+    spec: sanitizeSpec(n.spec),
     viewRef: n.viewRef,
     x: n.x,
     y: n.y,
@@ -294,6 +305,7 @@ export function graphDataToCanvas(content: GraphData | null | undefined): {
       // Lo guardado puede venir de un import o de una versión vieja: se normaliza
       // (descarta lo inválido, deduplica por clave) en vez de confiar.
       metadata: normalizarLista((agg as any).metadata),
+      spec: sanitizeSpec((agg as any).spec),
       x: pos.x,
       y: pos.y,
       width: w,
@@ -355,6 +367,7 @@ function hydrateNode(
     color: n.color,
     borderColor: n.borderColor,
     metadata: normalizarLista(n.metadata),
+    spec: sanitizeSpec(n.spec),
     viewRef: n.viewRef,
     x,
     y,

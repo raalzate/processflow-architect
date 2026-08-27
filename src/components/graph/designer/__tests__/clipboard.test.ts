@@ -208,3 +208,28 @@ describe("metadatos al copiar y pegar", () => {
     expect(pegado.metadata).not.toBe(nodes.get("cmd")!.metadata);
   });
 });
+
+describe("especificación al copiar y pegar", () => {
+  it("la copia se lleva la spec sin compartir el objeto con el original", () => {
+    const spec = {
+      featureName: "Cobro",
+      status: "borrador" as const,
+      input: "",
+      stories: [],
+      edgeCases: ["sin saldo"],
+      requirements: [{ id: "fr-1", texto: "MUST cobrar" }],
+      entities: [],
+      criteria: [],
+    };
+    const nodes = new Map<string, DesignerNode>([["cmd", node({ id: "cmd", nombre: "Pagar", spec })]]);
+    const clip = copySelection(nodes, new Map(), ["cmd"])!;
+    expect(clip.nodes[0].spec).toEqual(spec);
+    expect(clip.nodes[0].spec).not.toBe(spec);
+
+    let i = 0;
+    const res = pasteClipboard(nodes, new Map(), clip, { newId: () => `n${++i}` });
+    const pegado = res.nodes.get("n1")!;
+    expect(pegado.spec).toEqual(spec);
+    expect(pegado.spec!.requirements).not.toBe(spec.requirements);
+  });
+});

@@ -235,3 +235,37 @@ describe("metadatos al fusionar cajas", () => {
     ]);
   });
 });
+
+describe("especificación al fusionar cajas", () => {
+  const conDatos = (nombre: string) => ({
+    featureName: nombre,
+    status: "borrador" as const,
+    input: "",
+    stories: [],
+    edgeCases: [],
+    requirements: [{ id: "fr-1", texto: "MUST algo" }],
+    entities: [],
+    criteria: [],
+  });
+
+  it("la spec del principal manda y no se mezcla", () => {
+    const g = makeGraph();
+    const agg = g.agregados[0];
+    (agg.nodos[0] as any).spec = conDatos("principal");
+    (agg.nodos[1] as any).spec = conDatos("secundaria");
+    const out = mergeNodesInGraph(g, "a1", ["a2"]);
+    expect((out.agregados[0].nodos[0] as any).spec.featureName).toBe("principal");
+  });
+
+  it("si el principal no tiene spec, hereda la del secundario", () => {
+    const g = makeGraph();
+    (g.agregados[0].nodos[1] as any).spec = conDatos("heredada");
+    const out = mergeNodesInGraph(g, "a1", ["a2"]);
+    expect((out.agregados[0].nodos[0] as any).spec.featureName).toBe("heredada");
+  });
+
+  it("sin spec en ninguno el nodo no gana una spec vacía", () => {
+    const out = mergeNodesInGraph(makeGraph(), "a1", ["a2"]);
+    expect((out.agregados[0].nodos[0] as any).spec).toBeUndefined();
+  });
+});

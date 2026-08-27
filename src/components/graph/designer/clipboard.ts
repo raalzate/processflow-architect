@@ -85,6 +85,9 @@ export function copySelection(
     nodes: Array.from(picked.values()).map((n) => ({
       ...n,
       ...(n.metadata ? { metadata: n.metadata.map((m) => ({ ...m })) } : {}),
+      // Igual con la spec: es un objeto anidado, y compartirlo haría que editar
+      // la copia reescribiera la especificación del original.
+      ...(n.spec ? { spec: structuredClone(n.spec) } : {}),
     })),
     links: copiedLinks.map((l) => ({ ...l })),
   };

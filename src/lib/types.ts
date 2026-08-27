@@ -2,6 +2,7 @@
 import type { SimulationNodeDatum, SimulationLinkDatum } from "d3";
 import type { EdgeRelationKind } from "./edge-relations";
 import type { ElementMetadata } from "./element-metadata";
+import type { ElementSpec } from "./element-spec";
 import type { NotationId } from "./notations";
 import { z } from "zod";
 
@@ -75,6 +76,13 @@ export interface GraphNode extends SimulationNodeDatum {
    */
   metadata?: ElementMetadata[];
   /**
+   * Especificación del elemento: qué debe hacer y cómo se sabe que quedó bien
+   * (historias de usuario, requisitos, criterios de éxito). Ver `element-spec.ts`.
+   * Ausente mientras nadie escriba nada: una spec vacía NO se persiste, así los
+   * proyectos existentes no cambian de forma al abrir la ficha.
+   */
+  spec?: ElementSpec;
+  /**
    * Id de la vista embebida (subproceso). Si está presente, el nodo actúa como
    * un "call activity" BPMN: al abrirlo se entra a esa vista para dar profundidad.
    */
@@ -144,6 +152,8 @@ export interface Agregado {
   borderColor?: string;
   /** Referencias y datos externos del contenedor (ver `GraphNode.metadata`). */
   metadata?: ElementMetadata[];
+  /** Especificación del contenedor (ver `GraphNode.spec`). */
+  spec?: ElementSpec;
   /**
    * Estado del contenedor frente a lo que ya existe (mismo vocabulario que
    * `GraphNode.estado_comparativo`). Distingue documentar lo que hay de diseñar

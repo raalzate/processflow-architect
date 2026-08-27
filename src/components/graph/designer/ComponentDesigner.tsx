@@ -99,6 +99,7 @@ import {
   suggestNameTask,
   suggestTagsTask,
   suggestNextTask,
+  suggestSpecTask,
 } from "@/lib/ai/tasks";
 import {
   getNotation,
@@ -163,9 +164,13 @@ import { Minimap } from "./Minimap";
 import {
   captureRegion,
   downloadDataUrl,
+  downloadText,
   exportCanvasSvg,
   waitForFloatingLayersGone,
 } from "./export-canvas";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SpecTab } from "./SpecTab";
+import { isSpecEmpty, type ElementSpec } from "@/lib/element-spec";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -532,8 +537,17 @@ const EditNodeDialog: React.FC<{
 }> = ({ node, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, onClose, onSave, onCreateNext }) => {
   const [draft, setDraft] = useState<DesignerNode | null>(null);
   const { run, busy } = useAi();
+  const { toast } = useToast();
   // Campo cuya sugerencia se está ejecutando: sólo ESE botón muestra el spinner.
   const [busyField, setBusyField] = useState<string | null>(null);
+  // Tab visible. Vive FUERA del borrador a propósito: al saltar de un elemento
+  // a otro sin cerrar la ficha se sigue viendo el mismo tab (si se reiniciara,
+  // revisar la spec de cinco cajas obligaría a volver a entrar cinco veces).
+  const [tab, setTab] = useState<"elemento" | "spec">("elemento");
+  // Borrador de spec propuesto por la IA, en espera de «Aplicar»/«Descartar».
+  // Nunca se escribe solo: pisar lo que el usuario redactó a mano sería el peor
+  // resultado posible de un botón de sugerencia.
+  const [specPropuesta, setSpecPropuesta] = useState<ElementSpec | null>(null);
   // AUTOGUARDADO: la ficha no tiene "Guardar". Cada cambio se escribe solo con
   // un rebote de 400 ms (sin él, el historial se llenaría con una entrada por
   // tecla) y lo pendiente se vacía al cerrar o al saltar a otro elemento. La
@@ -640,6 +654,33 @@ const EditNodeDialog: React.FC<{
       }
     });
 
+  /**
+   * Pide un borrador de especificación. Si la ficha no tiene spec escrita se
+   * aplica directo; si tiene, queda como PROPUESTA y decide el usuario (FR-024).
+   * Un fallo avisa y no toca nada de lo escrito (FR-026).
+   */
+  const suggestSpec = () =>
+    withField("spec", async () => {
+      const spec = await run(suggestSpecTask, {
+        tipo: draft.tipo_elemento,
+        nombre: draft.nombre,
+        descripcion: draft.descripcion,
+        referencia,
+        notation,
+      });
+      if (!spec) {
+        toast({
+          title: "Sin borrador",
+          description:
+            "La IA no devolvió una especificación utilizable. Lo que escribiste sigue intacto.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (isSpecEmpty(draft.spec)) setDraft((d) => (d ? { ...d, spec } : d));
+      else setSpecPropuesta(spec);
+    });
+
   // Botón "Sugerir" reutilizable (IA local). Sólo gira el del campo activo; los
   // demás quedan deshabilitados mientras corre una sugerencia.
   const SugBtn = ({ field, onClick, disabled }: { field: string; onClick: () => void; disabled?: boolean }) => (
@@ -690,7 +731,24 @@ const EditNodeDialog: React.FC<{
               <span className="sr-only">Cerrar</span>
             </DrawerPrimitive.Close>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* Dos tabs: la caja (qué es) y su especificación (qué debe hacer). El
+              pie —Siguiente paso · Cerrar— queda FUERA: aplica a las dos. */}
+          <Tabs
+            value={tab}
+            onValueChange={(v) => setTab(v as "elemento" | "spec")}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <TabsList className="mx-4 mt-3 grid w-auto grid-cols-2">
+              <TabsTrigger value="elemento">Elemento</TabsTrigger>
+              <TabsTrigger value="spec">
+                Spec
+                {/* Punto: la caja ya tiene contrato escrito. */}
+                {!isSpecEmpty(draft.spec) && (
+                  <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
+                )}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="elemento" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">
             <div className="space-y-4">
             {/* Columna izquierda: identidad */}
             <div className="space-y-4">
@@ -850,7 +908,39 @@ const EditNodeDialog: React.FC<{
               </Button>
             )}
           </div>
-        </div>
+            </TabsContent>
+            <TabsContent value="spec" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">
+              <SpecTab
+                value={draft.spec}
+                onChange={(spec) => setDraft((d) => (d ? { ...d, spec } : d))}
+                elementName={draft.nombre}
+                suggestButton={
+                  <SugBtn field="spec" onClick={suggestSpec} disabled={!draft.descripcion?.trim()} />
+                }
+                propuesta={specPropuesta}
+                onAplicarPropuesta={() => {
+                  setDraft((d) => (d && specPropuesta ? { ...d, spec: specPropuesta } : d));
+                  setSpecPropuesta(null);
+                }}
+                onDescartarPropuesta={() => setSpecPropuesta(null)}
+                onCopiar={async (markdown) => {
+                  try {
+                    await navigator.clipboard.writeText(markdown);
+                    toast({ title: "Copiado", description: "La especificación está en el portapapeles." });
+                  } catch {
+                    toast({
+                      title: "No se pudo copiar",
+                      description: "El portapapeles no está disponible; exportá el .md.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                onExportar={(markdown, filename) => {
+                  downloadText(markdown, filename, "text/markdown;charset=utf-8");
+                }}
+              />
+            </TabsContent>
+          </Tabs>
           <div className="flex items-center justify-between gap-2 border-t p-4">
             <Button
               type="button"
