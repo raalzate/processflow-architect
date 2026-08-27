@@ -15,6 +15,7 @@ import {
   type GraphData,
   type Agregado,
 } from "@/lib/types";
+import type { ElementMetadata } from "@/lib/element-metadata";
 
 // -----------------------------------------------------------------------------
 // Helpers para construir fixtures válidos a partir de los tipos exportados.
@@ -1041,10 +1042,11 @@ describe("notación en el round-trip", () => {
 });
 
 describe("metadatos de la caja: ida y vuelta", () => {
-  const meta = [
-    { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc" },
-    { clave: "wiki", valor: "Dominio Pagos", url: "https://wiki/pagos" },
-    { clave: "owner", valor: "Equipo Pagos" },
+  // El tipo viaja con el metadato (#186); el heredado con url es de tipo `url`.
+  const meta: ElementMetadata[] = [
+    { clave: "repo", valor: "acme/pagos-svc", url: "https://github.com/acme/pagos-svc", tipo: "url" },
+    { clave: "wiki", valor: "Dominio Pagos", url: "https://wiki/pagos", tipo: "url" },
+    { clave: "owner", valor: "Equipo Pagos", tipo: "texto" },
   ];
 
   it("sobreviven el ciclo lienzo → GraphData → lienzo, en nodo Y en contenedor", () => {
@@ -1112,7 +1114,7 @@ describe("metadatos de la caja: ida y vuelta", () => {
       },
     };
     expect(graphDataToCanvas(data).nodes.get("cmd")!.metadata).toEqual([
-      { clave: "repo", valor: "acme/pagos-svc" },
+      { clave: "repo", valor: "acme/pagos-svc", tipo: "texto" },
     ]);
   });
 });

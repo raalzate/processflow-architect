@@ -33,6 +33,7 @@ import {
   CopyPlus,
   BoxSelect,
   ChevronUp,
+  ChevronsLeftRight,
   ChevronDown,
   Link2,
   SlidersHorizontal,
@@ -65,14 +66,25 @@ import * as DrawerPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
 import {
   MAX_METADATA_POR_CAJA,
-  esEnlaceExterno,
+  METADATA_TIPOS,
+  enlaceDe,
   moverMetadata,
   quitarMetadata,
   upsertMetadata,
   validarMetadata,
+  validarValorSegunTipo,
   type ElementMetadata,
+  type MetadataTipo,
 } from "@/lib/element-metadata";
 import { hasPlatformModifier, modifierLabel } from "@/lib/platform";
+import {
+  INSPECTOR_WIDTHS,
+  INSPECTOR_WIDTH_KEY,
+  inspectorMaxWidth,
+  nextInspectorWidth,
+  readInspectorWidth,
+  type InspectorWidthId,
+} from "@/lib/panel-size";
 import {
   EDGE_RELATIONS,
   EDGE_RELATION_LIST,
@@ -324,6 +336,140 @@ const TagsField: React.FC<{
  * agente y termina en un `href`, así que `javascript:`/`data:`/`file://` se
  * muestran como texto y nunca como enlace.
  */
+/**
+ * Una FILA de la tabla de referencias. Tiene texto propio a propósito: si el
+ * valor se guardara en cada tecla, un `numero` a medio escribir («2» camino a
+ * «24») o una url incompleta se rechazarían mientras se teclea y el campo
+ * quedaría pegado. Acá se escribe libre, la fila muestra por qué no vale, y el
+ * modelo sólo recibe el último valor VÁLIDO — que es también lo que sobrevive a
+ * recargar, porque `normalizarLista` descarta al abrir lo que no cumple su tipo.
+ */
+const MetadataRow: React.FC<{
+  m: ElementMetadata;
+  indice: number;
+  total: number;
+  onPatch: (parche: Partial<ElementMetadata>) => void;
+  onMover: (desde: number, hasta: number) => void;
+  onQuitar: () => void;
+}> = ({ m, indice, total, onPatch, onMover, onQuitar }) => {
+  const [texto, setTexto] = useState(m.valor);
+  // Cambio venido de AFUERA (otro elemento, el agente): se adopta.
+  useEffect(() => setTexto(m.valor), [m.valor, m.clave]);
+  const tipo: MetadataTipo = m.tipo ?? "texto";
+  const problema = validarValorSegunTipo(texto, tipo);
+  const enlace = enlaceDe({ ...m, valor: texto });
+
+  // Un booleano no se teclea: la casilla es el único valor posible y así no hay
+  // forma de escribir «quizás».
+  const esBool = tipo === "booleano";
+  const marcado = ["true", "sí", "si"].includes(texto.trim().toLowerCase());
+
+  const escribir = (v: string) => {
+    setTexto(v);
+    if (!validarValorSegunTipo(v, tipo)) onPatch({ valor: v });
+  };
+
+  return (
+    <>
+      <tr className="border-t align-top">
+        <td className="p-0">
+          <Input
+            value={m.clave}
+            onChange={(e) => onPatch({ clave: e.target.value })}
+            className="h-8 rounded-none border-0 bg-transparent px-2 text-xs focus-visible:ring-1"
+            placeholder="propiedad"
+          />
+        </td>
+        <td className="w-24 border-l p-0">
+          <Select value={tipo} onValueChange={(v) => onPatch({ tipo: v as MetadataTipo })}>
+            <SelectTrigger className="h-8 rounded-none border-0 bg-transparent px-2 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {METADATA_TIPOS.map((t) => (
+                <SelectItem key={t.value} value={t.value} className="text-xs">
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </td>
+        <td className="border-l p-0">
+          <div className="flex items-center gap-1 px-1">
+            {esBool ? (
+              <input
+                type="checkbox"
+                checked={marcado}
+                onChange={(e) => escribir(e.target.checked ? "true" : "false")}
+                className="mx-1 h-3.5 w-3.5 accent-primary"
+                title={marcado ? "Sí" : "No"}
+              />
+            ) : (
+              <Input
+                value={texto}
+                onChange={(e) => escribir(e.target.value)}
+                type={tipo === "fecha" ? "date" : "text"}
+                className="h-8 rounded-none border-0 bg-transparent px-1 text-xs focus-visible:ring-1"
+                placeholder={tipo === "url" ? "https://…" : tipo === "numero" ? "24" : "valor"}
+              />
+            )}
+            {/* El enlace se ABRE desde acá; la celda sigue siendo editable. La
+                frontera es `enlaceDe`: sólo http(s) llega a un href. */}
+            {enlace && (
+              <a
+                href={enlace}
+                target="_blank"
+                rel="noreferrer"
+                title={enlace}
+                className="shrink-0 rounded p-1 text-primary hover:bg-primary/10"
+              >
+                <Link2 className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+        </td>
+        <td className="w-[4.5rem] border-l p-0">
+          <div className="flex items-center justify-end gap-0.5 px-1">
+            <button
+              type="button"
+              title="Subir"
+              disabled={indice === 0}
+              onClick={() => onMover(indice, indice - 1)}
+              className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+            >
+              <ChevronUp className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              title="Bajar"
+              disabled={indice === total - 1}
+              onClick={() => onMover(indice, indice + 1)}
+              className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+            >
+              <ChevronDown className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              title={`Quitar "${m.clave}"`}
+              onClick={onQuitar}
+              className="rounded p-1 text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        </td>
+      </tr>
+      {problema && (
+        <tr>
+          <td colSpan={4} className="border-t bg-destructive/5 px-2 py-1 text-2xs text-destructive">
+            {problema}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+};
+
 const MetadataField: React.FC<{
   value?: ElementMetadata[];
   onChange: (lista: ElementMetadata[] | undefined) => void;
@@ -331,11 +477,11 @@ const MetadataField: React.FC<{
   const lista = value ?? [];
   const [clave, setClave] = useState("");
   const [valor, setValor] = useState("");
-  const [url, setUrl] = useState("");
+  const [tipo, setTipo] = useState<MetadataTipo>("texto");
   const [error, setError] = useState<string | null>(null);
 
   const agregar = () => {
-    const entrada: ElementMetadata = { clave, valor, ...(url.trim() ? { url: url.trim() } : {}) };
+    const entrada: ElementMetadata = { clave, valor, tipo };
     const problema = validarMetadata(entrada);
     if (problema) return setError(problema);
     try {
@@ -345,8 +491,18 @@ const MetadataField: React.FC<{
     }
     setClave("");
     setValor("");
-    setUrl("");
+    setTipo("texto");
     setError(null);
+  };
+
+  /**
+   * Cambio de una fila. Se reescribe EN SU POSICIÓN (no `upsertMetadata`, que
+   * cotejaría por clave y movería la fila al renombrarla) y una clave repetida
+   * se marca en vez de fusionar filas a mitad del tecleo.
+   */
+  const parchear = (i: number, parche: Partial<ElementMetadata>) => {
+    const siguiente = lista.map((m, j) => (j === i ? { ...m, ...parche } : m));
+    onChange(siguiente);
   };
 
   const quitar = (k: string) => {
@@ -363,99 +519,84 @@ const MetadataField: React.FC<{
         </span>
       </div>
       <p className="mb-1.5 mt-0.5 text-xs text-muted-foreground">
-        Dónde vive esto: repositorio, wiki, tablero, dueño. Las urls http(s) se abren en el
+        Propiedades de la caja: dónde vive (repo, wiki, tablero, dueño) y los datos que la
+        enriquecen. El tipo decide cómo se valida el valor; las urls http(s) se abren en el
         navegador.
       </p>
 
-      {lista.length > 0 && (
-        <ul className="mb-2 space-y-1">
-          {lista.map((m, i) => (
-            <li
-              key={`${m.clave}-${i}`}
-              className="flex items-start gap-2 rounded-md border bg-muted/40 px-2 py-1.5"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-2xs uppercase tracking-wide text-muted-foreground">{m.clave}</div>
-                {esEnlaceExterno(m.url) ? (
-                  <a
-                    href={m.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    title={m.url}
-                    className="inline-flex max-w-full items-center gap-1 truncate text-xs text-primary hover:underline"
-                  >
-                    <Link2 className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{m.valor}</span>
-                  </a>
-                ) : (
-                  <div className="truncate text-xs" title={m.url ? `${m.valor} — ${m.url}` : m.valor}>
-                    {m.valor}
-                    {/* Una url que no es http(s) se muestra, pero no se puede clicar. */}
-                    {m.url && <span className="ml-1 text-muted-foreground">({m.url})</span>}
-                  </div>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-0.5">
-                <button
-                  type="button"
-                  title="Subir"
-                  disabled={i === 0}
-                  onClick={() => onChange(moverMetadata(lista, i, i - 1))}
-                  className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                >
-                  <ChevronUp className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  title="Bajar"
-                  disabled={i === lista.length - 1}
-                  onClick={() => onChange(moverMetadata(lista, i, i + 1))}
-                  className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                >
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  title={`Quitar "${m.clave}"`}
-                  onClick={() => quitar(m.clave)}
-                  className="rounded p-1 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Input
-          id="meta-clave"
-          value={clave}
-          onChange={(e) => setClave(e.target.value)}
-          placeholder="repo"
-          className="h-8 w-24"
-        />
-        <Input
-          value={valor}
-          onChange={(e) => setValor(e.target.value)}
-          placeholder="acme/pagos-svc"
-          className="h-8 flex-1"
-        />
-        <Input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://github.com/acme/pagos-svc"
-          className="h-8 flex-1"
-        />
-        <IconAction
-          type="button"
-          variant="outline"
-          className="h-8 w-8"
-          onClick={agregar}
-          label={accion("agregar", "metadato")}
-          icon={<Plus className="h-3.5 w-3.5" />}
-        />
+      <div className="overflow-hidden rounded-md border">
+        <table className="w-full table-fixed border-collapse text-xs">
+          <thead>
+            <tr className="bg-muted/60 text-left text-2xs uppercase tracking-wide text-muted-foreground">
+              <th className="px-2 py-1 font-medium">Propiedad</th>
+              <th className="w-24 border-l px-2 py-1 font-medium">Tipo</th>
+              <th className="border-l px-2 py-1 font-medium">Valor</th>
+              <th className="w-[4.5rem] border-l px-2 py-1" />
+            </tr>
+          </thead>
+          <tbody>
+            {lista.map((m, i) => (
+              <MetadataRow
+                key={`${m.clave}-${i}`}
+                m={m}
+                indice={i}
+                total={lista.length}
+                onPatch={(parche) => parchear(i, parche)}
+                onMover={(desde, hasta) => onChange(moverMetadata(lista, desde, hasta))}
+                onQuitar={() => quitar(m.clave)}
+              />
+            ))}
+            {/* Fila de alta: siempre visible al pie, como en un panel de propiedades. */}
+            <tr className="border-t bg-muted/20 align-top">
+              <td className="p-0">
+                <Input
+                  id="meta-clave"
+                  value={clave}
+                  onChange={(e) => setClave(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && agregar()}
+                  placeholder="repo"
+                  className="h-8 rounded-none border-0 bg-transparent px-2 text-xs focus-visible:ring-1"
+                />
+              </td>
+              <td className="w-24 border-l p-0">
+                <Select value={tipo} onValueChange={(v) => setTipo(v as MetadataTipo)}>
+                  <SelectTrigger className="h-8 rounded-none border-0 bg-transparent px-2 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {METADATA_TIPOS.map((t) => (
+                      <SelectItem key={t.value} value={t.value} className="text-xs">
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </td>
+              <td className="border-l p-0">
+                <Input
+                  value={valor}
+                  onChange={(e) => setValor(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && agregar()}
+                  type={tipo === "fecha" ? "date" : "text"}
+                  placeholder={tipo === "url" ? "https://github.com/acme/pagos-svc" : "acme/pagos-svc"}
+                  className="h-8 rounded-none border-0 bg-transparent px-2 text-xs focus-visible:ring-1"
+                />
+              </td>
+              <td className="w-[4.5rem] border-l p-0">
+                <div className="flex justify-end px-1">
+                  <IconAction
+                    type="button"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={agregar}
+                    label={accion("agregar", "metadato")}
+                    icon={<Plus className="h-3.5 w-3.5" />}
+                  />
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </div>
@@ -548,6 +689,24 @@ const EditNodeDialog: React.FC<{
   // Nunca se escribe solo: pisar lo que el usuario redactó a mano sería el peor
   // resultado posible de un botón de sugerencia.
   const [specPropuesta, setSpecPropuesta] = useState<ElementSpec | null>(null);
+  /**
+   * Ancho de la ficha (#187). Arranca en lo que el usuario dejó elegido: una
+   * ficha que vuelve a los 448 px en cada sesión obliga a re-ensancharla cada
+   * vez que se trabaja una spec. El catálogo y los topes están en `panel-size.ts`.
+   */
+  const [ancho, setAncho] = useState<InspectorWidthId>("normal");
+  useEffect(() => {
+    setAncho(readInspectorWidth(window.localStorage.getItem(INSPECTOR_WIDTH_KEY)));
+  }, []);
+  const ciclarAncho = () => {
+    const siguiente = nextInspectorWidth(ancho);
+    setAncho(siguiente);
+    try {
+      window.localStorage.setItem(INSPECTOR_WIDTH_KEY, siguiente);
+    } catch {
+      // Sin localStorage (modo privado) el ancho vale para esta sesión y basta.
+    }
+  };
   // AUTOGUARDADO: la ficha no tiene "Guardar". Cada cambio se escribe solo con
   // un rebote de 400 ms (sin él, el historial se llenaría con una entrada por
   // tecla) y lo pendiente se vacía al cerrar o al saltar a otro elemento. La
@@ -710,7 +869,10 @@ const EditNodeDialog: React.FC<{
         <DrawerPrimitive.Content
           onInteractOutside={(e) => e.preventDefault()}
           onOpenAutoFocus={(e) => e.preventDefault()}
-          className="fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l bg-background shadow-xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
+          // El ancho lo decide `panel-size.ts`; acá sólo se aplica (por eso va
+          // en `style` y no como clase: `55vw` no es una clase de Tailwind).
+          style={{ maxWidth: inspectorMaxWidth(ancho) }}
+          className="fixed inset-y-0 right-0 z-50 flex h-full w-full flex-col border-l bg-background shadow-xl outline-none transition-[max-width] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
         >
           <div className="flex items-start justify-between border-b p-4">
             <div className="space-y-1">
@@ -723,13 +885,26 @@ const EditNodeDialog: React.FC<{
                 Los cambios se guardan solos; cerrá cuando termines.
               </DrawerPrimitive.Description>
             </div>
-            <DrawerPrimitive.Close
-              className="rounded-sm opacity-70 transition-opacity hover:opacity-100"
-              title="Cerrar (Esc)"
-            >
-              <X className="h-4 w-4" />
-              <span className="sr-only">Cerrar</span>
-            </DrawerPrimitive.Close>
+            <div className="flex shrink-0 items-center gap-1">
+              {/* Ensanchar: el rótulo dice a qué ancho se PASA, no en cuál se está. */}
+              <IconAction
+                type="button"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={ciclarAncho}
+                label={`Ancho de la ficha: pasar a ${
+                  INSPECTOR_WIDTHS.find((w) => w.id === nextInspectorWidth(ancho))?.label
+                }`}
+                icon={<ChevronsLeftRight className="h-4 w-4" />}
+              />
+              <DrawerPrimitive.Close
+                className="rounded-sm opacity-70 transition-opacity hover:opacity-100"
+                title="Cerrar (Esc)"
+              >
+                <X className="h-4 w-4" />
+                <span className="sr-only">Cerrar</span>
+              </DrawerPrimitive.Close>
+            </div>
           </div>
           {/* Dos tabs: la caja (qué es) y su especificación (qué debe hacer). El
               pie —Siguiente paso · Cerrar— queda FUERA: aplica a las dos. */}
@@ -749,7 +924,9 @@ const EditNodeDialog: React.FC<{
               </TabsTrigger>
             </TabsList>
             <TabsContent value="elemento" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">
-            <div className="space-y-4">
+            {/* Ensanchada, la ficha usa las DOS columnas que este layout ya tenía
+                pensadas (identidad · clasificación); en Normal siguen apiladas. */}
+            <div className={cn("space-y-4", ancho !== "normal" && "grid grid-cols-2 gap-4 space-y-0")}>
             {/* Columna izquierda: identidad */}
             <div className="space-y-4">
           <div>
