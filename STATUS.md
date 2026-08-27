@@ -8,8 +8,8 @@ lo que se supone va en "deuda conocida".
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
 - **Versión publicada:** 0.6.6 — sigue siendo la última **publicada** (Latest)
-- **Versión en el repo:** 0.8.0 — `v0.8.0` etiquetada; el empaquetado lo hace `release-build.yml` y deja el release en **BORRADOR** a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v0.8.0 --draft=false`), y hasta que ocurra esta línea NO cambia. `v0.7.0` sigue en borrador con sus tres instaladores adjuntos y queda superada por 0.8.0
-- **Sin verificar:** el botón «Sugerir» del tab Spec con el motor **local** — Gemma 4 arranca en WebGPU pero no devolvió borrador en ~7 min de espera, y el resto del tab funciona sin IA (#175). La barra de título propia sólo se ejercitó en **macOS**: en Windows y Linux los controles de ventana son los nativos del sistema (overlay), pero el arrastre y el botón de menú no los vio nadie
+- **Versión en el repo:** 0.8.1 — `v0.8.1` etiquetada; el empaquetado lo hace `release-build.yml` y deja el release en **BORRADOR** a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v0.8.1 --draft=false`), y hasta que ocurra esta línea NO cambia. `v0.7.0` y `v0.8.0` siguen en borrador y quedan superadas por 0.8.1
+- **Sin verificar:** el arreglo de arranque sin WebGPU (0.8.1) **en la máquina Windows que reportó el problema** — se verificó por pruebas, typecheck y build, no ahí (#202 · #203). El botón «Sugerir» del tab Spec con el motor **local** — Gemma 4 arranca en WebGPU pero no devolvió borrador en ~7 min de espera, y el resto del tab funciona sin IA (#175). La barra de título propia sólo se ejercitó en **macOS**: en Windows y Linux los controles de ventana son los nativos del sistema (overlay), pero el arrastre y el botón de menú no los vio nadie
 
 ## Señales
 
