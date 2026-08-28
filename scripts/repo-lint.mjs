@@ -22,7 +22,8 @@
  *   DEPS      sin SDKs de nube en package.json (las llamadas van con fetch desde el main).
  *   RELEASE   la versión de package.json tiene sus notas en docs/releases/<versión>.md.
  *   IATASK    el router y los proveedores no conocen tareas de IA por nombre (P5).
- *   RELEASEJOB  el job que publica el release baja los artefactos DESPUÉS del checkout y falla si no hay binarios.
+ *   RELEASEJOB  el job que publica el release baja los artefactos DESPUÉS del checkout, falla si no hay binarios
+ *               y adjunta los metadatos del updater (`latest*.yml`).
  *   WEBGPU    main.ts conserva los switches de WebGPU y no reactiva disableHardwareAcceleration.
  */
 import fs from "node:fs";
@@ -425,6 +426,25 @@ function checkReleaseJob(contenidoDado = null) {
       "`actions/checkout` corre DESPUÉS de `download-artifact` y limpia el workspace: borra los instaladores bajados y el release se publica vacío. Poné el checkout primero.",
     );
   }
+  // Los metadatos del updater tienen que viajar con los instaladores. Sin
+  // `latest*.yml` el botón «Actualizar» de la app recibe un 404 y el sistema de
+  // actualización no existe, aunque el release tenga los tres instaladores y se
+  // publique en verde (#208). Se exige en los DOS sitios: el artefacto de la
+  // matriz (si no viajan, no hay nada que subir) y la lista del publicador.
+  for (const [aguja, donde] of [
+    ["dist/latest*.yml", "el artefacto de la matriz"],
+    ["installers/latest*.yml", "la lista de archivos del publicador"],
+  ]) {
+    if (!content.includes(aguja)) {
+      fail(
+        file,
+        lineOf(content, publica),
+        "RELEASEJOB",
+        `falta \`${aguja}\` en ${donde}: sin los metadatos de actualización (\`latest*.yml\`) el updater de la app no encuentra la versión nueva y el botón «Actualizar» falla con 404.`,
+      );
+    }
+  }
+
   // Sólo la CLAVE real, no una mención en un comentario: la regla se mordía a sí
   // misma cuando el comentario de al lado explicaba por qué el `false` está mal.
   const idxLaxo = content.search(/^\s*fail_on_unmatched_files:\s*false\b/m);

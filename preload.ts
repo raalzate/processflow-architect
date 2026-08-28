@@ -106,6 +106,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteAiKey: (provider: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('ai-key-delete', provider),
   getAiKeyStatus: (): Promise<Record<string, boolean>> => ipcRenderer.invoke('ai-key-status'),
+  // --- Actualizaciones de la app (#208) ---
+  /** Último estado conocido del updater (sin salir a la red). */
+  getUpdateStatus: () => ipcRenderer.invoke('update-status'),
+  /** Busca una versión nueva publicada. */
+  checkForUpdates: () => ipcRenderer.invoke('update-check'),
+  /** Descarga la versión nueva (en macOS abre la página del release). */
+  downloadUpdate: () => ipcRenderer.invoke('update-download'),
+  /** Reinicia para aplicar la actualización ya descargada. */
+  installUpdate: () => ipcRenderer.invoke('update-install'),
+  /** Abre la página del release en el navegador del sistema. */
+  openReleasePage: () => ipcRenderer.invoke('update-open-release'),
+  /** Escucha los cambios de estado del updater. Devuelve la función para dejar de escuchar. */
+  onUpdateStatus: (cb: (estado: unknown) => void) => {
+    const handler = (_e: unknown, estado: unknown) => cb(estado);
+    ipcRenderer.on('update-status', handler as any);
+    return () => ipcRenderer.removeListener('update-status', handler as any);
+  },
   /** Estado de la GPU tal como lo ve Chromium (lo mismo que `chrome://gpu`). */
   getGpuFeatureStatus: (): Promise<Record<string, string>> => ipcRenderer.invoke('gpu-feature-status'),
   remoteGenerate: (args: {

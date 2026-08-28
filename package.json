@@ -66,6 +66,7 @@
     "d3": "^7.9.0",
     "dotenv": "^16.5.0",
     "electron-serve": "^3.0.0",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^0.475.0",
     "md-to-pdf": "^5.2.4",
     "mermaid": "^11.15.0",
