@@ -1,5 +1,7 @@
 # ADR 0002 — Profundidad por VISTAS, no por contenedores anidados
 
+Issue: #225
+
 - **Fecha:** 2026-08-25
 - **Estado:** aceptado
 - **Contexto previo:** [ADR 0001](0001-arnes-del-agente.md) · [arquitectura MCP](../architecture/mcp.md) · issue #144 (punto E)

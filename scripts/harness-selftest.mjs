@@ -413,6 +413,24 @@ frenoDelLint(
   "PLATAFORMA",
 );
 
+// TILES: el registro de tiles describía un package.json viejo (13 huérfanos, 30 deps
+// sin tile — @litert-lm/core entre ellas) y nada moría al divergir: el agente escribía
+// esas APIs de memoria. Las dos direcciones tienen que morder.
+frenoDelLint(
+  "repo-lint: detecta un tile huérfano de una dep removida",
+  config.tiles.registry,
+  '{"name":"project","dependencies":{"tessl/npm-left-pad":{"version":"1.0.0"}}}',
+  "TILES",
+  ["left-pad"],
+);
+frenoDelLint(
+  "repo-lint: detecta una dep sin tile ni deuda declarada",
+  config.tiles.registry,
+  '{"name":"project","dependencies":{}}',
+  "TILES",
+  ["react"],
+);
+
 // Acá vivía el freno de `specs/`: un cebo que exigía rojo si aparecía un spec dentro
 // del repo. Se fue con el directorio (#156). La ruta SDD en Issues es hoy convención
 // escrita en docs/harness/sdd.md, sin mecanismo que la haga cumplir.
