@@ -35,6 +35,7 @@ lo que se supone va en "deuda conocida".
 | Freno de numeración SDD | manual: `node scripts/sdd-github.mjs new <NNN-…>` con un NNN usado | verde — sale 1 nombrando el primer libre; sin `NNN` en el nombre tampoco arranca (#172) |
 | Link-check de docs | `node scripts/docs-linkcheck.mjs` | verde |
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
+| Registro de tiles al día | `node scripts/repo-lint.mjs` (regla TILES) | verde — `tessl.json` describe las deps reales en las dos direcciones: los 13 tiles huérfanos (recharts, webpack…) se quitaron con `tessl uninstall`; las 30 deps sin tile de la auditoría 2026-08-28 son **deuda declarada** en `tiles.allow` (sólo baja; primeros candidatos: `@litert-lm/core`, `electron-updater`, `@modelcontextprotocol/sdk`) |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
 | Typecheck | `npm run typecheck` | verde (renderer + electron) |
 | Tests | `npm run test:coverage` | verde — 82 archivos, 1332 pruebas, **offline** (`vitest.setup.ts` cierra la red) |

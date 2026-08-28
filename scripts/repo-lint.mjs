@@ -20,6 +20,8 @@
  *   ENRUTADO  el enrutado efectivo de una arista se resuelve con `routingOf`, sin fallback a mano.
  *   PLATAFORMA  detectar el sistema operativo sólo en src/lib/platform.ts (y sin API deprecada).
  *   DEPS      sin SDKs de nube en package.json (las llamadas van con fetch desde el main).
+ *   TILES     el registro de tiles (tessl.json) describe las deps reales: ni tiles huérfanos,
+ *             ni dep sin tile fuera de la deuda declarada (`tiles.allow`, que sólo baja).
  *   RELEASE   la versión de package.json tiene sus notas en docs/releases/<versión>.md.
  *   IATASK    el router y los proveedores no conocen tareas de IA por nombre (P5).
  *   RELEASEJOB  el job que publica el release baja los artefactos DESPUÉS del checkout, falla si no hay binarios
@@ -314,6 +316,72 @@ function checkDeps() {
 }
 
 /**
+ * TILES — el registro de tiles describe las dependencias REALES.
+ *
+ * La auditoría del arnés (2026-08-28) encontró `tessl.json` describiendo un
+ * package.json viejo: 13 tiles de deps ya removidas (recharts, webpack, date-fns…)
+ * y 30 deps sin tile — entre ellas las tres de API más exótica, donde el agente
+ * escribe de memoria: @litert-lm/core, electron-updater y @modelcontextprotocol/sdk.
+ * Nada moría al divergir: las deps entran y salen por npm sin tocar el registro.
+ *
+ * Dos direcciones verificables: un tile huérfano documenta una API que ya no está
+ * (y el agente puede citarla igual), y una dep sin tile ni entrada en la deuda
+ * declarada (`tiles.allow`) entra sin fuente registrada.
+ *
+ * `contenidoDado` existe para el self-test: prueba el freno con un registro
+ * inventado sin tocar tessl.json.
+ */
+function checkTiles(contenidoDado = null) {
+  const file = config.tiles.registry;
+  let content = contenidoDado;
+  if (content === null) {
+    try {
+      content = read(file);
+    } catch {
+      fail(file, 1, "TILES", "no existe el registro de tiles declarado en la config (`tessl install` lo crea).");
+      return;
+    }
+  }
+  let registro;
+  try {
+    registro = JSON.parse(content);
+  } catch {
+    fail(file, 1, "TILES", "el registro de tiles no es JSON válido.");
+    return;
+  }
+  const pkg = JSON.parse(read("package.json"));
+  const deps = new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})]);
+  const prefix = config.tiles.prefix;
+  const tiles = Object.keys(registro.dependencies ?? {}).filter((t) => t.startsWith(prefix));
+  // `tessl/npm-scope--pkg` → `@scope/pkg`; sin `--` es un paquete sin scope.
+  const paquete = (tile) => {
+    const crudo = tile.slice(prefix.length);
+    return crudo.includes("--") ? `@${crudo.replace("--", "/")}` : crudo;
+  };
+  const conTile = new Set(tiles.map(paquete));
+  for (const tile of tiles) {
+    if (!deps.has(paquete(tile))) {
+      fail(
+        file,
+        lineOf(content, content.indexOf(tile)),
+        "TILES",
+        `\`${tile}\` es un tile huérfano: \`${paquete(tile)}\` ya no está en package.json y el agente puede citar su documentación igual. Quitalo con \`tessl uninstall ${tile}\`.`,
+      );
+    }
+  }
+  for (const dep of [...deps].sort()) {
+    if (!conTile.has(dep) && !config.tiles.allow.includes(dep)) {
+      fail(
+        "package.json",
+        1,
+        "TILES",
+        `\`${dep}\` no tiene tile en \`${file}\`: el agente escribe su API de memoria (buenas-practicas §6). Instalalo (\`tessl search ${dep}\` → \`tessl install …\`) o declaralo como deuda en \`tiles.allow\` justificándolo en STATUS.md.`,
+      );
+    }
+  }
+}
+
+/**
  * RELEASE — la versión que se va a empaquetar tiene sus notas EN EL REPO.
  *
  * `release-build.yml` usa `docs/releases/<versión>.md` como cuerpo del release
@@ -494,13 +562,15 @@ if (releaseVersion) {
   checkRelease(releaseVersion);
 } else if (single) {
   if (/\.(ts|tsx)$/.test(single)) checkFile(single, contenidoStdin);
-  if (single === "package.json") { checkDeps(); checkRelease(); }
+  if (single === "package.json") { checkDeps(); checkRelease(); checkTiles(); }
+  if (single === config.tiles.registry) checkTiles(contenidoStdin);
   if (single === config.webgpu.file) checkWebgpu();
   if (single === config.incidents.file) checkIncidents(contenidoStdin);
   if (single === ".github/workflows/release-build.yml") checkReleaseJob(contenidoStdin);
 } else {
   for (const relPath of [...sourceFiles("src"), ...sourceFiles("main"), ...sourceFiles("mcp-server")]) checkFile(relPath);
   checkDeps();
+  checkTiles();
   checkRelease();
   checkIncidents();
   checkReleaseJob();

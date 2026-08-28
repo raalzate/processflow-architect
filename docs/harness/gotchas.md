@@ -315,3 +315,26 @@ Regla:   lo que se corre para dejar libre la barra de título se **acorta** en l
 Mecanismo: `src/lib/__tests__/window-chrome.test.ts` lee `globals.css` y exige que la regla de
          `.fixed.inset-y-0` fije `top: var(--titlebar-h)` **y** `height: calc(100% -
          var(--titlebar-h))`. Quitar el descuento pone el gate en rojo.
+
+### GOTCHA: el registro de tiles describía un package.json que ya no existe
+
+Issue: #224
+
+Síntoma: la auditoría del arnés (2026-08-28) encontró `tessl.json` divergido de `package.json` en
+         las dos direcciones: 13 tiles huérfanos de deps ya removidas (recharts, webpack,
+         date-fns, react-markdown…) y 30 deps sin tile — entre ellas las tres de API más exótica,
+         exactamente donde el agente escribe de memoria: `@litert-lm/core` (el motor de IA),
+         `electron-updater` (la feature activa #208) y `@modelcontextprotocol/sdk`. Todo en verde:
+         ningún comando fallaba al divergir. Es la forma «cero fuentes registradas → el agente
+         escribe APIs de memoria» del §6 de buenas-practicas.md.
+Causa:   `tessl.json` sólo cambia cuando alguien corre `tessl install`/`uninstall`, pero las deps
+         entran y salen por `npm` sin tocarlo. Sin un freno que compare los dos archivos, el
+         registro describe el package.json de hace meses y nadie lo nota, porque los tiles no se
+         ejecutan: sólo informan (o desinforman) al agente.
+Regla:   el registro de tiles lista dependencias reales: ni tiles huérfanos, ni dep sin tile fuera
+         de la deuda declarada (`tiles.allow` en harness.config.json, que sólo baja y cuya salida
+         es `tessl search` + `tessl install`).
+Mecanismo: regla TILES de `scripts/repo-lint.mjs` (config `tiles`), en el gate y en el hook
+         PostToolUse. Las dos direcciones están probadas en el self-test con registros inventados
+         por stdin. Los 13 huérfanos se quitaron con `tessl uninstall`; las 30 deps sin tile
+         quedaron como deuda declarada en `tiles.allow`.
