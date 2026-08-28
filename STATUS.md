@@ -4,12 +4,12 @@ Lo imprime el hook `SessionStart`. Sirve para no releer el repo entero para resp
 Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verificado con un comando**;
 lo que se supone va en "deuda conocida".
 
-- **Fecha del último gate completo:** 2026-08-27
+- **Fecha del último gate completo:** 2026-08-28
 - **Rama:** `main`
 - **Veredicto:** VERDE (`npm run gate`)
 - **Versión publicada:** 0.6.6 — sigue siendo la última **publicada** (Latest)
-- **Versión en el repo:** 0.8.1 — `v0.8.1` etiquetada; el empaquetado lo hace `release-build.yml` y deja el release en **BORRADOR** a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v0.8.1 --draft=false`), y hasta que ocurra esta línea NO cambia. `v0.7.0` y `v0.8.0` siguen en borrador y quedan superadas por 0.8.1
-- **Sin verificar:** el arreglo de arranque sin WebGPU (0.8.1) **en la máquina Windows que reportó el problema** — se verificó por pruebas, typecheck y build, no ahí (#202 · #203). El botón «Sugerir» del tab Spec con el motor **local** — Gemma 4 arranca en WebGPU pero no devolvió borrador en ~7 min de espera, y el resto del tab funciona sin IA (#175). La barra de título propia sólo se ejercitó en **macOS**: en Windows y Linux los controles de ventana son los nativos del sistema (overlay), pero el arrastre y el botón de menú no los vio nadie
+- **Versión en el repo:** 0.8.2 — `v0.8.2` etiquetada; el empaquetado lo hace `release-build.yml` y deja el release en **BORRADOR** a propósito (`draft: true`): publicarlo es un paso humano (`gh release edit v0.8.2 --draft=false`), y hasta que ocurra esta línea NO cambia. `v0.7.0`, `v0.8.0` y `v0.8.1` siguen en borrador y quedan superadas por 0.8.2. **0.8.2 es la primera versión que adjunta los metadatos del updater** (`latest*.yml`): el botón «Actualizar» empieza a funcionar desde la SIGUIENTE
+- **Sin verificar:** el **ciclo completo de actualización en Windows** (#208 · T9): necesita una versión posterior a 0.8.2 publicada para probarse de punta a punta. El aspecto de las **barras de desplazamiento en Windows** (#206), que desde macOS no se puede medir. El arreglo de arranque sin WebGPU (0.8.1) **en la máquina Windows que reportó el problema** — se verificó por pruebas, typecheck y build, no ahí (#202 · #203). El botón «Sugerir» del tab Spec con el motor **local** — Gemma 4 arranca en WebGPU pero no devolvió borrador en ~7 min de espera, y el resto del tab funciona sin IA (#175). La barra de título propia sólo se ejercitó en **macOS**: en Windows y Linux los controles de ventana son los nativos del sistema (overlay), pero el arrastre y el botón de menú no los vio nadie
 
 ## Señales
 
