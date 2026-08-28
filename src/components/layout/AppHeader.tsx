@@ -83,6 +83,7 @@ import { useViews } from "@/context/ViewsContext";
 import { isChecked } from "@/lib/graph-filters";
 import { useToast } from "@/hooks/use-toast";
 import { BetaBadge } from "@/components/layout/AppCredits";
+import { buscarNodos, nodosBuscables, MIN_QUERY } from "@/lib/search-nodes";
 import { UpdateButton } from "@/components/layout/UpdateButton";
 import { parseDiagramJson } from "@/lib/import-diagram";
 import { normalizeProjectName } from "@/lib/project-rename";
@@ -756,12 +757,23 @@ const GlobalSearch: React.FC<{
   isDisabled,
   compact = false,
 }) => {
+  // Cerrado a mano: un Popover CONTROLADO sin `onOpenChange` no se cierra con
+  // Escape ni al hacer clic fuera — sólo borrando el texto (#219).
+  const [cerradoPorUsuario, setCerradoPorUsuario] = useState(false);
+  useEffect(() => setCerradoPorUsuario(false), [searchQuery]);
+
   const handleSelect = (node: GraphNode) => {
     onSelect(node);
+    setCerradoPorUsuario(true);
   };
 
+  const hayConsulta = searchQuery.trim().length >= MIN_QUERY;
+
   return (
-    <Popover open={searchQuery.length > 1 && searchResults.length > 0}>
+    <Popover
+      open={hayConsulta && !cerradoPorUsuario}
+      onOpenChange={(abierto) => !abierto && setCerradoPorUsuario(true)}
+    >
       <PopoverTrigger asChild>
         <div
           className={cn("relative", compact && "w-full max-w-[520px]")}
@@ -806,7 +818,9 @@ const GlobalSearch: React.FC<{
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="p-2 text-sm text-muted-foreground">
-          Mostrando {searchResults.length} de {searchResults.length} resultados.
+          {searchResults.length > 0
+            ? `${searchResults.length} resultado(s) en lo que estás viendo.`
+            : "Sin coincidencias en este diagrama."}
         </div>
         <ul className="max-h-80 overflow-y-auto">
           {searchResults.map((node) => {
@@ -851,7 +865,15 @@ const AppHeader: React.FC<AppHeaderProps> = ({
     setMounted(true);
   }, []);
 
-   const { setSearchQuery, searchResults, searchQuery } = useGraphContext();
+   const { setSearchQuery, searchResults, searchQuery, allNodes } = useGraphContext();
+   const { activeView } = useViews();
+   // Se busca lo que se está VIENDO: si hay una vista de grafo activa, sus nodos;
+   // si no, los del proyecto. El buscador miraba sólo el proyecto, así que
+   // trabajando sobre una vista no encontraba nada y parecía roto (#219).
+   const buscables = useMemo(() => nodosBuscables(activeView, allNodes), [activeView, allNodes]);
+   // Un solo filtro para las dos fuentes (vista o proyecto): el provider usa la
+   // misma función, así que lo que encuentra la barra es lo que encuentra el resto.
+   const resultados = useMemo(() => buscarNodos(searchQuery, buscables), [searchQuery, buscables]);
    // Los filtros son de la VISTA activa, no del proyecto: en una pestaña BPMN el
    // menú ofrecía los tipos del C4 del modelo y rotulaba «Límite de Sistema».
    const {
@@ -890,9 +912,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({
                 <GlobalSearch
                   searchQuery={searchQuery}
                   onSearchQueryChange={setSearchQuery}
-                  searchResults={searchResults}
+                  searchResults={resultados}
                   onSelect={onSearchSelect}
-                  isDisabled={fileManagementProps.currentFileId === null}
+                  // Se deshabilita cuando no hay NADA que buscar, no cuando falta
+                  // un proyecto: trabajando sobre una vista el campo quedaba muerto
+                  // aunque el diagrama en pantalla tuviera elementos (#219).
+                  isDisabled={buscables.length === 0}
                   compact={enLaBarra}
                 />
               )}

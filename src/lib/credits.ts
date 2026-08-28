@@ -19,7 +19,13 @@ export const versionLabel = () => `v${APP_VERSION} · ${RELEASE_CHANNEL}`;
 /** Autoría individual: no hay logo ni organización detrás, sólo el autor. */
 export const CREDIT_AUTHOR = "Raúl Andrés Alzate Gómez";
 export const CREDIT_EMAIL = "alzategomez.raul@gmail.com";
-export const CREDIT_LINE = `Desarrollado por ${CREDIT_AUTHOR}`;
+/**
+ * Línea del pie. Termina con la versión a propósito (#207): en un reporte de
+ * usuario es el primer dato que hace falta y el que nunca viene, y acá está
+ * siempre a la vista sin abrir Ajustes. Sale de `versionLabel()`, así que no hay
+ * un segundo número que se pueda quedar viejo.
+ */
+export const CREDIT_LINE = `Desarrollado por ${CREDIT_AUTHOR} · ${versionLabel()}`;
 
 export interface CreditLink {
   label: string;

@@ -30,8 +30,12 @@ describe("credits", () => {
     expect(RELEASE_CHANNEL).toBe("beta");
   });
 
-  it("el crédito nombra al autor", () => {
+  it("el crédito nombra al autor Y la versión (#207)", () => {
     expect(CREDIT_LINE).toContain(CREDIT_AUTHOR);
+    // La versión al final: en un reporte de usuario es el primer dato que hace
+    // falta y el que nunca viene. Sale de `versionLabel()`, no de un literal.
+    expect(CREDIT_LINE).toContain(versionLabel());
+    expect(CREDIT_LINE.trim().endsWith(versionLabel())).toBe(true);
     expect(CREDIT_AUTHOR).toBe("Raúl Andrés Alzate Gómez");
     expect(CREDIT_EMAIL).toBe("alzategomez.raul@gmail.com");
   });

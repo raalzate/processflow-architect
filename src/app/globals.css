@@ -205,3 +205,49 @@ body[data-titlebar="on"] .fixed.inset-y-0 {
   top: var(--titlebar-h);
   height: calc(100% - var(--titlebar-h));
 }
+/* Barras de desplazamiento propias.
+
+   En macOS el sistema las dibuja como overlay fino que se desvanece, así que
+   desde ahí el problema es invisible; en Windows salen las nativas —anchas,
+   claras y con flechas— y sobre el lienzo oscuro se ven como un parche pegado
+   (#206). El repo no definía NINGUNA regla de scrollbar: todo heredaba lo que
+   pintara el sistema.
+
+   No se ocultan: en un lienzo grande la barra es la única señal de que hay más
+   contenido. Se afinan y se pintan con los tokens del tema, así que siguen al
+   claro y al oscuro sin una segunda definición. */
+* {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+/* Pista transparente: un fondo sólido corta el lienzo en dos. */
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  border-radius: 9999px;
+  /* El borde transparente deja aire alrededor del pulgar: sin él toca el borde
+     del contenido y se lee como una línea pegada, no como un control. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground));
+}
+
+/* Los botones de flecha son de Windows: quitarlos es lo que hace que la barra se
+   vea igual en los tres sistemas. */
+::-webkit-scrollbar-button {
+  display: none;
+}
