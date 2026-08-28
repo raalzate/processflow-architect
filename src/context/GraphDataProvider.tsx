@@ -9,6 +9,7 @@ import React, {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import { buscarNodos } from "@/lib/search-nodes";
 
 // Hooks
 import { useToast } from "@/hooks/use-toast";
@@ -244,23 +245,11 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
 
   // --- Effects (useEffect) ---
 
-  // Efecto para actualizar los resultados de búsqueda
+  // Resultados de la búsqueda sobre el PROYECTO. El filtro es el mismo que usa la
+  // barra (`buscarNodos`): tenerlo duplicado acá hacía que «poliza» encontrara
+  // «Póliza» en un sitio y no en el otro (#219).
   useEffect(() => {
-    if (searchQuery.trim().length > 1) {
-      const lowerCaseQuery = searchQuery.toLowerCase();
-      const results = allNodes.filter(
-        (node) =>
-          node.nombre.toLowerCase().includes(lowerCaseQuery) ||
-          (node.descripcion &&
-            node.descripcion.toLowerCase().includes(lowerCaseQuery)) ||
-          node.tipo_elemento.toLowerCase().includes(lowerCaseQuery) ||
-          (node.agregado &&
-            node.agregado.toLowerCase().includes(lowerCaseQuery))
-      );
-      setSearchResults(results);
-    } else {
-      setSearchResults([]);
-    }
+    setSearchResults(buscarNodos(searchQuery, allNodes));
   }, [searchQuery, allNodes]);
 
   // Efecto de carga inicial: Lee de localStorage

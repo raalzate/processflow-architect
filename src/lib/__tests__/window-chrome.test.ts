@@ -86,3 +86,28 @@ describe("el panel lateral no se sale de la ventana", () => {
     expect(regla()).toMatch(/height:\s*calc\(100%\s*-\s*var\(--titlebar-h\)\)/);
   });
 });
+
+// -----------------------------------------------------------------------------
+// Barras de desplazamiento propias (#206)
+// -----------------------------------------------------------------------------
+
+describe("las barras de scroll no las pinta el sistema", () => {
+  const css = readFileSync(resolve(__dirname, "../../app/globals.css"), "utf8");
+
+  it("hay estilo propio para Chromium y para Firefox", () => {
+    // En macOS son overlay fino y el problema es invisible; en Windows salen las
+    // nativas —anchas, claras, con flechas— y rompen el tema oscuro.
+    expect(css).toMatch(/::-webkit-scrollbar\s*\{/);
+    expect(css).toMatch(/scrollbar-width:\s*thin/);
+  });
+
+  it("el color sale de los tokens del tema, no de un literal", () => {
+    expect(css).toMatch(/::-webkit-scrollbar-thumb[\s\S]{0,200}hsl\(var\(--/);
+    expect(css).toMatch(/scrollbar-color:\s*hsl\(var\(--/);
+  });
+
+  it("NO se ocultan: en un lienzo grande son la única señal de que hay más contenido", () => {
+    const bloque = css.slice(css.indexOf("::-webkit-scrollbar {"));
+    expect(bloque).not.toMatch(/::-webkit-scrollbar\s*\{[^}]*display:\s*none/);
+  });
+});
