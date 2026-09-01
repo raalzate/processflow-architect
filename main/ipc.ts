@@ -29,6 +29,7 @@ import {
   checkForUpdates,
   downloadUpdate,
   openReleasePage,
+  revealDownload,
   quitAndInstall,
   updateStatus,
 } from './services/updater';
@@ -57,6 +58,9 @@ export function registerIpcHandlers() {
   ipcMain.handle('update-download', async () => downloadUpdate());
   ipcMain.handle('update-install', async () => quitAndInstall());
   ipcMain.handle('update-open-release', async () => openReleasePage());
+  // Donde no hay auto-instalación, la app baja el instalador y esto lo muestra
+  // en el explorador de archivos: es el último paso que puede dar (#231).
+  ipcMain.handle('update-reveal', async () => revealDownload());
 
   ipcMain.handle('gpu-feature-status', async () => {
     try {

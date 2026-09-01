@@ -111,8 +111,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUpdateStatus: () => ipcRenderer.invoke('update-status'),
   /** Busca una versión nueva publicada. */
   checkForUpdates: () => ipcRenderer.invoke('update-check'),
-  /** Descarga la versión nueva (en macOS abre la página del release). */
+  /** Descarga la versión nueva (donde no se puede instalar sola, la baja a Descargas). */
   downloadUpdate: () => ipcRenderer.invoke('update-download'),
+  /** Muestra en el explorador el instalador ya descargado. */
+  revealUpdate: () => ipcRenderer.invoke('update-reveal'),
   /** Reinicia para aplicar la actualización ya descargada. */
   installUpdate: () => ipcRenderer.invoke('update-install'),
   /** Abre la página del release en el navegador del sistema. */

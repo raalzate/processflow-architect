@@ -135,6 +135,8 @@ export interface ElectronAPI {
   downloadUpdate?: () => Promise<EstadoUpdate>;
   installUpdate?: () => Promise<void>;
   openReleasePage?: () => Promise<void>;
+  /** Muestra en el explorador el instalador que la app bajó a Descargas (#231). */
+  revealUpdate?: () => Promise<void>;
   /** Suscribe al estado del updater; devuelve la función para desuscribirse. */
   onUpdateStatus?: (cb: (estado: EstadoUpdate) => void) => () => void;
   /** Estado de la GPU según Chromium (lo mismo que `chrome://gpu`). Ver `gpu-status.ts`. */
