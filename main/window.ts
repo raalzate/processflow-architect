@@ -1,5 +1,5 @@
 import { BrowserWindow, Menu, MenuItemConstructorOptions, shell } from 'electron';
-import { initUpdater } from './services/updater';
+import { checkForUpdates, initUpdater } from './services/updater';
 import path from 'path';
 import { isDev, appServe } from './config';
 import { titleBarOptions } from '../src/lib/window-chrome';
@@ -142,6 +142,14 @@ function setupMenu(win: BrowserWindow) {
         {
             label: 'Ayuda',
             submenu: [
+                {
+                    // Buscar la actualización cuando uno quiera, no sólo cuando la
+                    // app avisó: el aviso del pie es discreto y se puede pasar por
+                    // alto (#231). Va en «Ayuda» en las tres plataformas.
+                    label: 'Buscar actualizaciones…',
+                    click: () => { void checkForUpdates(); }
+                },
+                { type: 'separator' },
                 {
                     label: 'Guía MCP (diseñar con Claude Code)',
                     click: () => navigateTo('/mcp')

@@ -84,7 +84,6 @@ import { isChecked } from "@/lib/graph-filters";
 import { useToast } from "@/hooks/use-toast";
 import { BetaBadge } from "@/components/layout/AppCredits";
 import { buscarNodos, nodosBuscables, MIN_QUERY } from "@/lib/search-nodes";
-import { UpdateButton } from "@/components/layout/UpdateButton";
 import { parseDiagramJson } from "@/lib/import-diagram";
 import { normalizeProjectName } from "@/lib/project-rename";
 import {
@@ -533,7 +532,6 @@ const FileManagement: React.FC<
 
       {/* «Actualizar»: sólo se dibuja cuando hay una versión nueva publicada
           (#208). Va junto a las acciones de proyecto, a la derecha. */}
-      <UpdateButton className="shrink-0" />
 
       {/* Menú «Proyecto»: agrupa las acciones de archivo (antes eran 4 botones
           sueltos que saturaban la barra). El Select de arriba ya indica el

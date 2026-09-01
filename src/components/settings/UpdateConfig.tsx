@@ -69,6 +69,8 @@ export function UpdateConfig() {
     const a = api();
     if (!a) return;
     if (estado.tipo === "lista") return void a.installUpdate?.();
+    // Ya bajado y sin auto-instalación: lo útil es mostrar dónde quedó (#231).
+    if (estado.tipo === "descargada") return void a.revealUpdate?.();
     const e = await a.downloadUpdate?.();
     if (e) setEstado(e);
   }, [estado]);
@@ -88,7 +90,7 @@ export function UpdateConfig() {
         <CardDescription>
           Versión instalada: <strong>{APP_VERSION}</strong>. Sólo se ofrecen versiones publicadas;
           {manual
-            ? " en este sistema la instalación es manual (se abre la descarga)."
+            ? " en este sistema la app baja el instalador a Descargas y lo instalás vos."
             : " la actualización se descarga e instala desde la app."}
         </CardDescription>
       </CardHeader>
