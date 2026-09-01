@@ -28,6 +28,11 @@ export type EstadoUpdate =
       instalable: boolean;
     }
   | { tipo: "descargando"; porcentaje: number }
+  /**
+   * El instalador está en el disco pero NO se puede aplicar solo (macOS): la app
+   * lo bajó a Descargas y lo único que queda es abrirlo a mano.
+   */
+  | { tipo: "descargada"; version: string; ruta: string }
   | { tipo: "lista"; version: string }
   | { tipo: "fallo"; motivo: string };
 
@@ -81,14 +86,73 @@ export function etiquetaBoton(estado: EstadoUpdate): string | undefined {
     case "al-dia":
       return undefined;
     case "disponible":
+      // Donde no se puede auto-instalar, la app igual BAJA el archivo: decir
+      // «actualizar» ahí prometería algo que no va a pasar sola.
       return estado.instalable
         ? `Actualizar a ${estado.version}`
-        : `Actualizar a ${estado.version} (descarga manual)`;
+        : `Descargar ${estado.version}`;
     case "descargando":
       return `Descargando… ${Math.round(estado.porcentaje)}%`;
+    case "descargada":
+      return `${estado.version} está en Descargas`;
     case "lista":
       return `Reiniciar para instalar ${estado.version}`;
     case "fallo":
       return "Reintentar la actualización";
+  }
+}
+
+/**
+ * Rótulo corto para el aviso del pie del sidebar, al lado de la versión. El botón
+ * grande de la barra se fue (issue #231): el aviso vive donde ya está el dato de
+ * versión, y ahí el espacio es poco — por eso hay una prueba que exige que ningún
+ * estado pase de 28 caracteres.
+ */
+export function etiquetaBreve(estado: EstadoUpdate): string | undefined {
+  switch (estado.tipo) {
+    case "al-dia":
+      return undefined;
+    case "disponible":
+      return estado.instalable ? `Actualizar a ${estado.version}` : `Descargar ${estado.version}`;
+    case "descargando":
+      return `Descargando ${Math.round(estado.porcentaje)}%`;
+    case "descargada":
+      return "Ver en Descargas";
+    case "lista":
+      return "Reiniciar para instalar";
+    case "fallo":
+      return "Reintentar";
+  }
+}
+
+/**
+ * El artefacto instalable de ESTA plataforma dentro de los que publica el release.
+ *
+ * Se elige por el nombre del archivo y no por un patrón armado a mano con la
+ * versión: el release trae también blockmaps y los `latest*.yml` del updater, y
+ * bajarse un `.blockmap` creyendo que es el instalador es el error obvio. Si la
+ * arquitectura no tiene build publicada, no se inventa otra: un `.dmg` arm64 no
+ * sirve en un Mac Intel.
+ */
+export function elegirAsset(
+  nombres: readonly string[],
+  plataforma: string,
+  arquitectura: string
+): string | undefined {
+  const instalables = nombres.filter((n) => !/\.(blockmap|yml|yaml|sha512)$/i.test(n));
+  switch (plataforma) {
+    case "darwin": {
+      const dmg = instalables.filter((n) => /\.dmg$/i.test(n));
+      // electron-builder nombra el arm64 con el sufijo; el x64 va sin marca.
+      return arquitectura === "arm64"
+        ? dmg.find((n) => /arm64/i.test(n))
+        : dmg.find((n) => !/arm64/i.test(n));
+    }
+    case "win32":
+      return instalables.find((n) => /\.exe$/i.test(n));
+    case "linux":
+      return instalables.find((n) => /\.AppImage$/i.test(n));
+    default:
+      return undefined;
   }
 }
