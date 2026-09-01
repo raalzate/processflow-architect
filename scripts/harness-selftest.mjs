@@ -24,6 +24,9 @@ const REPO_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const abs = (p) => path.join(REPO_ROOT, p);
 const config = JSON.parse(fs.readFileSync(abs(".claude/harness.config.json"), "utf8"));
 const settings = JSON.parse(fs.readFileSync(abs(".claude/settings.json"), "utf8"));
+// El package.json real: los frenos que lo tocan parten de él y cambian UNA clave,
+// para que el caso de prueba no se quede viejo cuando el manifiesto cambie.
+const pkgDelRepo = JSON.parse(fs.readFileSync(abs("package.json"), "utf8"));
 
 let failures = 0;
 const ok = (name) => console.log(`  ✓ ${name}`);
@@ -393,6 +396,40 @@ frenoDelLint(
   ".github/workflows/release-build.yml",
   "jobs:\n  release:\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/download-artifact@v4\n      - uses: softprops/action-gh-release@v2\n        with:\n          files: |\n            installers/*.dmg\n            installers/*.exe\n            installers/*.AppImage\n",
   "RELEASEJOB",
+);
+
+// ARTIFACTNAME: la actualización automática en Windows nunca funcionó porque el
+// nombre del instalador llevaba espacios: GitHub los sube como puntos y el yml
+// del updater los escribe con guiones, así que pedía un archivo inexistente
+// (#235). El freno lee el patrón de nombre de cada plataforma.
+frenoDelLint(
+  "repo-lint: detecta un nombre de instalador con espacios (el updater pediría un 404)",
+  "package.json",
+  JSON.stringify({
+    ...pkgDelRepo,
+    build: {
+      ...pkgDelRepo.build,
+      win: { ...pkgDelRepo.build.win, artifactName: "${productName} Setup ${version}.${ext}" },
+    },
+  }),
+  "ARTIFACTNAME",
+);
+
+// ARTIFACTNAME (2): no declararlo es lo mismo que declararlo con espacios — el
+// default de electron-builder ya los trae.
+frenoDelLint(
+  "repo-lint: detecta el instalador SIN nombre declarado (el default trae espacios)",
+  "package.json",
+  JSON.stringify({
+    ...pkgDelRepo,
+    build: {
+      ...pkgDelRepo.build,
+      win: Object.fromEntries(
+        Object.entries(pkgDelRepo.build.win).filter(([k]) => k !== "artifactName"),
+      ),
+    },
+  }),
+  "ARTIFACTNAME",
 );
 
 // ENRUTADO: el enrutado efectivo de una arista tiene UNA respuesta. Tres defaults

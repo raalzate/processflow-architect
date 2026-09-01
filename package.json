@@ -38,7 +38,8 @@
     "gate:fast": "bash scripts/gate.sh fast",
     "hooks:install": "git config core.hooksPath .githooks && chmod +x .githooks/* && echo 'pre-commit instalado (core.hooksPath=.githooks)'",
     "rebuild": "electron-rebuild",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "release:updater-check": "node scripts/release-updater-check.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",
@@ -132,15 +133,18 @@
       "target": "dmg",
       "icon": "assets/icon.icns",
       "hardenedRuntime": true,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "artifactName": "${productName}-${version}.${ext}"
     }
   },
   "overrides": {

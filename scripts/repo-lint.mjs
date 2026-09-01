@@ -25,6 +25,7 @@
  *   RELEASE   la versión de package.json tiene sus notas en docs/releases/<versión>.md.
  *   IATASK    el router y los proveedores no conocen tareas de IA por nombre (P5).
  *   RELEASEJOB  el job que publica el release baja los artefactos DESPUÉS del checkout, falla si no hay binarios
+ *   ARTIFACTNAME  el nombre del instalador no lleva espacios: con espacios, el updater pide un archivo que no existe
  *               y adjunta los metadatos del updater (`latest*.yml`).
  *   WEBGPU    main.ts conserva los switches de WebGPU y no reactiva disableHardwareAcceleration.
  */
@@ -526,6 +527,49 @@ function checkReleaseJob(contenidoDado = null) {
   }
 }
 
+/**
+ * ARTIFACTNAME — el nombre del instalador no lleva espacios.
+ *
+ * Lo que pasó (#235): `build.win` no declaraba `artifactName`, así que NSIS usó
+ * su default —`${productName} Setup ${version}.${ext}`, CON espacios—. De ahí
+ * salieron dos nombres que no son el mismo: GitHub convierte los espacios en
+ * puntos al recibir el asset (`Processflow-Architect.Setup.0.8.5.exe`) y
+ * electron-builder los escribe como guiones en `latest.yml`
+ * (`Processflow-Architect-Setup-0.8.5.exe`). El updater pedía el segundo y GitHub
+ * respondía 404: la actualización automática en Windows nunca funcionó, y el
+ * release se publicaba en verde igual porque los instaladores SÍ estaban.
+ *
+ * Verificable y barato: el patrón de nombre de cada plataforma, declarado y sin
+ * espacios. La ausencia cuenta como fallo porque el default ya trae el espacio.
+ */
+function checkArtifactName(contenidoDado = null) {
+  const file = "package.json";
+  const pkg = JSON.parse(contenidoDado ?? read(file));
+  const build = pkg.build;
+  if (!build) return; // sin config de empaquetado no hay nada que exigir
+  for (const plataforma of ["win", "mac", "linux"]) {
+    if (!build[plataforma]) continue;
+    const patron = build[plataforma].artifactName;
+    if (!patron || !patron.trim()) {
+      fail(
+        file,
+        1,
+        "ARTIFACTNAME",
+        `\`build.${plataforma}\` no declara \`artifactName\`: el default de electron-builder lleva ESPACIOS y GitHub los sube como puntos mientras el yml los escribe con guiones — el updater pide un archivo que no existe (#235).`,
+      );
+      continue;
+    }
+    if (/\s/.test(patron)) {
+      fail(
+        file,
+        1,
+        "ARTIFACTNAME",
+        `\`build.${plataforma}.artifactName\` («${patron}») tiene espacios: GitHub los convierte en puntos al subir el asset y \`latest*.yml\` los escribe con guiones. El updater se come un 404 (#235). Usá guiones.`,
+      );
+    }
+  }
+}
+
 function checkWebgpu() {
   const file = config.webgpu.file;
   const content = read(file);
@@ -562,7 +606,7 @@ if (releaseVersion) {
   checkRelease(releaseVersion);
 } else if (single) {
   if (/\.(ts|tsx)$/.test(single)) checkFile(single, contenidoStdin);
-  if (single === "package.json") { checkDeps(); checkRelease(); checkTiles(); }
+  if (single === "package.json") { checkDeps(); checkRelease(); checkTiles(); checkArtifactName(contenidoStdin); }
   if (single === config.tiles.registry) checkTiles(contenidoStdin);
   if (single === config.webgpu.file) checkWebgpu();
   if (single === config.incidents.file) checkIncidents(contenidoStdin);
@@ -574,6 +618,7 @@ if (releaseVersion) {
   checkRelease();
   checkIncidents();
   checkReleaseJob();
+  checkArtifactName();
   checkWebgpu();
 }
 
