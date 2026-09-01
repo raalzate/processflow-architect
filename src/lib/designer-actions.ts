@@ -53,21 +53,40 @@ export interface DesignerMenuItem {
 }
 
 /**
+ * Aceleradores que el sistema ya usa para editar texto. El menú de Electron los
+ * resuelve ANTES que la página y sin mirar dónde está el foco: si el menú «Diseño»
+ * declara `CmdOrCtrl+V`, el pegar nativo deja de funcionar en TODO input de la app
+ * (issue #227 — se vio al pegar la llave de API en Ajustes). Estas teclas las
+ * atiende el lienzo por su propio handler de teclado, que sí respeta el foco.
+ */
+export const ACELERADORES_EDICION_NATIVA = [
+  "CmdOrCtrl+Z",
+  "CmdOrCtrl+Shift+Z",
+  "CmdOrCtrl+Y",
+  "CmdOrCtrl+C",
+  "CmdOrCtrl+X",
+  "CmdOrCtrl+V",
+  "CmdOrCtrl+A",
+  "Delete",
+  "Escape",
+] as const;
+
+/**
  * El menú «Diseño» tal como lo ve el humano. El orden es el de uso: primero lo que se
  * repite todo el tiempo, después lo que se hace de vez en cuando, y al final lo
  * destructivo.
  */
 export const DESIGNER_MENU: DesignerMenuItem[] = [
-  { id: "undo", label: "Deshacer", accelerator: "CmdOrCtrl+Z" },
-  { id: "redo", label: "Rehacer", accelerator: "CmdOrCtrl+Shift+Z" },
-  { id: "delete", label: "Eliminar selección", accelerator: "Delete" },
+  { id: "undo", label: "Deshacer" },
+  { id: "redo", label: "Rehacer" },
+  { id: "delete", label: "Eliminar selección" },
   { separator: true },
-  { id: "copy", label: "Copiar", accelerator: "CmdOrCtrl+C" },
-  { id: "cut", label: "Cortar", accelerator: "CmdOrCtrl+X" },
-  { id: "paste", label: "Pegar", accelerator: "CmdOrCtrl+V" },
+  { id: "copy", label: "Copiar" },
+  { id: "cut", label: "Cortar" },
+  { id: "paste", label: "Pegar" },
   { id: "duplicate", label: "Duplicar", accelerator: "CmdOrCtrl+D" },
-  { id: "select-all", label: "Seleccionar todo", accelerator: "CmdOrCtrl+A" },
-  { id: "cancel", label: "Cancelar / deseleccionar", accelerator: "Escape" },
+  { id: "select-all", label: "Seleccionar todo" },
+  { id: "cancel", label: "Cancelar / deseleccionar" },
   { separator: true },
   { id: "arrange", label: "Organizar el lienzo", accelerator: "CmdOrCtrl+Shift+O" },
   { id: "arrange-ai", label: "Organizar: sugerir con IA" },

@@ -7,7 +7,13 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { DESIGNER_MENU, idsDelMenu, type DesignerActionId, type DesignerMenuItem } from "../designer-actions";
+import {
+  ACELERADORES_EDICION_NATIVA,
+  DESIGNER_MENU,
+  idsDelMenu,
+  type DesignerActionId,
+  type DesignerMenuItem,
+} from "../designer-actions";
 
 const recorrer = (items: DesignerMenuItem[]): DesignerMenuItem[] =>
   items.flatMap((i) => [i, ...(i.submenu ? recorrer(i.submenu) : [])]);
@@ -30,6 +36,17 @@ describe("DESIGNER_MENU", () => {
     for (const item of recorrer(DESIGNER_MENU)) {
       if (!item.accelerator) continue;
       expect(item.accelerator, item.label).toMatch(/^(CmdOrCtrl\+|Alt\+|Shift\+)*[A-Za-z0-9/]+$|^(Delete|Escape)$/);
+    }
+  });
+
+  it("no pisa los aceleradores de edición nativa (issue #227)", () => {
+    // Los aceleradores del menú de Electron se resuelven ANTES que la página y no
+    // consultan el foco: un `CmdOrCtrl+V` en el menú «Diseño» se come el pegar del
+    // sistema en TODO input de la app (se vio al configurar la llave de API). El
+    // lienzo atiende estas teclas por su propio handler, que sí respeta el foco.
+    for (const item of recorrer(DESIGNER_MENU)) {
+      if (!item.accelerator) continue;
+      expect(ACELERADORES_EDICION_NATIVA as readonly string[], item.label).not.toContain(item.accelerator);
     }
   });
 
