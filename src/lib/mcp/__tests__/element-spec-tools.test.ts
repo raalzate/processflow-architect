@@ -4,6 +4,8 @@ import {
   setElementSpec,
   specMarkdown,
   specReport,
+  tecnologiasEn,
+  criterioEsMedible,
 } from "@/lib/mcp/element-spec-tools";
 import type { DiagramModel } from "@/lib/mcp/diagram-builder";
 
@@ -164,5 +166,68 @@ describe("specReport", () => {
 
   it("un diagrama sin elementos no revienta", () => {
     expect(specReport({ ...modelo(), nodes: [] }).sinSpec).toEqual([]);
+  });
+});
+
+
+describe("setElementSpec con merge · completar sin pisar (#239)", () => {
+  it("suma un requisito conservando lo que ya había", () => {
+    const base = setElementSpec(modelo(), "api", specDeAgente());
+    const out = setElementSpec(base, "api", { requirements: [{ texto: "El sistema MUST notificar" }] }, true);
+    const spec = out.nodes[0].spec!;
+    expect(spec.requirements.map((r) => r.texto)).toEqual([
+      "El sistema MUST registrar el alta",
+      "El sistema MUST notificar",
+    ]);
+    expect(spec.featureName).toBe("Alta de póliza");
+    expect(spec.stories).toHaveLength(1);
+  });
+
+  it("sin merge, la misma llamada REEMPLAZA (la semántica vieja no cambia)", () => {
+    const base = setElementSpec(modelo(), "api", specDeAgente());
+    const out = setElementSpec(base, "api", { requirements: [{ texto: "El sistema MUST notificar" }] });
+    expect(out.nodes[0].spec!.requirements.map((r) => r.texto)).toEqual(["El sistema MUST notificar"]);
+    expect(out.nodes[0].spec!.featureName).toBe("");
+  });
+
+  it("un parche vacío deja la spec como estaba; una spec vacía SIN merge la borra", () => {
+    const base = setElementSpec(modelo(), "api", specDeAgente());
+    expect(setElementSpec(base, "api", {}, true).nodes[0].spec?.featureName).toBe("Alta de póliza");
+    expect(setElementSpec(base, "api", {}).nodes[0].spec).toBeUndefined();
+  });
+});
+
+describe("specReport · lo que no se puede medir se reporta", () => {
+  const conSpec = (spec: unknown) => setElementSpec(modelo(), "api", spec);
+
+  it("marca el criterio de éxito sin ningún número", () => {
+    const out = conSpec({ ...specDeAgente(), criteria: [{ texto: "que sea rápido" }] });
+    const rep = specReport(out);
+    expect(rep.estados[0].criteriosSinNumero).toEqual(["que sea rápido"]);
+    expect(rep.markdown).toContain("criterios sin número");
+  });
+
+  it("marca el requisito que nombra una tecnología (dice el cómo, no el qué)", () => {
+    const out = conSpec({
+      ...specDeAgente(),
+      requirements: [{ texto: "El sistema MUST guardar el alta en Postgres" }],
+    });
+    const rep = specReport(out);
+    expect(rep.estados[0].requisitosConTecnologia[0].tecnologias).toContain("postgres");
+    expect(rep.markdown).toContain("nombran tecnología");
+  });
+
+  it("una spec medible y sin tecnología se declara completa", () => {
+    const rep = specReport(conSpec(specDeAgente()));
+    expect(rep.estados[0].criteriosSinNumero).toEqual([]);
+    expect(rep.estados[0].requisitosConTecnologia).toEqual([]);
+    expect(rep.markdown).toContain("están completas");
+  });
+
+  it("la lista de tecnologías empareja palabras completas, no fragmentos", () => {
+    expect(tecnologiasEn("El sistema MUST usar Kafka")).toEqual(["kafka"]);
+    expect(tecnologiasEn("El sistema MUST javanizar el trámite")).toEqual([]);
+    expect(criterioEsMedible("99 % en un intento")).toBe(true);
+    expect(criterioEsMedible("que sea rápido")).toBe(false);
   });
 });

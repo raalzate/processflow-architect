@@ -1141,14 +1141,20 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Escribir la especificación de un elemento",
       description:
-        "Escribe QUÉ DEBE HACER una caja y CÓMO SE VERIFICA: historias de usuario priorizadas con escenarios Given/When/Then, casos límite, requisitos funcionales, entidades clave y criterios de éxito medibles. Es el contrato del elemento y se ve en su ficha dentro de la app, en el tab «Spec». REEMPLAZA la especificación anterior (para cambiar una parte: leé con get_element_spec, editá y volvé a mandarla). Una especificación vacía borra la que hubiera. Lo que no decida la fuente NO se inventa: se marca `needsClarification`.",
+        "Escribe QUÉ DEBE HACER una caja y CÓMO SE VERIFICA (es acá y no en la descripción donde va el detalle): historias de usuario priorizadas con escenarios Given/When/Then, casos límite, requisitos funcionales, entidades clave y criterios de éxito medibles. Es el contrato del elemento y se ve en su ficha dentro de la app, en el tab «Spec». Por defecto REEMPLAZA la especificación anterior; con `merge: true` la COMPLETA sin pisar lo que ya había (es lo que conviene para ir llenando el contrato caja por caja). Una especificación vacía borra la que hubiera. Lo que no decida la fuente NO se inventa: se marca `needsClarification`.",
       inputSchema: {
         diagramId: diagramIdSchema,
         id: z.string().describe("Id del elemento (nodo o contenedor)."),
-        spec: specSchema.describe("La especificación completa del elemento."),
+        spec: specSchema.describe("La especificación (completa, o el parche si `merge` es true)."),
+        merge: z
+          .boolean()
+          .optional()
+          .describe(
+            "`true` = PARCHE: lo que mandás pisa (nombre, estado, entrada) o se SUMA (historias, requisitos, criterios, entidades, casos límite) y lo que no mandás se conserva. Un ítem con el mismo texto se reemplaza en su sitio, así reintentar no duplica ni renumera los FR-00N. Usalo para COMPLETAR una spec sin releerla entera ni pisar lo que escribió una persona; sin `merge` la spec se reemplaza."
+          ),
       },
     },
-    async ({ diagramId: diagramIdEntrada, id, spec }) => {
+    async ({ diagramId: diagramIdEntrada, id, spec, merge }) => {
       let diagramId: string;
       try {
         diagramId = await activeId(diagramIdEntrada);
@@ -1157,10 +1163,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       }
       const model = await loadModel(diagramId);
       try {
-        const next = setElementSpec(model, id, spec);
+        const next = setElementSpec(model, id, spec, merge === true);
         await saveModel(diagramId, next);
         const guardada = next.nodes.find((n) => n.id === id)?.spec;
-        if (!guardada) return text(`Especificación de "${id}" borrada (llegó vacía).`);
+        if (!guardada)
+          return text(
+            merge
+              ? `El parche de "${id}" no traía nada: la especificación quedó como estaba.`
+              : `Especificación de "${id}" borrada (llegó vacía).`
+          );
         return text(
           `Especificación de "${id}" guardada: ${guardada.stories.length} historia(s), ${guardada.requirements.length} requisito(s), ${guardada.criteria.length} criterio(s).`
         );

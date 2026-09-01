@@ -14,6 +14,10 @@ import {
   resolveViewName,
   normalizeName,
   viewDigest,
+  readElement,
+  resolveElement,
+  formatSpec,
+  fichaHints,
   VIEW_READ_MAX,
   type Catalog,
   type ViewEntry,
@@ -287,5 +291,120 @@ describe("viewDigest · lo que cabe en la ventana del modelo local", () => {
     // La leyenda tabular del TOON ya no viaja en la observación.
     expect(r.text).not.toContain("#nodos");
     expect(r.cost).toBeLessThan(1500);
+  });
+});
+
+
+/* -------------------------------------------------------------------------- */
+/* read_element · la ficha de la caja (#239)                                   */
+/* -------------------------------------------------------------------------- */
+
+const conSpec = (over: Record<string, unknown> = {}) => ({
+  featureName: "Cobro recurrente",
+  status: "borrador" as const,
+  input: "que la cuota se cobre sola",
+  stories: [
+    {
+      id: "st-1",
+      titulo: "Cobrar la cuota",
+      prioridad: "P1",
+      porQue: "sin cobro no hay negocio",
+      pruebaIndependiente: "con una cuota vencida",
+      escenarios: [{ id: "sc-1", given: "una cuota vencida", when: "corre el cobro", then: "queda pagada" }],
+    },
+  ],
+  edgeCases: ["¿y si la tarjeta se rechaza?"],
+  requirements: [{ id: "fr-1", texto: "El sistema MUST reintentar 3 veces", needsClarification: true }],
+  entities: [{ id: "en-1", nombre: "Cuota", descripcion: "lo que se cobra" }],
+  criteria: [{ id: "cr-1", texto: "99 % en un intento" }],
+  ...over,
+});
+
+describe("read_element · el contrato de la caja llega al agente", () => {
+  const largo = "x".repeat(300);
+  const cat = () =>
+    catalogo(
+      vista({
+        name: "Pagos",
+        graph: grafo([
+          { ...nodo("Pasarela", "Componente", largo), spec: conSpec() } as never,
+          nodo("Suelto"),
+        ]),
+      })
+    );
+
+  it("devuelve la descripción ENTERA, no los 90 caracteres del digest", () => {
+    const r = readElement(cat(), "Pasarela", 5000);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.text).toContain(largo);
+  });
+
+  it("devuelve historias, requisitos y criterios de la especificación", () => {
+    const r = readElement(cat(), "Pasarela", 5000);
+    if (!r.ok) throw new Error("debía leer");
+    expect(r.text).toContain("Cobrar la cuota");
+    expect(r.text).toContain("una cuota vencida → corre el cobro → queda pagada");
+    expect(r.text).toContain("99 % en un intento");
+    // Lo marcado por aclarar es lo que el agente tiene que preguntar: viaja.
+    expect(r.text).toContain("[por aclarar]");
+  });
+
+  it("dice cuando la caja no tiene especificación, en vez de callarse", () => {
+    const r = readElement(cat(), "Suelto", 5000);
+    if (!r.ok) throw new Error("debía leer");
+    expect(r.text).toContain("Sin especificación");
+  });
+
+  it("un nombre que no existe devuelve elementos parecidos", () => {
+    const r = readElement(cat(), "Pasarel", 5000);
+    expect(r.ok).toBe(true);
+    const r2 = readElement(cat(), "zzz", 5000);
+    expect(r2.ok).toBe(false);
+    if (r2.ok) return;
+    expect(r2.error).toContain("zzz");
+  });
+
+  it("sin presupuesto no lee y empuja a consolidar", () => {
+    const r = readElement(cat(), "Pasarela", 0);
+    expect(r.ok).toBe(false);
+  });
+
+  it("recorta al tope de una lectura y lo avisa", () => {
+    const r = readElement(cat(), "Pasarela", 120);
+    if (!r.ok) throw new Error("debía leer");
+    expect(r.truncated).toBe(true);
+    expect(r.text.length).toBeLessThanOrEqual(120 + 40);
+  });
+
+  it("resuelve por id además de por nombre", () => {
+    const r = resolveElement(cat(), "pasarela");
+    expect("node" in r && r.node.nombre).toBe("Pasarela");
+  });
+});
+
+describe("marca de ficha · el digest avisa que hay más", () => {
+  it("marca {spec} en el elemento que tiene contrato y no en el que no", () => {
+    const g = grafo([
+      { ...nodo("Pasarela", "Componente"), spec: conSpec() } as never,
+      nodo("Suelto"),
+    ]);
+    const d = viewDigest(g, "ddd");
+    expect(d).toContain("Pasarela [Componente] {spec}");
+    expect(d).toContain("- Suelto [Evento]");
+    expect(d).not.toContain("Suelto [Evento] {");
+  });
+
+  it("marca desc+ cuando la descripción no entra entera en el digest", () => {
+    expect(fichaHints({ ...nodo("A", "Evento", "y".repeat(200)) } as never)).toContain("desc+");
+  });
+
+  it("una spec vacía no marca nada (no hay ruido por existir el objeto)", () => {
+    expect(fichaHints({ ...nodo("A"), spec: { status: "borrador" } } as never)).toBe("");
+  });
+
+  it("formatSpec de algo que no es una spec no inventa líneas", () => {
+    expect(formatSpec(undefined)).toEqual([]);
+    expect(formatSpec({ status: "borrador" })).toEqual([]);
   });
 });

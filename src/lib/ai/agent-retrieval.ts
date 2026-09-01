@@ -17,6 +17,7 @@ import type { AgentNote } from "../agent-types";
 import type { GraphData, GraphNode } from "../types";
 import { collectGraphNodes } from "../view-nodes";
 import { countGraph } from "../mcp/app-state";
+import { specToContext } from "./graph-toon";
 
 /**
  * Techo de una sola lectura. Bajó de 6 000 a 2 000 caracteres cuando el motor
@@ -29,6 +30,14 @@ export const VIEW_READ_MAX = 2000;
 export const SEARCH_LIMIT = 12;
 /** Nodos citables que se recuerdan por vista leída (los que puede citar el artefacto). */
 export const MAX_CITABLE_NODES = 40;
+/**
+ * Tope de la ficha de UN elemento. Igual que el de una vista: la ficha existe
+ * justo para lo que no cabe en el digest —la descripción entera y la spec—, pero
+ * un elemento no puede costar más que la vista que lo contiene.
+ */
+export const ELEMENT_READ_MAX = VIEW_READ_MAX;
+/** Descripción recortada en el DIGEST de una vista (la entera se pide con read_element). */
+export const DESC_EN_DIGEST = 90;
 
 /** Una vista tal como la ve el agente. `graph` va sólo en las que lo tienen. */
 export interface ViewEntry {
@@ -192,6 +201,21 @@ function collectEdges(graph: GraphData | undefined): { fuente: string; destino: 
 }
 
 /**
+ * Marca de que la caja tiene MÁS de lo que entra en el digest. Sin ella el agente
+ * no puede SABER que existe un contrato: leía 90 caracteres de descripción y
+ * contestaba con eso, aunque la spec estuviera escrita (#239). Son tres palabras
+ * por nodo y sólo en los nodos que las ganan; el contenido se pide con
+ * `read_element`, que es lo que respeta la ventana del motor local.
+ */
+export function fichaHints(n: GraphNode): string {
+  const hints: string[] = [];
+  if (specToContext(n.spec)) hints.push("spec");
+  if (n.metadata?.length) hints.push("props");
+  if ((n.descripcion ?? "").length > DESC_EN_DIGEST) hints.push("desc+");
+  return hints.length ? ` {${hints.join(",")}}` : "";
+}
+
+/**
  * Retrato COMPACTO de una vista: elementos con su tipo y contenedor, y relaciones
  * con su etiqueta. Reemplaza al TOON completo en la observación que recibe el
  * modelo — el TOON de una vista mediana son ~6 000 caracteres y con una ventana
@@ -216,8 +240,8 @@ export function viewDigest(
     lineas.push("Elementos:");
     for (const n of nodos) {
       const agg = n.agregado ? ` @${n.agregado}` : "";
-      const desc = n.descripcion ? ` — ${n.descripcion.slice(0, 90)}` : "";
-      lineas.push(`- ${n.nombre} [${n.tipo_elemento}]${agg}${desc}`);
+      const desc = n.descripcion ? ` — ${n.descripcion.slice(0, DESC_EN_DIGEST)}` : "";
+      lineas.push(`- ${n.nombre} [${n.tipo_elemento}]${agg}${desc}${fichaHints(n)}`);
     }
   }
   if (aristas.length) {
@@ -295,6 +319,8 @@ interface Hit {
   name: string;
   tipo: string;
   descripcion: string;
+  /** Marca de lo que la caja tiene y este resultado no trae (ver `fichaHints`). */
+  hints: string;
   /** Menor = mejor: 0 exacto, 1 prefijo, 2 substring del nombre, 3 descripción, 4 tipo. */
   tier: number;
   viewIdx: number;
@@ -332,6 +358,7 @@ export function searchModel(cat: Catalog, term: string, limit = SEARCH_LIMIT): T
         name: n.nombre,
         tipo: n.tipo_elemento ?? "",
         descripcion: (n.descripcion ?? "").slice(0, 120),
+        hints: fichaHints(n),
         tier,
         viewIdx,
         nodeIdx,
@@ -348,7 +375,7 @@ export function searchModel(cat: Catalog, term: string, limit = SEARCH_LIMIT): T
           (h) =>
             `- "${h.name}" [${h.tipo}] en la vista "${h.view}"${
               h.descripcion ? ` — ${h.descripcion}` : ""
-            }`
+            }${h.hints}`
         )
         .join("\n") + (hits.length > top.length ? `\n…(${hits.length - top.length} más)` : "")
     : `Sin coincidencias para "${term}".`;
@@ -369,5 +396,129 @@ export function searchModel(cat: Catalog, term: string, limit = SEARCH_LIMIT): T
       facts,
       nodes: top.map((h) => h.name),
     },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* 4 · Leer la ficha de un elemento                                            */
+/* -------------------------------------------------------------------------- */
+
+/** Un elemento encontrado en el catálogo, con la vista en la que vive. */
+export interface ElementHit {
+  view: ViewEntry;
+  node: GraphNode;
+}
+
+/**
+ * Resuelve el nombre (o el id) de un elemento a UNA caja del catálogo. Mismo
+ * criterio que `resolveViewName` —exacto, contención, cercanía— porque el modelo
+ * abrevia igual los nombres de caja que los de vista, y un error mudo cuesta un
+ * turno de 35 s.
+ */
+export function resolveElement(cat: Catalog, name: string): ElementHit | { suggestions: string[] } {
+  const target = normalizeName(name);
+  const todos: ElementHit[] = cat.views.flatMap((view) =>
+    collectGraphNodes(view.graph).map((node) => ({ view, node }))
+  );
+  if (!target) return { suggestions: todos.slice(0, SEARCH_LIMIT).map((h) => h.node.nombre) };
+
+  const exacto = todos.find(
+    (h) => normalizeName(h.node.nombre) === target || normalizeName(h.node.id) === target
+  );
+  if (exacto) return exacto;
+
+  const contiene = todos.filter((h) => {
+    const n = normalizeName(h.node.nombre);
+    return n.includes(target) || target.includes(n);
+  });
+  if (contiene.length === 1) return contiene[0];
+  if (contiene.length > 1) return { suggestions: contiene.map((h) => h.node.nombre) };
+
+  const cercanos = todos
+    .map((h) => ({ h, d: editDistance(target, normalizeName(h.node.nombre)) }))
+    .filter(({ d }) => d <= 2)
+    .sort((a, b) => a.d - b.d)
+    .map(({ h }) => h.node.nombre);
+  return { suggestions: cercanos.slice(0, SEARCH_LIMIT) };
+}
+
+/**
+ * La especificación de un elemento en texto para el modelo. Sale de
+ * `specToContext` (la misma poda que ya usa el contexto en TOON): así el agente
+ * lee EL MISMO contrato lo pida por donde lo pida, y las marcas «por aclarar»
+ * —lo que tiene que preguntarle al humano— viajan pegadas al requisito.
+ */
+export function formatSpec(spec: unknown): string[] {
+  const c = specToContext(spec);
+  if (!c) return [];
+  const lineas: string[] = [];
+  const lista = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
+  if (typeof c.feature === "string") lineas.push(`Feature: ${c.feature}`);
+  if (typeof c.estado === "string") lineas.push(`Estado de la spec: ${c.estado}`);
+  if (typeof c.pedido === "string") lineas.push(`Pedido original: ${c.pedido}`);
+  for (const h of (Array.isArray(c.historias) ? c.historias : []) as Record<string, unknown>[]) {
+    lineas.push(`Historia ${String(h.historia ?? "")}`);
+    if (h.porQue) lineas.push(`  porque: ${String(h.porQue)}`);
+    for (const e of lista(h.escenarios)) lineas.push(`  escenario: ${e}`);
+  }
+  const bloque = (titulo: string, items: string[]) => {
+    if (items.length) lineas.push(`${titulo}: ${items.join(" · ")}`);
+  };
+  bloque("Requisitos", lista(c.requisitos));
+  bloque("Criterios de éxito", lista(c.criterios));
+  bloque("Entidades", lista(c.entidades));
+  bloque("Casos límite", lista(c.casosLimite));
+  return lineas;
+}
+
+/**
+ * Ficha COMPLETA de una caja: descripción sin recortar, propiedades y
+ * especificación. Es la herramienta que faltaba: el digest de una vista da 90
+ * caracteres de descripción por nodo, así que sin esto el agente contestaba
+ * sobre el resumen del resumen aunque el contrato estuviera escrito (#239).
+ */
+export function readElement(cat: Catalog, name: string, budget: number): ToolResult {
+  if (budget <= 0) {
+    return {
+      ok: false,
+      error:
+        "Sin presupuesto de contexto: no se pueden leer más fichas. Consolidá con lo que ya leíste y declará qué quedó afuera.",
+    };
+  }
+  const hit = resolveElement(cat, name);
+  if ("suggestions" in hit) {
+    return { ok: false, error: `No existe el elemento "${name}".`, suggestions: hit.suggestions };
+  }
+  const { node, view } = hit;
+  const limit = Math.min(ELEMENT_READ_MAX, budget);
+
+  const lineas: string[] = [`${node.nombre} [${node.tipo_elemento}] · vista "${view.name}"`];
+  if (node.agregado) lineas.push(`Contenedor: ${node.agregado}`);
+  if (node.descripcion?.trim()) lineas.push(`Descripción: ${node.descripcion.trim()}`);
+  const props = (node.metadata ?? []).filter((m) => m?.clave);
+  if (props.length)
+    lineas.push(`Propiedades: ${props.map((m) => `${m.clave}=${m.valor ?? m.url ?? ""}`).join(" · ")}`);
+  const spec = formatSpec(node.spec);
+  if (spec.length) lineas.push("Especificación:", ...spec);
+  else lineas.push("Sin especificación escrita todavía.");
+
+  const cuerpo = lineas.join("\n");
+  const truncated = cuerpo.length > limit;
+  const text = truncated ? `${cuerpo.slice(0, limit)}\n…(recortado por presupuesto)` : cuerpo;
+
+  const facts = [
+    `"${node.nombre}" es un ${node.tipo_elemento} de la vista "${view.name}"${
+      node.agregado ? ` (en ${node.agregado})` : ""
+    }.`,
+  ];
+  if (spec.length) facts.push(`Tiene especificación escrita (${spec.length} línea(s) de contrato).`);
+  if (truncated) facts.push("Ficha RECORTADA por presupuesto: el elemento tiene más de lo leído.");
+
+  return {
+    ok: true,
+    text,
+    cost: text.length,
+    truncated,
+    note: { source: { type: "view", name: view.name }, facts, nodes: [node.nombre] },
   };
 }

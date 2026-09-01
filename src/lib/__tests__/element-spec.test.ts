@@ -16,6 +16,7 @@ import {
   sanitizeSpec,
   specFromLines,
   mergeSpec,
+  patchSpec,
   specToMarkdown,
   specFileName,
   type ElementSpec,
@@ -386,5 +387,56 @@ describe("specFromLines (borrador de la IA)", () => {
     )!;
     expect(spec.stories[0].escenarios).toHaveLength(0);
     expect(spec.stories[1].escenarios).toHaveLength(1);
+  });
+});
+
+
+describe("patchSpec · completar sin reenviar el contrato entero (#239)", () => {
+  const base = (): ElementSpec => ({
+    ...emptySpec(),
+    featureName: "Cobro recurrente",
+    requirements: [{ ...nuevoRequisito(), texto: "El sistema MUST reintentar 3 veces" }],
+    criteria: [{ ...nuevoCriterio(), texto: "99 % en un intento" }],
+  });
+
+  it("agrega un requisito conservando el resto de la spec", () => {
+    const r = patchSpec(base(), { requirements: [{ texto: "El sistema MUST avisar al usuario" }] });
+    expect(r?.requirements.map((x) => x.texto)).toEqual([
+      "El sistema MUST reintentar 3 veces",
+      "El sistema MUST avisar al usuario",
+    ]);
+    expect(r?.featureName).toBe("Cobro recurrente");
+    expect(r?.criteria).toHaveLength(1);
+  });
+
+  it("reintentar el mismo parche no duplica ni renumera", () => {
+    const parche = { requirements: [{ texto: "El sistema MUST avisar al usuario" }] };
+    const una = patchSpec(base(), parche);
+    const dos = patchSpec(una, parche);
+    expect(dos?.requirements.map((x) => x.texto)).toEqual(una?.requirements.map((x) => x.texto));
+  });
+
+  it("un ítem con el mismo texto se reemplaza EN SU SITIO (quitar «por aclarar» no reordena)", () => {
+    const conDuda = patchSpec(base(), {
+      requirements: [{ texto: "El sistema MUST reintentar 3 veces", needsClarification: true }],
+    });
+    expect(conDuda?.requirements[0].needsClarification).toBe(true);
+    expect(conDuda?.requirements).toHaveLength(1);
+  });
+
+  it("los escalares que vienen pisan y los que no vienen se conservan", () => {
+    const r = patchSpec(base(), { status: "revision" });
+    expect(r?.status).toBe("revision");
+    expect(r?.featureName).toBe("Cobro recurrente");
+  });
+
+  it("un parche vacío no borra la spec (a diferencia del reemplazo)", () => {
+    expect(patchSpec(base(), {})?.featureName).toBe("Cobro recurrente");
+    expect(patchSpec(base(), null)?.featureName).toBe("Cobro recurrente");
+  });
+
+  it("parchear sobre una caja sin spec la crea", () => {
+    const r = patchSpec(undefined, { criteria: [{ texto: "el 95 % en menos de 2 s" }] });
+    expect(r?.criteria.map((c) => c.texto)).toEqual(["el 95 % en menos de 2 s"]);
   });
 });

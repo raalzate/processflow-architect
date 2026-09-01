@@ -11,7 +11,7 @@
  * en vez de reventarlo.
  */
 
-import { isSpecEmpty, sanitizeSpec, specToMarkdown, type ElementSpec } from "../element-spec";
+import { isSpecEmpty, patchSpec, sanitizeSpec, specToMarkdown, type ElementSpec } from "../element-spec";
 import type { DiagramModel } from "./diagram-builder";
 
 /** Ids de los elementos, para el mensaje de error de un id que no existe. */
@@ -24,13 +24,23 @@ const idsDisponibles = (model: DiagramModel): string =>
  * el agente que quiera cambiar una parte la lee, la edita y la vuelve a mandar.
  *
  * Una spec vacía BORRA la que había (es la forma de decir «esto ya no aplica»).
+ * Con `merge`, en cambio, lo que no viene se conserva y las listas se suman: una
+ * spec vacía en ese modo no borra nada.
  *
  * @throws si el id no existe, nombrando los que hay.
  */
-export function setElementSpec(model: DiagramModel, id: string, spec: unknown): DiagramModel {
+export function setElementSpec(
+  model: DiagramModel,
+  id: string,
+  spec: unknown,
+  merge = false
+): DiagramModel {
   const target = model.nodes.find((n) => n.id === id);
   if (!target) throw new Error(`No existe el elemento "${id}". Los que hay: ${idsDisponibles(model)}.`);
-  const limpia = sanitizeSpec(spec);
+  // `merge` PARCHEA en vez de reemplazar (ver `patchSpec`): así se agrega un
+  // requisito sin releer y reenviar el contrato entero, que era el motivo por el
+  // que las specs quedaban sin escribir y el detalle terminaba en la descripción.
+  const limpia = merge ? patchSpec(target.spec, spec) : sanitizeSpec(spec);
   return {
     ...model,
     nodes: model.nodes.map((n) => (n.id === id ? { ...n, spec: limpia } : n)),
@@ -63,6 +73,28 @@ export function specMarkdown(model: DiagramModel, id?: string): string {
   return partes.join("\n");
 }
 
+/**
+ * Tecnologías que un REQUISITO no debería nombrar: un requisito dice qué debe
+ * pasar, no con qué se hace. Es una lista corta y declarada a propósito —no una
+ * heurística— para que el reporte sea reproducible y ampliable de una línea.
+ */
+const TECNOLOGIAS = [
+  "react", "angular", "vue", "next.js", "nextjs", "node", "nodejs", "java", "spring",
+  "kotlin", "python", "django", "flask", "dotnet", ".net", "php", "laravel", "rails",
+  "postgres", "postgresql", "mysql", "oracle", "mongodb", "redis", "dynamodb",
+  "kafka", "rabbitmq", "sqs", "docker", "kubernetes", "k8s", "aws", "azure", "gcp",
+  "lambda", "s3", "graphql", "grpc", "jwt", "oauth",
+] as const;
+
+/** Tecnologías nombradas en un texto (palabra completa, sin distinguir mayúsculas). */
+export function tecnologiasEn(texto: string): string[] {
+  const t = ` ${texto.toLowerCase().replace(/[^a-z0-9. ]+/g, " ")} `;
+  return TECNOLOGIAS.filter((tec) => t.includes(` ${tec} `));
+}
+
+/** Un criterio de éxito sin ningún número no se puede medir: es un deseo. */
+export const criterioEsMedible = (texto: string): boolean => /\d/.test(texto);
+
 /** Estado de la especificación de un elemento. */
 export interface SpecEstado {
   id: string;
@@ -75,6 +107,10 @@ export interface SpecEstado {
   porAclarar: string[];
   /** Historias sin ningún escenario: no se pueden verificar. */
   historiasSinEscenarios: string[];
+  /** Criterios de éxito sin ningún número: no se pueden medir. */
+  criteriosSinNumero: string[];
+  /** Requisitos que nombran una tecnología (dicen el CÓMO, no el QUÉ). */
+  requisitosConTecnologia: { texto: string; tecnologias: string[] }[];
 }
 
 export interface SpecReport {
@@ -104,6 +140,10 @@ export function specReport(model: DiagramModel): SpecReport {
       historiasSinEscenarios: (spec?.stories ?? [])
         .filter((h) => h.titulo.trim() && !h.escenarios.some((e) => e.given || e.when || e.then))
         .map((h) => h.titulo.trim()),
+      criteriosSinNumero: criterios.map((c) => c.texto.trim()).filter((t) => !criterioEsMedible(t)),
+      requisitosConTecnologia: requisitos
+        .map((r) => ({ texto: r.texto.trim(), tecnologias: tecnologiasEn(r.texto) }))
+        .filter((r) => r.tecnologias.length > 0),
     };
   });
 
@@ -120,12 +160,25 @@ export function specReport(model: DiagramModel): SpecReport {
       faltas.push("tiene requisitos pero ningún criterio de éxito con el que verificarlos");
     if (e.historiasSinEscenarios.length)
       faltas.push(`historias sin escenarios: ${e.historiasSinEscenarios.join(", ")}`);
+    if (e.criteriosSinNumero.length)
+      faltas.push(`criterios sin número (no se pueden medir): ${e.criteriosSinNumero.join(" · ")}`);
+    if (e.requisitosConTecnologia.length)
+      faltas.push(
+        `requisitos que nombran tecnología (dicen el cómo): ${e.requisitosConTecnologia
+          .map((r) => `${r.texto} [${r.tecnologias.join(", ")}]`)
+          .join(" · ")}`
+      );
     if (e.porAclarar.length) faltas.push(`por aclarar: ${e.porAclarar.join(" · ")}`);
     if (faltas.length) lineas.push(`- **${e.nombre}** (${e.id}): ${faltas.join("; ")}`);
   }
 
   const completas = conSpec.filter(
-    (e) => !e.requisitosSinCriterios && !e.historiasSinEscenarios.length && !e.porAclarar.length
+    (e) =>
+      !e.requisitosSinCriterios &&
+      !e.historiasSinEscenarios.length &&
+      !e.porAclarar.length &&
+      !e.criteriosSinNumero.length &&
+      !e.requisitosConTecnologia.length
   );
   if (conSpec.length && completas.length === conSpec.length)
     lineas.push("_Las especificaciones que hay están completas._");

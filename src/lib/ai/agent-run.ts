@@ -22,6 +22,7 @@ import {
   formatInventory,
   listViews,
   normalizeName,
+  readElement,
   readView,
   searchModel,
   type Catalog,
@@ -59,9 +60,17 @@ export type ToolCall =
   | { tool: "read_view"; name: string }
   /** Varias vistas en UN turno: cada turno del modelo local cuesta ~35 s. */
   | { tool: "read_views"; names: string[] }
-  | { tool: "search_model"; term: string };
+  | { tool: "search_model"; term: string }
+  /** La ficha de UNA caja: descripción entera, propiedades y especificación. */
+  | { tool: "read_element"; name: string };
 
-export const READ_TOOLS = ["list_views", "read_view", "read_views", "search_model"] as const;
+export const READ_TOOLS = [
+  "list_views",
+  "read_view",
+  "read_views",
+  "search_model",
+  "read_element",
+] as const;
 
 /** Vistas que se pueden leer de una sola vez (más no entra en la ventana). */
 export const MAX_LECTURAS_POR_LOTE = 3;
@@ -158,6 +167,23 @@ export function applyToolCall(
       observation: `Vista "${r.note.source.name}":\n${r.text}`,
       note: r.note,
     };
+  }
+
+  if (call.tool === "read_element") {
+    // No lleva el freno de "ya leída": una ficha se pide DESPUÉS de ver la vista
+    // (el digest la marca con {spec}), y releerla cuesta su presupuesto como
+    // cualquier otra lectura.
+    const r = readElement(cat, call.name, state.budgetLeft);
+    if (!r.ok) {
+      const cerca = r.suggestions?.length ? ` Elementos parecidos: ${r.suggestions.join(", ")}.` : "";
+      return { state, observation: `${r.error}${cerca}` };
+    }
+    const next: AgentRunState = {
+      ...state,
+      budgetLeft: Math.max(0, state.budgetLeft - r.cost),
+      notes: [...state.notes, r.note],
+    };
+    return { state: next, observation: `Ficha de "${call.name}":\n${r.text}`, note: r.note };
   }
 
   if (call.tool === "search_model") {

@@ -237,8 +237,17 @@ set_element_spec { id: "c4-api-pagos", spec: {
   criteria: [ { texto: "99 % de los cobros se resuelven en un intento" } ] } }
 ```
 
-- **Reemplaza** la spec anterior: para cambiar una parte, `get_element_spec`,
-  editás y volvés a mandarla. Una spec vacía borra la que hubiera.
+- **La spec no es opcional ni es el final del trabajo: es una PASADA propia.**
+  Creá primero los elementos y las relaciones; después volvé caja por caja a
+  escribir el contrato. Lo que no quepa en el nombre va a la `description`, pero
+  lo que el documento DECIDE —qué debe hacer, con qué se verifica— va acá: la
+  descripción la lee el humano de reojo, la spec la lee quien construye.
+- Por defecto **reemplaza** la spec anterior. Para completarla sin reescribirla,
+  `set_element_spec { merge: true }`: lo que mandás pisa (nombre, estado) o se
+  suma (historias, requisitos, criterios, entidades, casos límite) y lo que no
+  mandás se conserva. Un ítem con el mismo texto se reemplaza en su sitio, así
+  reintentar no duplica ni renumera los `FR-00N` que alguien ya citó afuera.
+  Sin `merge`, una spec vacía borra la que hubiera.
 - Lo que la fuente **no decide, no se inventa**: el requisito se marca
   `needsClarification: true` y queda visible como pendiente.
 - Los requisitos van sin tecnología («El sistema MUST …») y los criterios de
@@ -246,8 +255,15 @@ set_element_spec { id: "c4-api-pagos", spec: {
 - `spec_to_markdown` devuelve la plantilla lista para pegar en una issue o un PR
   (de un elemento, o de todo el diagrama sin `id`).
 - `review_specs` dice qué elementos no tienen spec, cuáles tienen requisitos sin
-  ningún criterio con el que verificarlos, cuáles tienen historias sin escenarios
-  y qué quedó por aclarar. Pasalo antes de dar el diseño por terminado.
+  ningún criterio con el que verificarlos, cuáles tienen historias sin
+  escenarios, **qué criterio no tiene ningún número** (no se puede medir), **qué
+  requisito nombra una tecnología** (dice el cómo, no el qué) y qué quedó por
+  aclarar. **Es el cierre de la pasada de spec: no des el diseño por terminado
+  hasta que lo que devuelve sea lista vacía o una excepción que le declarás al
+  usuario en una línea.**
+- En la app, el agente lee ese contrato con `read_element`: si la spec está
+  vacía, lo único que va a poder contestarle al humano es el resumen de la
+  descripción. Escribir la spec ES lo que hace útil al diagrama después.
 
 Si el diagrama crece, `suggest_views`: dice si conviene cortarlo por
 contenedor/fase (legible hasta ~40 elementos) y qué mirada complementaria

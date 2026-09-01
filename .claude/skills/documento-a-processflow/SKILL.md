@@ -256,9 +256,16 @@ set_element_spec { id: "c4-api-pagos", spec: {
 
 - Lo que el documento **no decide, no se inventa**: `needsClarification: true` en
   ese requisito, y además registrá la ambigüedad con `record_ambiguity`.
-- `get_element_spec` antes de reescribir (no pises lo que puso una persona),
-  `spec_to_markdown` para pegar el contrato en una issue, y `review_specs` antes
-  de dar el portafolio por terminado.
+- **Es una pasada propia, después de crear las cajas.** Un portafolio de
+  diagramas sin specs devuelve al documento a la persona que lo trajo: en la app,
+  el agente lee el contrato con `read_element`, y si no hay spec sólo puede
+  responder con el resumen de la descripción.
+- `get_element_spec` antes de reescribir (no pises lo que puso una persona), o
+  `set_element_spec { merge: true }` para ir completando caja por caja sin releer
+  el contrato entero. `spec_to_markdown` para pegar el contrato en una issue.
+- **`review_specs` cierra la pasada**: además de los elementos sin spec, marca
+  criterios sin número (no medibles) y requisitos que nombran tecnología. Nada se
+  entrega hasta que devuelva lista vacía o le declares la excepción al usuario.
 
 ## 4 · Validar calidad (no sólo validez)
 
