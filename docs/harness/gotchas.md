@@ -338,3 +338,28 @@ Mecanismo: regla TILES de `scripts/repo-lint.mjs` (config `tiles`), en el gate y
          PostToolUse. Las dos direcciones están probadas en el self-test con registros inventados
          por stdin. Los 13 huérfanos se quitaron con `tessl uninstall`; las 30 deps sin tile
          quedaron como deuda declarada en `tiles.allow`.
+
+### GOTCHA: la actualización automática en Windows pedía un archivo que no existe
+
+Issue: #235
+
+Síntoma: el botón «Actualizar» en Windows no hacía nada. `electron-updater` lee `latest.yml`,
+         pide el archivo que ahí dice y GitHub responde **404**. Verificado contra el release
+         publicado v0.8.5: el yml apuntaba a `Processflow-Architect-Setup-0.8.5.exe` y el asset
+         se llamaba `Processflow-Architect.Setup.0.8.5.exe`. Nunca funcionó, en ningún release
+         de la feature 011, y el tracker lo arrastró cinco versiones (#217 no se podía cerrar).
+         macOS y Linux estaban sanos.
+Causa:   `build.win` no declaraba `artifactName`, así que NSIS usó su default
+         —`${productName} Setup ${version}.${ext}`, con ESPACIOS—. De un nombre con espacios
+         salen dos nombres distintos: GitHub los convierte en puntos al recibir el asset, y
+         electron-builder los escribe como guiones en el yml (asume que publica él). El release
+         se publicaba entero y en VERDE: los ocho artefactos estaban, el gate pasaba y el fallo
+         sólo aparecía al pulsar el botón, en una plataforma que nadie tenía delante.
+Regla:   el nombre del instalador se declara y no lleva espacios; y los metadatos de un release
+         publicado apuntan a artefactos que existen, con el tamaño que declaran.
+Mecanismo: dos, porque el fallo tiene dos caras. Regla ARTIFACTNAME de `scripts/repo-lint.mjs`
+         (en el gate, con dos casos en el self-test): un `artifactName` con espacios —o ausente,
+         que es el default con espacios— pone el gate en rojo. Y `npm run release:updater-check`
+         (usa red, señal manual tras publicar): lee los tres `latest*.yml` del release y verifica
+         path y tamaño contra los assets. Lo que decide es puro y está probado en
+         `src/lib/__tests__/release-metadata.test.ts`.
