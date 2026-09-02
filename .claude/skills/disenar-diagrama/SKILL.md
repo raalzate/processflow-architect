@@ -217,6 +217,28 @@ artefacto real. Poné propiedades cuando la fuente las da o cuando estás modela
 desde código; no las inventes: una url adivinada es peor que ninguna, y para eso
 está `pendiente`.
 
+### Adjuntá el documento, no sólo su nombre
+
+Una cita a un archivo que la app no tiene es un puntero colgante: el humano que
+revisa desde la app —y el agente que ahí le responde— no puede abrirlo. Antes de
+citar líneas de un documento, **adjuntá su texto** con `attach_source`:
+
+```
+attach_source { name: "contratos/07-pagos.md", origin: "PDF del cliente",
+                text: "<el texto del documento>" }
+add_node { name: "Pasarela", type: "Componente",
+           source: "contratos/07-pagos.md:36" }
+```
+
+- Citá con el **mismo nombre** con el que adjuntaste: así la ficha del elemento
+  muestra el fragmento y el agente de la app puede leerlo con `read_source`.
+- `list_sources` dice qué hay adjunto (sin traer el texto); `read_source` relee
+  un rango; `remove_source` lo quita sin borrar las citas.
+- `validate_diagram` avisa con **FUENTE-SIN-ADJUNTAR** cuando una caja cita un
+  documento que no está: es la señal de que la evidencia se quedó afuera.
+- Adjuntá lo que **sostiene el diagrama**, no la biblioteca entera: el tope son
+  20 documentos de 60 000 caracteres y lo que pase se recorta.
+
 ### Especificación: qué debe hacer la caja y cómo se sabe
 
 Cada elemento puede llevar su **contrato**, que en la app se ve en el tab «Spec»

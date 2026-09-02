@@ -278,6 +278,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         mermaidCode: v.mermaidCode,
         pinned: pineadas.has(v.id),
       })),
+      // Los documentos de los que salió el modelo: no van al contexto por
+      // existir (no entran en la ventana), el agente los lee por trozos con
+      // `read_source` y con ellos resuelve la cita de una caja (feature 012).
+      sources: graphData?.source_docs ?? [],
     };
   }, [views, injectedViews, graphData]);
 

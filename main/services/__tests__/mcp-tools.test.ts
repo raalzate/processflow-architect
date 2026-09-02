@@ -1646,3 +1646,98 @@ describe("propiedades canónicas: el freno de repo y puerto (#190)", () => {
     expect(out).toContain("→");
   });
 });
+
+describe("documentos fuente · la evidencia viaja con el diagrama (feature 012)", () => {
+  /** Diagrama con un nodo que cita un documento, y el documento adjunto. */
+  async function conDocumento(t: ReturnType<typeof toolsFor>, adjuntar = true) {
+    const created = await t.textOf("create_diagram", { name: "Pagos", notation: "ddd" });
+    const id = /diagramId="([^"]+)"/.exec(created)![1];
+    await t.call("add_node", {
+      diagramId: id,
+      name: "Cobrar",
+      type: tipo("ddd", "command"),
+      source: "docs/pagos.md:3",
+    });
+    if (adjuntar)
+      await t.call("attach_source", {
+        diagramId: id,
+        name: "docs/pagos.md",
+        text: ["# Pagos", "", "El cobro se hace con tarjeta.", "", "Sin confirmar."].join("\n"),
+        origin: "PDF del cliente",
+      });
+    return id;
+  }
+
+  it("adjunta el documento y dice cómo citarlo", async () => {
+    const t = toolsFor();
+    const id = await conDocumento(t, false);
+    const out = await t.textOf("attach_source", { diagramId: id, name: "docs/pagos.md", text: "línea\notra" });
+    expect(out).toContain("2 líneas");
+    expect(out).toContain('source: "docs/pagos.md:<línea>');
+  });
+
+  it("un documento sin texto no se adjunta", async () => {
+    const t = toolsFor();
+    const id = await conDocumento(t, false);
+    const res = await t.call("attach_source", { diagramId: id, name: "a.md", text: "   " });
+    expect(res.isError).toBe(true);
+  });
+
+  it("list_sources no devuelve el contenido, y sin documentos dice qué falta", async () => {
+    const t = toolsFor();
+    const id = await conDocumento(t);
+    const con = await t.textOf("list_sources", { diagramId: id });
+    expect(con).toContain("docs/pagos.md");
+    expect(con).toContain("PDF del cliente");
+    expect(con).not.toContain("tarjeta");
+
+    const id2 = await conDocumento(t, false);
+    expect(await t.textOf("list_sources", { diagramId: id2 })).toContain("attach_source");
+  });
+
+  it("read_source devuelve el rango pedido; un documento que no está, error accionable", async () => {
+    const t = toolsFor();
+    const id = await conDocumento(t);
+    expect(await t.textOf("read_source", { diagramId: id, name: "docs/pagos.md", from: 3, to: 3 })).toContain(
+      "El cobro se hace con tarjeta."
+    );
+    const res = await t.call("read_source", { diagramId: id, name: "otro.md" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("docs/pagos.md");
+  });
+
+  it("adjuntar dos veces el mismo nombre reemplaza, no duplica", async () => {
+    const t = toolsFor();
+    const id = await conDocumento(t);
+    await t.call("attach_source", { diagramId: id, name: "docs/pagos.md", text: "versión nueva" });
+    const inv = await t.textOf("list_sources", { diagramId: id });
+    expect(inv.split("\n").filter((l) => l.includes("docs/pagos.md"))).toHaveLength(1);
+    expect(await t.textOf("read_source", { diagramId: id, name: "docs/pagos.md" })).toContain("versión nueva");
+  });
+
+  it("quitar un documento no borra la caja que lo citaba", async () => {
+    const t = toolsFor();
+    const id = await conDocumento(t);
+    expect(await t.textOf("remove_source", { diagramId: id, name: "docs/pagos.md" })).toContain("Quedan 0");
+    const res = await t.call("remove_source", { diagramId: id, name: "docs/pagos.md" });
+    expect(res.isError).toBe(true);
+    expect(await t.textOf("get_diagram", { diagramId: id })).toContain("Cobrar");
+  });
+
+  it("review_diagram avisa de la cita cuyo documento NO está adjunto", async () => {
+    const t = toolsFor();
+    const sinDoc = await conDocumento(t, false);
+    expect(await t.textOf("validate_diagram", { diagramId: sinDoc })).toContain("FUENTE-SIN-ADJUNTAR");
+    const conDoc = await conDocumento(t);
+    expect(await t.textOf("validate_diagram", { diagramId: conDoc })).not.toContain("FUENTE-SIN-ADJUNTAR");
+  });
+
+  it("el documento viaja al proyecto que se exporta a la app", async () => {
+    let exportado: any = null;
+    const t = toolsFor({ exportToApp: async (_n: string, graph: unknown) => ((exportado = graph), true) });
+    const id = await conDocumento(t);
+    await t.call("export_to_app", { diagramId: id });
+    expect(exportado?.source_docs?.[0]?.nombre).toBe("docs/pagos.md");
+    expect(exportado?.source_docs?.[0]?.texto).toContain("tarjeta");
+  });
+});

@@ -23,6 +23,7 @@ import {
   listViews,
   normalizeName,
   readElement,
+  readSource,
   readView,
   searchModel,
   type Catalog,
@@ -62,7 +63,9 @@ export type ToolCall =
   | { tool: "read_views"; names: string[] }
   | { tool: "search_model"; term: string }
   /** La ficha de UNA caja: descripción entera, propiedades y especificación. */
-  | { tool: "read_element"; name: string };
+  | { tool: "read_element"; name: string }
+  /** Un trozo del documento del que salió el modelo. */
+  | { tool: "read_source"; name: string; from?: number; to?: number };
 
 export const READ_TOOLS = [
   "list_views",
@@ -70,6 +73,7 @@ export const READ_TOOLS = [
   "read_views",
   "search_model",
   "read_element",
+  "read_source",
 ] as const;
 
 /** Vistas que se pueden leer de una sola vez (más no entra en la ventana). */
@@ -184,6 +188,20 @@ export function applyToolCall(
       notes: [...state.notes, r.note],
     };
     return { state: next, observation: `Ficha de "${call.name}":\n${r.text}`, note: r.note };
+  }
+
+  if (call.tool === "read_source") {
+    const r = readSource(cat, call.name, state.budgetLeft, call.from, call.to);
+    if (!r.ok) {
+      const cerca = r.suggestions?.length ? ` Documentos del proyecto: ${r.suggestions.join(", ")}.` : "";
+      return { state, observation: `${r.error}${cerca}` };
+    }
+    const next: AgentRunState = {
+      ...state,
+      budgetLeft: Math.max(0, state.budgetLeft - r.cost),
+      notes: [...state.notes, r.note],
+    };
+    return { state: next, observation: `Documento "${r.note.source.name}":\n${r.text}`, note: r.note };
   }
 
   if (call.tool === "search_model") {

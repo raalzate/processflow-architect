@@ -23,6 +23,7 @@
 import type { GraphData, GraphNode, Agregado, ReadModel } from "../types";
 import { problemasDePropiedades } from "../element-properties";
 import { sanitizeSpec, type ElementSpec } from "../element-spec";
+import { sanitizeSourceDocs, type SourceDoc } from "../source-docs";
 import {
   normalizarLista,
   quitarMetadata,
@@ -193,6 +194,8 @@ export interface DiagramModel {
    * datos que la app lista aparte, así que viven en el modelo y no en `nodes`.
    */
   readModels?: ReadModel[];
+  /** Documentos fuente del diagrama, con su texto (ver `source-docs.ts`). */
+  sources?: SourceDoc[];
 }
 
 export interface ValidationResult {
@@ -1386,6 +1389,9 @@ export function toGraphData(input: DiagramModel): GraphData {
     // Las notas del humano van PRIMERO; el resumen de ambigüedades se suma.
     notas: mergeNotas(meta.notas, ambiguityNotes(model)),
     transcript: "",
+    // Los documentos fuente viajan DENTRO del proyecto: es lo que hace que la
+    // cita de una caja se pueda resolver en una máquina que no tiene el repo.
+    ...(model.sources?.length ? { source_docs: sanitizeSourceDocs(model.sources) } : {}),
   };
 }
 
@@ -1472,6 +1478,9 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
     nodes,
     edges,
     readModels: readModelsDeEntrada(data.read_models),
+    // Igual que los read models: lo que no vuelva por acá se pierde en el
+    // siguiente export, y con los documentos se perdería la evidencia entera.
+    ...(data.source_docs?.length ? { sources: sanitizeSourceDocs(data.source_docs) } : {}),
   };
 }
 

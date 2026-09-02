@@ -18,6 +18,13 @@ import type { GraphData, GraphNode } from "../types";
 import { collectGraphNodes } from "../view-nodes";
 import { countGraph } from "../mcp/app-state";
 import { specToContext } from "./graph-toon";
+import {
+  citaDe,
+  formatSourceInventory,
+  readSourceRange,
+  resolveCita,
+  type SourceDoc,
+} from "../source-docs";
 
 /**
  * Techo de una sola lectura. Bajó de 6 000 a 2 000 caracteres cuando el motor
@@ -52,6 +59,11 @@ export interface ViewEntry {
 
 export interface Catalog {
   views: ViewEntry[];
+  /**
+   * Documentos de los que salió el modelo, con su texto (`source-docs.ts`). No
+   * viajan al contexto por existir: el agente ve el inventario y PIDE el trozo.
+   */
+  sources?: SourceDoc[];
 }
 
 export interface ViewInventoryItem {
@@ -502,6 +514,17 @@ export function readElement(cat: Catalog, name: string, budget: number): ToolRes
   if (spec.length) lineas.push("Especificación:", ...spec);
   else lineas.push("Sin especificación escrita todavía.");
 
+  // La cita de la caja viaja dentro de la descripción («Fuente: docs/…:36»). Si
+  // el documento está adjunto al proyecto, la ficha trae el TROZO que la
+  // sostiene: sin esto la cita nombra un archivo que la app no tiene (#240).
+  const cita = citaDe(node.descripcion);
+  if (cita) {
+    const r = resolveCita(cat.sources ?? [], cita);
+    if (r.estado === "ok") lineas.push(`Fuente ${r.doc}:`, r.fragmento);
+    else if (r.estado === "falta")
+      lineas.push(`Fuente citada: ${cita} (el documento NO está adjunto al proyecto).`);
+  }
+
   const cuerpo = lineas.join("\n");
   const truncated = cuerpo.length > limit;
   const text = truncated ? `${cuerpo.slice(0, limit)}\n…(recortado por presupuesto)` : cuerpo;
@@ -520,5 +543,57 @@ export function readElement(cat: Catalog, name: string, budget: number): ToolRes
     cost: text.length,
     truncated,
     note: { source: { type: "view", name: view.name }, facts, nodes: [node.nombre] },
+  };
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* 5 · Leer un documento fuente                                                */
+/* -------------------------------------------------------------------------- */
+
+/** Inventario de documentos fuente para el system prompt (sin su contenido). */
+export function sourceInventory(cat: Catalog): string {
+  return formatSourceInventory(cat.sources ?? []);
+}
+
+/**
+ * Un trozo de un documento fuente. Es la única forma en que el texto del
+ * documento entra al contexto: entero no cabe —la ventana del motor local son
+ * 4 096 tokens— y empujarlo tampoco serviría, porque lo que el agente necesita es
+ * el párrafo que sostiene la caja de la que se le está preguntando (#240).
+ */
+export function readSource(
+  cat: Catalog,
+  name: string,
+  budget: number,
+  from?: number,
+  to?: number
+): ToolResult {
+  if (budget <= 0) {
+    return {
+      ok: false,
+      error:
+        "Sin presupuesto de contexto: no se pueden leer más fuentes. Consolidá con lo que ya leíste y declará qué quedó afuera.",
+    };
+  }
+  const docs = cat.sources ?? [];
+  if (!docs.length) {
+    return {
+      ok: false,
+      error:
+        "El proyecto no tiene documentos fuente adjuntos: las citas de los elementos no se pueden abrir desde acá.",
+    };
+  }
+  const limit = Math.min(VIEW_READ_MAX, budget);
+  const r = readSourceRange(docs, name, from, to, limit);
+  if (!r.ok) return { ok: false, error: r.error, suggestions: r.disponibles };
+  const facts = [`Leído de "${r.doc}"${from ? ` desde la línea ${from}` : ""}.`];
+  if (r.truncado) facts.push("Lectura RECORTADA: el documento tiene más de lo leído.");
+  return {
+    ok: true,
+    text: r.texto,
+    cost: r.texto.length,
+    truncated: r.truncado,
+    note: { source: { type: "document", name: r.doc }, facts, nodes: [] },
   };
 }

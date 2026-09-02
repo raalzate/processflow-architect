@@ -22,7 +22,7 @@ import {
 } from "@/lib/artifacts/registry";
 import { artifactRequestDirective, resolveArtifactRequest } from "@/lib/artifacts/request";
 import type { AgentRunState, AgentStep } from "@/lib/agent-types";
-import { formatInventory, listViews, type Catalog } from "./agent-retrieval";
+import { formatInventory, listViews, sourceInventory, type Catalog } from "./agent-retrieval";
 import {
   applyToolCall,
   approvePlan,
@@ -917,6 +917,7 @@ function exploreToolMenu(cat: Catalog, invMax = 1200): string {
 - "read_views" {"names":["<vista>","<vista>","<vista>"]} — lee HASTA 3 VISTAS DE UNA VEZ. Es la que conviene: cada turno tuyo tarda, leer de a una cuesta minutos.
 - "read_view" {"name":"<nombre exacto>"} — una sola vista.
 - "search_model" {"term":"<palabra>"} — dónde aparece un concepto (dice en qué vista vive).
+- "read_source" {"name":"<documento>","from":<línea>,"to":<línea>} — un trozo del DOCUMENTO del que salió el modelo (los de abajo). Es lo que sostiene una caja: pedilo cuando te pregunten POR QUÉ el modelo dice lo que dice.
 - "read_element" {"name":"<nombre de la caja>"} — la FICHA de una caja: descripción entera, propiedades y ESPECIFICACIÓN (historias, requisitos, criterios). Pedila siempre que una caja venga marcada con {spec}, {props} o {desc+} en una lectura: ahí está el contrato, no en el resumen de 90 caracteres.
 - "list_views" {} — refrescar el inventario (ya lo tenés abajo: normalmente NO hace falta).
 
@@ -926,7 +927,9 @@ Herramientas de GENERACIÓN (sólo con el plan aprobado):
 ${toolMenu()}
 
 Inventario inicial:
-${clamp(formatInventory(listViews(cat)), invMax)}`;
+${clamp(formatInventory(listViews(cat)), invMax)}${
+    sourceInventory(cat) ? `\n\nDocumentos fuente del proyecto (leelos con read_source):\n${clamp(sourceInventory(cat), 600)}` : ""
+  }`;
 }
 
 function planFromJson(raw: any): { kind: "plan"; title: string; artifactKind: string; sections: { title: string; sources: string[] }[] } | null {
@@ -1214,14 +1217,21 @@ ${exploreToolMenu(cat, invMax)}${clamp(ctx, ctxMax)}${memoryBlock(state, Math.ro
             ? ({ tool: "search_model", term: String(a.term ?? a.query ?? "") } as ToolCall)
             : action === "read_element"
               ? ({ tool: "read_element", name: String(a.name ?? a.element ?? a.id ?? "") } as ToolCall)
-              : ({ tool: "list_views" } as ToolCall);
+              : action === "read_source"
+                ? ({
+                    tool: "read_source",
+                    name: String(a.name ?? a.doc ?? a.document ?? ""),
+                    from: Number.isFinite(Number(a.from)) ? Number(a.from) : undefined,
+                    to: Number.isFinite(Number(a.to)) ? Number(a.to) : undefined,
+                  } as ToolCall)
+                : ({ tool: "list_views" } as ToolCall);
       const r = applyToolCall(state, call, cat);
       state = r.state;
       paso({
         type: action === "search_model" ? "search" : "read",
         tool: action,
         source:
-          call.tool === "read_view" || call.tool === "read_element"
+          call.tool === "read_view" || call.tool === "read_element" || call.tool === "read_source"
             ? call.name
             : call.tool === "read_views"
               ? call.names.join(", ")

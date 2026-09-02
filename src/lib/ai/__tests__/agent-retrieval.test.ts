@@ -18,6 +18,8 @@ import {
   resolveElement,
   formatSpec,
   fichaHints,
+  readSource,
+  sourceInventory,
   VIEW_READ_MAX,
   type Catalog,
   type ViewEntry,
@@ -406,5 +408,83 @@ describe("marca de ficha · el digest avisa que hay más", () => {
   it("formatSpec de algo que no es una spec no inventa líneas", () => {
     expect(formatSpec(undefined)).toEqual([]);
     expect(formatSpec({ status: "borrador" })).toEqual([]);
+  });
+});
+
+
+/* -------------------------------------------------------------------------- */
+/* read_source · el documento del que salió el modelo (feature 012)            */
+/* -------------------------------------------------------------------------- */
+
+describe("documentos fuente · la cita deja de ser un puntero colgante", () => {
+  const docs = [
+    {
+      nombre: "docs/pagos.md",
+      origen: "PDF del cliente",
+      texto: ["# Pagos", "", "El cobro se hace con tarjeta.", "", "El callback no confirma."].join("\n"),
+    },
+  ];
+  const conDocs = (): Catalog => ({
+    views: [
+      vista({
+        name: "Pagos",
+        graph: grafo([
+          nodo("Pasarela", "Componente", "Pasarela de tarjetas.\n\nFuente: docs/pagos.md:3"),
+          nodo("Sin fuente", "Componente", "una caja cualquiera"),
+          nodo("Otra fuente", "Componente", "algo.\n\nFuente: docs/otro.md:1"),
+        ]),
+      }),
+    ],
+    sources: docs,
+  });
+
+  it("la ficha de una caja trae el FRAGMENTO que la sostiene", () => {
+    const r = readElement(conDocs(), "Pasarela", 5000);
+    if (!r.ok) throw new Error("debía leer");
+    expect(r.text).toContain("El cobro se hace con tarjeta.");
+    expect(r.text).toContain("Fuente docs/pagos.md");
+  });
+
+  it("una cita cuyo documento NO está adjunto se dice; nunca se sustituye por otro", () => {
+    const r = readElement(conDocs(), "Otra fuente", 5000);
+    if (!r.ok) throw new Error("debía leer");
+    expect(r.text).toContain("NO está adjunto");
+    expect(r.text).not.toContain("tarjeta");
+  });
+
+  it("una caja sin cita no arrastra ningún documento", () => {
+    const r = readElement(conDocs(), "Sin fuente", 5000);
+    if (!r.ok) throw new Error("debía leer");
+    expect(r.text).not.toContain("Fuente");
+  });
+
+  it("read_source devuelve el rango y lo atribuye al documento", () => {
+    const r = readSource(conDocs(), "docs/pagos.md", 5000, 3, 3);
+    if (!r.ok) throw new Error("debía leer");
+    expect(r.text).toContain("El cobro se hace con tarjeta.");
+    expect(r.note.source).toEqual({ type: "document", name: "docs/pagos.md" });
+  });
+
+  it("sin documentos adjuntos lo dice, en vez de fallar en silencio", () => {
+    const r = readSource(catalogo(vista({ name: "V", graph: grafo([]) })), "x.md", 5000);
+    expect(r.ok).toBe(false);
+  });
+
+  it("un documento inexistente devuelve los que hay, para el turno siguiente", () => {
+    const r = readSource(conDocs(), "otro.md", 5000);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.suggestions).toEqual(["docs/pagos.md"]);
+  });
+
+  it("sin presupuesto no lee", () => {
+    expect(readSource(conDocs(), "docs/pagos.md", 0).ok).toBe(false);
+  });
+
+  it("el inventario nombra los documentos sin traer su texto", () => {
+    const inv = sourceInventory(conDocs());
+    expect(inv).toContain("docs/pagos.md");
+    expect(inv).not.toContain("tarjeta");
+    expect(sourceInventory(catalogo())).toBe("");
   });
 });

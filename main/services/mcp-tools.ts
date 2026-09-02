@@ -53,6 +53,15 @@ import {
   specReport,
 } from "../../src/lib/mcp/element-spec-tools";
 import { PROPIEDADES_CANONICAS, VALOR_PENDIENTE } from "../../src/lib/element-properties";
+import {
+  MAX_DOCS,
+  MAX_DOC_CHARS,
+  attachSourceDoc,
+  formatSourceInventory,
+  readSourceRange,
+  removeSourceDoc,
+  resolveCita,
+} from "../../src/lib/source-docs";
 import { resolveDiagramId } from "../../src/lib/mcp/active-diagram";
 import {
   resolveOrg,
@@ -1477,6 +1486,128 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       return text(
         `Ambigüedad registrada (id="${r.id}"). Pendientes: ${pendingAmbiguities(r.model).length}. Ciérrala con resolve_ambiguity cuando el usuario responda.`
       );
+    }
+  );
+
+  // -- 4c. Documentos fuente: la evidencia viaja con el diagrama (feature 012) ---
+
+  server.registerTool(
+    "attach_source",
+    {
+      title: "Adjuntar un documento fuente",
+      description:
+        `Guarda DENTRO del diagrama el texto del documento del que sale el modelo (el .md, el PRD, el acta). Es lo que convierte la cita de una caja en evidencia: la app no tiene tu sistema de archivos, así que \`source: "docs/pagos.md:36"\` sin el documento adjunto es un puntero a algo que nadie puede abrir —ni el humano que revisa ni el agente de la app, que contestará con el resumen de la descripción. Adjuntá el documento ANTES de citar sus líneas, con el MISMO nombre con el que vas a citarlo. Reemplaza por nombre (volver a analizar no deja dos versiones). Tope: ${MAX_DOCS} documentos de ${MAX_DOC_CHARS} caracteres; lo que pase se recorta y se avisa.`,
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        name: z
+          .string()
+          .describe('Nombre con el que se cita, idealmente la ruta ("docs/contratos/07-pagos.md").'),
+        text: z.string().describe("El texto del documento (el agente externo ya lo leyó)."),
+        origin: z.string().optional().describe('De dónde salió, para el humano ("PDF del cliente").'),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, name, text: contenido, origin }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        const sources = attachSourceDoc(model.sources ?? [], {
+          nombre: name,
+          texto: contenido,
+          origen: origin,
+        });
+        await saveModel(diagramId, { ...model, sources });
+        const doc = sources.find((d) => d.nombre === name.trim())!;
+        return text(
+          `Documento "${doc.nombre}" adjunto (${doc.texto.split("\n").length} líneas${
+            doc.truncado ? `, RECORTADO a ${MAX_DOC_CHARS} caracteres` : ""
+          }). Citá sus líneas con source: "${doc.nombre}:<línea>,<línea>".`
+        );
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "list_sources",
+    {
+      title: "Documentos fuente del diagrama",
+      description:
+        "Qué documentos tiene adjuntos el diagrama y cuánto pesan, SIN su contenido. Consultalo antes de adjuntar (para no repetir) y antes de citar (para citar con el nombre que existe).",
+      inputSchema: { diagramId: diagramIdSchema },
+    },
+    async ({ diagramId: diagramIdEntrada }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      const inv = formatSourceInventory(model.sources ?? []);
+      return text(
+        inv ||
+          "El diagrama no tiene documentos fuente adjuntos: sus citas no se pueden resolver dentro de la app. Adjuntá el documento con attach_source."
+      );
+    }
+  );
+
+  server.registerTool(
+    "read_source",
+    {
+      title: "Leer un documento fuente",
+      description:
+        "Devuelve un trozo de un documento adjunto (por rango de líneas). Sirve para releer lo que sostiene una caja sin volver al sistema de archivos, y para escribir su especificación citando el texto real.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        name: z.string().describe("Nombre del documento (el de list_sources)."),
+        from: z.number().optional().describe("Primera línea (1 por defecto)."),
+        to: z.number().optional().describe("Última línea (el final por defecto)."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, name, from, to }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      const r = readSourceRange(model.sources ?? [], name, from, to);
+      if (!r.ok)
+        return fail(
+          `${r.error}${r.disponibles.length ? ` Los que hay: ${r.disponibles.join(", ")}.` : ""}`
+        );
+      return text(`${r.doc}:\n${r.texto}`);
+    }
+  );
+
+  server.registerTool(
+    "remove_source",
+    {
+      title: "Quitar un documento fuente",
+      description:
+        "Saca un documento del diagrama. Las citas que lo nombraban NO se borran: quedan como texto, igual que una cita en prosa.",
+      inputSchema: { diagramId: diagramIdSchema, name: z.string() },
+    },
+    async ({ diagramId: diagramIdEntrada, name }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      const sources = removeSourceDoc(model.sources ?? [], name);
+      if (sources.length === (model.sources ?? []).length)
+        return fail(`El diagrama no tiene ningún documento llamado "${name}".`);
+      await saveModel(diagramId, { ...model, sources });
+      return text(`Documento "${name}" quitado. Quedan ${sources.length}.`);
     }
   );
 
