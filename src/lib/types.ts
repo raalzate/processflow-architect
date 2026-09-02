@@ -3,6 +3,7 @@ import type { SimulationNodeDatum, SimulationLinkDatum } from "d3";
 import type { EdgeRelationKind } from "./edge-relations";
 import type { ElementMetadata } from "./element-metadata";
 import type { ElementSpec } from "./element-spec";
+import type { SourceDoc } from "./source-docs";
 import type { NotationId } from "./notations";
 import { z } from "zod";
 
@@ -201,6 +202,13 @@ export interface GraphData {
   responsables: string[];
   notas: string;
   transcript: string
+  /**
+   * Documentos de los que salió el modelo, con su TEXTO. Viajan dentro del
+   * proyecto para que la cita de una caja (`Fuente: docs/…:36`) se pueda resolver
+   * en cualquier máquina: el renderer no tiene sistema de archivos y el `.md`
+   * original vive donde corrió el agente externo. Ver `source-docs.ts`.
+   */
+  source_docs?: SourceDoc[];
 }
 
 // Schema for file handling in the UI

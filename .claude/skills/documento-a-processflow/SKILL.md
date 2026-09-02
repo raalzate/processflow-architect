@@ -83,6 +83,28 @@ Esa cita se pasa tal cual en el parámetro `source` de `add_node` /
 `add_container`. La app la muestra en la descripción del elemento: el revisor
 lee «elemento ← fuente» sin volver al PDF.
 
+### Adjuntá el documento, no sólo su nombre
+
+Una cita a un archivo que la app no tiene es un puntero colgante: el humano que
+revisa desde la app —y el agente que ahí le responde— no puede abrirlo. Antes de
+citar líneas de un documento, **adjuntá su texto** con `attach_source`:
+
+```
+attach_source { name: "contratos/07-pagos.md", origin: "PDF del cliente",
+                text: "<el texto del documento>" }
+add_node { name: "Pasarela", type: "Componente",
+           source: "contratos/07-pagos.md:36" }
+```
+
+- Citá con el **mismo nombre** con el que adjuntaste: así la ficha del elemento
+  muestra el fragmento y el agente de la app puede leerlo con `read_source`.
+- `list_sources` dice qué hay adjunto (sin traer el texto); `read_source` relee
+  un rango; `remove_source` lo quita sin borrar las citas.
+- `validate_diagram` avisa con **FUENTE-SIN-ADJUNTAR** cuando una caja cita un
+  documento que no está: es la señal de que la evidencia se quedó afuera.
+- Adjuntá lo que **sostiene el diagrama**, no la biblioteca entera: el tope son
+  20 documentos de 60 000 caracteres y lo que pase se recorta.
+
 ## 2 · Ambigüedades: una sola ronda, registrada
 
 Con la ficha llena, NO construyas. Primero registra en el diagrama lo que el
@@ -256,9 +278,16 @@ set_element_spec { id: "c4-api-pagos", spec: {
 
 - Lo que el documento **no decide, no se inventa**: `needsClarification: true` en
   ese requisito, y además registrá la ambigüedad con `record_ambiguity`.
-- `get_element_spec` antes de reescribir (no pises lo que puso una persona),
-  `spec_to_markdown` para pegar el contrato en una issue, y `review_specs` antes
-  de dar el portafolio por terminado.
+- **Es una pasada propia, después de crear las cajas.** Un portafolio de
+  diagramas sin specs devuelve al documento a la persona que lo trajo: en la app,
+  el agente lee el contrato con `read_element`, y si no hay spec sólo puede
+  responder con el resumen de la descripción.
+- `get_element_spec` antes de reescribir (no pises lo que puso una persona), o
+  `set_element_spec { merge: true }` para ir completando caja por caja sin releer
+  el contrato entero. `spec_to_markdown` para pegar el contrato en una issue.
+- **`review_specs` cierra la pasada**: además de los elementos sin spec, marca
+  criterios sin número (no medibles) y requisitos que nombran tecnología. Nada se
+  entrega hasta que devuelva lista vacía o le declares la excepción al usuario.
 
 ## 4 · Validar calidad (no sólo validez)
 

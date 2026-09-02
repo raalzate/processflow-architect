@@ -936,3 +936,29 @@ describe("addContainer · no se anida, y el error dice por dónde ir (ADR 0002)"
     expect(r.model.nodes[0].container).toBe("");
   });
 });
+
+
+describe("documentos fuente · ida y vuelta del modelo (feature 012)", () => {
+  const conDocs = () => ({
+    meta: { nombre_proyecto: "Pagos", notation: "ddd", fecha_analisis: "2026-09-01" } as never,
+    nodes: [{ id: "cobrar", nombre: "Cobrar", tipo_elemento: "Comando", source: "docs/pagos.md:3" }],
+    edges: [],
+    sources: [{ nombre: "docs/pagos.md", texto: "línea 1\nlínea 2\nlínea 3" }],
+  });
+
+  it("los documentos viajan al GraphData que importa la app", () => {
+    const g = toGraphData(conDocs() as never);
+    expect(g.source_docs?.[0]?.nombre).toBe("docs/pagos.md");
+  });
+
+  it("y vuelven al modelo al retomar un diseño existente (no se pierden al reexportar)", () => {
+    const g = toGraphData(conDocs() as never);
+    expect(fromGraphData(g).sources?.[0]?.texto).toContain("línea 2");
+  });
+
+  it("un proyecto sin documentos no gana la clave (el archivo viejo no cambia)", () => {
+    const sin = { ...conDocs(), sources: undefined };
+    expect(toGraphData(sin as never).source_docs).toBeUndefined();
+    expect(fromGraphData(toGraphData(sin as never)).sources).toBeUndefined();
+  });
+});

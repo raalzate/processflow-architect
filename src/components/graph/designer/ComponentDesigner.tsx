@@ -37,6 +37,7 @@ import {
   ChevronDown,
   Link2,
   SlidersHorizontal,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -127,6 +128,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useGraphContext } from "@/context/GraphContext";
+import { citaDe, resolveCita, type SourceDoc } from "@/lib/source-docs";
 import { applyGraphFilters, hasActiveFilters } from "@/lib/graph-filters";
 import { useViews } from "@/context/ViewsContext";
 import { useReference } from "@/context/ReferenceContext";
@@ -657,6 +659,38 @@ const ColorField: React.FC<{
   </div>
 );
 
+/**
+ * El fragmento del documento que sostiene esta caja. La cita («Fuente:
+ * docs/pagos.md:36») venía siendo un puntero a un archivo que la app no tiene:
+ * quien revisaba sin el repo delante leía un nombre y nada más (feature 012).
+ *
+ * Los tres desenlaces son los de `resolveCita` y ninguno miente: sin cita de
+ * archivo no se dibuja nada, con el documento ausente se dice que falta, y con
+ * el documento adjunto se muestran las líneas citadas con su contexto.
+ */
+const FuenteCitada: React.FC<{ descripcion?: string; docs: SourceDoc[] }> = ({ descripcion, docs }) => {
+  const cita = citaDe(descripcion);
+  const resuelta = useMemo(() => resolveCita(docs, cita), [docs, cita]);
+  if (!cita || resuelta.estado === "sin-cita") return null;
+  return (
+    <div className="mt-2 rounded-md border border-border bg-muted/40 p-2">
+      <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <FileText className="h-3.5 w-3.5" />
+        <span className="truncate">{cita}</span>
+      </div>
+      {resuelta.estado === "falta" ? (
+        <p className="text-xs text-muted-foreground">
+          El documento no está adjunto al proyecto: la cita no se puede abrir desde acá.
+        </p>
+      ) : (
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/80">
+          {resuelta.fragmento}
+        </pre>
+      )}
+    </div>
+  );
+};
+
 const EditNodeDialog: React.FC<{
   node: DesignerNode | null;
   /** Tipos de elemento de la notación activa (para el Select de tipo). */
@@ -671,11 +705,13 @@ const EditNodeDialog: React.FC<{
   onCreateSubView: (name: string) => string | null;
   /** Contexto de referencia del proyecto (documentos subidos) para la IA. */
   referencia: string;
+  /** Documentos fuente del proyecto: resuelven la cita de la caja (feature 012). */
+  sourceDocs: SourceDoc[];
   onClose: () => void;
   /** Autoguardado: llega el PARCHE (sólo los campos editados) del elemento `id`. */
   onSave: (id: string, cambios: Partial<DesignerNode>) => void;
   onCreateNext: (fromNode: DesignerNode, sug: { tipo: string; nombre: string; relacion: string }) => void;
-}> = ({ node, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, onClose, onSave, onCreateNext }) => {
+}> = ({ node, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext }) => {
   const [draft, setDraft] = useState<DesignerNode | null>(null);
   const { run, busy } = useAi();
   const { toast } = useToast();
@@ -951,6 +987,7 @@ const EditNodeDialog: React.FC<{
               onChange={(e) => setDraft({ ...draft, descripcion: e.target.value })}
               className="min-h-[180px]"
             />
+            <FuenteCitada descripcion={draft.descripcion} docs={sourceDocs} />
           </div>
             </div>
 
@@ -3988,6 +4025,7 @@ export const ComponentDesigner: React.FC<{
         onOpenSubView={openSubView}
         onCreateSubView={createSubView}
         referencia={referenceText}
+        sourceDocs={graphData?.source_docs ?? []}
         onClose={() => setEditingNode(null)}
         // El parche se aplica sobre el nodo VIVO: si se arrastró con la ficha
         // abierta, la posición nueva manda. Si ya no existe, no se resucita.

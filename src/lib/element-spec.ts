@@ -304,6 +304,64 @@ export function mergeSpec(
   return undefined;
 }
 
+/**
+ * Aplica un PARCHE sobre una especificación existente: lo que el parche trae
+ * pisa (los escalares) o se SUMA (las listas); lo que no trae se conserva.
+ *
+ * Existe porque escribir una spec por MCP era todo o nada: agregar un requisito
+ * obligaba a releer el contrato entero y reenviarlo, y en un diagrama de treinta
+ * cajas eso es caro y —peor— pisa lo que escribió una persona en la ficha entre
+ * medio (#239). El reemplazo total sigue siendo lo correcto para reescribir de
+ * cero; el parche es para completar.
+ *
+ * Las listas se suman SIN DUPLICAR por su texto (normalizado): reintentar el
+ * mismo parche —cosa que un agente hace— no puede dejar el requisito dos veces.
+ */
+export function patchSpec(base: ElementSpec | undefined, parcial: unknown): ElementSpec | undefined {
+  if (!parcial || typeof parcial !== "object" || Array.isArray(parcial)) return base;
+  const p = parcial as Record<string, unknown>;
+  const previa = { ...(base ?? emptySpec()) } as unknown as Record<string, unknown>;
+  const combinado: Record<string, unknown> = { ...previa };
+
+  for (const clave of ["featureName", "status", "input", "createdAt"] as const) {
+    if (typeof p[clave] === "string") combinado[clave] = p[clave];
+  }
+
+  // Clave de identidad de cada lista: el texto es lo que el humano lee, así que
+  // es lo que decide si un ítem "ya estaba". Los ids son internos y cambian.
+  const claveDe: Record<string, (x: unknown) => string> = {
+    stories: (x) => String((x as { titulo?: unknown })?.titulo ?? ""),
+    edgeCases: (x) => String(x ?? ""),
+    requirements: (x) => String((x as { texto?: unknown })?.texto ?? ""),
+    entities: (x) => String((x as { nombre?: unknown })?.nombre ?? ""),
+    criteria: (x) => String((x as { texto?: unknown })?.texto ?? ""),
+  };
+  const normal = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+  for (const [clave, id] of Object.entries(claveDe)) {
+    const entrante = p[clave];
+    if (!Array.isArray(entrante)) continue;
+    const previos = Array.isArray(previa[clave]) ? (previa[clave] as unknown[]) : [];
+    const vistos = new Map(previos.map((x, i) => [normal(id(x)), i]));
+    const salida = [...previos];
+    for (const nuevo of entrante) {
+      const k = normal(id(nuevo));
+      const yaEsta = k ? vistos.get(k) : undefined;
+      // Un ítem que ya estaba se REEMPLAZA en su sitio: así se corrige un
+      // requisito (o se le quita la marca «por aclarar») sin reordenar la lista,
+      // que es lo que renumeraría los FR-00N que el humano ya citó afuera.
+      if (yaEsta !== undefined) salida[yaEsta] = nuevo;
+      else {
+        if (k) vistos.set(k, salida.length);
+        salida.push(nuevo);
+      }
+    }
+    combinado[clave] = salida;
+  }
+
+  return sanitizeSpec(combinado);
+}
+
 // --- Salida: el markdown de la plantilla -------------------------------------
 
 const etiquetaEstado = (s: SpecStatus): string =>

@@ -365,3 +365,17 @@ describe("el grafo con specs y propiedades entra al contexto sin ruido", () => {
     expect(safeGraphToToon(grafo).length).toBeLessThan(JSON.stringify(grafo).length);
   });
 });
+
+
+describe("documentos fuente · no entran al contexto por existir (feature 012)", () => {
+  it("el TOON del grafo NO arrastra el texto de los documentos", () => {
+    const toon = safeGraphToToon({
+      nombre_proyecto: "P",
+      big_picture: { nodos: [{ id: "a", nombre: "A", tipo_elemento: "Evento" }], aristas: [] },
+      source_docs: [{ nombre: "docs/pagos.md", texto: "un documento larguísimo" }],
+    });
+    expect(toon).toContain("A");
+    expect(toon).not.toContain("larguísimo");
+    expect(toon).not.toContain("source_docs");
+  });
+});

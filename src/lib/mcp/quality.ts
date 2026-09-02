@@ -16,6 +16,7 @@
  */
 
 import { hasRole, roleOfType, typesWithRole, type ElementRole } from "../notations";
+import { resolveCita } from "../source-docs";
 import { isContainerType } from "./catalog";
 import {
   MAX_EDGE_LABEL_CHARS,
@@ -301,8 +302,31 @@ function presentationFindings(model: DiagramModel): QualityFinding[] {
  * Todos los hallazgos de calidad, en orden de lectura: flujo → dominio →
  * arquitectura → presentación, y dentro de cada bloque los `grave` primero.
  */
+/**
+ * Citas que nombran un documento que el diagrama NO tiene adjunto. Una cita así
+ * sostiene la revisión sólo para quien tenga el archivo delante: dentro de la app
+ * —y para el agente que responde ahí— es un puntero a la nada (feature 012).
+ */
+function sourceFindings(model: DiagramModel): QualityFinding[] {
+  const docs = model.sources ?? [];
+  const faltan = new Map<string, string[]>();
+  for (const n of model.nodes) {
+    const r = resolveCita(docs, n.source);
+    if (r.estado !== "falta") continue;
+    (faltan.get(r.doc) ?? faltan.set(r.doc, []).get(r.doc)!).push(n.nombre);
+  }
+  return [...faltan].map(([doc, nodos]) => ({
+    level: "aviso" as const,
+    rule: "FUENTE-SIN-ADJUNTAR",
+    message: `${nodos.length} elemento(s) citan "${doc}", que no está adjunto al diagrama (${nodos
+      .slice(0, 3)
+      .join(", ")}${nodos.length > 3 ? "…" : ""}): dentro de la app esa cita no lleva a ningún lado. Adjuntalo con attach_source usando ESE nombre.`,
+  }));
+}
+
 export function qualityFindings(model: DiagramModel): QualityFinding[] {
   const all = [
+    ...sourceFindings(model),
     ...flowFindings(model),
     ...domainFindings(model),
     ...architectureFindings(model),

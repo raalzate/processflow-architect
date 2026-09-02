@@ -32,6 +32,10 @@ const NOISE_KEYS = new Set<string>([
   "sourceAnchor", "targetAnchor", "midpoint", "midpoints",
   // Referencias circulares al nodo (duplican fuente/destino)
   "source", "target",
+  // Documentos fuente: viajan con el proyecto pero NO al contexto. Son decenas de
+  // miles de caracteres y la ventana del motor local son 4 096 tokens; el agente
+  // los lee por trozos con `read_source` (feature 012).
+  "source_docs",
 ]);
 
 const INDENT = "  ";

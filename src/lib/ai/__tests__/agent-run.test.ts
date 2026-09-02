@@ -35,6 +35,7 @@ import {
   MAX_LECTURAS_POR_LOTE,
   hasCitations,
   looksLikeNodeDump,
+  READ_TOOLS,
 } from "../agent-run";
 import type { Catalog, ViewEntry } from "../agent-retrieval";
 import type { AgentRunState } from "@/lib/agent-types";
@@ -821,5 +822,51 @@ describe("fallbackPlan", () => {
     const plan = fallbackPlan(state)!;
     expect(plan.title).toBe("Drivers");
     expect(plan.artifactKind).toBe("drivers");
+  });
+});
+
+
+describe("read_element · el agente pide la ficha de una caja (#239)", () => {
+  const conSpec: Catalog = {
+    views: [
+      vista({
+        name: "Pagos",
+        graph: grafo([
+          {
+            ...nodo("Pasarela", "Componente", "resumen corto"),
+            spec: {
+              featureName: "Cobro con tarjeta",
+              status: "borrador",
+              input: "",
+              stories: [],
+              edgeCases: [],
+              requirements: [{ id: "fr-1", texto: "El sistema MUST confirmar el cargo" }],
+              entities: [],
+              criteria: [{ id: "cr-1", texto: "el 99 % confirma en 2 s" }],
+            },
+          } as never,
+        ]),
+      }),
+    ],
+  };
+
+  it("la observación trae el contrato y la lectura cuesta presupuesto", () => {
+    const s0 = nueva();
+    const r = applyToolCall(s0, { tool: "read_element", name: "Pasarela" }, conSpec);
+    expect(r.observation).toContain("El sistema MUST confirmar el cargo");
+    expect(r.observation).toContain("el 99 % confirma en 2 s");
+    expect(r.state.budgetLeft).toBeLessThan(s0.budgetLeft);
+    expect(r.note?.nodes).toEqual(["Pasarela"]);
+  });
+
+  it("un elemento que no existe no rompe la corrida ni gasta presupuesto", () => {
+    const s0 = nueva();
+    const r = applyToolCall(s0, { tool: "read_element", name: "No existe" }, conSpec);
+    expect(r.observation).toContain("No existe el elemento");
+    expect(r.state.budgetLeft).toBe(s0.budgetLeft);
+  });
+
+  it("es una herramienta declarada del bucle", () => {
+    expect(READ_TOOLS).toContain("read_element");
   });
 });
