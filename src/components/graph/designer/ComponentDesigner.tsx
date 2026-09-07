@@ -30,6 +30,7 @@ import {
   Copy,
   Scissors,
   ClipboardPaste,
+  RotateCcw,
   CopyPlus,
   BoxSelect,
   ChevronUp,
@@ -198,7 +199,30 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { DesignerActionId } from "@/lib/designer-actions";
 import { isNudgeKey, nudgeForKey } from "@/lib/canvas-nudge";
+import { isFragmentContainer, isLifelineContainer } from "@/lib/notations";
 import { neighborhoodOf } from "@/lib/graph-neighbors";
+import { migrarMensajes, necesitaMigracion } from "@/lib/sequence/migrate";
+import { activacionesDe } from "@/lib/sequence/activations";
+import { alturaDeMensaje, ordenarParticipantes } from "@/lib/sequence/layout";
+import {
+  rangoPorGeometria,
+  repartirOperandos,
+  type FragmentPart,
+} from "@/lib/sequence/fragments";
+import {
+  esMensajeDeSecuencia,
+  ordenParaNuevo,
+  renumerar,
+  reordenarPorArrastre,
+} from "@/lib/sequence/canvas";
+import { FRAGMENT_OPS, FRAGMENT_OPS_LIST, esOperador, type FragmentOp } from "@/lib/sequence/fragments";
+import {
+  SEQUENCE_MESSAGES,
+  SEQUENCE_MESSAGE_DEFAULT,
+  SEQUENCE_MESSAGE_KINDS,
+  estiloDeMensaje,
+  type SequenceMessageKind,
+} from "@/lib/sequence/messages";
 
 /** Orden en que se ofrecen los enrutados (el mismo que la ficha del enlace). */
 const ROUTING_ORDER = ["straight", "curved", "orthogonal"] as const;
@@ -1018,6 +1042,114 @@ const EditNodeDialog: React.FC<{
               </SelectContent>
             </Select>
           </div>
+          {/* Operador del FRAGMENTO combinado. Sólo aparece en un fragmento: en
+              cualquier otro elemento sería una opción sin significado, y una
+              opción sin significado enseña mal la notación. Sin esto el
+              fragmento mostraba `?` para siempre (#286). */}
+          {isFragmentContainer(draft.tipo_elemento) && (
+            <div>
+              <Label htmlFor="frag-op">Operador del fragmento</Label>
+              <Select
+                value={esOperador(draft.fragmentOp) ? draft.fragmentOp : ""}
+                onValueChange={(v) => setDraft({ ...draft, fragmentOp: v as FragmentOp })}
+              >
+                <SelectTrigger id="frag-op">
+                  <SelectValue placeholder="Elegí el operador" />
+                </SelectTrigger>
+                <SelectContent>
+                  {FRAGMENT_OPS_LIST.map((op) => (
+                    <SelectItem key={op} value={op} title={FRAGMENT_OPS[op].hint}>
+                      {FRAGMENT_OPS[op].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {esOperador(draft.fragmentOp)
+                  ? FRAGMENT_OPS[draft.fragmentOp].hint
+                  : "Sin operador el fragmento no dice qué hace con lo que encierra."}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                La <strong>condición</strong> es el nombre del elemento: se dibuja entre
+                corchetes al lado del operador. Qué mensajes encierra sale de{" "}
+                <strong>dónde y cuánto mide el marco</strong>: estiralo sobre los que quieras.
+              </p>
+
+              {/* Casos del `alt`/`par`: sin esto un `alt` no puede tener «si no».
+                  El TRAMO de cada caso no se pide —se reparte del rango que ya
+                  define el marco—; acá sólo se dice cuántos casos hay y qué
+                  condición tiene cada uno. */}
+              {esOperador(draft.fragmentOp) && FRAGMENT_OPS[draft.fragmentOp].variosOperandos && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Casos</Label>
+                    <button
+                      type="button"
+                      className="rounded border px-2 py-0.5 text-xs hover:bg-muted"
+                      onClick={() =>
+                        setDraft((d) =>
+                          d
+                            ? {
+                                ...d,
+                                fragmentParts: [
+                                  ...(d.fragmentParts ?? [{ guarda: "", desde: 1, hasta: 1 }]),
+                                  { guarda: "", desde: 1, hasta: 1 },
+                                ],
+                              }
+                            : d
+                        )
+                      }
+                    >
+                      + Añadir caso
+                    </button>
+                  </div>
+                  {(draft.fragmentParts ?? [{ guarda: "", desde: 1, hasta: 1 }]).map((parte, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="w-6 shrink-0 text-xs text-muted-foreground">{i + 1}.</span>
+                      <Input
+                        value={parte.guarda}
+                        placeholder={i === 0 ? "condición" : "si no…"}
+                        className="h-8 text-xs"
+                        onChange={(ev) =>
+                          setDraft((d) => {
+                            if (!d) return d;
+                            const partes = [...(d.fragmentParts ?? [])];
+                            partes[i] = { ...partes[i], guarda: ev.target.value };
+                            return { ...d, fragmentParts: partes };
+                          })
+                        }
+                      />
+                      {i > 0 && (
+                        <button
+                          type="button"
+                          className="shrink-0 rounded px-1.5 text-xs text-destructive hover:bg-muted"
+                          title="Quitar este caso"
+                          onClick={() =>
+                            setDraft((d) =>
+                              d
+                                ? {
+                                    ...d,
+                                    fragmentParts: (d.fragmentParts ?? []).filter(
+                                      (_, j) => j !== i
+                                    ),
+                                  }
+                                : d
+                            )
+                          }
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <p className="text-xs text-muted-foreground">
+                    El tramo de cada caso se reparte solo entre los mensajes que el marco
+                    encierra.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <Label>Estado del cambio</Label>
             <Select
@@ -1202,6 +1334,16 @@ const EditLinkDialog: React.FC<{
   onSave: (id: string, cambios: Partial<DesignerLink>) => void;
 }> = ({ link, nodes, referencia, notation, onClose, onSave }) => {
   const [draft, setDraft] = useState<DesignerLink | null>(null);
+  // ¿Esta arista es un MENSAJE de secuencia? Lo es cuando une dos líneas de
+  // vida. Se pregunta por los extremos y no por la notación: en UML conviven
+  // clases, estados y secuencia, así que «la vista es UML» no alcanza.
+  const esMensajeDeSecuencia = useMemo(() => {
+    const a = link ? nodes.get(link.sourceId) : undefined;
+    const b = link ? nodes.get(link.targetId) : undefined;
+    return (
+      !!a && !!b && isLifelineContainer(a.tipo_elemento) && isLifelineContainer(b.tipo_elemento)
+    );
+  }, [nodes, link]);
   const { run, busy } = useAi();
   // Autoguardado con el mismo criterio que el inspector de nodos: rebote de
   // 400 ms, se vacía al cerrar o al saltar a otro enlace, y se guarda el DIFF
@@ -1404,6 +1546,36 @@ const EditLinkDialog: React.FC<{
             </Select>
             <p className="text-xs text-muted-foreground">{relationStyle(draft.relation).hint}</p>
           </div>
+
+          {/* Tipo de MENSAJE (secuencia UML). Sólo aparece si las dos puntas son
+              líneas de vida: en cualquier otro diagrama sería una opción que no
+              significa nada, y una opción sin sentido enseña mal la notación.
+              El retorno deja de ser «acordate de puntear la línea» (#269). */}
+          {esMensajeDeSecuencia && (
+            <div className="mt-4 space-y-1.5">
+              <Label htmlFor="link-message-kind">Tipo de mensaje</Label>
+              <Select
+                value={draft.messageKind ?? SEQUENCE_MESSAGE_DEFAULT}
+                onValueChange={(v) =>
+                  setDraft((d) => (d ? { ...d, messageKind: v as SequenceMessageKind } : d))
+                }
+              >
+                <SelectTrigger id="link-message-kind" title={estiloDeMensaje(draft.messageKind).hint}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SEQUENCE_MESSAGE_KINDS.map((k) => (
+                    <SelectItem key={k} value={k} title={SEQUENCE_MESSAGES[k].hint}>
+                      {SEQUENCE_MESSAGES[k].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {estiloDeMensaje(draft.messageKind).hint}
+              </p>
+            </div>
+          )}
 
           <div className="mt-4 space-y-1.5">
             <Label>Flechas</Label>
@@ -1789,6 +1961,74 @@ export const ComponentDesigner: React.FC<{
     () => neighborhoodOf(capturing ? new Set<string>() : selectedIds, links.values()),
     [selectedIds, links, capturing]
   );
+  /**
+   * Barras de activación (T20). Se CALCULAN de los mensajes y no se guardan:
+   * algo derivable que se persiste es una segunda fuente de verdad que se
+   * desincroniza al primer reordenamiento.
+   */
+  const activaciones = useMemo(() => {
+    const esLdV = (nodeId: string) => {
+      const nodo = nodes.get(nodeId);
+      return !!nodo && isLifelineContainer(nodo.tipo_elemento);
+    };
+    const mensajes = [...links.values()]
+      .filter((l) => esMensajeDeSecuencia(l, esLdV) && l.orden !== undefined)
+      .map((l) => ({
+        id: l.id,
+        orden: l.orden as number,
+        fuente: l.sourceId,
+        destino: l.targetId,
+        messageKind: l.messageKind,
+      }));
+    if (!mensajes.length) return [];
+    return activacionesDe(mensajes)
+      .map((a) => {
+        const nodo = nodes.get(a.participante);
+        if (!nodo) return null;
+        const tope = nodo.y;
+        return {
+          key: `${a.participante}-${a.desde}`,
+          x: nodo.x + (nodo.width || AGGREGATE_DEFAULT_WIDTH) / 2,
+          y: tope + alturaDeMensaje(a.desde),
+          alto: Math.max(12, alturaDeMensaje(a.hasta) - alturaDeMensaje(a.desde)),
+        };
+      })
+      .filter((a): a is NonNullable<typeof a> => a !== null);
+  }, [nodes, links]);
+
+  /**
+   * Los fragmentos recalculan qué encierran a partir de su GEOMETRÍA (T21).
+   * Se hace al vuelo y no se guarda una lista de ids: mover el marco cambia lo
+   * que abarca, y una lista guardada se desincronizaría del primer arrastre.
+   * Las GUARDAS sí se conservan —son texto del usuario— y sólo se reparte el
+   * tramo entre los casos que ya declaró.
+   */
+  const fragmentosConRango = useMemo(() => {
+    const colocados = [...links.values()]
+      .filter((l) => l.orden !== undefined)
+      .map((l) => {
+        const a0 = nodes.get(l.sourceId);
+        const b0 = nodes.get(l.targetId);
+        if (!a0 || !b0) return null;
+        return { orden: l.orden as number, y: Math.max(a0.y, b0.y) + alturaDeMensaje(l.orden as number) };
+      })
+      .filter((m): m is { orden: number; y: number } => m !== null);
+    const out = new Map<string, FragmentPart[]>();
+    if (!colocados.length) return out;
+    for (const n of nodes.values()) {
+      if (!isFragmentContainer(n.tipo_elemento)) continue;
+      const rango = rangoPorGeometria(
+        { y: n.y, height: n.height || AGGREGATE_DEFAULT_HEIGHT },
+        colocados
+      );
+      if (!rango) continue;
+      const guardas = (n.fragmentParts ?? []).map((p) => p.guarda);
+      const casos = Math.max(1, n.fragmentParts?.length ?? 1);
+      out.set(n.id, repartirOperandos(rango, casos, guardas));
+    }
+    return out;
+  }, [nodes, links]);
+
   const isRelated = useCallback(
     (id: string) => vecindario.nodes.has(id) || vecindario.edges.has(id),
     [vecindario]
@@ -1959,7 +2199,7 @@ export const ComponentDesigner: React.FC<{
   const marqueeRef = useRef(marquee);
   // Sesión de arrastre de: punta (reanclado), doblez auto o punto de quiebre (índice).
   const endpointDragRef = useRef<
-    { linkId: string; kind: "source" | "target" | "bend" | "wp" | "label"; index?: number } | null
+    { linkId: string; kind: "source" | "target" | "bend" | "wp" | "label" | "reorder"; index?: number } | null
   >(null);
   useEffect(() => {
     nodesRef.current = nodes;
@@ -2155,6 +2395,23 @@ export const ComponentDesigner: React.FC<{
     [toast]
   );
 
+  const esLineaDeVidaRef = useRef((nodeId: string) => {
+    const n = nodesRef.current.get(nodeId);
+    return !!n && isLifelineContainer(n.tipo_elemento);
+  });
+
+  /** ¿Este enlace es un mensaje de secuencia? Lo dicen sus dos extremos. */
+  const esMensajeDeSecuenciaLink = useCallback(
+    (link: DesignerLink) => esMensajeDeSecuencia(link, esLineaDeVidaRef.current),
+    []
+  );
+
+  /** ¿Ese nodo es una línea de vida? Lo que decide si un enlace es un mensaje. */
+  const esLineaDeVida = useCallback((nodeId: string) => {
+    const n = nodesRef.current.get(nodeId);
+    return !!n && isLifelineContainer(n.tipo_elemento);
+  }, []);
+
   const deleteSelected = useCallback(() => {
     const ids = selectedIdsRef.current;
     if (ids.size === 0) return;
@@ -2174,12 +2431,19 @@ export const ComponentDesigner: React.FC<{
       for (const [lid, link] of l.entries()) {
         if (deletedNodes.has(link.sourceId) || deletedNodes.has(link.targetId)) l.delete(lid);
       }
+      // Borrar deja huecos en la secuencia, y un hueco parece que significa
+      // algo (FR-017). Se renumera sólo lo que cambia, para no marcar como
+      // modificado medio diagrama.
+      for (const { id: lid, orden } of renumerar([...l.values()], esLineaDeVida)) {
+        const link = l.get(lid);
+        if (link) l.set(lid, { ...link, orden });
+      }
       linksRef.current = l;
       return l;
     });
     pushSnapshot(nodesRef.current, linksRef.current);
     clearSelection();
-  }, [pushSnapshot, clearSelection]);
+  }, [pushSnapshot, clearSelection, esLineaDeVida]);
 
   const cancelOrDeselect = useCallback(() => {
     setConnectFrom(null);
@@ -2356,6 +2620,29 @@ export const ComponentDesigner: React.FC<{
     // así que el árbol del modelo no coincidía con las bandas del lienzo.
     const { nodes: crudos, links: l } = graphDataToCanvas(sourceContent);
     const n = reassignContainers(crudos, sourceContent.notation ?? notationId).nodes;
+
+    // Al ABRIR se migran los mensajes de secuencia guardados antes de que el
+    // orden existiera (T19): el orden sale de la altura con la que se venían
+    // dibujando y el punteado se lee como retorno. Se hace acá y no con un
+    // script masivo: un diagrama que nadie abre no se toca, y no hay un paso
+    // que pueda fallar a mitad y dejar medio repo en un estado y medio en otro.
+    const esLdV = (nodeId: string) => {
+      const nodo = n.get(nodeId);
+      return !!nodo && isLifelineContainer(nodo.tipo_elemento);
+    };
+    const mensajes = [...l.values()].filter((k) => esMensajeDeSecuencia(k, esLdV));
+    if (mensajes.length && necesitaMigracion(mensajes)) {
+      // La `y` de un mensaje no se guarda: se toma la de su ancla si la tiene,
+      // y si no la del punto medio entre sus extremos, que es donde se veía.
+      const conY = mensajes.map((k) => {
+        const ep = linkEndpoints(k, n, sourceContent.notation ?? notationId);
+        return { ...k, y: ep ? (ep.start.y + ep.end.y) / 2 : undefined };
+      });
+      for (const m of migrarMensajes(conY)) {
+        const vivo = l.get(m.id);
+        if (vivo) l.set(m.id, { ...vivo, orden: m.orden, messageKind: m.messageKind });
+      }
+    }
     // Lienzo nuevo y vacío: sembrar un contenedor inicial de la notación activa.
     if (n.size === 0 && seedContainerType) {
       const seedName = `${seedContainerType} Principal`;
@@ -2729,6 +3016,33 @@ export const ComponentDesigner: React.FC<{
         if (!link) return;
         // Etiqueta: se guarda cuánto se separó de su sitio sobre el trazo, así
         // sigue a la línea cuando los nodos se mueven.
+        if (ep.kind === "reorder") {
+          // La `y` se mide desde el tope de la línea de vida, que es de donde
+          // parte `alturaDeMensaje`. Se aplica en cada movimiento: el mensaje
+          // SALTA de hueco en hueco, y ese salto es la respuesta visual de que
+          // lo que cambia es el orden, no la posición.
+          const s0 = nodesRef.current.get(link.sourceId);
+          const t0 = nodesRef.current.get(link.targetId);
+          if (!s0 || !t0) return;
+          const tope = Math.max(s0.y, t0.y);
+          const cambios = reordenarPorArrastre(
+            [...linksRef.current.values()],
+            ep.linkId,
+            p.y - tope,
+            esLineaDeVidaRef.current
+          );
+          if (!cambios.length) return;
+          setLinks((prev) => {
+            const l = new Map(prev);
+            for (const c of cambios) {
+              const cur = l.get(c.id);
+              if (cur) l.set(c.id, { ...cur, orden: c.orden });
+            }
+            linksRef.current = l;
+            return l;
+          });
+          return;
+        }
         if (ep.kind === "label") {
           const geo = linkGeometry(link, nodesRef.current, notationId);
           if (!geo) return;
@@ -2952,6 +3266,55 @@ export const ComponentDesigner: React.FC<{
   );
 
   // Arrastre de la etiqueta de un enlace: la separa del trazo sin tocar la línea.
+  /**
+   * Arrancar el reordenamiento por arrastre de un MENSAJE (T18).
+   *
+   * Sólo aplica en secuencia: en las demás notaciones no hace nada y el
+   * lienzo se comporta como siempre. Arrastrar en vertical cambia el ORDEN, no
+   * la altura — la altura sigue saliendo del orden, así que no hay dos fuentes
+   * de verdad; lo que no existe es la posición libre.
+   */
+  /**
+   * Añade un mensaje de un participante A SÍ MISMO (T23). Toma el siguiente
+   * lugar de la secuencia, como cualquier mensaje: una auto-llamada ocurre en
+   * un momento concreto, no fuera del tiempo.
+   */
+  const addSelfCall = useCallback(
+    (nodeId: string) => {
+      if (!esLineaDeVidaRef.current(nodeId)) return;
+      const id = `link-${nodeId}-${nodeId}-${crypto.randomUUID()}`;
+      updateLinks((prev) => {
+        const n = new Map(prev);
+        const orden = ordenParaNuevo(
+          { sourceId: nodeId, targetId: nodeId },
+          [...prev.values()],
+          esLineaDeVidaRef.current
+        );
+        n.set(id, {
+          id,
+          sourceId: nodeId,
+          targetId: nodeId,
+          descripcion: "se llama",
+          ...(orden !== undefined ? { orden } : {}),
+        });
+        return n;
+      });
+    },
+    [updateLinks]
+  );
+
+  const startMessageReorder = useCallback(
+    (e: React.MouseEvent, linkId: string) => {
+      const link = linksRef.current.get(linkId);
+      if (!link || !esMensajeDeSecuenciaLink(link)) return;
+      e.stopPropagation();
+      e.preventDefault();
+      endpointDragRef.current = { linkId, kind: "reorder" };
+      selectOnly(linkId);
+    },
+    [selectOnly]
+  );
+
   const startLabelDrag = useCallback(
     (e: React.MouseEvent, linkId: string) => {
       e.stopPropagation();
@@ -3059,15 +3422,36 @@ export const ComponentDesigner: React.FC<{
       const from = connectFromRef.current;
       setConnectFrom(null);
       setConnectCursor(null);
-      if (!from || from === targetId) return;
+      if (!from) return;
       const id = `link-${from}-${targetId}-${crypto.randomUUID()}`;
+      // Una auto-llamada (mismo participante) es válida en secuencia: es cuando
+      // un objeto se llama a sí mismo. En el resto de las notaciones sigue sin
+      // tener sentido, así que ahí se descarta como antes.
+      const auto = from === targetId;
+      const esMensaje = esLineaDeVida(from) && esLineaDeVida(targetId);
+      if (auto && !esMensaje) return;
       updateLinks((prev) => {
         const n = new Map(prev);
-        n.set(id, { id, sourceId: from, targetId, descripcion: "interactúa", routing: newLinkRouting });
+        // El ORDEN se asigna acá: sin esto el enlace nacía sin lugar en el
+        // tiempo y todo el modelo temporal quedaba inerte —la geometría lo
+        // respeta, pero nadie se lo daba.
+        const orden = ordenParaNuevo(
+          { sourceId: from, targetId },
+          [...prev.values()],
+          esLineaDeVida
+        );
+        n.set(id, {
+          id,
+          sourceId: from,
+          targetId,
+          descripcion: "interactúa",
+          routing: newLinkRouting,
+          ...(orden !== undefined ? { orden } : {}),
+        });
         return n;
       });
     },
-    [updateLinks, newLinkRouting]
+    [updateLinks, newLinkRouting, esLineaDeVida]
   );
 
   // Event Storming: crea el siguiente elemento sugerido, conectado al actual.
@@ -3149,6 +3533,34 @@ export const ComponentDesigner: React.FC<{
       };
       if (!meta) return;
       const content = buildContent(nodesRef.current, linksRef.current, meta, notationId);
+      // SECUENCIA: el layout general no la entiende —no hay flujo de izquierda a
+      // derecha, hay participantes y tiempo—, así que usa su preset (T24). Es la
+      // MISMA función que decide la altura de cada mensaje, así que el botón y
+      // el lienzo no pueden discrepar.
+      const lineas = [...nodesRef.current.values()].filter((n) =>
+        isLifelineContainer(n.tipo_elemento)
+      );
+      if (lineas.length >= 2) {
+        const cuantos = [...linksRef.current.values()].filter(
+          (l) => l.orden !== undefined
+        ).length;
+        const puestos = new Map(
+          ordenarParticipantes(
+            lineas.map((n) => n.id),
+            cuantos
+          ).map((p) => [p.id, p])
+        );
+        updateNodes((prev) => {
+          const out = new Map(prev);
+          for (const [id, n] of prev) {
+            const p = puestos.get(id);
+            if (p) out.set(id, { ...n, x: p.x, y: p.y, height: p.height });
+          }
+          return out;
+        });
+        setArrangement(next);
+        return;
+      }
       const posiciones = arrangeGraphData(content, notationId, { ...next, laneOrder: opts.laneOrder });
       updateNodes((prev) => {
         const out = new Map(prev);
@@ -3408,6 +3820,17 @@ export const ComponentDesigner: React.FC<{
     }
 
     const items: CanvasMenuItem[] = [];
+    // Auto-llamada (T23): el gesto de arrastrar sobre uno mismo existe, pero no
+    // hay nada en la interfaz que sugiera que se puede — nadie lo descubre solo.
+    // Un ítem de menú no depende de adivinar.
+    if (!varios && n && isLifelineContainer(n.tipo_elemento)) {
+      items.push({
+        id: "self-call",
+        label: "Añadir auto-llamada",
+        icon: RotateCcw,
+        onSelect: () => addSelfCall(n.id),
+      });
+    }
     if (!varios && (n || l)) {
       items.push({
         id: "edit",
@@ -3876,6 +4299,24 @@ export const ComponentDesigner: React.FC<{
                 />
               ))}
             </g>
+            {/* Capa 2.5: barras de ACTIVACIÓN. Van debajo de los mensajes para
+                que la flecha se lea encima de la barra, como en UML, y sin
+                capturar el ratón: no son elementos, son consecuencia. */}
+            {activaciones.length > 0 && (
+              <g pointerEvents="none">
+                {activaciones.map((a) => (
+                  <rect
+                    key={a.key}
+                    x={a.x - 7}
+                    y={a.y}
+                    width={14}
+                    height={a.alto}
+                    className="fill-indigo-600 stroke-indigo-300"
+                    strokeWidth={1.5}
+                  />
+                ))}
+              </g>
+            )}
             {/* Capa 3: Enlaces */}
             <g>
               {visto.links.map((link) => (
@@ -3891,6 +4332,7 @@ export const ComponentDesigner: React.FC<{
                   onContextMenu={(e) => openContextMenu(e, { kind: "link", id: link.id })}
                   onLineDoubleClick={(e) => addWaypoint(e, link.id)}
                   onLabelMouseDown={(e) => startLabelDrag(e, link.id)}
+                  onLineMouseDown={(e) => startMessageReorder(e, link.id)}
                 />
               ))}
             </g>

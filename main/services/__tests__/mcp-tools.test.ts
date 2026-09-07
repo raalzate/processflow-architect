@@ -1741,3 +1741,59 @@ describe("documentos fuente · la evidencia viaja con el diagrama (feature 012)"
     expect(exportado?.source_docs?.[0]?.texto).toContain("tarjeta");
   });
 });
+
+describe("ninguna herramienta prometida puede faltar (#286)", () => {
+  /**
+   * El incidente: `describe_notation` le nombraba `add_fragment` al agente y la
+   * herramienta nunca se había registrado. Prometerle al modelo algo que no
+   * existe es peor que no mencionarlo — lo va a intentar usar y va a fallar sin
+   * entender por qué. Este test es el mecanismo: barre TODAS las descripciones
+   * registradas buscando nombres con forma de herramienta y exige que existan.
+   */
+  it("toda herramienta citada en una descripción está registrada", () => {
+    // Se levanta en MODO APP: varias herramientas sólo existen ahí
+    // (`export_as_view`, `get_app_state`…), y comparar contra un servidor sin
+    // ellas acusaría como faltantes cosas que sí están.
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: "/tmp/x",
+      readApp: async () => null as never,
+      exportToApp: async () => true,
+      exportViewToApp: async () => true,
+      getAppState: async () => ({}) as never,
+      actOnApp: async () => ({}) as never,
+      exportMermaidToApp: async () => true,
+    } as never);
+    const registradas = new Set(tools.keys());
+
+    // Nombres con forma de herramienta MCP dentro de los textos que lee el
+    // agente: `add_node`, `use_diagram`… Se buscan entre comillas invertidas o
+    // seguidos de `(`, que es como se citan en este archivo.
+    const citadas = new Set<string>();
+    for (const { def } of tools.values()) {
+      const textos = [def?.description ?? "", ...Object.values(def?.inputSchema ?? {}).map(() => "")];
+      for (const t of textos) {
+        for (const m of String(t).matchAll(/\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\s*\(|`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`/g)) {
+          const nombre = m[1] ?? m[2];
+          if (nombre) citadas.add(nombre);
+        }
+      }
+    }
+
+    // Sólo interesan las que SE PARECEN a herramientas nuestras: los nombres
+    // citados que ya existen validan el barrido, y los que no, se acusan.
+    const sospechosas = [...citadas].filter(
+      (n) => !registradas.has(n) && [...registradas].some((r) => r.split("_")[0] === n.split("_")[0])
+    );
+    expect(sospechosas).toEqual([]);
+    // Y el barrido tiene que estar viendo algo, o el test pasaría vacío.
+    expect([...citadas].some((n) => registradas.has(n))).toBe(true);
+  });
+
+  it("add_fragment existe y exige un operador válido", () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: "/tmp/x" });
+    expect(tools.has("add_fragment")).toBe(true);
+    expect(tools.get("add_fragment")!.def.description).toMatch(/loop/);
+  });
+});

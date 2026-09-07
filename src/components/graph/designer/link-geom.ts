@@ -11,12 +11,14 @@
 
 import {
   ALL_ELEMENTS,
+  isLifelineContainer,
   sizeOfType,
   defaultRoutingFor,
   type NotationId,
   type ShapeKind,
 } from "@/lib/notations";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
+import { SECUENCIA_LAYOUT, alturaDeMensaje } from "@/lib/sequence/layout";
 
 /** Tamaño por defecto de un CONTENEDOR recién creado (el usuario lo redimensiona). */
 export const AGGREGATE_DEFAULT_WIDTH = 500;
@@ -62,6 +64,25 @@ export const clipToShape = (
   }
   return { x: cx + dirX * scale, y: cy + dirY * scale };
 };
+
+/**
+ * Alto de la CABECERA de una línea de vida (la caja con el nombre del
+ * participante), en coordenadas del lienzo.
+ *
+ * Vive acá y no en el componente porque la usan los dos: el dibujo, para
+ * arrancar el eje debajo de la caja, y la geometría, para que un mensaje no
+ * nazca encima del nombre. Con el número duplicado se desincronizan y el
+ * desacuerdo no lo ve nadie —la misma clase de bug que #259.
+ */
+export const LIFELINE_HEAD = SECUENCIA_LAYOUT.altoCabecera;
+
+/**
+ * Medidas del lazo de una AUTO-LLAMADA (un participante que se llama a sí
+ * mismo). Sale del eje, va a la derecha, baja un escalón y vuelve: es como lo
+ * dibuja UML y como lo representan todas las herramientas. Sin el desnivel, la
+ * ida y la vuelta se superponen y no se ve nada.
+ */
+export const SELF_CALL = { ancho: 70, alto: 34 } as const;
 
 /**
  * Caja real de un nodo: el contenedor manda su tamaño guardado (es
@@ -111,6 +132,17 @@ export function linkEndpoints(
   const scy = sourceNode.y + sh;
   const tcx = targetNode.x + tw;
   const tcy = targetNode.y + th;
+  // AUTO-LLAMADA de secuencia: mismo participante en las dos puntas. Es
+  // notación legítima —un objeto que se llama a sí mismo— y hay que atenderla
+  // ANTES de la guarda de abajo, que la descartaba por compartir centro. Sin
+  // esto el mensaje se creaba y no se dibujaba: peor que no permitirlo (#285).
+  if (link.sourceId === link.targetId && isLifelineContainer(sourceNode.tipo_elemento)) {
+    const y =
+      link.orden !== undefined
+        ? sourceNode.y + alturaDeMensaje(link.orden)
+        : sourceNode.y + LIFELINE_HEAD + SELF_CALL.alto;
+    return { start: { x: scx, y }, end: { x: scx, y: y + SELF_CALL.alto } };
+  }
   if (scx === tcx && scy === tcy && !link.sourceAnchor && !link.targetAnchor) return null;
 
   const sAnchorPt = link.sourceAnchor
@@ -119,9 +151,44 @@ export function linkEndpoints(
   const tAnchorPt = link.targetAnchor
     ? { x: targetNode.x + link.targetAnchor.x * (2 * tw), y: targetNode.y + link.targetAnchor.y * (2 * th) }
     : null;
+  // MENSAJE DE SECUENCIA. Dos cosas a la vez (T4 · T11 · #261):
+  //  · va al EJE DEL TIEMPO, no al borde del marco —el marco es zona de soltar,
+  //    y anclarse a él dejaba la flecha a media caja del eje, sin tocar nada—;
+  //  · su altura sale del ORDEN, no de la geometría guardada. Un mensaje es un
+  //    INSTANTE: las dos puntas comparten `y`, o el tiempo correría distinto en
+  //    cada participante y la flecha saldría inclinada.
+  const sLife = isLifelineContainer(sourceNode.tipo_elemento);
+  const tLife = isLifelineContainer(targetNode.tipo_elemento);
+  let sLifePt: { x: number; y: number } | null = null;
+  let tLifePt: { x: number; y: number } | null = null;
+  if (sLife || tLife) {
+    // El orden manda. Sin orden —diagrama viejo, todavía sin migrar— se cae al
+    // centro del tramo común, que es lo mejor que se puede decir sin tiempo.
+    const arriba = Math.max(sLife ? sourceNode.y : -Infinity, tLife ? targetNode.y : -Infinity);
+    const yMsg =
+      link.orden !== undefined
+        ? arriba + alturaDeMensaje(link.orden)
+        : (() => {
+            const lo = Math.max(
+              sLife ? sourceNode.y + LIFELINE_HEAD : -Infinity,
+              tLife ? targetNode.y + LIFELINE_HEAD : -Infinity
+            );
+            const hi = Math.min(
+              sLife ? sourceNode.y + sourceH : Infinity,
+              tLife ? targetNode.y + targetH : Infinity
+            );
+            const base = sAnchorPt?.y ?? tAnchorPt?.y ?? (sLife && tLife ? (lo + hi) / 2 : sLife ? tcy : scy);
+            return hi >= lo ? Math.min(hi, Math.max(lo, base)) : lo;
+          })();
+    if (sLife) sLifePt = { x: scx, y: yMsg };
+    if (tLife) tLifePt = { x: tcx, y: yMsg };
+  }
+
   // Hacia dónde mira cada extremo: el corredor si lo pide, si no el otro nodo.
-  const sRef = aim?.end ?? sAnchorPt ?? { x: scx, y: scy };
-  const tRef = aim?.start ?? tAnchorPt ?? { x: tcx, y: tcy };
+  // Con una línea de vida enfrente se mira a su EJE: un nodo suelto que apunta
+  // al centro del marco se recorta hacia un punto por el que la línea no pasa.
+  const sRef = aim?.end ?? sAnchorPt ?? sLifePt ?? { x: scx, y: scy };
+  const tRef = aim?.start ?? tAnchorPt ?? tLifePt ?? { x: tcx, y: tcy };
 
   const sShape: ShapeKind = isContainer(sourceNode.tipo_elemento) ? "rect" : shapeForType(sourceNode.tipo_elemento);
   const tShape: ShapeKind = isContainer(targetNode.tipo_elemento) ? "rect" : shapeForType(targetNode.tipo_elemento);
@@ -129,8 +196,22 @@ export function linkEndpoints(
   // no el ancho de la caja — sin esto la línea quedaría flotando antes del borde.
   const sHw = ALL_ELEMENTS[sourceNode.tipo_elemento]?.compact ? Math.min(sw, sh) : sw;
   const tHw = ALL_ELEMENTS[targetNode.tipo_elemento]?.compact ? Math.min(tw, th) : tw;
-  const start = sAnchorPt ?? clipToShape(scx, scy, sHw, sh, sShape, tRef.x - scx, tRef.y - scy);
-  const end = tAnchorPt ?? clipToShape(tcx, tcy, tHw, th, tShape, sRef.x - tcx, sRef.y - tcy);
+  // Con ORDEN, el eje le gana al ancla: la altura es derivada y no se arrastra
+  // (FR-002). Dejar que el ancla mandara sería reponer la segunda fuente de
+  // verdad que el orden vino a eliminar. Sin orden —diagrama viejo, aún sin
+  // migrar— el ancla sigue mandando: es como el usuario separaba dos mensajes
+  // entre el mismo par cuando el tiempo no existía.
+  const ejeManda = link.orden !== undefined;
+  const start =
+    (ejeManda ? sLifePt : null) ??
+    sAnchorPt ??
+    sLifePt ??
+    clipToShape(scx, scy, sHw, sh, sShape, tRef.x - scx, tRef.y - scy);
+  const end =
+    (ejeManda ? tLifePt : null) ??
+    tAnchorPt ??
+    tLifePt ??
+    clipToShape(tcx, tcy, tHw, th, tShape, sRef.x - tcx, sRef.y - tcy);
   return { start, end };
 }
 
@@ -244,6 +325,29 @@ export function linkGeometry(
   const ep = linkEndpoints(link, nodes, notation);
   if (!ep) return null;
   let { start, end } = ep;
+
+  // El lazo de la auto-llamada tiene forma propia: unir sus dos puntos con una
+  // recta daría un segmento VERTICAL sobre el eje, tapado por la propia línea
+  // de vida. Se resuelve acá y no en el enrutado general porque no es una
+  // variante de trazo: es la notación de UML para este caso (#285).
+  if (link.sourceId === link.targetId) {
+    const x = start.x + SELF_CALL.ancho;
+    const lx = x + 6;
+    const ly = (start.y + end.y) / 2;
+    // Mismo contrato que el retorno normal: `labelAnchor` es el sitio SIN el
+    // desplazamiento del usuario, y quien mueve la etiqueta lo necesita.
+    return {
+      path: `M${start.x},${start.y} L${x},${start.y} L${x},${end.y} L${end.x},${end.y}`,
+      labelX: lx + (link.labelOffset?.x ?? 0),
+      labelY: ly + (link.labelOffset?.y ?? 0),
+      labelAnchor: { x: lx, y: ly },
+      start,
+      end,
+      bend: null,
+      bendKind: "corner" as const,
+      waypoints: [],
+    };
+  }
   // Sin trazo propio manda el de la notación (C4 curva; el resto, recta).
   const routing = routingOf(link, notation);
   let path: string;

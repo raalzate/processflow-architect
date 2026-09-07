@@ -116,7 +116,11 @@ export function processGraphData(jsonData: GraphData): {
           const tipos = nodeTree[aggregateName].tipos;
           if (!tipos[nodeType]) tipos[nodeType] = [];
           tipos[nodeType].push(fullNode);
-          tipos[nodeType].sort((a, b) => a.nombre.localeCompare(b.nombre));
+          // `?? ""`: lo guardado NO pasa por el typechecker. Un nodo sin
+          // `nombre` —de un proyecto viejo, de un import a mano, de un agente—
+          // lanzaba acá y dejaba el lienzo entero en blanco, que es lo que P8
+          // prohíbe: se perdía el diagrama completo por una caja (#283).
+          tipos[nodeType].sort((a, b) => (a.nombre ?? "").localeCompare(b.nombre ?? ""));
         }
       });
     }

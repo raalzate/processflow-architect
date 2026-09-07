@@ -113,6 +113,81 @@ describe("processGraphData", () => {
     });
   });
 
+  describe("secuencia rota: el lienzo nunca queda en blanco (T14 · #277)", () => {
+    // SC-008. Los campos de secuencia (`orden`, `messageKind`) los escribe el
+    // lienzo, el MCP y los diagramas viejos migrados: cualquiera de esas vías
+    // puede dejar valores que no cierran. `graph-processor` no los interpreta,
+    // pero tiene que seguir dibujando igual — si los ignorara mal, la vista se
+    // vaciaría y el usuario perdería el diagrama sin saber por qué.
+    it("un orden duplicado no vacía la vista", () => {
+      const data = makeGraphData({
+        agregados: [
+          makeAggregate({
+            nodos: [makeNode({ id: "n1", nombre: "Uno" }), makeNode({ id: "n2", nombre: "Dos" })],
+            aristas: [
+              { fuente: "n1", destino: "n2", descripcion: "uno", orden: 1 },
+              { fuente: "n2", destino: "n1", descripcion: "dos", orden: 1 },
+            ] as never,
+          }),
+        ],
+      });
+      const result = processGraphData(data);
+      expect(result.nodes.length).toBeGreaterThan(0);
+      expect(result.links.length).toBeGreaterThan(0);
+    });
+
+    it("órdenes imposibles —negativo, NaN, enorme— no vacían la vista", () => {
+      const data = makeGraphData({
+        agregados: [
+          makeAggregate({
+            nodos: [makeNode({ id: "n1", nombre: "Uno" }), makeNode({ id: "n2", nombre: "Dos" })],
+            aristas: [
+              { fuente: "n1", destino: "n2", descripcion: "a", orden: -4 },
+              { fuente: "n1", destino: "n2", descripcion: "b", orden: Number.NaN },
+              { fuente: "n2", destino: "n1", descripcion: "c", orden: 99999 },
+            ] as never,
+          }),
+        ],
+      });
+      const result = processGraphData(data);
+      expect(result.nodes.map((n) => n.id).sort()).toEqual(["n1", "n2"]);
+      expect(result.links.length).toBe(3);
+    });
+
+    it("un nodo SIN nombre no tumba el lienzo entero", () => {
+      // Lo guardado no pasa por el typechecker: un nodo sin `nombre` puede
+      // llegar de un proyecto viejo o de un agente. Ordenar por nombre sin
+      // defensa lanzaba y dejaba la vista en blanco, que es justo lo que P8
+      // prohíbe.
+      const data = makeGraphData({
+        agregados: [
+          makeAggregate({
+            nodos: [makeNode({ id: "n1", nombre: "Uno" }), makeNode({ id: "n2" } as never)] as never,
+            aristas: [{ fuente: "n1", destino: "n2", descripcion: "x" }] as never,
+          }),
+        ],
+      });
+      expect(() => processGraphData(data)).not.toThrow();
+      expect(processGraphData(data).nodes.length).toBeGreaterThan(0);
+    });
+
+    it("un tipo de mensaje desconocido no descarta la arista", () => {
+      // Lo guardado puede traer cualquier cosa: descartar la arista perdería
+      // una relación real por un campo decorativo.
+      const data = makeGraphData({
+        agregados: [
+          makeAggregate({
+            nodos: [makeNode({ id: "n1", nombre: "Uno" }), makeNode({ id: "n2", nombre: "Dos" })],
+            aristas: [
+              { fuente: "n1", destino: "n2", descripcion: "x", messageKind: "inventado" },
+            ] as never,
+          }),
+        ],
+      });
+      expect(processGraphData(data).links.length).toBe(1);
+    });
+  });
+
   describe("happy path: single aggregate with internal link", () => {
     it("includes only connected nodes and builds internal links", () => {
       const data = makeGraphData({

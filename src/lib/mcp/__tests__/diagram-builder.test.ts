@@ -4,6 +4,8 @@ import {
   addContainer,
   addNode,
   addEdge,
+  addMessage,
+  reorderMessage,
   removeNode,
   removeEdge,
   updateNode,
@@ -30,7 +32,7 @@ import {
   type DiagramModel,
 } from "../diagram-builder";
 import { processGraphData } from "../../graph-processor";
-import { typesWithRole } from "../../notations";
+import { isLifelineContainer, notationTypes, typesWithRole } from "../../notations";
 import { DEFAULT_DENSITY } from "../layout-presets";
 import { isContainerType } from "../catalog";
 
@@ -960,5 +962,77 @@ describe("documentos fuente · ida y vuelta del modelo (feature 012)", () => {
     const sin = { ...conDocs(), sources: undefined };
     expect(toGraphData(sin as never).source_docs).toBeUndefined();
     expect(fromGraphData(toGraphData(sin as never)).sources).toBeUndefined();
+  });
+});
+
+// El tipo sale del registro, no se cablea (P6).
+const LIFELINE = notationTypes("uml", { includeContainers: true }).find(isLifelineContainer)!;
+
+describe("mensajes de secuencia desde el MCP (T15 · #278)", () => {
+  // Los ids los pone el builder (slug del nombre): se usan los que devuelve.
+  let ASESOR = "";
+  let CORE = "";
+  const base = () => {
+    const vacio = emptyDiagram({ nombre_proyecto: "Alta de póliza", notation: "uml" });
+    const a = addContainer(vacio, { nombre: "Asesor", tipo_elemento: LIFELINE });
+    const b = addContainer(a.model, { nombre: "Core", tipo_elemento: LIFELINE });
+    ASESOR = a.id;
+    CORE = b.id;
+    return b.model;
+  };
+
+  it("cada mensaje nuevo va al final, en el orden en que se narra", () => {
+    let m = base();
+    m = addMessage(m, { fuente: ASESOR, destino: CORE, descripcion: "pedir" });
+    m = addMessage(m, { fuente: CORE, destino: ASESOR, descripcion: "devolver" });
+    expect(m.edges.map((e) => e.orden)).toEqual([1, 2]);
+    expect(m.edges.map((e) => e.descripcion)).toEqual(["pedir", "devolver"]);
+  });
+
+  it("se puede insertar en el medio sin rehacer la secuencia", () => {
+    let m = base();
+    m = addMessage(m, { fuente: ASESOR, destino: CORE, descripcion: "uno" });
+    m = addMessage(m, { fuente: ASESOR, destino: CORE, descripcion: "tres" });
+    m = addMessage(m, { fuente: ASESOR, destino: CORE, descripcion: "dos", posicion: 2 });
+    expect(m.edges.map((e) => e.descripcion)).toEqual(["uno", "dos", "tres"]);
+    expect(m.edges.map((e) => e.orden)).toEqual([1, 2, 3]);
+  });
+
+  it("el tipo de mensaje viaja al modelo", () => {
+    let m = base();
+    m = addMessage(m, { fuente: CORE, destino: ASESOR, messageKind: "return" });
+    expect(m.edges[0].messageKind).toBe("return");
+  });
+
+  it("un participante que no existe se dice, no se inventa", () => {
+    expect(() =>
+      addMessage(base(), { fuente: "Fantasma", destino: "Core" })
+    ).toThrow(/no existe/i);
+  });
+
+  it("reordenar mueve el mensaje y renumera el resto (T15)", () => {
+    let m = base();
+    for (const d of ["uno", "dos", "tres"]) {
+      m = addMessage(m, { fuente: ASESOR, destino: CORE, descripcion: d });
+    }
+    m = reorderMessage(m, 3, 1);
+    expect(m.edges.map((e) => e.descripcion)).toEqual(["tres", "uno", "dos"]);
+    expect(m.edges.map((e) => e.orden)).toEqual([1, 2, 3]);
+  });
+
+  it("reordenar desde una posición que no existe lo dice con el total", () => {
+    const m = addMessage(base(), { fuente: ASESOR, destino: CORE });
+    expect(() => reorderMessage(m, 9, 1)).toThrow(/9/);
+  });
+
+  it("lo que produce el MCP es lo mismo que produce el lienzo (SC-006)", () => {
+    // Un diagrama del agente tiene que editarse sin diferencia: mismos campos.
+    let m = base();
+    m = addMessage(m, { fuente: ASESOR, destino: CORE, messageKind: "sync" });
+    const arista = m.edges[0];
+    expect(arista.orden).toBe(1);
+    expect(arista.messageKind).toBe("sync");
+    expect(typeof arista.fuente).toBe("string");
+    expect(typeof arista.destino).toBe("string");
   });
 });

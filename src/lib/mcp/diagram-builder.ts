@@ -24,6 +24,15 @@ import type { GraphData, GraphNode, Agregado, ReadModel } from "../types";
 import { problemasDePropiedades } from "../element-properties";
 import { sanitizeSpec, type ElementSpec } from "../element-spec";
 import { sanitizeSourceDocs, type SourceDoc } from "../source-docs";
+import { moverMensaje } from "../sequence/order";
+import {
+  FRAGMENT_OPS_LIST,
+  esOperador,
+  normalizarOperandos,
+  type FragmentOp,
+  type FragmentPart,
+} from "../sequence/fragments";
+import type { SequenceMessageKind } from "../sequence/messages";
 import {
   normalizarLista,
   quitarMetadata,
@@ -149,6 +158,10 @@ export interface BuilderNode {
   tags_tecnologia?: string[] | null;
   color?: string;
   borderColor?: string;
+  /** Operador de un fragmento combinado (secuencia UML). */
+  fragmentOp?: FragmentOp;
+  /** Operandos del fragmento: guarda y tramo de orden que abarca. */
+  fragmentParts?: FragmentPart[];
   x?: number;
   y?: number;
   width?: number;
@@ -163,6 +176,10 @@ export interface BuilderEdge {
   dashed?: boolean;
   arrow?: "end" | "both" | "none";
   routing?: "straight" | "curved" | "orthogonal";
+  /** Lugar en la secuencia (sólo diagramas de secuencia UML). Ver `addMessage`. */
+  orden?: number;
+  /** Qué clase de mensaje es (sólo secuencia). Ver `sequence/messages.ts`. */
+  messageKind?: SequenceMessageKind;
 }
 
 /**
@@ -351,6 +368,103 @@ export function addEdge(model: DiagramModel, input: BuilderEdge): DiagramModel {
   // Se guardan los ids REALES: una arista con el id dibujado quedaría colgando.
   input = { ...input, fuente: fuente.id, destino: destino.id };
   return { ...model, edges: [...model.edges, { ...input }] };
+}
+
+/**
+ * Añade un MENSAJE de secuencia: una arista con su lugar en el tiempo (T15).
+ *
+ * Existe aparte de `addEdge` porque un mensaje sin orden no es un mensaje: sale
+ * a la misma altura que otro y se pisa. Si el agente pudiera construir una
+ * secuencia con `addEdge`, dejaría diagramas a medio migrar que después alguien
+ * tiene que arreglar a mano.
+ *
+ * `posicion` es dónde insertarlo (1 = primero). Sin ella va al final, que es lo
+ * que se quiere al ir narrando una interacción de principio a fin.
+ */
+export function addMessage(
+  model: DiagramModel,
+  input: BuilderEdge & { posicion?: number }
+): DiagramModel {
+  const { posicion, ...arista } = input;
+  const conArista = addEdge(model, arista);
+  // Los ids de arista los pone la app al importar, así que acá el orden se
+  // resuelve por POSICIÓN en la lista, que es lo único estable en el builder.
+  const mensajes = conArista.edges.map((e, i) => ({ ...e, id: String(i) }));
+  const nuevo = mensajes[mensajes.length - 1];
+  const destino = posicion ?? mensajes.length;
+  const movidos = moverMensaje(
+    mensajes.map((m) => ({ ...m, orden: m.orden })),
+    nuevo.id,
+    destino
+  );
+  return {
+    ...conArista,
+    edges: movidos.map(({ id: _id, ...e }) => e as BuilderEdge),
+  };
+}
+
+/**
+ * Añade un FRAGMENTO combinado (loop / alt / opt / par) sobre un tramo de la
+ * secuencia (#286).
+ *
+ * El operador es obligatorio: un fragmento sin él no dice qué hace con lo que
+ * encierra, y dejarlo opcional garantizaba que el agente lo omitiera. La
+ * condición viaja como NOMBRE del elemento, que es lo que el lienzo dibuja
+ * entre corchetes al lado del operador.
+ *
+ * `desde`/`hasta` son órdenes de mensaje, ambos inclusive: el fragmento encierra
+ * un tramo del tiempo, no un rectángulo.
+ */
+export function addFragment(
+  model: DiagramModel,
+  input: {
+    nombre: string;
+    tipo_elemento: string;
+    op: FragmentOp;
+    desde: number;
+    hasta: number;
+    guarda?: string;
+  }
+): { model: DiagramModel; id: string } {
+  if (!esOperador(input.op)) {
+    throw new Error(
+      `"${input.op}" no es un operador de fragmento. Válidos: ${FRAGMENT_OPS_LIST.join(", ")}.`
+    );
+  }
+  const total = model.edges.length;
+  const partes = normalizarOperandos(
+    [{ guarda: input.guarda ?? input.nombre, desde: input.desde, hasta: input.hasta }],
+    input.op,
+    total
+  );
+  const { model: conNodo, id } = addContainer(model, {
+    nombre: input.nombre,
+    tipo_elemento: input.tipo_elemento,
+  });
+  const nodes = conNodo.nodes.map((n) =>
+    n.id === id ? { ...n, fragmentOp: input.op, fragmentParts: partes } : n
+  );
+  return { model: { ...conNodo, nodes }, id };
+}
+
+/**
+ * Mueve un mensaje en la secuencia (T15). Reordenar es la operación con la que
+ * se corrige una interacción mal narrada; sin ella habría que borrar y rehacer.
+ */
+export function reorderMessage(
+  model: DiagramModel,
+  desde: number,
+  hasta: number
+): DiagramModel {
+  const mensajes = model.edges.map((e, i) => ({ ...e, id: String(i) }));
+  const objetivo = mensajes.find((m) => (m.orden ?? Number(m.id) + 1) === desde);
+  if (!objetivo) {
+    throw new Error(
+      `No hay ningún mensaje en la posición ${desde}. La secuencia tiene ${mensajes.length}.`
+    );
+  }
+  const movidos = moverMensaje(mensajes, objetivo.id, hasta);
+  return { ...model, edges: movidos.map(({ id: _id, ...e }) => e as BuilderEdge) };
 }
 
 /**
