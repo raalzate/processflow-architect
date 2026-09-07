@@ -12,6 +12,7 @@ import {
   handleGeom,
   HANDLE_PX,
   linkEndpoints,
+  LIFELINE_HEAD,
   defaultCurveApex,
   mirrorCurveApex,
   flipCurveApex,
@@ -19,7 +20,15 @@ import {
   routingOf,
 } from "../link-geom";
 import type { DesignerNode, DesignerLink } from "../serialize";
-import { defaultRoutingFor, sizeOfType, typesWithRole } from "@/lib/notations";
+import {
+  defaultRoutingFor,
+  isLifelineContainer,
+  isNotationContainer,
+  notationTypes,
+  sizeOfType,
+  typesWithRole,
+} from "@/lib/notations";
+import { alturaDeMensaje } from "@/lib/sequence/layout";
 
 // Igual que en los demás tests nuevos: los tipos se derivan del registro, no se
 // cablean (P6). `actor` y `system` existen en C4 por declaración de roles.
@@ -327,5 +336,94 @@ describe("handleGeom · manijas en píxeles de pantalla", () => {
     for (const malo of [0, -2, NaN, Infinity]) {
       expect(handleGeom(malo)).toEqual(handleGeom(1));
     }
+  });
+});
+
+// El tipo sale del registro (P6): el que la notación marque como línea de vida.
+const LIFELINE = notationTypes("uml", { includeContainers: true }).find(isLifelineContainer)!;
+
+const lifeline = (id: string, x: number, y: number, w = 300, h = 600): DesignerNode =>
+  ({ ...nodo(id, LIFELINE, x, y), width: w, height: h }) as DesignerNode;
+
+const dos = () =>
+  new Map<string, DesignerNode>([
+    ["a", lifeline("a", 0, 0)],
+    ["b", lifeline("b", 800, 0)],
+  ]);
+
+describe("mensaje de secuencia: eje y altura por orden (T4 · T11 · #261)", () => {
+  it("la notación declara un contenedor de línea de vida", () => {
+    expect(LIFELINE).toBeTruthy();
+  });
+
+  it("los extremos caen sobre el EJE, no sobre el borde del marco", () => {
+    // El marco es zona de soltar; el mensaje va de eje a eje.
+    const ep = linkEndpoints(arista({ orden: 1 }), dos())!;
+    expect(ep.start.x).toBeCloseTo(150);
+    expect(ep.end.x).toBeCloseTo(950);
+  });
+
+  it("la altura la manda el ORDEN, no la geometría", () => {
+    const uno = linkEndpoints(arista({ orden: 1 }), dos())!;
+    const tres = linkEndpoints(arista({ orden: 3 }), dos())!;
+    expect(uno.start.y).toBeCloseTo(alturaDeMensaje(1));
+    expect(tres.start.y).toBeCloseTo(alturaDeMensaje(3));
+    expect(tres.start.y).toBeGreaterThan(uno.start.y);
+  });
+
+  it("un mensaje es un INSTANTE: las dos puntas comparten altura", () => {
+    const ep = linkEndpoints(arista({ orden: 2 }), dos())!;
+    expect(ep.start.y).toBeCloseTo(ep.end.y);
+  });
+
+  it("sale horizontal aunque las líneas de vida estén desalineadas", () => {
+    const nodes = new Map<string, DesignerNode>([
+      ["a", lifeline("a", 0, 0)],
+      ["b", lifeline("b", 800, 120)],
+    ]);
+    const ep = linkEndpoints(arista({ orden: 2 }), nodes)!;
+    expect(ep.start.y).toBeCloseTo(ep.end.y);
+  });
+
+  it("nunca nace dentro de la cabecera del participante", () => {
+    // La cabecera lleva el nombre: un mensaje ahí lo tacharía.
+    const ep = linkEndpoints(arista({ orden: 1 }), dos())!;
+    expect(ep.start.y).toBeGreaterThan(LIFELINE_HEAD);
+  });
+
+  it("sin orden —diagrama viejo— igual se ancla al eje", () => {
+    // La migración corre al abrir, pero la geometría no puede romperse antes.
+    const ep = linkEndpoints(arista(), dos())!;
+    expect(ep.start.x).toBeCloseTo(150);
+    expect(ep.start.y).toBeCloseTo(ep.end.y);
+  });
+
+  it("CON orden, el eje le gana al ancla: la altura no se arrastra (FR-002)", () => {
+    // Si el ancla mandara, volvería la segunda fuente de verdad que el orden
+    // vino a eliminar — y una le ganaría a la otra en silencio.
+    const ep = linkEndpoints(arista({ orden: 2, sourceAnchor: { x: 1, y: 0.9 } }), dos())!;
+    expect(ep.start.x).toBeCloseTo(150);
+    expect(ep.start.y).toBeCloseTo(alturaDeMensaje(2));
+  });
+
+  it("SIN orden, el ancla a mano sigue mandando (diagrama viejo)", () => {
+    // Es como el usuario separaba dos mensajes cuando el tiempo no existía.
+    const ep = linkEndpoints(arista({ sourceAnchor: { x: 1, y: 0.5 } }), dos())!;
+    expect(ep.start.x).toBeCloseTo(300);
+    expect(ep.start.y).toBeCloseTo(300);
+  });
+
+  it("un contenedor que NO es línea de vida sigue anclando a su borde", () => {
+    // El cambio es sólo para secuencia: un pool BPMN o un límite C4 quieren el
+    // borde, que es lo que se ve.
+    const OTRO = notationTypes("c4", { includeContainers: true }).find(
+      (t) => isNotationContainer(t) && !isLifelineContainer(t)
+    )!;
+    const nodes = new Map<string, DesignerNode>([
+      ["a", { ...nodo("a", OTRO, 0, 0), width: 300, height: 600 } as DesignerNode],
+      ["b", { ...nodo("b", OTRO, 800, 0), width: 300, height: 600 } as DesignerNode],
+    ]);
+    const ep = linkEndpoints(arista({ orden: 1 }), nodes)!;
+    expect(ep.start.x).toBeCloseTo(300);
   });
 });

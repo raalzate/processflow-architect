@@ -11,12 +11,14 @@
 
 import {
   ALL_ELEMENTS,
+  isLifelineContainer,
   sizeOfType,
   defaultRoutingFor,
   type NotationId,
   type ShapeKind,
 } from "@/lib/notations";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
+import { SECUENCIA_LAYOUT, alturaDeMensaje } from "@/lib/sequence/layout";
 
 /** Tamaño por defecto de un CONTENEDOR recién creado (el usuario lo redimensiona). */
 export const AGGREGATE_DEFAULT_WIDTH = 500;
@@ -62,6 +64,17 @@ export const clipToShape = (
   }
   return { x: cx + dirX * scale, y: cy + dirY * scale };
 };
+
+/**
+ * Alto de la CABECERA de una línea de vida (la caja con el nombre del
+ * participante), en coordenadas del lienzo.
+ *
+ * Vive acá y no en el componente porque la usan los dos: el dibujo, para
+ * arrancar el eje debajo de la caja, y la geometría, para que un mensaje no
+ * nazca encima del nombre. Con el número duplicado se desincronizan y el
+ * desacuerdo no lo ve nadie —la misma clase de bug que #259.
+ */
+export const LIFELINE_HEAD = SECUENCIA_LAYOUT.altoCabecera;
 
 /**
  * Caja real de un nodo: el contenedor manda su tamaño guardado (es
@@ -119,9 +132,44 @@ export function linkEndpoints(
   const tAnchorPt = link.targetAnchor
     ? { x: targetNode.x + link.targetAnchor.x * (2 * tw), y: targetNode.y + link.targetAnchor.y * (2 * th) }
     : null;
+  // MENSAJE DE SECUENCIA. Dos cosas a la vez (T4 · T11 · #261):
+  //  · va al EJE DEL TIEMPO, no al borde del marco —el marco es zona de soltar,
+  //    y anclarse a él dejaba la flecha a media caja del eje, sin tocar nada—;
+  //  · su altura sale del ORDEN, no de la geometría guardada. Un mensaje es un
+  //    INSTANTE: las dos puntas comparten `y`, o el tiempo correría distinto en
+  //    cada participante y la flecha saldría inclinada.
+  const sLife = isLifelineContainer(sourceNode.tipo_elemento);
+  const tLife = isLifelineContainer(targetNode.tipo_elemento);
+  let sLifePt: { x: number; y: number } | null = null;
+  let tLifePt: { x: number; y: number } | null = null;
+  if (sLife || tLife) {
+    // El orden manda. Sin orden —diagrama viejo, todavía sin migrar— se cae al
+    // centro del tramo común, que es lo mejor que se puede decir sin tiempo.
+    const arriba = Math.max(sLife ? sourceNode.y : -Infinity, tLife ? targetNode.y : -Infinity);
+    const yMsg =
+      link.orden !== undefined
+        ? arriba + alturaDeMensaje(link.orden)
+        : (() => {
+            const lo = Math.max(
+              sLife ? sourceNode.y + LIFELINE_HEAD : -Infinity,
+              tLife ? targetNode.y + LIFELINE_HEAD : -Infinity
+            );
+            const hi = Math.min(
+              sLife ? sourceNode.y + sourceH : Infinity,
+              tLife ? targetNode.y + targetH : Infinity
+            );
+            const base = sAnchorPt?.y ?? tAnchorPt?.y ?? (sLife && tLife ? (lo + hi) / 2 : sLife ? tcy : scy);
+            return hi >= lo ? Math.min(hi, Math.max(lo, base)) : lo;
+          })();
+    if (sLife) sLifePt = { x: scx, y: yMsg };
+    if (tLife) tLifePt = { x: tcx, y: yMsg };
+  }
+
   // Hacia dónde mira cada extremo: el corredor si lo pide, si no el otro nodo.
-  const sRef = aim?.end ?? sAnchorPt ?? { x: scx, y: scy };
-  const tRef = aim?.start ?? tAnchorPt ?? { x: tcx, y: tcy };
+  // Con una línea de vida enfrente se mira a su EJE: un nodo suelto que apunta
+  // al centro del marco se recorta hacia un punto por el que la línea no pasa.
+  const sRef = aim?.end ?? sAnchorPt ?? sLifePt ?? { x: scx, y: scy };
+  const tRef = aim?.start ?? tAnchorPt ?? tLifePt ?? { x: tcx, y: tcy };
 
   const sShape: ShapeKind = isContainer(sourceNode.tipo_elemento) ? "rect" : shapeForType(sourceNode.tipo_elemento);
   const tShape: ShapeKind = isContainer(targetNode.tipo_elemento) ? "rect" : shapeForType(targetNode.tipo_elemento);
@@ -129,8 +177,22 @@ export function linkEndpoints(
   // no el ancho de la caja — sin esto la línea quedaría flotando antes del borde.
   const sHw = ALL_ELEMENTS[sourceNode.tipo_elemento]?.compact ? Math.min(sw, sh) : sw;
   const tHw = ALL_ELEMENTS[targetNode.tipo_elemento]?.compact ? Math.min(tw, th) : tw;
-  const start = sAnchorPt ?? clipToShape(scx, scy, sHw, sh, sShape, tRef.x - scx, tRef.y - scy);
-  const end = tAnchorPt ?? clipToShape(tcx, tcy, tHw, th, tShape, sRef.x - tcx, sRef.y - tcy);
+  // Con ORDEN, el eje le gana al ancla: la altura es derivada y no se arrastra
+  // (FR-002). Dejar que el ancla mandara sería reponer la segunda fuente de
+  // verdad que el orden vino a eliminar. Sin orden —diagrama viejo, aún sin
+  // migrar— el ancla sigue mandando: es como el usuario separaba dos mensajes
+  // entre el mismo par cuando el tiempo no existía.
+  const ejeManda = link.orden !== undefined;
+  const start =
+    (ejeManda ? sLifePt : null) ??
+    sAnchorPt ??
+    sLifePt ??
+    clipToShape(scx, scy, sHw, sh, sShape, tRef.x - scx, tRef.y - scy);
+  const end =
+    (ejeManda ? tLifePt : null) ??
+    tAnchorPt ??
+    tLifePt ??
+    clipToShape(tcx, tcy, tHw, th, tShape, sRef.x - tcx, sRef.y - tcy);
   return { start, end };
 }
 

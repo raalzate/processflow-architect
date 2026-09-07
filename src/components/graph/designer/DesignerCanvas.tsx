@@ -129,6 +129,7 @@ import { isContainerType, type DesignerNode, type DesignerLink } from "./seriali
 import {
   clipToShape,
   handleGeom,
+  LIFELINE_HEAD,
   linkEndpoints,
   linkGeometry,
   nodeBox,
@@ -143,6 +144,7 @@ import {
 export {
   clipToShape,
   handleGeom,
+  LIFELINE_HEAD,
   linkEndpoints,
   linkGeometry,
   nodeBox,
@@ -834,7 +836,9 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
     const lifeline = isLifelineContainer(node.tipo_elemento);
     const strokeDash = swimlane ? undefined : isContext ? "10 10" : "5 5";
     const radius = swimlane || lifeline ? 0 : 12;
-    const HEAD = 44; // alto de la caja del participante, en coords del lienzo
+    // La medida la declara `link-geom.ts`: la geometría del mensaje también la
+    // necesita, y con el número en dos archivos se desincronizan (#261).
+    const HEAD = LIFELINE_HEAD;
     /** Silueta del contenedor: elipse en los blobs, rectángulo en el resto. */
     const BAND = 28; // ancho de la banda del nombre, en coords del lienzo
     return (
