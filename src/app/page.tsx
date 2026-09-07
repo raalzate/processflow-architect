@@ -19,7 +19,16 @@ export default function Home() {
       <ReferenceProvider>
         <ViewsProvider>
           <AgentProvider>
-            <SidebarProvider>
+            {/* Colapsado al abrir: el panel del agente se pide, no se impone, y el
+                lienzo se ve entero desde el arranque (#254).
+
+                `SidebarProvider` ESCRIBE la cookie `sidebar_state` pero nunca la
+                lee, así que esto arranca plegado siempre, sin recordar la última
+                elección. Es deliberado: el arranque es el momento en que el
+                lienzo importa más, y el panel está a un clic. Si algún día se
+                quiere recordar, hay que LEER la cookie acá —no cambiar este
+                default. */}
+            <SidebarProvider defaultOpen={false}>
               <AppSidebar />
               <AppContent />
             </SidebarProvider>

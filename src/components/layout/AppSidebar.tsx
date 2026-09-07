@@ -31,14 +31,13 @@ import { cn } from "@/lib/utils";
 import {
   Copy,
   CopyCheck,
-  PanelLeftClose,
+  Bot,
   ClipboardList,
   Cpu,
   Workflow,
   Component,
   Layers,
   Sparkles as SparklesIcon,
-  PanelLeftOpen,
 } from "lucide-react";
 import { useGraphContext } from "@/context/GraphContext";
 import { useViews } from "@/context/ViewsContext";
@@ -98,18 +97,17 @@ function AppSidebarHeader() {
                   className="h-7 w-7"
                   onClick={toggleSidebar}
                 >
-                  {/* Colapsado, el mismo botón sirve para volver a abrir: dos
-                      botones de plegado en la barra eran redundancia. */}
-                  {open ? (
-                    <PanelLeftClose className="w-5 h-5 z-100" />
-                  ) : (
-                    <PanelLeftOpen className="w-5 h-5 z-100" />
-                  )}
-                  <span className="sr-only">{open ? "Ocultar menú" : "Mostrar menú"}</span>
+                  {/* Un solo icono en los dos estados: lo que el botón abre es el
+                      agente, y eso no cambia según esté plegado o no. Un icono de
+                      «panel» decía dónde está, no qué hay adentro (#254). */}
+                  <Bot className="w-5 h-5 z-100" />
+                  <span className="sr-only">
+                    {open ? "Ocultar el agente de IA" : "Mostrar el agente de IA"}
+                  </span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent side={open ? "left" : "right"} className="z-100">
-                <p>{open ? "Ocultar menú" : "Mostrar menú"}</p>
+                <p>{open ? "Ocultar el agente de IA" : "Mostrar el agente de IA"}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

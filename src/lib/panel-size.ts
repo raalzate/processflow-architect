@@ -102,3 +102,33 @@ export function readInspectorWidth(raw: string | null | undefined): InspectorWid
 export function inspectorMaxWidth(id: InspectorWidthId): string {
   return (INSPECTOR_WIDTHS.find((w) => w.id === id) ?? INSPECTOR_WIDTHS[0]).maxWidth;
 }
+
+// -----------------------------------------------------------------------------
+// Visibilidad de la paleta — #255
+// -----------------------------------------------------------------------------
+
+/**
+ * Clave de `localStorage` de si la paleta está oculta.
+ *
+ * Es una clave PROPIA y no un ancho 0: el ancho guardado es la medida que el
+ * usuario eligió, y usarlo como bandera de «oculta» perdería ese número, así
+ * que al reabrir la paleta volvería al default en vez de a lo que tenía.
+ */
+export const TOOLBOX_HIDDEN_KEY = "designer_toolbox_hidden";
+
+/** Lo que se escribe en `localStorage` para «oculta». */
+const OCULTA = "1";
+
+/**
+ * Lee si la paleta quedó oculta (string crudo de `localStorage`, que puede ser
+ * cualquier cosa). Visible es el default: quien abre el diseñador por primera
+ * vez tiene que ver de dónde se arrastran los elementos.
+ */
+export function readToolboxHidden(raw: string | null | undefined): boolean {
+  return (raw ?? "").trim() === OCULTA;
+}
+
+/** El valor a guardar. Se borra la clave cuando es visible: es el default. */
+export function toolboxHiddenValue(hidden: boolean): string | null {
+  return hidden ? OCULTA : null;
+}

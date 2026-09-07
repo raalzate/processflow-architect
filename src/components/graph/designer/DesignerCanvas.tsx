@@ -21,6 +21,8 @@ import {
   Layers,
   ChevronDown,
   ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
   // Notaciones BPMN / C4 / UML
   Play,
   StopCircle,
@@ -97,7 +99,11 @@ import {
   readPanelWidth,
   TOOLBOX_LIMITS,
   TOOLBOX_WIDTH_KEY,
+  TOOLBOX_HIDDEN_KEY,
+  readToolboxHidden,
+  toolboxHiddenValue,
 } from "@/lib/panel-size";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -386,12 +392,28 @@ export const Toolbox: React.FC<{
   const [width, setWidth] = React.useState(TOOLBOX_LIMITS.default);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
   const [resizing, setResizing] = React.useState(false);
+  // Oculta: cuando el trabajo es leer o reacomodar el lienzo, hasta el ancho
+  // mínimo de la paleta es lienzo perdido (#255). El ancho elegido se conserva
+  // aparte, así que al volver a mostrarla vuelve al que tenía.
+  const [hidden, setHidden] = React.useState(false);
 
   React.useEffect(() => {
     try {
       setWidth(readPanelWidth(localStorage.getItem(TOOLBOX_WIDTH_KEY), TOOLBOX_LIMITS));
+      setHidden(readToolboxHidden(localStorage.getItem(TOOLBOX_HIDDEN_KEY)));
     } catch {
       /* sin localStorage: se queda con el default */
+    }
+  }, []);
+
+  const aplicarOculta = React.useCallback((v: boolean) => {
+    setHidden(v);
+    try {
+      const guardar = toolboxHiddenValue(v);
+      if (guardar === null) localStorage.removeItem(TOOLBOX_HIDDEN_KEY);
+      else localStorage.setItem(TOOLBOX_HIDDEN_KEY, guardar);
+    } catch {
+      /* ignore quota */
     }
   }, []);
 
@@ -429,6 +451,26 @@ export const Toolbox: React.FC<{
 
   const toggle = (label: string) =>
     setCollapsed((prev) => ({ ...prev, [label]: !prev[label] }));
+
+  // Oculta: queda un riel angosto con el único botón que la trae de vuelta. No
+  // se desmonta a un ancho 0 porque entonces no habría de dónde reabrirla, y el
+  // tirador de ancho NO se renderiza acá: no hay ancho que arrastrar.
+  if (hidden) {
+    return (
+      <div className="relative flex w-9 flex-shrink-0 flex-col items-center border-r bg-background pt-3 shadow-lg z-10">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          title="Mostrar la paleta de elementos"
+          onClick={() => aplicarOculta(false)}
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+          <span className="sr-only">Mostrar la paleta de elementos</span>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     // El scroll vive en el hijo: así el tirador queda fijo al borde y no se va
@@ -482,9 +524,21 @@ export const Toolbox: React.FC<{
         )}
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-2 px-1">
-          Elementos
-        </h3>
+        <div className="mb-2 flex items-center justify-between gap-1 px-1">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase">
+            Elementos
+          </h3>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 shrink-0"
+            title="Ocultar la paleta de elementos"
+            onClick={() => aplicarOculta(true)}
+          >
+            <PanelLeftClose className="h-4 w-4" />
+            <span className="sr-only">Ocultar la paleta de elementos</span>
+          </Button>
+        </div>
 
         {/* Selector de grupo de componentes / notación (DDD, BPMN, C4, UML) */}
         {onNotationChange && (
@@ -584,6 +638,13 @@ interface NodeComponentProps {
    */
   notation?: NotationId;
   isSelected: boolean;
+  /**
+   * Emparentado con la selección: hay una arista entre este nodo y algo
+   * seleccionado (#256). Se dibuja distinto del seleccionado —el azul de
+   * selección no se comparte— para que se lea «con esto habla», no «esto
+   * también está elegido».
+   */
+  isRelated?: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
   onResizeMouseDown: (e: React.MouseEvent) => void;
   onClick: () => void;
@@ -720,6 +781,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   node,
   notation,
   isSelected,
+  isRelated = false,
   onMouseDown,
   onResizeMouseDown,
   onClick,
@@ -734,6 +796,14 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
 }) => {
   const color = colorForType(node.tipo_elemento);
   const hasSubView = !!node.viewRef && !!onOpenSubView;
+  // El trazo que MANDA sobre el propio del tipo: azul si está seleccionado,
+  // ámbar si está emparentado con la selección (#256). Son colores distintos a
+  // propósito: el mismo azul haría leer al vecino como seleccionado.
+  const trazoResalte = isSelected
+    ? "stroke-blue-600"
+    : isRelated
+      ? "stroke-amber-500"
+      : null;
   const Icon = iconForType(node.tipo_elemento);
   const meta = ALL_ELEMENTS[node.tipo_elemento];
 
@@ -794,13 +864,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           className={cn(
             "stroke-2 transition-all",
             meta?.transparent ? "fill-transparent" : color.bg,
-            isSelected ? "stroke-blue-600" : meta?.stroke ?? color.border
+            trazoResalte ?? meta?.stroke ?? color.border
           )}
-          strokeWidth={isSelected ? 3 : 2}
+          strokeWidth={isSelected ? 3 : isRelated ? 2.5 : 2}
           // Colores personalizados del contenedor: fondo siempre; borde sólo sin selección.
           style={{
             ...(node.color ? { fill: node.color } : {}),
-            ...(!isSelected && node.borderColor ? { stroke: node.borderColor } : {}),
+            ...(!trazoResalte && node.borderColor ? { stroke: node.borderColor } : {}),
           }}
         />
         {lifeline ? (
@@ -815,9 +885,9 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               className={cn(
                 "stroke-2",
                 meta?.transparent ? "fill-canvas" : color.bg,
-                isSelected ? "stroke-blue-600" : meta?.stroke ?? color.border
+                trazoResalte ?? meta?.stroke ?? color.border
               )}
-              style={!isSelected && node.borderColor ? { stroke: node.borderColor } : undefined}
+              style={!trazoResalte && node.borderColor ? { stroke: node.borderColor } : undefined}
             />
             <line
               x1={width / 2}
@@ -826,8 +896,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               y2={height}
               strokeDasharray="6 6"
               strokeWidth={2}
-              className={cn(isSelected ? "stroke-blue-600" : meta?.stroke ?? color.border)}
-              style={!isSelected && node.borderColor ? { stroke: node.borderColor } : undefined}
+              className={cn(trazoResalte ?? meta?.stroke ?? color.border)}
+              style={!trazoResalte && node.borderColor ? { stroke: node.borderColor } : undefined}
             />
             <text
               x={width / 2}
@@ -852,9 +922,9 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               y1={0}
               x2={BAND}
               y2={height}
-              className={cn(isSelected ? "stroke-blue-600" : meta?.stroke ?? color.border)}
+              className={cn(trazoResalte ?? meta?.stroke ?? color.border)}
               strokeWidth={2}
-              style={!isSelected && node.borderColor ? { stroke: node.borderColor } : undefined}
+              style={!trazoResalte && node.borderColor ? { stroke: node.borderColor } : undefined}
             />
             <text
               // Rotado sobre el centro de la banda; el nombre lee de abajo a arriba.
@@ -913,12 +983,12 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           />
           <path
             d={`M${width - 10},${height} L${width},${height - 10}`}
-            className={cn(isSelected ? "stroke-blue-600" : meta?.stroke ?? "stroke-gray-400 dark:stroke-zinc-500")}
+            className={cn(trazoResalte ?? meta?.stroke ?? "stroke-gray-400 dark:stroke-zinc-500")}
             strokeWidth="2"
           />
           <path
             d={`M${width - 6},${height} L${width},${height - 6}`}
-            className={cn(isSelected ? "stroke-blue-600" : meta?.stroke ?? "stroke-gray-400 dark:stroke-zinc-500")}
+            className={cn(trazoResalte ?? meta?.stroke ?? "stroke-gray-400 dark:stroke-zinc-500")}
             strokeWidth="2"
           />
         </g>
@@ -989,16 +1059,16 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           // Sólo los contenedores son transparentes; los símbolos llevan su tinte.
           meta?.transparent ? "fill-transparent" : color.bg,
           // El trazo: azul si está seleccionado; si no, el contorno propio del tipo.
-          isSelected ? "stroke-blue-600" : meta?.stroke ?? color.border,
+          trazoResalte ?? meta?.stroke ?? color.border,
           // Resalte como destino al pasar por encima mientras se conecta.
           connecting && "group-hover:stroke-blue-500 group-hover:stroke-[3px]"
         )}
-        strokeWidth={isSelected ? 3 : 2}
+        strokeWidth={isSelected ? 3 : isRelated ? 2.5 : 2}
         // Colores personalizados: fondo siempre; borde sólo si no está seleccionado
         // (al seleccionar manda el contorno azul de selección).
         style={{
           ...(node.color ? { fill: node.color } : {}),
-          ...(!isSelected && node.borderColor ? { stroke: node.borderColor } : {}),
+          ...(!trazoResalte && node.borderColor ? { stroke: node.borderColor } : {}),
         }}
       />
       <foreignObject width={nodeW} height={nodeH} className="pointer-events-none">
@@ -1130,6 +1200,8 @@ interface LinkComponentProps {
   /** Notación de la vista: decide el trazo y el tamaño de los nodos que une. */
   notation?: NotationId;
   isSelected: boolean;
+  /** Emparentado: tiene una punta en la selección (#256). */
+  isRelated?: boolean;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
   /** Clic derecho sobre el enlace: abre el menú contextual del lienzo. */
@@ -1146,6 +1218,7 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   nodes,
   notation,
   isSelected,
+  isRelated = false,
   onClick,
   onDoubleClick,
   onContextMenu,
@@ -1202,9 +1275,15 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
         d={path}
         className={cn(
           "transition-all",
-          isSelected ? "stroke-blue-600" : link.color ? "" : "stroke-gray-400 dark:stroke-zinc-500 opacity-60 dark:opacity-90"
+          isSelected
+            ? "stroke-blue-600"
+            : isRelated
+              ? "stroke-amber-500"
+              : link.color
+                ? ""
+                : "stroke-gray-400 dark:stroke-zinc-500 opacity-60 dark:opacity-90"
         )}
-        strokeWidth={isSelected ? 2.5 : 1.5}
+        strokeWidth={isSelected ? 2.5 : isRelated ? 2 : 1.5}
         markerEnd={markerEnd}
         markerStart={markerStart}
         fill="none"
@@ -1212,7 +1291,7 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
         // (realización y dependencia son punteadas en UML).
         strokeDasharray={dashed ? "8 5" : undefined}
         // Color de línea personalizado (prevalece sobre el gris por defecto).
-        style={!isSelected && link.color ? { stroke: link.color } : undefined}
+        style={!isSelected && !isRelated && link.color ? { stroke: link.color } : undefined}
       />
       <g
         onDoubleClick={onDoubleClick}

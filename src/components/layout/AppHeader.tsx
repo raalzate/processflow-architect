@@ -274,6 +274,9 @@ const FileManagement: React.FC<
   const orgApi = typeof window !== "undefined" ? window.electronAPI : undefined;
   const [orgDialog, setOrgDialog] = useState<null | { modo: "crear" | "renombrar"; valor: string }>(null);
   const [orgBorrar, setOrgBorrar] = useState<string | null>(null);
+  // Proyecto pendiente de borrar. Borrar un proyecto reescribe `localStorage` y
+  // no tiene undo: el clic abre la confirmación, no la acción (#258).
+  const [proyectoBorrar, setProyectoBorrar] = useState<string | null>(null);
 
   const refrescarOrgs = async () => {
     if (!orgApi?.mcpOrgsStatus) return;
@@ -585,7 +588,7 @@ const FileManagement: React.FC<
           <DropdownMenuItem
             disabled={!currentFileId}
             className="text-destructive focus:text-destructive"
-            onClick={() => currentFileId && onFileDelete(currentFileId)}
+            onClick={() => currentFileId && setProyectoBorrar(currentFileId)}
           >
             <Trash2 className="mr-2 h-4 w-4" /> Eliminar proyecto
           </DropdownMenuItem>
@@ -709,6 +712,38 @@ const FileManagement: React.FC<
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={confirmarBorrado}>Eliminar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Eliminar un proyecto SÍ borra el trabajo: el grafo, las vistas, las fuentes y
+          los metadatos se van con él y no hay undo. La confirmación nombra el proyecto
+          para que nadie borre el que no era (#258). */}
+      <AlertDialog
+        open={!!proyectoBorrar}
+        onOpenChange={(abierto) => !abierto && setProyectoBorrar(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              ¿Eliminar «{savedFiles.find((f) => f.id === proyectoBorrar)?.name ?? ""}»?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Se borra el proyecto completo: su grafo, sus vistas, sus fuentes y sus
+              metadatos. Esto no se puede deshacer. Si querés conservarlo, cancelá y
+              descargalo antes con «Descargar JSON».
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (proyectoBorrar) onFileDelete(proyectoBorrar);
+                setProyectoBorrar(null);
+              }}
+            >
+              Eliminar
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
