@@ -27,6 +27,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { RUTAS_INDEXABLES, sealVerdict } from "./graph-seal.mjs";
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const config = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, ".claude", "harness.config.json"), "utf8"));
@@ -57,37 +58,47 @@ const HEAD = git("rev-parse", "HEAD");
 const stampFile = path.join(REPO_ROOT, graph.stampFile);
 const sello = fs.existsSync(stampFile) ? fs.readFileSync(stampFile, "utf8").trim() : "";
 
-/** Rutas cuyo cambio obliga a reindexar (lo que graphify sabe leer). */
+/**
+ * Rutas cuyo cambio obliga a reindexar. La lista vive en `graph-seal.mjs`
+ * junto a la regla del sello: si las dos señales miraran extensiones distintas
+ * volverían a discrepar, que es lo que costó el tiempo en #259.
+ */
 const indexables = (desde, hasta) =>
-  git("diff", "--name-only", `${desde}..${hasta}`, "--", "*.ts", "*.tsx", "*.js", "*.mjs", "*.md")
+  git("diff", "--name-only", `${desde}..${hasta}`, "--", ...RUTAS_INDEXABLES)
     .split("\n")
     .filter(Boolean);
 
-if (sello === HEAD) {
-  // Indexado exactamente para este commit.
-} else if (sello) {
-  let pendientes = [];
+let pendientes = [];
+if (sello && sello !== HEAD) {
   try {
     pendientes = indexables(sello, HEAD);
   } catch {
     pendientes = ["(no se pudo comparar con el sello: commit reescrito o rama nueva)"];
   }
-  if (pendientes.length) {
-    problemas.push(
-      `el índice se construyó para ${sello.slice(0, 7)} y desde ahí cambiaron ${pendientes.length} archivo(s) indexables (${pendientes.slice(0, 3).join(", ")}${pendientes.length > 3 ? "…" : ""}): una consulta contestaría con el repo viejo. Arreglo: \`${graph.updateCommand}\`.`,
-    );
-  }
-} else {
-  // Sin sello (índice hecho a mano con `/graphify .` antes de que existiera el sello):
-  // se cae al reloj, con margen para el hook que corre junto al commit.
-  const ultimoIndexable = git("log", "-1", "--format=%cI", "--", "*.ts", "*.tsx", "*.js", "*.mjs", "*.md");
-  const margenMs = (graph.freshnessGraceSeconds ?? 300) * 1000;
-  if (ultimoIndexable && fs.statSync(graphFile).mtimeMs + margenMs < new Date(ultimoIndexable).getTime()) {
-    problemas.push(
-      `el índice no tiene sello y es más viejo que el último commit con archivos indexables: reconstruilo con \`${graph.updateCommand}\` (el post-commit deja el sello en \`${graph.stampFile}\`).`,
-    );
-  }
 }
+
+// Sin sello se cae al reloj, con margen para el hook que corre junto al commit.
+// Es el índice hecho a mano con `/graphify .` antes de que el sello existiera.
+let frescoPorReloj = false;
+if (!sello) {
+  const ultimoIndexable = git("log", "-1", "--format=%cI", "--", ...RUTAS_INDEXABLES);
+  const margenMs = (graph.freshnessGraceSeconds ?? 300) * 1000;
+  frescoPorReloj =
+    !ultimoIndexable ||
+    fs.statSync(graphFile).mtimeMs + margenMs >= new Date(ultimoIndexable).getTime();
+}
+
+// EL veredicto lo da `graph-seal.mjs`, no esta copia: cuando la regla vivía dos
+// veces, el self-test terminó siendo más estricto que este checker y el gate se
+// puso rojo con el índice sano (#259).
+const veredicto = sealVerdict({
+  sello,
+  head: HEAD,
+  pendientes,
+  frescoPorReloj,
+  updateCommand: graph.updateCommand,
+});
+if (!veredicto.ok) problemas.push(`${veredicto.mensaje}.`);
 
 // 2 · Tamaño contra la línea base declarada.
 let medido = { nodes: 0, edges: 0 };

@@ -18,6 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { RUTAS_INDEXABLES, sealVerdict } from "./graph-seal.mjs";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -500,12 +501,50 @@ frenoDelLint(
   // rojo real: se medía por mtime contra la fecha de HEAD y `graphify update` no
   // reescribe graph.json cuando no hay nada nuevo, así que un commit sin cambios
   // indexables daba «atrasado 0 minutos» y ponía el gate en rojo sin causa.
+  //
+  // Y por un SEGUNDO falso rojo (#259): esta aserción exigía que el sello fuera
+  // exactamente HEAD, o sea era más estricta que el `graph-check.mjs` que está
+  // validando, que tolera un sello viejo si entre él y HEAD no cambió nada
+  // indexable. El sello lo escribe el `post-commit` local, así que después de
+  // cada merge de PR —el flujo obligatorio del repo— HEAD es un SHA que ningún
+  // post-commit vio y el gate se ponía rojo sin causa. Peor: el remedio que el
+  // mensaje indicaba (`graph:update`) no escribe el sello, así que no arreglaba
+  // nada. Lo que se exige acá es lo que importa: que el índice responda por el
+  // árbol de HEAD.
   if (grafoPresente) {
     const sello = abs(config.graph.stampFile);
-    const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).stdout?.trim();
+    const git = (...args) => spawnSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" }).stdout?.trim() ?? "";
+    const head = git("rev-parse", "HEAD");
     const actual = fs.existsSync(sello) ? fs.readFileSync(sello, "utf8").trim() : "";
-    if (actual === head) ok("graph-check: el índice está sellado para HEAD (frescura por contenido, no por reloj)");
-    else bad("graph-check: sello del índice", `sello=${actual.slice(0, 7) || "(ninguno)"} HEAD=${head?.slice(0, 7)}: corré \`npm run graph:update\``);
+    const pendientes =
+      actual && actual !== head
+        ? git("diff", "--name-only", `${actual}..${head}`, "--", ...RUTAS_INDEXABLES)
+            .split("\n")
+            .filter(Boolean)
+        : [];
+    // La regla vive en `scripts/graph-seal.mjs` y tiene prueba: es la MISMA que
+    // aplica `graph-check.mjs`, así que las dos señales no pueden discrepar.
+    // Sin sello: la misma tolerancia por reloj que aplica `graph-check.mjs`. Si
+    // acá se exigiera sello, las dos señales volverían a discrepar —que es el
+    // incidente de #259, no una hipótesis.
+    let frescoPorReloj = false;
+    if (!actual) {
+      const ultimoIndexable = git("log", "-1", "--format=%cI", "--", ...RUTAS_INDEXABLES);
+      const margenMs = (config.graph.freshnessGraceSeconds ?? 300) * 1000;
+      const grafo = abs(config.graph.graphFile);
+      frescoPorReloj =
+        !ultimoIndexable ||
+        fs.statSync(grafo).mtimeMs + margenMs >= new Date(ultimoIndexable).getTime();
+    }
+    const veredicto = sealVerdict({
+      sello: actual,
+      head,
+      pendientes,
+      frescoPorReloj,
+      updateCommand: config.graph.updateCommand,
+    });
+    if (veredicto.ok) ok(`graph-check: ${veredicto.mensaje}`);
+    else bad("graph-check: sello del índice", veredicto.mensaje);
   }
 
   // Un índice ENCOGIDO contesta igual, con menos verdad: el freno tiene que morder.
