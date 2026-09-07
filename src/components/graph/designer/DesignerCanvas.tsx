@@ -115,6 +115,7 @@ import {
   ALL_ELEMENTS,
   getNotation,
   isBlobContainer,
+  isFragmentContainer,
   isLifelineContainer,
   isSwimlaneContainer,
   labelLayoutOfType,
@@ -126,6 +127,7 @@ import {
   type ShapeKind,
 } from "@/lib/notations";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
+import { FRAGMENT_OPS, esOperador } from "@/lib/sequence/fragments";
 import {
   clipToShape,
   handleGeom,
@@ -834,8 +836,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
     // tiempo bajando punteada por el centro. El marco se mantiene tenue porque
     // además es zona de SOLTAR (las activaciones y notas van dentro).
     const lifeline = isLifelineContainer(node.tipo_elemento);
+    const fragmento = isFragmentContainer(node.tipo_elemento);
     const strokeDash = swimlane ? undefined : isContext ? "10 10" : "5 5";
-    const radius = swimlane || lifeline ? 0 : 12;
+    const radius = swimlane || lifeline || fragmento ? 0 : 12;
+    // Operador del fragmento: es lo que dice qué HACE lo que encierra. Un
+    // fragmento sin operador se sigue dibujando —no se pierde el trabajo—, pero
+    // la pestaña queda vacía y eso es visible, que es lo que se quiere.
+    const fragOp = fragmento && esOperador(node.fragmentOp) ? node.fragmentOp : null;
     // La medida la declara `link-geom.ts`: la geometría del mensaje también la
     // necesita, y con el número en dos archivos se desincronizan (#261).
     const HEAD = LIFELINE_HEAD;
@@ -871,12 +878,48 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             trazoResalte ?? meta?.stroke ?? color.border
           )}
           strokeWidth={isSelected ? 3 : isRelated ? 2.5 : 2}
+          // El marco de una línea de vida es ZONA DE SOLTAR, no una caja: se
+          // atenúa para que no compita con la cabecera y el eje, que son el
+          // participante. Vuelve a verse al seleccionarla o mientras hay un
+          // arrastre encima —ahí sí importa saber dónde cae lo que se suelta.
           // Colores personalizados del contenedor: fondo siempre; borde sólo sin selección.
           style={{
             ...(node.color ? { fill: node.color } : {}),
             ...(!trazoResalte && node.borderColor ? { stroke: node.borderColor } : {}),
+            ...(lifeline && !isSelected && !connecting ? { opacity: 0.25 } : {}),
           }}
         />
+        {fragmento && (
+          /* Pestaña del operador, arriba a la izquierda: es la forma canónica
+             de UML. Sin ella un `loop` era un rectángulo con un nombre. */
+          <>
+            <path
+              d={`M0,0 L86,0 L86,16 L74,28 L0,28 Z`}
+              className={cn("stroke-2", color.bg, meta?.stroke ?? color.border)}
+            />
+            <text
+              x={8}
+              y={14}
+              dominantBaseline="central"
+              fill="currentColor"
+              className={cn("text-[11px] font-bold select-none pointer-events-none", color.text)}
+            >
+              {fragOp ? FRAGMENT_OPS[fragOp].etiqueta : "?"}
+            </text>
+            {node.nombre && (
+              /* La guarda: la condición bajo la que ocurre lo que encierra. */
+              <text
+                x={96}
+                y={14}
+                dominantBaseline="central"
+                fill="currentColor"
+                className={cn("text-[11px] select-none pointer-events-none opacity-80", color.text)}
+              >
+                {`[${node.nombre}]`}
+              </text>
+            )}
+          </>
+        )}
         {lifeline ? (
           // Caja del participante + línea del tiempo. El nombre va DENTRO de la
           // caja: en secuencia se lee de arriba abajo, no por las esquinas.

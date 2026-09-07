@@ -198,7 +198,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { DesignerActionId } from "@/lib/designer-actions";
 import { isNudgeKey, nudgeForKey } from "@/lib/canvas-nudge";
+import { isLifelineContainer } from "@/lib/notations";
 import { neighborhoodOf } from "@/lib/graph-neighbors";
+import {
+  SEQUENCE_MESSAGES,
+  SEQUENCE_MESSAGE_DEFAULT,
+  SEQUENCE_MESSAGE_KINDS,
+  estiloDeMensaje,
+  type SequenceMessageKind,
+} from "@/lib/sequence/messages";
 
 /** Orden en que se ofrecen los enrutados (el mismo que la ficha del enlace). */
 const ROUTING_ORDER = ["straight", "curved", "orthogonal"] as const;
@@ -1202,6 +1210,16 @@ const EditLinkDialog: React.FC<{
   onSave: (id: string, cambios: Partial<DesignerLink>) => void;
 }> = ({ link, nodes, referencia, notation, onClose, onSave }) => {
   const [draft, setDraft] = useState<DesignerLink | null>(null);
+  // ¿Esta arista es un MENSAJE de secuencia? Lo es cuando une dos líneas de
+  // vida. Se pregunta por los extremos y no por la notación: en UML conviven
+  // clases, estados y secuencia, así que «la vista es UML» no alcanza.
+  const esMensajeDeSecuencia = useMemo(() => {
+    const a = link ? nodes.get(link.sourceId) : undefined;
+    const b = link ? nodes.get(link.targetId) : undefined;
+    return (
+      !!a && !!b && isLifelineContainer(a.tipo_elemento) && isLifelineContainer(b.tipo_elemento)
+    );
+  }, [nodes, link]);
   const { run, busy } = useAi();
   // Autoguardado con el mismo criterio que el inspector de nodos: rebote de
   // 400 ms, se vacía al cerrar o al saltar a otro enlace, y se guarda el DIFF
@@ -1404,6 +1422,36 @@ const EditLinkDialog: React.FC<{
             </Select>
             <p className="text-xs text-muted-foreground">{relationStyle(draft.relation).hint}</p>
           </div>
+
+          {/* Tipo de MENSAJE (secuencia UML). Sólo aparece si las dos puntas son
+              líneas de vida: en cualquier otro diagrama sería una opción que no
+              significa nada, y una opción sin sentido enseña mal la notación.
+              El retorno deja de ser «acordate de puntear la línea» (#269). */}
+          {esMensajeDeSecuencia && (
+            <div className="mt-4 space-y-1.5">
+              <Label htmlFor="link-message-kind">Tipo de mensaje</Label>
+              <Select
+                value={draft.messageKind ?? SEQUENCE_MESSAGE_DEFAULT}
+                onValueChange={(v) =>
+                  setDraft((d) => (d ? { ...d, messageKind: v as SequenceMessageKind } : d))
+                }
+              >
+                <SelectTrigger id="link-message-kind" title={estiloDeMensaje(draft.messageKind).hint}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SEQUENCE_MESSAGE_KINDS.map((k) => (
+                    <SelectItem key={k} value={k} title={SEQUENCE_MESSAGES[k].hint}>
+                      {SEQUENCE_MESSAGES[k].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {estiloDeMensaje(draft.messageKind).hint}
+              </p>
+            </div>
+          )}
 
           <div className="mt-4 space-y-1.5">
             <Label>Flechas</Label>

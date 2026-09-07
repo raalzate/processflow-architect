@@ -93,7 +93,7 @@ export interface NotationElement {
    *    (Comportamiento, Ciclo de Vida, Composición): agrupan por afinidad, no
    *    delimitan un territorio, y un rectángulo los hacía leer como sistema.
    */
-  containerStyle?: "boundary" | "swimlane" | "blob" | "lifeline";
+  containerStyle?: "boundary" | "swimlane" | "blob" | "lifeline" | "fragment";
   /** Clase tailwind de trazo SVG (stroke-*) que dibuja el contorno del nodo. */
   stroke?: string;
   /** Clases tailwind: relleno SVG, borde y texto. */
@@ -527,7 +527,10 @@ const UML: Notation = {
     { type: "Activación", icon: "Minus", shape: "rect", stroke: "stroke-indigo-400", bg: "fill-indigo-700", border: "border-indigo-500", text: "text-white" },
     // Fragmento combinado (alt / opt / loop / par): marco con la etiqueta del
     // operador; lo que encierra es la parte condicional de la interacción.
-    { type: "Fragmento", icon: "Frame", container: true, transparent: true, stroke: "stroke-indigo-500", bg: "fill-indigo-950/40", border: "border-indigo-500", text: "text-indigo-900 dark:text-indigo-200" },
+    // Se dibuja con la PESTAÑA del operador arriba a la izquierda, como manda
+    // UML: sin ella un `loop` era un rectángulo punteado con un nombre, y no
+    // decía qué hace ni cuándo (feature 013).
+    { type: "Fragmento", icon: "Frame", container: true, containerStyle: "fragment", transparent: true, stroke: "stroke-indigo-500", bg: "fill-indigo-950/40", border: "border-indigo-500", text: "text-indigo-900 dark:text-indigo-200" },
     // Mensaje perdido/encontrado: la punta que no tiene participante al otro lado.
     { type: "Mensaje Perdido", icon: "Circle", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-indigo-300", bg: "fill-indigo-300", border: "border-indigo-500", text: "text-indigo-100" },
     // --- Máquina de estados ---
@@ -664,6 +667,10 @@ export const isSwimlaneContainer = (type: string): boolean =>
   ALL_ELEMENTS[type]?.containerStyle === "swimlane";
 
 /** true → el contenedor es una LÍNEA DE VIDA (caja arriba + línea de tiempo). */
+/** true → el contenedor es un FRAGMENTO combinado (pestaña con el operador). */
+export const isFragmentContainer = (type: string): boolean =>
+  ALL_ELEMENTS[type]?.containerStyle === "fragment";
+
 export const isLifelineContainer = (type: string): boolean =>
   ALL_ELEMENTS[type]?.containerStyle === "lifeline";
 

@@ -2,6 +2,7 @@
 import type { SimulationNodeDatum, SimulationLinkDatum } from "d3";
 import type { EdgeRelationKind } from "./edge-relations";
 import type { SequenceMessageKind } from "./sequence/messages";
+import type { FragmentOp, FragmentPart } from "./sequence/fragments";
 import type { ElementMetadata } from "./element-metadata";
 import type { ElementSpec } from "./element-spec";
 import type { SourceDoc } from "./source-docs";
@@ -94,6 +95,19 @@ export interface GraphNode extends SimulationNodeDatum {
   _initialDragX?: number;
   _initialDragY?: number;
   // Geometría del lienzo del diseñador (x/y heredados de SimulationNodeDatum).
+  /**
+   * Operador de un FRAGMENTO combinado de secuencia (`loop`, `alt`, `opt`,
+   * `par`). Campo tipado y no metadato libre: un metadato es texto que el
+   * usuario escribe, y «loop» mal escrito no es un operador. Ver
+   * `src/lib/sequence/fragments.ts`.
+   */
+  fragmentOp?: FragmentOp;
+  /**
+   * Operandos del fragmento: cada parte con su condición y el TRAMO DE ORDEN
+   * que abarca. Son rangos y no sub-cajas para que sacar un mensaje del
+   * fragmento sea reordenarlo, sin geometría de por medio.
+   */
+  fragmentParts?: FragmentPart[];
   // Persistida en el content para reconstruir el diseño al recargar.
   width?: number;
   height?: number;
