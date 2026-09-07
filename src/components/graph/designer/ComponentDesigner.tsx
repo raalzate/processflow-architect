@@ -200,6 +200,7 @@ import type { DesignerActionId } from "@/lib/designer-actions";
 import { isNudgeKey, nudgeForKey } from "@/lib/canvas-nudge";
 import { isLifelineContainer } from "@/lib/notations";
 import { neighborhoodOf } from "@/lib/graph-neighbors";
+import { ordenParaNuevo, renumerar } from "@/lib/sequence/canvas";
 import {
   SEQUENCE_MESSAGES,
   SEQUENCE_MESSAGE_DEFAULT,
@@ -2203,6 +2204,12 @@ export const ComponentDesigner: React.FC<{
     [toast]
   );
 
+  /** ¿Ese nodo es una línea de vida? Lo que decide si un enlace es un mensaje. */
+  const esLineaDeVida = useCallback((nodeId: string) => {
+    const n = nodesRef.current.get(nodeId);
+    return !!n && isLifelineContainer(n.tipo_elemento);
+  }, []);
+
   const deleteSelected = useCallback(() => {
     const ids = selectedIdsRef.current;
     if (ids.size === 0) return;
@@ -2222,12 +2229,19 @@ export const ComponentDesigner: React.FC<{
       for (const [lid, link] of l.entries()) {
         if (deletedNodes.has(link.sourceId) || deletedNodes.has(link.targetId)) l.delete(lid);
       }
+      // Borrar deja huecos en la secuencia, y un hueco parece que significa
+      // algo (FR-017). Se renumera sólo lo que cambia, para no marcar como
+      // modificado medio diagrama.
+      for (const { id: lid, orden } of renumerar([...l.values()], esLineaDeVida)) {
+        const link = l.get(lid);
+        if (link) l.set(lid, { ...link, orden });
+      }
       linksRef.current = l;
       return l;
     });
     pushSnapshot(nodesRef.current, linksRef.current);
     clearSelection();
-  }, [pushSnapshot, clearSelection]);
+  }, [pushSnapshot, clearSelection, esLineaDeVida]);
 
   const cancelOrDeselect = useCallback(() => {
     setConnectFrom(null);
@@ -3107,15 +3121,36 @@ export const ComponentDesigner: React.FC<{
       const from = connectFromRef.current;
       setConnectFrom(null);
       setConnectCursor(null);
-      if (!from || from === targetId) return;
+      if (!from) return;
       const id = `link-${from}-${targetId}-${crypto.randomUUID()}`;
+      // Una auto-llamada (mismo participante) es válida en secuencia: es cuando
+      // un objeto se llama a sí mismo. En el resto de las notaciones sigue sin
+      // tener sentido, así que ahí se descarta como antes.
+      const auto = from === targetId;
+      const esMensaje = esLineaDeVida(from) && esLineaDeVida(targetId);
+      if (auto && !esMensaje) return;
       updateLinks((prev) => {
         const n = new Map(prev);
-        n.set(id, { id, sourceId: from, targetId, descripcion: "interactúa", routing: newLinkRouting });
+        // El ORDEN se asigna acá: sin esto el enlace nacía sin lugar en el
+        // tiempo y todo el modelo temporal quedaba inerte —la geometría lo
+        // respeta, pero nadie se lo daba.
+        const orden = ordenParaNuevo(
+          { sourceId: from, targetId },
+          [...prev.values()],
+          esLineaDeVida
+        );
+        n.set(id, {
+          id,
+          sourceId: from,
+          targetId,
+          descripcion: "interactúa",
+          routing: newLinkRouting,
+          ...(orden !== undefined ? { orden } : {}),
+        });
         return n;
       });
     },
-    [updateLinks, newLinkRouting]
+    [updateLinks, newLinkRouting, esLineaDeVida]
   );
 
   // Event Storming: crea el siguiente elemento sugerido, conectado al actual.
