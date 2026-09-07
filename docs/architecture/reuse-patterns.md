@@ -26,6 +26,7 @@ marcadas con 🔒; el resto es criterio.
 | Versión, canal beta, crédito y enlaces | `src/lib/credits.ts` | escribir la versión o los links de Sofka en un componente |
 | Punta y trazo de una arista según la relación (UML: herencia, composición…) | `src/lib/edge-relations.ts` (`relationStyle`, `edgeIsDashed`) + los marcadores `uml-*` del `<defs>` del lienzo | pintar todas las relaciones con la misma flecha, o decidir el `strokeDasharray` en el componente |
 | Acento de una acción asistida por IA («Sugerir», «Siguiente paso») | tokens `ai` del tema: `text-ai`, `bg-ai-surface`, `border-ai-border` (`src/app/globals.css` + `tailwind.config.ts`) | `text-purple-600` u otro color crudo pensado para fondo blanco: la app se muestra oscura y queda a 2,4:1 (regla TOKENS + `theme-contrast.test.ts`) |
+| 🔒 Consultar un registro con una clave que viene de afuera (tecla, dato guardado, MCP) | `src/lib/registro.ts` (`enRegistro`, `deRegistro`, `clavesDe`) | `clave in REGISTRO` ni `REGISTRO[clave]` ni `hasOwnProperty` a mano: `in` ve el prototipo y `"toString"` da clave válida (regla REGISTRO de `scripts/repo-lint.mjs`, #282) |
 | Componentes de UI base | `src/components/ui/` (shadcn) | escribir un botón/diálogo desde cero |
 
 ## Cómo se agrega una fila

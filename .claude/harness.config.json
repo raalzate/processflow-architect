@@ -118,6 +118,12 @@
       "appliesTo": "^src/",
       "reason": "el renderer habla con main sólo por `window.electronAPI` (puente de preload.ts). Añadí el método ahí, no uses ipcRenderer directo.",
       "see": "preload.ts"
+    },
+    {
+      "pattern": "\\bin\\s+(EDGE_RELATIONS|ALL_ELEMENTS|NOTATION_HELP|SEQUENCE_MESSAGES|FRAGMENT_OPS|LAYOUT_STRATEGIES)\\b",
+      "appliesTo": "^(src|main|mcp-server)/(?!lib/registro\\.ts)",
+      "reason": "`in` sobre un registro ve la cadena de prototipos: `\"toString\"` pasa por clave válida (#282). La pertenencia se pregunta con `enRegistro(REGISTRO, clave)` y el valor con `deRegistro(REGISTRO, clave)`.",
+      "see": "src/lib/registro.ts"
     }
   ],
   "lint": {
@@ -161,6 +167,18 @@
       "@/components",
       "@/context",
       "@/hooks"
+    ]
+  },
+  "registry": {
+    "$comment": "Un registro consultado con una clave de afuera pasa por src/lib/registro.ts: `in` y el acceso por clave ven el prototipo y `\"toString\"` daba clave válida (#282).",
+    "helper": "src/lib/registro.ts",
+    "dirs": [
+      "src/",
+      "main/",
+      "mcp-server/"
+    ],
+    "allow": [
+      "src/lib/registro.ts"
     ]
   },
   "forbiddenDeps": {

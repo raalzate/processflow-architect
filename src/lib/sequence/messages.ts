@@ -19,6 +19,7 @@
  */
 
 import type { EdgeMarker } from "../edge-relations";
+import { enRegistro } from "../registro";
 
 /** Qué clase de mensaje es. `sync` es la caída: la llamada de siempre. */
 export type SequenceMessageKind = "sync" | "async" | "return" | "create" | "destroy";
@@ -81,12 +82,13 @@ export const SEQUENCE_MESSAGE_KINDS = Object.keys(SEQUENCE_MESSAGES) as Sequence
 /**
  * ¿Es un tipo conocido? Lo guardado puede traer cualquier cosa.
  *
- * `hasOwnProperty` y no `in`: `in` ve la cadena de prototipos, así que
- * `"toString"` pasaba por tipo de mensaje válido. Es el mismo agujero que ya
- * apareció en `canvas-nudge.ts`, que por eso usa un `Map`.
+ * `enRegistro` y no `in`: `in` ve la cadena de prototipos, así que `"toString"`
+ * pasaba por tipo de mensaje válido. Es el mismo agujero que apareció en
+ * `canvas-nudge.ts` (que por eso usa un `Map`) y el que la regla REGISTRO del
+ * lint ahora impide reponer (#282).
  */
 export const esTipoDeMensaje = (v: unknown): v is SequenceMessageKind =>
-  typeof v === "string" && Object.prototype.hasOwnProperty.call(SEQUENCE_MESSAGES, v);
+  enRegistro(SEQUENCE_MESSAGES, v);
 
 /** El estilo de un mensaje; un tipo desconocido cae a la llamada de siempre. */
 export function estiloDeMensaje(kind: SequenceMessageKind | undefined): SequenceMessageStyle {

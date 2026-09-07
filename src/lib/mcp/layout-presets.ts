@@ -16,6 +16,7 @@ import {
   type LayoutHint,
   type NotationId,
 } from "../notations";
+import { enRegistro } from "../registro";
 
 /** Cuánto aire tiene el diagrama. */
 export type LayoutDensity = "compacto" | "comodo" | "expandido";
@@ -175,10 +176,10 @@ export function resolveStrategy(
   strategy: LayoutStrategy | string | undefined,
   notation: NotationId | string | undefined
 ): LayoutStrategy {
-  // `in` también encuentra las claves heredadas del prototipo ("constructor",
-  // "toString"): grabarían basura en `meta.layout.strategy` y el menú dejaría de
-  // marcar la actual.
-  return strategy && Object.prototype.hasOwnProperty.call(LAYOUT_STRATEGIES, strategy)
+  // `enRegistro` y no `in`: `in` también encuentra las claves heredadas del
+  // prototipo ("constructor", "toString"), que grabarían basura en
+  // `meta.layout.strategy` y dejarían al menú sin marcar la actual (#282).
+  return enRegistro(LAYOUT_STRATEGIES, strategy)
     ? (strategy as LayoutStrategy)
     : defaultStrategyFor(notation);
 }

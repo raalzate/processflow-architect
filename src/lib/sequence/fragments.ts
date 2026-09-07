@@ -14,6 +14,8 @@
  * es la operación que el usuario ya tiene.
  */
 
+import { enRegistro } from "../registro";
+
 /** Los operadores que UML define y esta app soporta. */
 export type FragmentOp = "loop" | "alt" | "opt" | "par";
 
@@ -58,7 +60,7 @@ export const FRAGMENT_OPS_LIST = Object.keys(FRAGMENT_OPS) as FragmentOp[];
 
 /** ¿Es un operador conocido? Lo guardado puede traer cualquier cosa. */
 export const esOperador = (v: unknown): v is FragmentOp =>
-  typeof v === "string" && Object.prototype.hasOwnProperty.call(FRAGMENT_OPS, v);
+  enRegistro(FRAGMENT_OPS, v);
 
 /**
  * Un operando: una parte del fragmento, con su condición y el tramo de la

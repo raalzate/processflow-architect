@@ -19,6 +19,7 @@
  *   BOTONMUDO un botón sólo-icono lleva nombre accesible (usá `IconAction`).
  *   ENRUTADO  el enrutado efectivo de una arista se resuelve con `routingOf`, sin fallback a mano.
  *   PLATAFORMA  detectar el sistema operativo sólo en src/lib/platform.ts (y sin API deprecada).
+ *   REGISTRO    consultar un registro con clave de afuera pasa por src/lib/registro.ts (nunca `in`).
  *   DEPS      sin SDKs de nube en package.json (las llamadas van con fetch desde el main).
  *   TILES     el registro de tiles (tessl.json) describe las deps reales: ni tiles huérfanos,
  *             ni dep sin tile fuera de la deuda declarada (`tiles.allow`, que sólo baja).
@@ -291,6 +292,47 @@ function checkFile(relPath, contenidoDado = null) {
         lineOf(content, m.index),
         "PLATAFORMA",
         `\`navigator.${m[1]}\` está deprecado y la detección de plataforma vive en \`src/lib/platform.ts\`. Usá \`isMacPlatform()\`, \`modifierLabel()\` o \`hasPlatformModifier()\`.`,
+      );
+    }
+  }
+
+  // REGISTRO — consultar un registro con una clave de afuera pasa por
+  // `enRegistro`/`deRegistro` (`src/lib/registro.ts`).
+  //
+  // `in` y el acceso por clave ven la cadena de prototipos: `"toString"` daba
+  // clave válida y devolvía una función en vez de `undefined`. Pasó dos veces en
+  // la misma sesión, en módulos que no se conocen entre sí (#282), y las dos las
+  // cazó una prueba escrita a propósito — un registro nuevo sin ese test pasaba
+  // el gate con el agujero adentro. Los registros son el patrón central del repo
+  // (`EDGE_RELATIONS`, `ALL_ELEMENTS`, `SEQUENCE_MESSAGES`), así que la
+  // comprobación es una sola y el lint manda ahí.
+  if (
+    (config.registry?.dirs ?? []).some((d) => relPath.startsWith(d)) &&
+    !isTest(relPath) &&
+    !(config.registry?.allow ?? []).includes(relPath)
+  ) {
+    // `X in REGISTRO`: pertenencia contra un registro (identificador en
+    // MAYÚSCULAS). `for (const k in REGISTRO)` no cuenta: recorrer las claves
+    // propias enumerables de un literal es legítimo.
+    for (const m of content.matchAll(/\bin\s+([A-Z][A-Z0-9_]{2,})\b/g)) {
+      const linea = content.slice(content.lastIndexOf("\n", m.index) + 1, m.index);
+      if (/\b(for|of)\b/.test(linea)) continue;
+      fail(
+        relPath,
+        lineOf(content, m.index),
+        "REGISTRO",
+        `\`in ${m[1]}\` ve la cadena de prototipos: \`"toString"\` pasa por clave válida (#282). Usá \`enRegistro(${m[1]}, clave)\` o \`deRegistro(${m[1]}, clave)\` de \`${config.registry.helper}\`.`,
+      );
+    }
+    // La comprobación a mano: correcta, pero repetida en tres módulos y sin un
+    // solo lugar donde probarla.
+    const aMano = /Object\s*\.\s*(?:prototype\s*\.\s*hasOwnProperty\s*\.\s*call|hasOwn)\s*\(/.exec(content);
+    if (aMano) {
+      fail(
+        relPath,
+        lineOf(content, aMano.index),
+        "REGISTRO",
+        `la pertenencia propia se comprueba en un solo lugar: usá \`enRegistro(registro, clave)\` de \`${config.registry.helper}\` en vez de escribirla a mano.`,
       );
     }
   }
