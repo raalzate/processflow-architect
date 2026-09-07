@@ -142,3 +142,77 @@ export function estaAnidado(
   if (!i || !e) return false;
   return i.desde >= e.desde && i.hasta <= e.hasta;
 }
+
+/** Marco del fragmento en el lienzo, en coordenadas absolutas. */
+export interface MarcoFragmento {
+  y: number;
+  height: number;
+}
+
+/** Un mensaje ya colocado: su lugar en la secuencia y la altura que ocupa. */
+export interface MensajeColocado {
+  orden: number;
+  y: number;
+}
+
+/**
+ * Qué tramo de la secuencia abarca un fragmento, **derivado de su geometría**
+ * (T21).
+ *
+ * El fragmento se estira sobre los mensajes que encierra: es lo que el usuario
+ * ya hace con el ratón sin que nadie se lo explique, así que declararlo aparte
+ * en un formulario sería pedirle dos veces lo mismo. Como las alturas salen del
+ * orden, el mapeo es exacto y no hay ambigüedad.
+ *
+ * Efecto que se acepta a conciencia: mover o redimensionar el fragmento CAMBIA
+ * lo que encierra. Es predecible, y es el precio de no tener dos fuentes de
+ * verdad — la misma razón por la que la altura del mensaje no se guarda.
+ *
+ * Devuelve `null` si no abarca ningún mensaje: un fragmento vacío es válido
+ * mientras se está colocando, y vaciar el diagrama por eso sería peor.
+ */
+export function rangoPorGeometria(
+  marco: MarcoFragmento,
+  mensajes: readonly MensajeColocado[]
+): { desde: number; hasta: number } | null {
+  if (!Number.isFinite(marco.y) || !Number.isFinite(marco.height)) return null;
+  const arriba = marco.y;
+  const abajo = marco.y + Math.abs(marco.height);
+  const dentro = mensajes
+    .filter((m) => Number.isFinite(m.y) && m.y >= arriba && m.y <= abajo)
+    .map((m) => m.orden);
+  if (!dentro.length) return null;
+  return { desde: Math.min(...dentro), hasta: Math.max(...dentro) };
+}
+
+/**
+ * Reparte un tramo entre `cuantos` operandos, en partes lo más parejas posible
+ * (T22).
+ *
+ * Se reparte y no se pide: quien agrega un «si no» está diciendo que hay otro
+ * caso, no dónde parte exactamente. El resto se ajusta arrastrando el marco,
+ * que es el gesto que ya define el tramo entero.
+ *
+ * Las guardas que ya existían se conservan por posición; las que falten quedan
+ * vacías, que es visible y por lo tanto se corrige.
+ */
+export function repartirOperandos(
+  rango: { desde: number; hasta: number },
+  cuantos: number,
+  guardas: readonly string[] = []
+): FragmentPart[] {
+  const total = rango.hasta - rango.desde + 1;
+  const n = Math.min(Math.max(1, Math.floor(cuantos)), Math.max(1, total));
+  const base = Math.floor(total / n);
+  const sobra = total % n;
+  const partes: FragmentPart[] = [];
+  let cursor = rango.desde;
+  for (let i = 0; i < n; i++) {
+    // Las primeras partes se quedan con el mensaje que sobra: repartir el resto
+    // al final dejaría el último caso más grande, que se lee como si importara.
+    const largo = base + (i < sobra ? 1 : 0);
+    partes.push({ guarda: guardas[i] ?? "", desde: cursor, hasta: cursor + largo - 1 });
+    cursor += largo;
+  }
+  return partes;
+}

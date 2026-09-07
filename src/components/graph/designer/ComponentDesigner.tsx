@@ -30,6 +30,7 @@ import {
   Copy,
   Scissors,
   ClipboardPaste,
+  RotateCcw,
   CopyPlus,
   BoxSelect,
   ChevronUp,
@@ -203,6 +204,11 @@ import { neighborhoodOf } from "@/lib/graph-neighbors";
 import { migrarMensajes, necesitaMigracion } from "@/lib/sequence/migrate";
 import { activacionesDe } from "@/lib/sequence/activations";
 import { alturaDeMensaje, ordenarParticipantes } from "@/lib/sequence/layout";
+import {
+  rangoPorGeometria,
+  repartirOperandos,
+  type FragmentPart,
+} from "@/lib/sequence/fragments";
 import {
   esMensajeDeSecuencia,
   ordenParaNuevo,
@@ -1065,8 +1071,83 @@ const EditNodeDialog: React.FC<{
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
                 La <strong>condición</strong> es el nombre del elemento: se dibuja entre
-                corchetes al lado del operador.
+                corchetes al lado del operador. Qué mensajes encierra sale de{" "}
+                <strong>dónde y cuánto mide el marco</strong>: estiralo sobre los que quieras.
               </p>
+
+              {/* Casos del `alt`/`par`: sin esto un `alt` no puede tener «si no».
+                  El TRAMO de cada caso no se pide —se reparte del rango que ya
+                  define el marco—; acá sólo se dice cuántos casos hay y qué
+                  condición tiene cada uno. */}
+              {esOperador(draft.fragmentOp) && FRAGMENT_OPS[draft.fragmentOp].variosOperandos && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Casos</Label>
+                    <button
+                      type="button"
+                      className="rounded border px-2 py-0.5 text-xs hover:bg-muted"
+                      onClick={() =>
+                        setDraft((d) =>
+                          d
+                            ? {
+                                ...d,
+                                fragmentParts: [
+                                  ...(d.fragmentParts ?? [{ guarda: "", desde: 1, hasta: 1 }]),
+                                  { guarda: "", desde: 1, hasta: 1 },
+                                ],
+                              }
+                            : d
+                        )
+                      }
+                    >
+                      + Añadir caso
+                    </button>
+                  </div>
+                  {(draft.fragmentParts ?? [{ guarda: "", desde: 1, hasta: 1 }]).map((parte, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="w-6 shrink-0 text-xs text-muted-foreground">{i + 1}.</span>
+                      <Input
+                        value={parte.guarda}
+                        placeholder={i === 0 ? "condición" : "si no…"}
+                        className="h-8 text-xs"
+                        onChange={(ev) =>
+                          setDraft((d) => {
+                            if (!d) return d;
+                            const partes = [...(d.fragmentParts ?? [])];
+                            partes[i] = { ...partes[i], guarda: ev.target.value };
+                            return { ...d, fragmentParts: partes };
+                          })
+                        }
+                      />
+                      {i > 0 && (
+                        <button
+                          type="button"
+                          className="shrink-0 rounded px-1.5 text-xs text-destructive hover:bg-muted"
+                          title="Quitar este caso"
+                          onClick={() =>
+                            setDraft((d) =>
+                              d
+                                ? {
+                                    ...d,
+                                    fragmentParts: (d.fragmentParts ?? []).filter(
+                                      (_, j) => j !== i
+                                    ),
+                                  }
+                                : d
+                            )
+                          }
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <p className="text-xs text-muted-foreground">
+                    El tramo de cada caso se reparte solo entre los mensajes que el marco
+                    encierra.
+                  </p>
+                </div>
+              )}
             </div>
           )}
           <div>
@@ -1913,6 +1994,39 @@ export const ComponentDesigner: React.FC<{
         };
       })
       .filter((a): a is NonNullable<typeof a> => a !== null);
+  }, [nodes, links]);
+
+  /**
+   * Los fragmentos recalculan qué encierran a partir de su GEOMETRÍA (T21).
+   * Se hace al vuelo y no se guarda una lista de ids: mover el marco cambia lo
+   * que abarca, y una lista guardada se desincronizaría del primer arrastre.
+   * Las GUARDAS sí se conservan —son texto del usuario— y sólo se reparte el
+   * tramo entre los casos que ya declaró.
+   */
+  const fragmentosConRango = useMemo(() => {
+    const colocados = [...links.values()]
+      .filter((l) => l.orden !== undefined)
+      .map((l) => {
+        const a0 = nodes.get(l.sourceId);
+        const b0 = nodes.get(l.targetId);
+        if (!a0 || !b0) return null;
+        return { orden: l.orden as number, y: Math.max(a0.y, b0.y) + alturaDeMensaje(l.orden as number) };
+      })
+      .filter((m): m is { orden: number; y: number } => m !== null);
+    const out = new Map<string, FragmentPart[]>();
+    if (!colocados.length) return out;
+    for (const n of nodes.values()) {
+      if (!isFragmentContainer(n.tipo_elemento)) continue;
+      const rango = rangoPorGeometria(
+        { y: n.y, height: n.height || AGGREGATE_DEFAULT_HEIGHT },
+        colocados
+      );
+      if (!rango) continue;
+      const guardas = (n.fragmentParts ?? []).map((p) => p.guarda);
+      const casos = Math.max(1, n.fragmentParts?.length ?? 1);
+      out.set(n.id, repartirOperandos(rango, casos, guardas));
+    }
+    return out;
   }, [nodes, links]);
 
   const isRelated = useCallback(
@@ -3160,6 +3274,35 @@ export const ComponentDesigner: React.FC<{
    * la altura — la altura sigue saliendo del orden, así que no hay dos fuentes
    * de verdad; lo que no existe es la posición libre.
    */
+  /**
+   * Añade un mensaje de un participante A SÍ MISMO (T23). Toma el siguiente
+   * lugar de la secuencia, como cualquier mensaje: una auto-llamada ocurre en
+   * un momento concreto, no fuera del tiempo.
+   */
+  const addSelfCall = useCallback(
+    (nodeId: string) => {
+      if (!esLineaDeVidaRef.current(nodeId)) return;
+      const id = `link-${nodeId}-${nodeId}-${crypto.randomUUID()}`;
+      updateLinks((prev) => {
+        const n = new Map(prev);
+        const orden = ordenParaNuevo(
+          { sourceId: nodeId, targetId: nodeId },
+          [...prev.values()],
+          esLineaDeVidaRef.current
+        );
+        n.set(id, {
+          id,
+          sourceId: nodeId,
+          targetId: nodeId,
+          descripcion: "se llama",
+          ...(orden !== undefined ? { orden } : {}),
+        });
+        return n;
+      });
+    },
+    [updateLinks]
+  );
+
   const startMessageReorder = useCallback(
     (e: React.MouseEvent, linkId: string) => {
       const link = linksRef.current.get(linkId);
@@ -3677,6 +3820,17 @@ export const ComponentDesigner: React.FC<{
     }
 
     const items: CanvasMenuItem[] = [];
+    // Auto-llamada (T23): el gesto de arrastrar sobre uno mismo existe, pero no
+    // hay nada en la interfaz que sugiera que se puede — nadie lo descubre solo.
+    // Un ítem de menú no depende de adivinar.
+    if (!varios && n && isLifelineContainer(n.tipo_elemento)) {
+      items.push({
+        id: "self-call",
+        label: "Añadir auto-llamada",
+        icon: RotateCcw,
+        onSelect: () => addSelfCall(n.id),
+      });
+    }
     if (!varios && (n || l)) {
       items.push({
         id: "edit",

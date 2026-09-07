@@ -8,6 +8,8 @@ import {
   normalizarOperandos,
   operandoDe,
   rangoDe,
+  rangoPorGeometria,
+  repartirOperandos,
   type FragmentPart,
 } from "@/lib/sequence/fragments";
 
@@ -135,5 +137,82 @@ describe("fragmentos anidados", () => {
 
   it("un fragmento vacío no está anidado en nada", () => {
     expect(estaAnidado([], [p("e", 1, 6)])).toBe(false);
+  });
+});
+
+describe("el rango sale de la GEOMETRÍA del fragmento (T21 · #290)", () => {
+  // Tres mensajes a 100, 200 y 300.
+  const mensajes = [
+    { orden: 1, y: 100 },
+    { orden: 2, y: 200 },
+    { orden: 3, y: 300 },
+  ];
+
+  it("abarca los mensajes que quedan dentro del marco", () => {
+    expect(rangoPorGeometria({ y: 90, height: 220 }, mensajes)).toEqual({ desde: 1, hasta: 3 });
+    expect(rangoPorGeometria({ y: 150, height: 100 }, mensajes)).toEqual({ desde: 2, hasta: 2 });
+  });
+
+  it("achicar el marco DEJA FUERA al de abajo (H3.3)", () => {
+    // Sacar un mensaje del fragmento es moverlo o achicar el marco: no hay
+    // formulario de por medio.
+    expect(rangoPorGeometria({ y: 90, height: 220 }, mensajes)!.hasta).toBe(3);
+    expect(rangoPorGeometria({ y: 90, height: 120 }, mensajes)!.hasta).toBe(2);
+  });
+
+  it("un marco que no toca ningún mensaje devuelve null, no vacía la vista", () => {
+    // Es válido mientras se está colocando.
+    expect(rangoPorGeometria({ y: 900, height: 50 }, mensajes)).toBeNull();
+    expect(rangoPorGeometria({ y: 0, height: 10 }, mensajes)).toBeNull();
+  });
+
+  it("una altura negativa se interpreta igual: el marco es el marco", () => {
+    expect(rangoPorGeometria({ y: 90, height: -220 }, mensajes)).toEqual({ desde: 1, hasta: 3 });
+  });
+
+  it("geometría rota no rompe", () => {
+    expect(rangoPorGeometria({ y: Number.NaN, height: 100 }, mensajes)).toBeNull();
+    expect(rangoPorGeometria({ y: 90, height: 220 }, [{ orden: 1, y: Number.NaN }])).toBeNull();
+  });
+
+  it("sin mensajes no abarca nada", () => {
+    expect(rangoPorGeometria({ y: 0, height: 1000 }, [])).toBeNull();
+  });
+});
+
+describe("repartir el tramo entre operandos (T22 · #291)", () => {
+  it("un solo caso se queda con todo el tramo", () => {
+    expect(repartirOperandos({ desde: 1, hasta: 4 }, 1, ["ok"])).toEqual([
+      { guarda: "ok", desde: 1, hasta: 4 },
+    ]);
+  });
+
+  it("dos casos parten el tramo, sin solaparse ni dejar huecos", () => {
+    const out = repartirOperandos({ desde: 1, hasta: 4 }, 2, ["ok", "si no"]);
+    expect(out.map((p) => [p.desde, p.hasta])).toEqual([[1, 2], [3, 4]]);
+  });
+
+  it("con un tramo impar, las PRIMERAS partes se quedan lo que sobra", () => {
+    // Dejar el resto al final haría el último caso más grande, y eso se lee
+    // como si importara más.
+    const out = repartirOperandos({ desde: 1, hasta: 5 }, 2);
+    expect(out.map((p) => [p.desde, p.hasta])).toEqual([[1, 3], [4, 5]]);
+  });
+
+  it("no se pueden pedir más casos que mensajes", () => {
+    expect(repartirOperandos({ desde: 1, hasta: 2 }, 9)).toHaveLength(2);
+  });
+
+  it("las guardas que ya había se conservan por posición", () => {
+    const out = repartirOperandos({ desde: 1, hasta: 4 }, 2, ["primera"]);
+    expect(out[0].guarda).toBe("primera");
+    expect(out[1].guarda).toBe("");
+  });
+
+  it("el reparto cubre el tramo entero", () => {
+    const out = repartirOperandos({ desde: 3, hasta: 9 }, 3);
+    expect(out[0].desde).toBe(3);
+    expect(out[out.length - 1].hasta).toBe(9);
+    for (let i = 1; i < out.length; i++) expect(out[i].desde).toBe(out[i - 1].hasta + 1);
   });
 });

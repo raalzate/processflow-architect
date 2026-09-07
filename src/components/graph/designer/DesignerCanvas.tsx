@@ -127,7 +127,7 @@ import {
   type ShapeKind,
 } from "@/lib/notations";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
-import { FRAGMENT_OPS, esOperador } from "@/lib/sequence/fragments";
+import { FRAGMENT_OPS, esOperador, type FragmentPart } from "@/lib/sequence/fragments";
 import {
   clipToShape,
   handleGeom,
@@ -649,6 +649,12 @@ interface NodeComponentProps {
    * también está elegido».
    */
   isRelated?: boolean;
+  /**
+   * Operandos ya resueltos del fragmento (rango derivado de la geometría). Se
+   * reciben calculados: el nodo no sabe qué mensajes hay, y calcularlo acá
+   * obligaría a pasarle el diagrama entero.
+   */
+  fragmentParts?: FragmentPart[];
   onMouseDown: (e: React.MouseEvent) => void;
   onResizeMouseDown: (e: React.MouseEvent) => void;
   onClick: () => void;
@@ -786,6 +792,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   notation,
   isSelected,
   isRelated = false,
+  fragmentParts,
   onMouseDown,
   onResizeMouseDown,
   onClick,
@@ -918,6 +925,36 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 {`[${node.nombre}]`}
               </text>
             )}
+          </>
+        )}
+        {fragmento && fragmentParts && fragmentParts.length > 1 && (
+          /* Divisores entre casos de un `alt`: sin ellos el «si no» no existe
+             visualmente y el fragmento parece un solo bloque. */
+          <>
+            {fragmentParts.slice(1).map((parte, i) => {
+              const y = ((i + 1) / fragmentParts.length) * height;
+              return (
+                <g key={`op-${parte.desde}`}>
+                  <line
+                    x1={0}
+                    y1={y}
+                    x2={width}
+                    y2={y}
+                    strokeDasharray="6 6"
+                    strokeWidth={1.5}
+                    className={cn(meta?.stroke ?? color.border)}
+                  />
+                  <text
+                    x={8}
+                    y={y + 12}
+                    fill="currentColor"
+                    className={cn("text-[11px] select-none pointer-events-none opacity-80", color.text)}
+                  >
+                    {`[${parte.guarda || "…"}]`}
+                  </text>
+                </g>
+              );
+            })}
           </>
         )}
         {lifeline ? (
