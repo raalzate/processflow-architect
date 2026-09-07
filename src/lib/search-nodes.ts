@@ -42,8 +42,13 @@ export function nodosBuscables(
   }
 }
 
-/** Comparación sin acentos ni mayúsculas: nadie escribe «póliza» en una búsqueda rápida. */
-const plano = (t: string): string =>
+/**
+ * Comparación sin acentos ni mayúsculas: nadie escribe «póliza» en una búsqueda
+ * rápida. Se exporta porque todo buscador del repo compara igual (la paleta de
+ * elementos, en `palette-search.ts`): dos normalizaciones distintas es un
+ * buscador que encuentra y otro que no con el mismo texto.
+ */
+export const plano = (t: string): string =>
   t
     .toLowerCase()
     .normalize("NFD")
