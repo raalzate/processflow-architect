@@ -198,9 +198,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { DesignerActionId } from "@/lib/designer-actions";
 import { isNudgeKey, nudgeForKey } from "@/lib/canvas-nudge";
-import { isLifelineContainer } from "@/lib/notations";
+import { isFragmentContainer, isLifelineContainer } from "@/lib/notations";
 import { neighborhoodOf } from "@/lib/graph-neighbors";
 import { ordenParaNuevo, renumerar } from "@/lib/sequence/canvas";
+import { FRAGMENT_OPS, FRAGMENT_OPS_LIST, esOperador, type FragmentOp } from "@/lib/sequence/fragments";
 import {
   SEQUENCE_MESSAGES,
   SEQUENCE_MESSAGE_DEFAULT,
@@ -1027,6 +1028,39 @@ const EditNodeDialog: React.FC<{
               </SelectContent>
             </Select>
           </div>
+          {/* Operador del FRAGMENTO combinado. Sólo aparece en un fragmento: en
+              cualquier otro elemento sería una opción sin significado, y una
+              opción sin significado enseña mal la notación. Sin esto el
+              fragmento mostraba `?` para siempre (#286). */}
+          {isFragmentContainer(draft.tipo_elemento) && (
+            <div>
+              <Label htmlFor="frag-op">Operador del fragmento</Label>
+              <Select
+                value={esOperador(draft.fragmentOp) ? draft.fragmentOp : ""}
+                onValueChange={(v) => setDraft({ ...draft, fragmentOp: v as FragmentOp })}
+              >
+                <SelectTrigger id="frag-op">
+                  <SelectValue placeholder="Elegí el operador" />
+                </SelectTrigger>
+                <SelectContent>
+                  {FRAGMENT_OPS_LIST.map((op) => (
+                    <SelectItem key={op} value={op} title={FRAGMENT_OPS[op].hint}>
+                      {FRAGMENT_OPS[op].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {esOperador(draft.fragmentOp)
+                  ? FRAGMENT_OPS[draft.fragmentOp].hint
+                  : "Sin operador el fragmento no dice qué hace con lo que encierra."}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                La <strong>condición</strong> es el nombre del elemento: se dibuja entre
+                corchetes al lado del operador.
+              </p>
+            </div>
+          )}
           <div>
             <Label>Estado del cambio</Label>
             <Select

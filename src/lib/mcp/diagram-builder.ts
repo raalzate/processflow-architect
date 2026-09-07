@@ -25,6 +25,13 @@ import { problemasDePropiedades } from "../element-properties";
 import { sanitizeSpec, type ElementSpec } from "../element-spec";
 import { sanitizeSourceDocs, type SourceDoc } from "../source-docs";
 import { moverMensaje } from "../sequence/order";
+import {
+  FRAGMENT_OPS_LIST,
+  esOperador,
+  normalizarOperandos,
+  type FragmentOp,
+  type FragmentPart,
+} from "../sequence/fragments";
 import type { SequenceMessageKind } from "../sequence/messages";
 import {
   normalizarLista,
@@ -151,6 +158,10 @@ export interface BuilderNode {
   tags_tecnologia?: string[] | null;
   color?: string;
   borderColor?: string;
+  /** Operador de un fragmento combinado (secuencia UML). */
+  fragmentOp?: FragmentOp;
+  /** Operandos del fragmento: guarda y tramo de orden que abarca. */
+  fragmentParts?: FragmentPart[];
   x?: number;
   y?: number;
   width?: number;
@@ -390,6 +401,50 @@ export function addMessage(
     ...conArista,
     edges: movidos.map(({ id: _id, ...e }) => e as BuilderEdge),
   };
+}
+
+/**
+ * Añade un FRAGMENTO combinado (loop / alt / opt / par) sobre un tramo de la
+ * secuencia (#286).
+ *
+ * El operador es obligatorio: un fragmento sin él no dice qué hace con lo que
+ * encierra, y dejarlo opcional garantizaba que el agente lo omitiera. La
+ * condición viaja como NOMBRE del elemento, que es lo que el lienzo dibuja
+ * entre corchetes al lado del operador.
+ *
+ * `desde`/`hasta` son órdenes de mensaje, ambos inclusive: el fragmento encierra
+ * un tramo del tiempo, no un rectángulo.
+ */
+export function addFragment(
+  model: DiagramModel,
+  input: {
+    nombre: string;
+    tipo_elemento: string;
+    op: FragmentOp;
+    desde: number;
+    hasta: number;
+    guarda?: string;
+  }
+): { model: DiagramModel; id: string } {
+  if (!esOperador(input.op)) {
+    throw new Error(
+      `"${input.op}" no es un operador de fragmento. Válidos: ${FRAGMENT_OPS_LIST.join(", ")}.`
+    );
+  }
+  const total = model.edges.length;
+  const partes = normalizarOperandos(
+    [{ guarda: input.guarda ?? input.nombre, desde: input.desde, hasta: input.hasta }],
+    input.op,
+    total
+  );
+  const { model: conNodo, id } = addContainer(model, {
+    nombre: input.nombre,
+    tipo_elemento: input.tipo_elemento,
+  });
+  const nodes = conNodo.nodes.map((n) =>
+    n.id === id ? { ...n, fragmentOp: input.op, fragmentParts: partes } : n
+  );
+  return { model: { ...conNodo, nodes }, id };
 }
 
 /**

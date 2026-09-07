@@ -25,6 +25,7 @@ import {
   emptyDiagram,
   addContainer,
   addNode,
+  addFragment,
   addEdge,
   removeNode,
   removeEdge,
@@ -105,7 +106,7 @@ import {
 import { DEFAULT_NOTATION_ID, type NotationId } from "../../src/lib/notations";
 import { isLifelineContainer } from "../../src/lib/notations";
 import { SEQUENCE_MESSAGES, SEQUENCE_MESSAGE_KINDS } from "../../src/lib/sequence/messages";
-import { FRAGMENT_OPS, FRAGMENT_OPS_LIST } from "../../src/lib/sequence/fragments";
+import { FRAGMENT_OPS, FRAGMENT_OPS_LIST, type FragmentOp } from "../../src/lib/sequence/fragments";
 import { MAX_CUSTOM_VIEWS } from "../../src/lib/views-types";
 import type { GraphData } from "../../src/lib/types";
 
@@ -1012,6 +1013,47 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         });
         await saveModel(diagramId, r.model);
         return text(`Nodo "${name}" añadido (id=${r.id}).`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "add_fragment",
+    {
+      title: "Añadir fragmento combinado",
+      description:
+        "Encierra un tramo de una secuencia UML en un fragmento combinado: loop (repetición), alt (alternativa), opt (opcional) o par (paralelo). `from`/`to` son POSICIONES de mensaje (1 = el primero), ambas inclusive: el fragmento abarca un tramo del TIEMPO, no un rectángulo. La condición se dibuja entre corchetes al lado del operador. Consultá describe_notation(\"uml\") para ver los operadores.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        name: z.string().describe("Nombre del fragmento; si no hay `guard`, se usa como condición."),
+        type: z.string().describe("Tipo contenedor de fragmento de la notación."),
+        op: z.string().describe(`Operador: ${FRAGMENT_OPS_LIST.join(" | ")}.`),
+        from: z.number().int().positive().describe("Posición del primer mensaje que encierra."),
+        to: z.number().int().positive().describe("Posición del último mensaje que encierra."),
+        guard: z.string().optional().describe("Condición bajo la que ocurre lo que encierra."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, name, type, op, from, to, guard }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        const r = addFragment(model, {
+          nombre: name,
+          tipo_elemento: type,
+          op: op as FragmentOp,
+          desde: from,
+          hasta: to,
+          guarda: guard,
+        });
+        await saveModel(diagramId, r.model);
+        return text(`Fragmento "${name}" (${op}) añadido sobre los mensajes ${from}–${to} (id=${r.id}).`);
       } catch (e: any) {
         return fail(e.message);
       }
