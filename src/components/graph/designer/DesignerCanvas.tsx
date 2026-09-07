@@ -23,6 +23,7 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
+  Search,
   // Notaciones BPMN / C4 / UML
   Play,
   StopCircle,
@@ -104,6 +105,7 @@ import {
   toolboxHiddenValue,
 } from "@/lib/panel-size";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -126,6 +128,7 @@ import {
   type NotationId,
   type ShapeKind,
 } from "@/lib/notations";
+import { MIN_PALETTE_QUERY, filtrarPaleta } from "@/lib/palette-search";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
 import { FRAGMENT_OPS, esOperador, type FragmentPart } from "@/lib/sequence/fragments";
 import {
@@ -387,9 +390,24 @@ export const Toolbox: React.FC<{
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
   // Elemento cuya ayuda (modal) está abierta.
   const [helpType, setHelpType] = React.useState<string | null>(null);
+  // Texto del buscador de elementos (UML tiene decenas de tipos en 5 grupos).
+  const [query, setQuery] = React.useState("");
+  const buscadorRef = React.useRef<HTMLInputElement | null>(null);
   const notationId = notation ?? DEFAULT_NOTATION_ID;
   const active: Notation = getNotation(notationId);
   const help = helpType ? NOTATION_HELP[helpType] : null;
+
+  // El filtro lo decide `src/lib/palette-search.ts`; acá sólo se dibuja.
+  const { grupos, total, filtrando } = React.useMemo(
+    () => filtrarPaleta(active.paletteGroups, query),
+    [active.paletteGroups, query]
+  );
+
+  // Cambiar de notación limpia la búsqueda: un texto que filtraba UML deja la
+  // paleta de BPMN vacía y parece que la notación no tiene elementos.
+  React.useEffect(() => {
+    setQuery("");
+  }, [notationId]);
 
   // Ancho flexible pero con topes (src/lib/panel-size.ts): la paleta se adapta a
   // nombres largos sin comerse el lienzo. Se recuerda entre sesiones.
@@ -568,9 +586,60 @@ export const Toolbox: React.FC<{
           discontinuo) agrupan los nodos que coloques dentro.
         </p>
 
+        {/* Buscador: filtra por nombre del tipo, etiqueta del grupo y texto de
+            ayuda, así que sirve tanto para «interfaz» como para «base de datos». */}
+        <div className="relative mb-3 px-1">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={buscadorRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && query) {
+                e.stopPropagation();
+                setQuery("");
+              }
+            }}
+            placeholder={`Buscar elemento (${active.label})`}
+            aria-label="Buscar elemento en la paleta"
+            className="h-8 pl-8 pr-7 text-xs"
+          />
+          {query && (
+            <button
+              type="button"
+              title="Limpiar la búsqueda"
+              onClick={() => {
+                setQuery("");
+                buscadorRef.current?.focus();
+              }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span className="sr-only">Limpiar la búsqueda</span>
+            </button>
+          )}
+        </div>
+
+        {/* Con una sola letra el filtro no corre (MIN_PALETTE_QUERY): se dice,
+            en vez de dejar al usuario creyendo que el buscador no responde. */}
+        {!filtrando && query.trim().length > 0 && (
+          <p className="mb-2 px-1 text-2xs text-muted-foreground">
+            Escribí al menos {MIN_PALETTE_QUERY} caracteres para filtrar.
+          </p>
+        )}
+        {filtrando && (
+          <p className="mb-2 px-1 text-2xs text-muted-foreground" aria-live="polite">
+            {total === 0
+              ? "Ningún elemento coincide"
+              : `${total} ${total === 1 ? "elemento" : "elementos"} coinciden`}
+          </p>
+        )}
+
         <div className="space-y-3">
-          {active.paletteGroups.map((group) => {
-            const isOpen = !collapsed[group.label];
+          {grupos.map((group) => {
+            // Buscando, los grupos se abren: un resultado dentro de una sección
+            // colapsada es un resultado que no se ve.
+            const isOpen = filtrando || !collapsed[group.label];
             return (
               <div key={group.label}>
                 <button
@@ -603,6 +672,13 @@ export const Toolbox: React.FC<{
               </div>
             );
           })}
+          {filtrando && total === 0 && (
+            <p className="px-1 py-4 text-xs text-muted-foreground">
+              Nada en <span className="font-semibold">{active.label}</span> coincide con «
+              {query.trim()}». Probá con otro término o cambiá el grupo de
+              componentes.
+            </p>
+          )}
         </div>
       </div>
 
