@@ -12,6 +12,7 @@ import {
   handleGeom,
   HANDLE_PX,
   linkEndpoints,
+  LIFELINE_HEAD,
   defaultCurveApex,
   mirrorCurveApex,
   flipCurveApex,
@@ -19,7 +20,14 @@ import {
   routingOf,
 } from "../link-geom";
 import type { DesignerNode, DesignerLink } from "../serialize";
-import { defaultRoutingFor, sizeOfType, typesWithRole } from "@/lib/notations";
+import {
+  defaultRoutingFor,
+  isLifelineContainer,
+  isNotationContainer,
+  notationTypes,
+  sizeOfType,
+  typesWithRole,
+} from "@/lib/notations";
 
 // Igual que en los demás tests nuevos: los tipos se derivan del registro, no se
 // cablean (P6). `actor` y `system` existen en C4 por declaración de roles.
@@ -327,5 +335,81 @@ describe("handleGeom · manijas en píxeles de pantalla", () => {
     for (const malo of [0, -2, NaN, Infinity]) {
       expect(handleGeom(malo)).toEqual(handleGeom(1));
     }
+  });
+});
+
+// El tipo sale del registro (P6): el que la notación marque como línea de vida.
+const LIFELINE = notationTypes("uml", { includeContainers: true }).find(isLifelineContainer)!;
+
+/** Línea de vida con tamaño propio: es un contenedor, se redimensiona. */
+const lifeline = (id: string, x: number, y: number, w = 300, h = 500): DesignerNode =>
+  ({ ...nodo(id, LIFELINE, x, y), width: w, height: h }) as DesignerNode;
+
+describe("mensaje de secuencia: se ancla al EJE de la línea de vida (#261)", () => {
+  it("la notación declara un contenedor de línea de vida", () => {
+    // Si esto falla, el resto no prueba lo que dice probar.
+    expect(LIFELINE).toBeTruthy();
+  });
+
+  it("los dos extremos caen sobre el eje, no sobre el borde del marco", () => {
+    // El marco es zona de soltar (activaciones, notas); el mensaje va de eje a
+    // eje. Antes se recortaba al rectángulo y quedaba a media caja de distancia.
+    const nodes = new Map<string, DesignerNode>([
+      ["a", lifeline("a", 0, 0)],
+      ["b", lifeline("b", 800, 0)],
+    ]);
+    const ep = linkEndpoints(arista(), nodes)!;
+    expect(ep).not.toBeNull();
+    expect(ep.start.x).toBeCloseTo(0 + 300 / 2);
+    expect(ep.end.x).toBeCloseTo(800 + 300 / 2);
+  });
+
+  it("el mensaje sale HORIZONTAL aunque las líneas no estén alineadas", () => {
+    // En secuencia el mensaje es un instante: una punta más arriba que la otra
+    // se lee como si el tiempo corriera distinto en cada participante.
+    const nodes = new Map<string, DesignerNode>([
+      ["a", lifeline("a", 0, 0, 300, 500)],
+      ["b", lifeline("b", 800, 120, 300, 400)],
+    ]);
+    const ep = linkEndpoints(arista(), nodes)!;
+    expect(ep.start.y).toBeCloseTo(ep.end.y);
+  });
+
+  it("nunca nace dentro de la cabecera del participante", () => {
+    // La cabecera lleva el nombre: un mensaje ahí lo tacharía.
+    const nodes = new Map<string, DesignerNode>([
+      ["a", lifeline("a", 0, 0, 300, 60)],
+      ["b", lifeline("b", 800, 0, 300, 60)],
+    ]);
+    const ep = linkEndpoints(arista(), nodes)!;
+    expect(ep.start.y).toBeGreaterThan(0 + LIFELINE_HEAD);
+    expect(ep.end.y).toBeGreaterThan(0 + LIFELINE_HEAD);
+  });
+
+  it("el ancla puesta a mano sigue mandando sobre el eje", () => {
+    // Es como se separan dos mensajes entre el mismo par mientras la secuencia
+    // no tenga orden vertical propio.
+    const nodes = new Map<string, DesignerNode>([
+      ["a", lifeline("a", 0, 0)],
+      ["b", lifeline("b", 800, 0)],
+    ]);
+    const ep = linkEndpoints(arista({ sourceAnchor: { x: 1, y: 0.8 } }), nodes)!;
+    expect(ep.start.x).toBeCloseTo(300);
+    expect(ep.start.y).toBeCloseTo(400);
+  });
+
+  it("un contenedor que NO es línea de vida sigue anclando a su borde", () => {
+    // El arreglo es sólo para la línea de vida: un pool BPMN o un límite C4
+    // quieren el borde, que es lo que se ve.
+    const OTRO = notationTypes("c4", { includeContainers: true }).find(
+      (t) => isNotationContainer(t) && !isLifelineContainer(t)
+    )!;
+    const nodes = new Map<string, DesignerNode>([
+      ["a", { ...nodo("a", OTRO, 0, 0), width: 300, height: 500 } as DesignerNode],
+      ["b", { ...nodo("b", OTRO, 800, 0), width: 300, height: 500 } as DesignerNode],
+    ]);
+    const ep = linkEndpoints(arista(), nodes)!;
+    // Sale por el borde derecho (x = 300), no por el eje (x = 150).
+    expect(ep.start.x).toBeCloseTo(300);
   });
 });
