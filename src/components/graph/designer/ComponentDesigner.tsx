@@ -73,7 +73,7 @@ import {
   quitarMetadata,
   upsertMetadata,
   validarMetadata,
-  validarValorSegunTipo,
+  problemaDeValorEditado,
   type ElementMetadata,
   type MetadataTipo,
 } from "@/lib/element-metadata";
@@ -197,6 +197,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { DesignerActionId } from "@/lib/designer-actions";
+import { isNudgeKey, nudgeForKey } from "@/lib/canvas-nudge";
+import { neighborhoodOf } from "@/lib/graph-neighbors";
 
 /** Orden en que se ofrecen los enrutados (el mismo que la ficha del enlace). */
 const ROUTING_ORDER = ["straight", "curved", "orthogonal"] as const;
@@ -358,7 +360,9 @@ const MetadataRow: React.FC<{
   // Cambio venido de AFUERA (otro elemento, el agente): se adopta.
   useEffect(() => setTexto(m.valor), [m.valor, m.clave]);
   const tipo: MetadataTipo = m.tipo ?? "texto";
-  const problema = validarValorSegunTipo(texto, tipo);
+  // La fila entera, no (texto, tipo): así no hay url heredada que olvidar, que
+  // es exactamente el bug que marcaba en rojo un metadato válido (#253).
+  const problema = problemaDeValorEditado(m, texto);
   const enlace = enlaceDe({ ...m, valor: texto });
 
   // Un booleano no se teclea: la casilla es el único valor posible y así no hay
@@ -368,7 +372,7 @@ const MetadataRow: React.FC<{
 
   const escribir = (v: string) => {
     setTexto(v);
-    if (!validarValorSegunTipo(v, tipo)) onPatch({ valor: v });
+    if (!problemaDeValorEditado(m, v)) onPatch({ valor: v });
   };
 
   return (
@@ -1777,6 +1781,18 @@ export const ComponentDesigner: React.FC<{
     (id: string) => !capturing && selectedIds.has(id),
     [selectedIds, capturing]
   );
+
+  // Con quién habla lo seleccionado (#256). Se calcula acá y no en el render de
+  // cada caja: una pasada por las aristas en vez de una por nodo. Durante una
+  // captura no se resalta nada, igual que la selección.
+  const vecindario = useMemo(
+    () => neighborhoodOf(capturing ? new Set<string>() : selectedIds, links.values()),
+    [selectedIds, links, capturing]
+  );
+  const isRelated = useCallback(
+    (id: string) => vecindario.nodes.has(id) || vecindario.edges.has(id),
+    [vecindario]
+  );
   const selectOnly = useCallback((id: string) => setSelectedIds(new Set([id])), []);
   const toggleSelect = useCallback(
     (id: string) =>
@@ -2293,6 +2309,13 @@ export const ComponentDesigner: React.FC<{
     | null
   >(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  // El menú contextual navega con ↑↓ en fase de CAPTURA y no corta la
+  // propagación, así que su flecha llegaba igual al listener del lienzo y
+  // movía la caja mientras se elegía una opción del menú sobre ESA caja.
+  const contextMenuAbiertoRef = useRef(false);
+  useEffect(() => {
+    contextMenuAbiertoRef.current = contextMenu !== null;
+  }, [contextMenu]);
 
   const openContextMenu = useCallback(
     (e: React.MouseEvent, target: { kind: "node" | "link"; id: string } | { kind: "canvas" }) => {
@@ -2400,6 +2423,61 @@ export const ComponentDesigner: React.FC<{
     });
   }, []);
 
+  /**
+   * Mueve la selección con las flechas (#257).
+   *
+   * El historial se COMPARTE con el arrastre del mouse: la flecha mantenida
+   * cambia posiciones sin registrar nada, y un rato después de soltarla se
+   * guarda UN paso. Sin esa espera, mover una caja diez pasos dejaba diez
+   * entradas de deshacer y volver atrás era imposible.
+   */
+  const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Se llama desde cleanups que no deben re-suscribirse: por ref, no por dep.
+  const nudgeFlushRef = useRef<(() => void) | null>(null);
+  const nudgeFlush = useCallback(() => {
+    if (!nudgeTimerRef.current) return;
+    clearTimeout(nudgeTimerRef.current);
+    nudgeTimerRef.current = null;
+    pushSnapshot(nodesRef.current, linksRef.current);
+  }, [pushSnapshot]);
+  nudgeFlushRef.current = nudgeFlush;
+  const nudgeSelection = useCallback(
+    (dx: number, dy: number) => {
+      const sel = selectedIdsRef.current;
+      const n = new Map(nodesRef.current);
+      let movidos = 0;
+      for (const id of sel) {
+        const node = n.get(id);
+        if (!node) continue; // un enlace seleccionado no tiene posición propia
+        n.set(id, { ...node, x: node.x + dx, y: node.y + dy });
+        movidos++;
+      }
+      if (movidos === 0) return;
+      nodesRef.current = n;
+      setNodes(n);
+      if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+      nudgeTimerRef.current = setTimeout(nudgeFlush, 400);
+    },
+    [nudgeFlush]
+  );
+
+  // El paso pendiente se GUARDA antes de irse, no se descarta.
+  useEffect(
+    () => () => {
+      nudgeFlushRef.current?.();
+    },
+    []
+  );
+
+  // Cambiar de vista también cierra la ráfaga: un timer pendiente de la vista
+  // anterior se resolvía con `nodesRef.current` ya apuntando a la nueva, y
+  // escribía el paso en el diagrama equivocado.
+  useEffect(() => {
+    return () => {
+      nudgeFlushRef.current?.();
+    };
+  }, [sourceKey]);
+
   // --- Atajos de teclado ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -2422,6 +2500,10 @@ export const ComponentDesigner: React.FC<{
         return;
       }
       if (typing) return;
+      // El tirador de ancho de la paleta ya mueve con las flechas cuando tiene
+      // el foco. Este listener vive en `window`, así que sin esta guarda una
+      // flecha cambiaba el ancho Y movía las cajas de un saque.
+      if (target?.getAttribute("role") === "separator") return;
 
       // "?" (Shift+/): abre la ayuda de atajos. Convención extendida en editores.
       if (e.key === "?") {
@@ -2472,6 +2554,15 @@ export const ComponentDesigner: React.FC<{
           setEditingNode(null);
           setEditingLink(l);
         }
+      } else if (isNudgeKey(e.key)) {
+        // El menú contextual se queda con las flechas mientras está abierto.
+        if (contextMenuAbiertoRef.current) return;
+        if (selectedIdsRef.current.size === 0) return;
+        const paso = nudgeForKey(e.key, { shiftKey: e.shiftKey }, GRID);
+        if (!paso) return;
+        // Sin esto la flecha además desplaza el scroll del contenedor.
+        e.preventDefault();
+        nudgeSelection(paso.dx, paso.dy);
       } else if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedIdsRef.current.size === 0) return;
         e.preventDefault();
@@ -2480,7 +2571,7 @@ export const ComponentDesigner: React.FC<{
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [doUndo, doRedo, deleteSelected, cancelOrDeselect, doCopy, doCut, doPaste, doDuplicate, selectAll]);
+  }, [doUndo, doRedo, deleteSelected, cancelOrDeselect, doCopy, doCut, doPaste, doDuplicate, selectAll, nudgeSelection]);
 
   // --- Drag & drop desde la paleta ---
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -3770,6 +3861,7 @@ export const ComponentDesigner: React.FC<{
                   node={node}
                   notation={notationId}
                   isSelected={isSelected(node.id)}
+                  isRelated={isRelated(node.id)}
                   connecting={connectFrom !== null}
                   onStartConnect={(e) => startConnect(e, node.id)}
                   onFinishConnect={() => finishConnect(node.id)}
@@ -3793,6 +3885,7 @@ export const ComponentDesigner: React.FC<{
                   nodes={nodes}
                   notation={notationId}
                   isSelected={isSelected(link.id)}
+                  isRelated={isRelated(link.id)}
                   onClick={(e) => handleLinkClick(e, link.id)}
                   onDoubleClick={() => setEditingLink(link)}
                   onContextMenu={(e) => openContextMenu(e, { kind: "link", id: link.id })}
@@ -3830,6 +3923,7 @@ export const ComponentDesigner: React.FC<{
                   node={node}
                   notation={notationId}
                   isSelected={isSelected(node.id)}
+                  isRelated={isRelated(node.id)}
                   connecting={connectFrom !== null}
                   onStartConnect={(e) => startConnect(e, node.id)}
                   onFinishConnect={() => finishConnect(node.id)}

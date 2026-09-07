@@ -150,6 +150,18 @@ export function validarValorSegunTipo(
   }
 }
 
+/**
+ * Por qué el valor que se está TECLEANDO en una fila no vale, o `null`.
+ *
+ * Existe porque la fila llamaba a `validarValorSegunTipo` sin la url heredada y
+ * marcaba en rojo un metadato válido —valor legible + url aparte— además de no
+ * persistir lo tecleado (#253). Con la fila entera como entrada no hay un
+ * argumento que se pueda olvidar: el error deja de ser representable.
+ */
+export function problemaDeValorEditado(m: ElementMetadata, texto: string): string | null {
+  return validarValorSegunTipo(texto, m.tipo ?? "texto", m.url);
+}
+
 /** Metadato listo para guardar: clave y valor recortados, url sólo si hay. */
 function saneado(entrada: ElementMetadata): ElementMetadata {
   const url = (entrada.url ?? "").trim();

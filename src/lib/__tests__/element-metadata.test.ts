@@ -13,6 +13,8 @@ import {
   quitarMetadata,
   upsertMetadata,
   validarMetadata,
+  validarValorSegunTipo,
+  problemaDeValorEditado,
   type ElementMetadata,
 } from "@/lib/element-metadata";
 
@@ -215,6 +217,24 @@ describe("tipo del metadato", () => {
     expect(validarMetadata({ clave: "repo", valor: "acme/x", tipo: "url" })).toMatch(/http/i);
   });
 
+  it("un tipo url con valor legible vale si la url viaja aparte (#253)", () => {
+    // El caso real: el valor es la etiqueta que se lee («#56980 · contrato»)
+    // y la url vive en el campo `url`. Exigir que el VALOR fuera la url
+    // marcaba en rojo justo los metadatos que ya existían.
+    const legible = "#56980 · contrato de la credencial";
+    expect(validarValorSegunTipo(legible, "url", "https://github.com/acme/x/issues/56980")).toBeNull();
+    expect(validarMetadata({ clave: "issue", valor: legible, tipo: "url", url: "https://acme.test/x" })).toBeNull();
+  });
+
+  it("sin url heredada válida, un tipo url sigue exigiendo http(s)", () => {
+    // La frontera no se relaja: una url heredada que no es http(s) no habilita
+    // nada, o `javascript:` entraría por el costado del campo `url`.
+    expect(validarValorSegunTipo("acme/x", "url", undefined)).toMatch(/http/i);
+    expect(validarValorSegunTipo("acme/x", "url", "")).toMatch(/http/i);
+    expect(validarValorSegunTipo("acme/x", "url", "javascript:alert(1)")).toMatch(/http/i);
+    expect(validarValorSegunTipo("acme/x", "url", "file:///etc/passwd")).toMatch(/http/i);
+  });
+
   it("el tipo sobrevive el upsert y reemplazar la clave cambia el tipo", () => {
     let lista = upsertMetadata(undefined, { clave: "sla", valor: "24", tipo: "numero" });
     expect(lista[0].tipo).toBe("numero");
@@ -294,5 +314,42 @@ describe("migración de lo ya guardado", () => {
     const lista = normalizarLista([{ clave: "baja", valor: "27/08/2026", tipo: "fecha" }])!;
     expect(lista[0].tipo).toBe("texto");
     expect(lista[0].valor).toBe("27/08/2026");
+  });
+});
+
+describe("el valor que se teclea en una fila (#253)", () => {
+  // ESTE es el caso que la regresión rompía: el defecto no estaba en la regla
+  // —que ya aceptaba la url heredada— sino en la fila, que la llamaba sin ese
+  // argumento. Con la fila entera como entrada, el caso queda cubierto acá.
+  const legible = "#56980 · contrato de la credencial";
+
+  it("un tipo url con la url aparte acepta un valor legible", () => {
+    const m: ElementMetadata = {
+      clave: "issue",
+      valor: legible,
+      tipo: "url",
+      url: "https://acme.test/issues/56980",
+    };
+    expect(problemaDeValorEditado(m, legible)).toBeNull();
+    // Y mientras se teclea, cada estado intermedio también vale.
+    expect(problemaDeValorEditado(m, "#569")).toBeNull();
+  });
+
+  it("sin url aparte, el tipo url sigue exigiendo http(s)", () => {
+    const m: ElementMetadata = { clave: "issue", valor: legible, tipo: "url" };
+    expect(problemaDeValorEditado(m, legible)).toMatch(/http/i);
+    expect(problemaDeValorEditado(m, "https://acme.test/x")).toBeNull();
+  });
+
+  it("un metadato sin tipo se trata como texto: acepta cualquier cosa", () => {
+    const m: ElementMetadata = { clave: "nota", valor: "" };
+    expect(problemaDeValorEditado(m, "lo que sea")).toBeNull();
+  });
+
+  it("los otros tipos siguen validando su valor, no la url", () => {
+    const num: ElementMetadata = { clave: "sla", valor: "24", tipo: "numero", url: "https://x.test" };
+    // La url heredada NO habilita un número inválido: sólo aplica al tipo url.
+    expect(problemaDeValorEditado(num, "veinticuatro")).toMatch(/número/i);
+    expect(problemaDeValorEditado(num, "24")).toBeNull();
   });
 });

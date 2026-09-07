@@ -9,6 +9,10 @@ import {
   inspectorMaxWidth,
   nextInspectorWidth,
   readInspectorWidth,
+  readToolboxHidden,
+  toolboxHiddenValue,
+  TOOLBOX_HIDDEN_KEY,
+  TOOLBOX_WIDTH_KEY,
 } from "@/lib/panel-size";
 
 const L: PanelLimits = { min: 100, max: 300, default: 200 };
@@ -109,5 +113,39 @@ describe("anchos de la ficha de elemento", () => {
     );
     // Un id inválido no deja la ficha sin ancho.
     expect(inspectorMaxWidth("nada" as never)).toBe("28rem");
+  });
+});
+
+describe("visibilidad de la paleta (#255)", () => {
+  it("visible es el default: sin valor guardado la paleta se ve", () => {
+    // Quien abre el diseñador por primera vez tiene que ver de dónde se
+    // arrastran los elementos.
+    expect(readToolboxHidden(null)).toBe(false);
+    expect(readToolboxHidden(undefined)).toBe(false);
+    expect(readToolboxHidden("")).toBe(false);
+    expect(readToolboxHidden("   ")).toBe(false);
+  });
+
+  it("cualquier cosa que no sea la marca de oculta vale como visible", () => {
+    // El crudo de `localStorage` puede ser cualquier cosa: lo raro no oculta
+    // la paleta, porque una paleta que no está y no se sabe por qué es peor.
+    expect(readToolboxHidden("0")).toBe(false);
+    expect(readToolboxHidden("false")).toBe(false);
+    expect(readToolboxHidden("{}")).toBe(false);
+    expect(readToolboxHidden("true")).toBe(false);
+  });
+
+  it("ida y vuelta: lo que se guarda es lo que se lee", () => {
+    const v = toolboxHiddenValue(true);
+    expect(v).not.toBeNull();
+    expect(readToolboxHidden(v)).toBe(true);
+    // Visible NO guarda: `null` significa borrar la clave, que es el default.
+    expect(toolboxHiddenValue(false)).toBeNull();
+    expect(readToolboxHidden(toolboxHiddenValue(false))).toBe(false);
+  });
+
+  it("la visibilidad tiene clave propia: no pisa el ancho elegido", () => {
+    // Usar ancho 0 como bandera de «oculta» perdía el ancho del usuario.
+    expect(TOOLBOX_HIDDEN_KEY).not.toBe(TOOLBOX_WIDTH_KEY);
   });
 });
