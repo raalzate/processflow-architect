@@ -4,6 +4,7 @@ import {
   alturaDeMensaje,
   altoNecesario,
   columnaDeParticipante,
+  ordenarParticipantes,
 } from "@/lib/sequence/layout";
 
 describe("la altura sale del ORDEN, no del arrastre (T2 · #265)", () => {
@@ -63,5 +64,39 @@ describe("los participantes van en fila (T12 apoya acá)", () => {
     for (const roto of [-2, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(columnaDeParticipante(roto)).toBe(columnaDeParticipante(0));
     }
+  });
+});
+
+describe("preset de secuencia (T12 · #275)", () => {
+  it("los participantes quedan en fila, sin cruzarse", () => {
+    const out = ordenarParticipantes(["a", "b", "c"], 4);
+    expect(out.map((p) => p.x)).toEqual([
+      columnaDeParticipante(0),
+      columnaDeParticipante(1),
+      columnaDeParticipante(2),
+    ]);
+  });
+
+  it("todos arrancan a la MISMA altura: el tiempo es uno solo", () => {
+    // A distinta altura parecería que empiezan en momentos distintos.
+    const out = ordenarParticipantes(["a", "b"], 3);
+    expect(new Set(out.map((p) => p.y)).size).toBe(1);
+  });
+
+  it("el alto lo decide la cantidad de mensajes, y es el mismo para todos", () => {
+    const pocos = ordenarParticipantes(["a", "b"], 2);
+    const muchos = ordenarParticipantes(["a", "b"], 9);
+    expect(muchos[0].height).toBeGreaterThan(pocos[0].height);
+    expect(new Set(muchos.map((p) => p.height)).size).toBe(1);
+  });
+
+  it("el preset y el lienzo NO pueden discrepar: comparten la misma función", () => {
+    // Con dos cálculos distintos, el desacuerdo no lo vería nadie.
+    const out = ordenarParticipantes(["a"], 5);
+    expect(out[0].height).toBe(altoNecesario(5));
+  });
+
+  it("sin participantes devuelve una lista vacía, no explota", () => {
+    expect(ordenarParticipantes([], 3)).toEqual([]);
   });
 });

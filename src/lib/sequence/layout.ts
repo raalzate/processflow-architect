@@ -62,3 +62,28 @@ export function columnaDeParticipante(indice: number): number {
   const i = sano(indice, 0);
   return SECUENCIA_LAYOUT.primeraColumna + i * SECUENCIA_LAYOUT.pasoParticipante;
 }
+
+/** Un participante colocado por el preset. */
+export interface ParticipantePuesto {
+  id: string;
+  x: number;
+  y: number;
+  height: number;
+}
+
+/**
+ * Coloca los participantes en fila y les da el alto que necesita la secuencia
+ * (T12). Comparte `alturaDeMensaje` con el lienzo a propósito: si el botón
+ * «Organizar» calculara la altura por su cuenta, los dos podrían discrepar y
+ * nadie vería el desacuerdo hasta que el diagrama quedara torcido.
+ *
+ * Todos arrancan en la MISMA `y`: en una secuencia el tiempo es uno solo, y
+ * participantes a distinta altura sugieren que empiezan en momentos distintos.
+ */
+export function ordenarParticipantes(
+  ids: readonly string[],
+  cantidadMensajes: number
+): ParticipantePuesto[] {
+  const height = altoNecesario(cantidadMensajes);
+  return ids.map((id, i) => ({ id, x: columnaDeParticipante(i), y: 0, height }));
+}
