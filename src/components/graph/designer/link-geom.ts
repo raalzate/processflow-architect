@@ -77,6 +77,14 @@ export const clipToShape = (
 export const LIFELINE_HEAD = SECUENCIA_LAYOUT.altoCabecera;
 
 /**
+ * Medidas del lazo de una AUTO-LLAMADA (un participante que se llama a sí
+ * mismo). Sale del eje, va a la derecha, baja un escalón y vuelve: es como lo
+ * dibuja UML y como lo representan todas las herramientas. Sin el desnivel, la
+ * ida y la vuelta se superponen y no se ve nada.
+ */
+export const SELF_CALL = { ancho: 70, alto: 34 } as const;
+
+/**
  * Caja real de un nodo: el contenedor manda su tamaño guardado (es
  * redimensionable); el nodo suelto lo toma de su notación. Es el único lugar
  * donde se resuelve "cuánto mide este nodo": todo lo que dibuja o hace hit-test
@@ -124,6 +132,17 @@ export function linkEndpoints(
   const scy = sourceNode.y + sh;
   const tcx = targetNode.x + tw;
   const tcy = targetNode.y + th;
+  // AUTO-LLAMADA de secuencia: mismo participante en las dos puntas. Es
+  // notación legítima —un objeto que se llama a sí mismo— y hay que atenderla
+  // ANTES de la guarda de abajo, que la descartaba por compartir centro. Sin
+  // esto el mensaje se creaba y no se dibujaba: peor que no permitirlo (#285).
+  if (link.sourceId === link.targetId && isLifelineContainer(sourceNode.tipo_elemento)) {
+    const y =
+      link.orden !== undefined
+        ? sourceNode.y + alturaDeMensaje(link.orden)
+        : sourceNode.y + LIFELINE_HEAD + SELF_CALL.alto;
+    return { start: { x: scx, y }, end: { x: scx, y: y + SELF_CALL.alto } };
+  }
   if (scx === tcx && scy === tcy && !link.sourceAnchor && !link.targetAnchor) return null;
 
   const sAnchorPt = link.sourceAnchor
@@ -306,6 +325,29 @@ export function linkGeometry(
   const ep = linkEndpoints(link, nodes, notation);
   if (!ep) return null;
   let { start, end } = ep;
+
+  // El lazo de la auto-llamada tiene forma propia: unir sus dos puntos con una
+  // recta daría un segmento VERTICAL sobre el eje, tapado por la propia línea
+  // de vida. Se resuelve acá y no en el enrutado general porque no es una
+  // variante de trazo: es la notación de UML para este caso (#285).
+  if (link.sourceId === link.targetId) {
+    const x = start.x + SELF_CALL.ancho;
+    const lx = x + 6;
+    const ly = (start.y + end.y) / 2;
+    // Mismo contrato que el retorno normal: `labelAnchor` es el sitio SIN el
+    // desplazamiento del usuario, y quien mueve la etiqueta lo necesita.
+    return {
+      path: `M${start.x},${start.y} L${x},${start.y} L${x},${end.y} L${end.x},${end.y}`,
+      labelX: lx + (link.labelOffset?.x ?? 0),
+      labelY: ly + (link.labelOffset?.y ?? 0),
+      labelAnchor: { x: lx, y: ly },
+      start,
+      end,
+      bend: null,
+      bendKind: "corner" as const,
+      waypoints: [],
+    };
+  }
   // Sin trazo propio manda el de la notación (C4 curva; el resto, recta).
   const routing = routingOf(link, notation);
   let path: string;

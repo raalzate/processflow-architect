@@ -427,3 +427,47 @@ describe("mensaje de secuencia: eje y altura por orden (T4 · T11 · #261)", () 
     expect(ep.start.x).toBeCloseTo(300);
   });
 });
+
+describe("auto-llamada: un participante se habla a sí mismo (#285)", () => {
+  const sola = () => new Map<string, DesignerNode>([["a", lifeline("a", 0, 0)]]);
+  const auto = (extra = {}) => arista({ sourceId: "a", targetId: "a", ...extra });
+
+  it("devuelve geometría en vez de null", () => {
+    // Hoy `linkEndpoints` corta en seco cuando origen y destino comparten
+    // centro, así que el mensaje se creaba y NO se dibujaba.
+    expect(linkEndpoints(auto({ orden: 1 }), sola())).not.toBeNull();
+  });
+
+  it("sale del eje y vuelve al eje", () => {
+    const ep = linkEndpoints(auto({ orden: 1 }), sola())!;
+    expect(ep.start.x).toBeCloseTo(150);
+    expect(ep.end.x).toBeCloseTo(150);
+  });
+
+  it("baja un escalón: la punta termina MÁS ABAJO de donde salió", () => {
+    // Sin desnivel, ida y vuelta se superponen y no se ve nada.
+    const ep = linkEndpoints(auto({ orden: 1 }), sola())!;
+    expect(ep.end.y).toBeGreaterThan(ep.start.y);
+  });
+
+  it("su altura la manda el orden, como cualquier mensaje", () => {
+    const uno = linkEndpoints(auto({ orden: 1 }), sola())!;
+    const tres = linkEndpoints(auto({ orden: 3 }), sola())!;
+    expect(tres.start.y).toBeGreaterThan(uno.start.y);
+  });
+
+  it("el recorrido SALE del eje: no es un segmento vertical invisible", () => {
+    const geo = linkGeometry(auto({ orden: 1 }), sola())!;
+    expect(geo).not.toBeNull();
+    // El trazo tiene que apartarse del eje para poder verse.
+    const xs = [...geo.path.matchAll(/[ML]\s*(-?[\d.]+)/g)].map((m) => Number(m[1]));
+    expect(Math.max(...xs)).toBeGreaterThan(150);
+  });
+
+  it("un auto-enlace entre nodos NORMALES sigue sin dibujarse", () => {
+    // La guarda general es correcta: dos nodos superpuestos sin ancla no
+    // definen una dirección. El caso propio es sólo de secuencia.
+    const nodes = new Map<string, DesignerNode>([["a", nodo("a", SISTEMA, 0, 0)]]);
+    expect(linkEndpoints(auto(), nodes)).toBeNull();
+  });
+});
