@@ -24,6 +24,8 @@ import type { GraphData, GraphNode, Agregado, ReadModel } from "../types";
 import { problemasDePropiedades } from "../element-properties";
 import { sanitizeSpec, type ElementSpec } from "../element-spec";
 import { sanitizeSourceDocs, type SourceDoc } from "../source-docs";
+import { moverMensaje } from "../sequence/order";
+import type { SequenceMessageKind } from "../sequence/messages";
 import {
   normalizarLista,
   quitarMetadata,
@@ -163,6 +165,10 @@ export interface BuilderEdge {
   dashed?: boolean;
   arrow?: "end" | "both" | "none";
   routing?: "straight" | "curved" | "orthogonal";
+  /** Lugar en la secuencia (sólo diagramas de secuencia UML). Ver `addMessage`. */
+  orden?: number;
+  /** Qué clase de mensaje es (sólo secuencia). Ver `sequence/messages.ts`. */
+  messageKind?: SequenceMessageKind;
 }
 
 /**
@@ -351,6 +357,59 @@ export function addEdge(model: DiagramModel, input: BuilderEdge): DiagramModel {
   // Se guardan los ids REALES: una arista con el id dibujado quedaría colgando.
   input = { ...input, fuente: fuente.id, destino: destino.id };
   return { ...model, edges: [...model.edges, { ...input }] };
+}
+
+/**
+ * Añade un MENSAJE de secuencia: una arista con su lugar en el tiempo (T15).
+ *
+ * Existe aparte de `addEdge` porque un mensaje sin orden no es un mensaje: sale
+ * a la misma altura que otro y se pisa. Si el agente pudiera construir una
+ * secuencia con `addEdge`, dejaría diagramas a medio migrar que después alguien
+ * tiene que arreglar a mano.
+ *
+ * `posicion` es dónde insertarlo (1 = primero). Sin ella va al final, que es lo
+ * que se quiere al ir narrando una interacción de principio a fin.
+ */
+export function addMessage(
+  model: DiagramModel,
+  input: BuilderEdge & { posicion?: number }
+): DiagramModel {
+  const { posicion, ...arista } = input;
+  const conArista = addEdge(model, arista);
+  // Los ids de arista los pone la app al importar, así que acá el orden se
+  // resuelve por POSICIÓN en la lista, que es lo único estable en el builder.
+  const mensajes = conArista.edges.map((e, i) => ({ ...e, id: String(i) }));
+  const nuevo = mensajes[mensajes.length - 1];
+  const destino = posicion ?? mensajes.length;
+  const movidos = moverMensaje(
+    mensajes.map((m) => ({ ...m, orden: m.orden })),
+    nuevo.id,
+    destino
+  );
+  return {
+    ...conArista,
+    edges: movidos.map(({ id: _id, ...e }) => e as BuilderEdge),
+  };
+}
+
+/**
+ * Mueve un mensaje en la secuencia (T15). Reordenar es la operación con la que
+ * se corrige una interacción mal narrada; sin ella habría que borrar y rehacer.
+ */
+export function reorderMessage(
+  model: DiagramModel,
+  desde: number,
+  hasta: number
+): DiagramModel {
+  const mensajes = model.edges.map((e, i) => ({ ...e, id: String(i) }));
+  const objetivo = mensajes.find((m) => (m.orden ?? Number(m.id) + 1) === desde);
+  if (!objetivo) {
+    throw new Error(
+      `No hay ningún mensaje en la posición ${desde}. La secuencia tiene ${mensajes.length}.`
+    );
+  }
+  const movidos = moverMensaje(mensajes, objetivo.id, hasta);
+  return { ...model, edges: movidos.map(({ id: _id, ...e }) => e as BuilderEdge) };
 }
 
 /**

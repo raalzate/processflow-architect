@@ -103,6 +103,9 @@ import {
   type SkillConfig,
 } from "../../src/lib/mcp-skill";
 import { DEFAULT_NOTATION_ID, type NotationId } from "../../src/lib/notations";
+import { isLifelineContainer } from "../../src/lib/notations";
+import { SEQUENCE_MESSAGES, SEQUENCE_MESSAGE_KINDS } from "../../src/lib/sequence/messages";
+import { FRAGMENT_OPS, FRAGMENT_OPS_LIST } from "../../src/lib/sequence/fragments";
 import { MAX_CUSTOM_VIEWS } from "../../src/lib/views-types";
 import type { GraphData } from "../../src/lib/types";
 
@@ -491,7 +494,26 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       const groups = Object.entries(byGroup)
         .map(([g, items]) => `### ${g}\n- ${items.join("\n- ")}`)
         .join("\n\n");
-      return text(`# ${n.label}\n${n.description}\n\n${groups}\n\n## Guía\n${n.aiGuidance}`);
+      // En secuencia, los tipos de componente no alcanzan: un mensaje tiene
+      // CLASE (llamada, retorno…) y un fragmento tiene OPERADOR, y sin esa lista
+      // el agente los inventa. Es lo que se lee antes de construir (T16, #279).
+      const secuencia = n.elements.some((e) => isLifelineContainer(e.type))
+        ? [
+            "",
+            "## Mensajes de secuencia (`messageKind` en add_message)",
+            ...SEQUENCE_MESSAGE_KINDS.map(
+              (k) => `- \`${k}\` — ${SEQUENCE_MESSAGES[k].label}: ${SEQUENCE_MESSAGES[k].hint}`
+            ),
+            "",
+            "## Operadores de fragmento (`op` en add_fragment)",
+            ...FRAGMENT_OPS_LIST.map(
+              (o) => `- \`${o}\` — ${FRAGMENT_OPS[o].label}: ${FRAGMENT_OPS[o].hint}`
+            ),
+          ].join("\n")
+        : "";
+      return text(
+        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n\n## Guía\n${n.aiGuidance}`
+      );
     }
   );
 
