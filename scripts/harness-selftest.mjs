@@ -333,6 +333,27 @@ frenoDelLint(
   "DEPSHOOK",
 );
 
+// REGISTRO: `in` sobre un registro acepta las claves del prototipo. Pasó dos
+// veces (#282) y las dos las cazó una prueba escrita a propósito; el freno es
+// lo que cubre al registro nuevo que nadie pensó en probar.
+frenoDelLint(
+  "repo-lint: detecta un registro consultado con `in`",
+  "src/lib/__selftest-registro.ts",
+  "export const es = (k: string) => k in EDGE_RELATIONS;\n",
+  "REGISTRO",
+  ["enRegistro"],
+);
+
+// La comprobación a mano es correcta pero estaba repetida en tres módulos: el
+// freno la manda al único lugar donde está probada.
+frenoDelLint(
+  "repo-lint: detecta la pertenencia propia escrita a mano",
+  "src/lib/__selftest-registro-mano.ts",
+  "export const es = (k: string) => Object.prototype.hasOwnProperty.call(FOO, k);\n",
+  "REGISTRO",
+  ["src/lib/registro.ts"],
+);
+
 // TOKENS: el color y la escala salen del tema. Sin este freno, el modo oscuro se
 // rompe de a un archivo por vez (spec 003).
 frenoDelLint(

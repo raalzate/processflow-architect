@@ -363,3 +363,31 @@ Mecanismo: dos, porque el fallo tiene dos caras. Regla ARTIFACTNAME de `scripts/
          (usa red, señal manual tras publicar): lee los tres `latest*.yml` del release y verifica
          path y tamaño contra los assets. Lo que decide es puro y está probado en
          `src/lib/__tests__/release-metadata.test.ts`.
+
+### GOTCHA: un registro consultado con `in` acepta las claves del prototipo
+
+Issue: #282
+
+Síntoma: `"toString"` pasaba por clave válida de un registro. Dos veces en la misma sesión, en
+         módulos que no se conocen entre sí: `src/lib/canvas-nudge.ts` —`key in DIRECCIONES` daba
+         `isNudgeKey("toString") === true` y `nudgeForKey` devolvía basura en vez de `null`— y
+         `src/lib/sequence/messages.ts`, donde `v in SEQUENCE_MESSAGES` dejaba pasar `"toString"`
+         como tipo de mensaje. Las dos las cazó una prueba escrita **a propósito** para el caso.
+Causa:   `in` y el acceso por clave sobre un objeto literal ven la CADENA DE PROTOTIPOS. Un
+         `Record<string, X>` usado como tabla de búsqueda contra entrada externa —una tecla, un
+         campo guardado, algo que mandó un agente— acepta `toString`, `constructor`, `valueOf` y
+         `hasOwnProperty` como claves propias, y el acceso devuelve una función en vez de
+         `undefined`. Duele acá porque los registros son el patrón central del repo
+         (`EDGE_RELATIONS`, `ALL_ELEMENTS`, `NOTATION_HELP`, `SEQUENCE_MESSAGES`) y todos se
+         consultan con datos de afuera. Que lo cazaran las pruebas no es garantía: las cazó
+         porque alguien escribió el caso; un registro nuevo sin ese test pasa el gate con el
+         agujero adentro, y dos ocurrencias independientes en una sesión es patrón, no casualidad.
+Regla:   la pertenencia y el acceso por clave de afuera pasan por `enRegistro`/`deRegistro`
+         (`src/lib/registro.ts`). Ni `in` contra un registro, ni `hasOwnProperty` escrito a mano
+         (correcto, pero repetido en tres módulos y sin un solo lugar donde probarlo).
+Mecanismo: regla REGISTRO de `scripts/repo-lint.mjs` (config `registry`: `dirs`, `allow`,
+         `helper`), en el gate y en el hook PostToolUse, con dos casos en el self-test —`in
+         EDGE_RELATIONS` y el `hasOwnProperty` a mano ponen el lint en rojo y nombran el helper—.
+         `for (const k in REGISTRO)` no se marca: recorrer las claves propias enumerables de un
+         literal es legítimo. Lo que decide está probado en `src/lib/__tests__/registro.test.ts`,
+         que barre `toString`, `constructor`, `valueOf`, `hasOwnProperty` y `__proto__`.
