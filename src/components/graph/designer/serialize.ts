@@ -18,6 +18,7 @@ import {
   type Agregado,
 } from "@/lib/types";
 import { type EdgeRelationKind } from "@/lib/edge-relations";
+import { type SequenceMessageKind } from "@/lib/sequence/messages";
 import { normalizarLista, type ElementMetadata } from "@/lib/element-metadata";
 import { sanitizeSpec, type ElementSpec } from "@/lib/element-spec";
 import {
@@ -82,6 +83,18 @@ export interface DesignerLink {
   arrow?: "end" | "both" | "none";
   /** Relación UML de la arista (marca de cada punta y trazo) — ver `edge-relations.ts`. */
   relation?: EdgeRelationKind;
+  /**
+   * Lugar del mensaje en una secuencia UML, denso desde 1 (feature 013).
+   * Sólo lo usan los diagramas de secuencia; en las demás notaciones es ruido y
+   * no se escribe. Ausente = diagrama anterior a la feature: `sequence/migrate.ts`
+   * lo deriva de la `y` al abrir.
+   */
+  orden?: number;
+  /**
+   * Qué clase de mensaje es (llamada, retorno, creación…). Ver
+   * `src/lib/sequence/messages.ts`. Ausente = llamada de siempre.
+   */
+  messageKind?: SequenceMessageKind;
   /** Ancla de la punta en el nodo ORIGEN (x/y normalizados 0..1 de su caja). */
   sourceAnchor?: { x: number; y: number };
   /** Ancla de la punta en el nodo DESTINO (x/y normalizados 0..1 de su caja). */

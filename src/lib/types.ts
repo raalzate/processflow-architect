@@ -1,6 +1,7 @@
 
 import type { SimulationNodeDatum, SimulationLinkDatum } from "d3";
 import type { EdgeRelationKind } from "./edge-relations";
+import type { SequenceMessageKind } from "./sequence/messages";
 import type { ElementMetadata } from "./element-metadata";
 import type { ElementSpec } from "./element-spec";
 import type { SourceDoc } from "./source-docs";
@@ -120,6 +121,18 @@ export interface GraphLink extends SimulationLinkDatum<GraphNode> {
    * punteado — ver `src/lib/edge-relations.ts`. Si falta, es una asociación.
    */
   relation?: EdgeRelationKind;
+  /**
+   * Lugar del mensaje en una secuencia UML, denso desde 1 (feature 013).
+   * Sólo lo usan los diagramas de secuencia; en las demás notaciones es ruido y
+   * no se escribe. Ausente = diagrama anterior a la feature: `sequence/migrate.ts`
+   * lo deriva de la `y` al abrir.
+   */
+  orden?: number;
+  /**
+   * Qué clase de mensaje es (llamada, retorno, creación…). Ver
+   * `src/lib/sequence/messages.ts`. Ausente = llamada de siempre.
+   */
+  messageKind?: SequenceMessageKind;
   /** Ancla de la punta en el nodo ORIGEN (x/y normalizados 0..1 de su caja). Si falta, se ancla automático al borde. */
   sourceAnchor?: { x: number; y: number };
   /** Ancla de la punta en el nodo DESTINO (x/y normalizados 0..1 de su caja). */
