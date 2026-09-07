@@ -11,7 +11,8 @@
  * secuencia en la misma paleta.
  */
 
-import { normalizarOrden, ordenSiguiente, type MensajeOrdenable } from "./order";
+import { moverMensaje, normalizarOrden, ordenSiguiente, type MensajeOrdenable } from "./order";
+import { SECUENCIA_LAYOUT, alturaDeMensaje } from "./layout";
 
 /** Lo mínimo que el lienzo expone de un enlace para esta decisión. */
 export interface EnlaceDeLienzo extends MensajeOrdenable {
@@ -68,4 +69,43 @@ export function renumerar<T extends EnlaceDeLienzo>(
       const antes = enlaces.find((e) => e.id === m.id)?.orden;
       return antes !== m.orden;
     });
+}
+
+/**
+ * A qué lugar de la secuencia corresponde una altura arrastrada (T18).
+ *
+ * Arrastrar en vertical **reordena**: el mensaje salta al hueco más cercano y
+ * la altura sigue saliendo del orden. La primera versión del requisito
+ * prohibía el gesto entero, y eso dejaba al usuario sin ninguna forma de
+ * reordenar —negarle el instinto sin darle un reemplazo—. Lo que no puede
+ * existir es la posición LIBRE, no el arrastre.
+ *
+ * `y` es la altura soltada, relativa al tope de la línea de vida. El resultado
+ * se recorta a la secuencia: soltar por encima del primero lo manda al primer
+ * lugar, y por debajo del último, al último.
+ */
+export function ordenParaAltura(y: number, total: number): number {
+  const tope = Math.max(1, Math.floor(total));
+  if (!Number.isFinite(y)) return 1;
+  const primero = alturaDeMensaje(1);
+  const crudo = Math.round((y - primero) / SECUENCIA_LAYOUT.pasoMensaje) + 1;
+  return Math.min(tope, Math.max(1, crudo));
+}
+
+/**
+ * Reordena por arrastre y devuelve SÓLO los mensajes cuyo orden cambia, para
+ * que el llamador no reescriba enlaces que no tocó.
+ */
+export function reordenarPorArrastre<T extends EnlaceDeLienzo>(
+  enlaces: readonly T[],
+  id: string,
+  y: number,
+  esLineaDeVida: (nodeId: string) => boolean
+): Array<{ id: string; orden: number }> {
+  const mensajes = mensajesDe(enlaces, esLineaDeVida);
+  if (!mensajes.some((m) => m.id === id)) return [];
+  const destino = ordenParaAltura(y, mensajes.length);
+  return moverMensaje(mensajes, id, destino)
+    .map((m) => ({ id: m.id, orden: m.orden }))
+    .filter((m) => mensajes.find((x) => x.id === m.id)?.orden !== m.orden);
 }

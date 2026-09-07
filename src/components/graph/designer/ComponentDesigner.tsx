@@ -200,7 +200,15 @@ import type { DesignerActionId } from "@/lib/designer-actions";
 import { isNudgeKey, nudgeForKey } from "@/lib/canvas-nudge";
 import { isFragmentContainer, isLifelineContainer } from "@/lib/notations";
 import { neighborhoodOf } from "@/lib/graph-neighbors";
-import { ordenParaNuevo, renumerar } from "@/lib/sequence/canvas";
+import { migrarMensajes, necesitaMigracion } from "@/lib/sequence/migrate";
+import { activacionesDe } from "@/lib/sequence/activations";
+import { alturaDeMensaje, ordenarParticipantes } from "@/lib/sequence/layout";
+import {
+  esMensajeDeSecuencia,
+  ordenParaNuevo,
+  renumerar,
+  reordenarPorArrastre,
+} from "@/lib/sequence/canvas";
 import { FRAGMENT_OPS, FRAGMENT_OPS_LIST, esOperador, type FragmentOp } from "@/lib/sequence/fragments";
 import {
   SEQUENCE_MESSAGES,
@@ -1872,6 +1880,41 @@ export const ComponentDesigner: React.FC<{
     () => neighborhoodOf(capturing ? new Set<string>() : selectedIds, links.values()),
     [selectedIds, links, capturing]
   );
+  /**
+   * Barras de activación (T20). Se CALCULAN de los mensajes y no se guardan:
+   * algo derivable que se persiste es una segunda fuente de verdad que se
+   * desincroniza al primer reordenamiento.
+   */
+  const activaciones = useMemo(() => {
+    const esLdV = (nodeId: string) => {
+      const nodo = nodes.get(nodeId);
+      return !!nodo && isLifelineContainer(nodo.tipo_elemento);
+    };
+    const mensajes = [...links.values()]
+      .filter((l) => esMensajeDeSecuencia(l, esLdV) && l.orden !== undefined)
+      .map((l) => ({
+        id: l.id,
+        orden: l.orden as number,
+        fuente: l.sourceId,
+        destino: l.targetId,
+        messageKind: l.messageKind,
+      }));
+    if (!mensajes.length) return [];
+    return activacionesDe(mensajes)
+      .map((a) => {
+        const nodo = nodes.get(a.participante);
+        if (!nodo) return null;
+        const tope = nodo.y;
+        return {
+          key: `${a.participante}-${a.desde}`,
+          x: nodo.x + (nodo.width || AGGREGATE_DEFAULT_WIDTH) / 2,
+          y: tope + alturaDeMensaje(a.desde),
+          alto: Math.max(12, alturaDeMensaje(a.hasta) - alturaDeMensaje(a.desde)),
+        };
+      })
+      .filter((a): a is NonNullable<typeof a> => a !== null);
+  }, [nodes, links]);
+
   const isRelated = useCallback(
     (id: string) => vecindario.nodes.has(id) || vecindario.edges.has(id),
     [vecindario]
@@ -2042,7 +2085,7 @@ export const ComponentDesigner: React.FC<{
   const marqueeRef = useRef(marquee);
   // Sesión de arrastre de: punta (reanclado), doblez auto o punto de quiebre (índice).
   const endpointDragRef = useRef<
-    { linkId: string; kind: "source" | "target" | "bend" | "wp" | "label"; index?: number } | null
+    { linkId: string; kind: "source" | "target" | "bend" | "wp" | "label" | "reorder"; index?: number } | null
   >(null);
   useEffect(() => {
     nodesRef.current = nodes;
@@ -2236,6 +2279,17 @@ export const ComponentDesigner: React.FC<{
       });
     },
     [toast]
+  );
+
+  const esLineaDeVidaRef = useRef((nodeId: string) => {
+    const n = nodesRef.current.get(nodeId);
+    return !!n && isLifelineContainer(n.tipo_elemento);
+  });
+
+  /** ¿Este enlace es un mensaje de secuencia? Lo dicen sus dos extremos. */
+  const esMensajeDeSecuenciaLink = useCallback(
+    (link: DesignerLink) => esMensajeDeSecuencia(link, esLineaDeVidaRef.current),
+    []
   );
 
   /** ¿Ese nodo es una línea de vida? Lo que decide si un enlace es un mensaje. */
@@ -2452,6 +2506,29 @@ export const ComponentDesigner: React.FC<{
     // así que el árbol del modelo no coincidía con las bandas del lienzo.
     const { nodes: crudos, links: l } = graphDataToCanvas(sourceContent);
     const n = reassignContainers(crudos, sourceContent.notation ?? notationId).nodes;
+
+    // Al ABRIR se migran los mensajes de secuencia guardados antes de que el
+    // orden existiera (T19): el orden sale de la altura con la que se venían
+    // dibujando y el punteado se lee como retorno. Se hace acá y no con un
+    // script masivo: un diagrama que nadie abre no se toca, y no hay un paso
+    // que pueda fallar a mitad y dejar medio repo en un estado y medio en otro.
+    const esLdV = (nodeId: string) => {
+      const nodo = n.get(nodeId);
+      return !!nodo && isLifelineContainer(nodo.tipo_elemento);
+    };
+    const mensajes = [...l.values()].filter((k) => esMensajeDeSecuencia(k, esLdV));
+    if (mensajes.length && necesitaMigracion(mensajes)) {
+      // La `y` de un mensaje no se guarda: se toma la de su ancla si la tiene,
+      // y si no la del punto medio entre sus extremos, que es donde se veía.
+      const conY = mensajes.map((k) => {
+        const ep = linkEndpoints(k, n, sourceContent.notation ?? notationId);
+        return { ...k, y: ep ? (ep.start.y + ep.end.y) / 2 : undefined };
+      });
+      for (const m of migrarMensajes(conY)) {
+        const vivo = l.get(m.id);
+        if (vivo) l.set(m.id, { ...vivo, orden: m.orden, messageKind: m.messageKind });
+      }
+    }
     // Lienzo nuevo y vacío: sembrar un contenedor inicial de la notación activa.
     if (n.size === 0 && seedContainerType) {
       const seedName = `${seedContainerType} Principal`;
@@ -2825,6 +2902,33 @@ export const ComponentDesigner: React.FC<{
         if (!link) return;
         // Etiqueta: se guarda cuánto se separó de su sitio sobre el trazo, así
         // sigue a la línea cuando los nodos se mueven.
+        if (ep.kind === "reorder") {
+          // La `y` se mide desde el tope de la línea de vida, que es de donde
+          // parte `alturaDeMensaje`. Se aplica en cada movimiento: el mensaje
+          // SALTA de hueco en hueco, y ese salto es la respuesta visual de que
+          // lo que cambia es el orden, no la posición.
+          const s0 = nodesRef.current.get(link.sourceId);
+          const t0 = nodesRef.current.get(link.targetId);
+          if (!s0 || !t0) return;
+          const tope = Math.max(s0.y, t0.y);
+          const cambios = reordenarPorArrastre(
+            [...linksRef.current.values()],
+            ep.linkId,
+            p.y - tope,
+            esLineaDeVidaRef.current
+          );
+          if (!cambios.length) return;
+          setLinks((prev) => {
+            const l = new Map(prev);
+            for (const c of cambios) {
+              const cur = l.get(c.id);
+              if (cur) l.set(c.id, { ...cur, orden: c.orden });
+            }
+            linksRef.current = l;
+            return l;
+          });
+          return;
+        }
         if (ep.kind === "label") {
           const geo = linkGeometry(link, nodesRef.current, notationId);
           if (!geo) return;
@@ -3048,6 +3152,26 @@ export const ComponentDesigner: React.FC<{
   );
 
   // Arrastre de la etiqueta de un enlace: la separa del trazo sin tocar la línea.
+  /**
+   * Arrancar el reordenamiento por arrastre de un MENSAJE (T18).
+   *
+   * Sólo aplica en secuencia: en las demás notaciones no hace nada y el
+   * lienzo se comporta como siempre. Arrastrar en vertical cambia el ORDEN, no
+   * la altura — la altura sigue saliendo del orden, así que no hay dos fuentes
+   * de verdad; lo que no existe es la posición libre.
+   */
+  const startMessageReorder = useCallback(
+    (e: React.MouseEvent, linkId: string) => {
+      const link = linksRef.current.get(linkId);
+      if (!link || !esMensajeDeSecuenciaLink(link)) return;
+      e.stopPropagation();
+      e.preventDefault();
+      endpointDragRef.current = { linkId, kind: "reorder" };
+      selectOnly(linkId);
+    },
+    [selectOnly]
+  );
+
   const startLabelDrag = useCallback(
     (e: React.MouseEvent, linkId: string) => {
       e.stopPropagation();
@@ -3266,6 +3390,34 @@ export const ComponentDesigner: React.FC<{
       };
       if (!meta) return;
       const content = buildContent(nodesRef.current, linksRef.current, meta, notationId);
+      // SECUENCIA: el layout general no la entiende —no hay flujo de izquierda a
+      // derecha, hay participantes y tiempo—, así que usa su preset (T24). Es la
+      // MISMA función que decide la altura de cada mensaje, así que el botón y
+      // el lienzo no pueden discrepar.
+      const lineas = [...nodesRef.current.values()].filter((n) =>
+        isLifelineContainer(n.tipo_elemento)
+      );
+      if (lineas.length >= 2) {
+        const cuantos = [...linksRef.current.values()].filter(
+          (l) => l.orden !== undefined
+        ).length;
+        const puestos = new Map(
+          ordenarParticipantes(
+            lineas.map((n) => n.id),
+            cuantos
+          ).map((p) => [p.id, p])
+        );
+        updateNodes((prev) => {
+          const out = new Map(prev);
+          for (const [id, n] of prev) {
+            const p = puestos.get(id);
+            if (p) out.set(id, { ...n, x: p.x, y: p.y, height: p.height });
+          }
+          return out;
+        });
+        setArrangement(next);
+        return;
+      }
       const posiciones = arrangeGraphData(content, notationId, { ...next, laneOrder: opts.laneOrder });
       updateNodes((prev) => {
         const out = new Map(prev);
@@ -3993,6 +4145,24 @@ export const ComponentDesigner: React.FC<{
                 />
               ))}
             </g>
+            {/* Capa 2.5: barras de ACTIVACIÓN. Van debajo de los mensajes para
+                que la flecha se lea encima de la barra, como en UML, y sin
+                capturar el ratón: no son elementos, son consecuencia. */}
+            {activaciones.length > 0 && (
+              <g pointerEvents="none">
+                {activaciones.map((a) => (
+                  <rect
+                    key={a.key}
+                    x={a.x - 7}
+                    y={a.y}
+                    width={14}
+                    height={a.alto}
+                    className="fill-indigo-600 stroke-indigo-300"
+                    strokeWidth={1.5}
+                  />
+                ))}
+              </g>
+            )}
             {/* Capa 3: Enlaces */}
             <g>
               {visto.links.map((link) => (
@@ -4008,6 +4178,7 @@ export const ComponentDesigner: React.FC<{
                   onContextMenu={(e) => openContextMenu(e, { kind: "link", id: link.id })}
                   onLineDoubleClick={(e) => addWaypoint(e, link.id)}
                   onLabelMouseDown={(e) => startLabelDrag(e, link.id)}
+                  onLineMouseDown={(e) => startMessageReorder(e, link.id)}
                 />
               ))}
             </g>

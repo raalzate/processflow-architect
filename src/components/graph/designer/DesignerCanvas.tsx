@@ -1249,6 +1249,8 @@ interface LinkComponentProps {
   isSelected: boolean;
   /** Emparentado: tiene una punta en la selección (#256). */
   isRelated?: boolean;
+  /** Arrancar el reordenamiento por arrastre (sólo mensajes de secuencia). */
+  onLineMouseDown?: (e: React.MouseEvent) => void;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
   /** Clic derecho sobre el enlace: abre el menú contextual del lienzo. */
@@ -1266,6 +1268,7 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   notation,
   isSelected,
   isRelated = false,
+  onLineMouseDown,
   onClick,
   onDoubleClick,
   onContextMenu,
@@ -1316,6 +1319,11 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
         stroke="transparent"
         strokeWidth="15"
         fill="none"
+        // Arrastrar la línea de un MENSAJE lo reordena (T18). El handler decide
+        // si aplica: sólo lo hace en secuencia, así que en las demás notaciones
+        // este `onMouseDown` no cambia nada.
+        onMouseDown={onLineMouseDown}
+        className={onLineMouseDown ? "cursor-ns-resize" : undefined}
         onDoubleClick={onLineDoubleClick}
       />
       <path

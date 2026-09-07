@@ -4,8 +4,11 @@ import {
   mensajesDe,
   ordenParaNuevo,
   renumerar,
+  ordenParaAltura,
+  reordenarPorArrastre,
   type EnlaceDeLienzo,
 } from "@/lib/sequence/canvas";
+import { alturaDeMensaje } from "@/lib/sequence/layout";
 
 // «a» y «b» son líneas de vida; «x» no lo es.
 const esLineaDeVida = (id: string) => id === "a" || id === "b";
@@ -83,5 +86,59 @@ describe("listar los mensajes", () => {
       ["1", 1],
       ["3", 2],
     ]);
+  });
+});
+
+describe("arrastrar un mensaje lo REORDENA (T18 · #287)", () => {
+  const tres = [e("1", "a", "b", 1), e("2", "a", "b", 2), e("3", "a", "b", 3)];
+
+  it("la altura soltada se traduce al lugar más cercano", () => {
+    expect(ordenParaAltura(alturaDeMensaje(1), 3)).toBe(1);
+    expect(ordenParaAltura(alturaDeMensaje(2), 3)).toBe(2);
+    // A mitad de camino entre dos: cae al más cercano, no a un intermedio.
+    expect(ordenParaAltura(alturaDeMensaje(2) + 5, 3)).toBe(2);
+  });
+
+  it("soltar por ENCIMA del primero manda al primer lugar", () => {
+    // Recortar es mejor que rechazar: el gesto ya expresó la intención.
+    expect(ordenParaAltura(alturaDeMensaje(1) - 500, 3)).toBe(1);
+  });
+
+  it("soltar por DEBAJO del último manda al último", () => {
+    expect(ordenParaAltura(alturaDeMensaje(3) + 500, 3)).toBe(3);
+  });
+
+  it("una altura rota no manda el mensaje a ninguna parte absurda", () => {
+    expect(ordenParaAltura(Number.NaN, 3)).toBe(1);
+    expect(ordenParaAltura(Number.POSITIVE_INFINITY, 3)).toBe(1);
+  });
+
+  it("arrastrar el tercero arriba del primero lo pone primero", () => {
+    // El gesto que el usuario intentó y no existía.
+    const cambios = reordenarPorArrastre(tres, "3", alturaDeMensaje(1), esLineaDeVida);
+    const nuevo = new Map(cambios.map((c) => [c.id, c.orden]));
+    expect(nuevo.get("3")).toBe(1);
+    expect(nuevo.get("1")).toBe(2);
+    expect(nuevo.get("2")).toBe(3);
+  });
+
+  it("el resto conserva su orden ENTRE SÍ", () => {
+    const cambios = reordenarPorArrastre(tres, "1", alturaDeMensaje(3), esLineaDeVida);
+    const nuevo = new Map(cambios.map((c) => [c.id, c.orden]));
+    expect(nuevo.get("2")!).toBeLessThan(nuevo.get("3") ?? 99);
+  });
+
+  it("soltarlo donde ya estaba no cambia nada", () => {
+    expect(reordenarPorArrastre(tres, "2", alturaDeMensaje(2), esLineaDeVida)).toEqual([]);
+  });
+
+  it("arrastrar algo que no es un mensaje no toca la secuencia", () => {
+    expect(reordenarPorArrastre(tres, "zz", alturaDeMensaje(1), esLineaDeVida)).toEqual([]);
+  });
+
+  it("nunca deja dos mensajes en el mismo lugar", () => {
+    const cambios = reordenarPorArrastre(tres, "3", alturaDeMensaje(1), esLineaDeVida);
+    const ordenes = cambios.map((c) => c.orden);
+    expect(new Set(ordenes).size).toBe(ordenes.length);
   });
 });
