@@ -383,6 +383,37 @@ frenoDelLint(
   "DEPSHOOK",
 );
 
+/**
+ * El segundo caso del mismo error, que la versión anterior de DEPSHOOK NO veía:
+ * el hook tiene cuerpo de bloque (cierra con `}`, no con `)`) y el estado no se
+ * llama `notationId`. Así se coló `sendMessage` sin `agentId` en AgentContext:
+ * el selector decía «Constructor» y contestaba el analista (#308).
+ */
+frenoDelLint(
+  "repo-lint: detecta un callback con cuerpo de bloque que lee estado sin declararlo",
+  "src/context/__selftest.tsx",
+  "export function P() {\n  const [agentId, setAgentId] = useState('analista');\n" +
+    "  const enviar = useCallback(\n    async (t: string) => {\n      if (agentId === 'constructor') return construir(t);\n      return analizar(t);\n    },\n    [busy]\n  );\n  return enviar;\n}\n",
+  "DEPSHOOK",
+  ["agentId"],
+);
+
+/**
+ * Y el contracaso: la regla no puede acusar por una mención en prosa ni por una
+ * clave de objeto homónima. Un freno con falsos positivos se termina apagando.
+ */
+{
+  const limpio = lintVirtual(
+    "src/components/__selftest-ok.tsx",
+    "export function Q() {\n  const [zoom, setZoom] = useState(1);\n" +
+      "  // ajusta el zoom al contenido\n" +
+      "  const guardar = useCallback(() => escribir({ zoom: 1 }), []);\n" +
+      "  const usar = useCallback(() => zoom * 2, [zoom]);\n  return [guardar, usar];\n}\n",
+  );
+  if (limpio.status === 0) ok("repo-lint: DEPSHOOK no acusa por comentarios ni claves de objeto");
+  else bad("repo-lint: DEPSHOOK no acusa por comentarios ni claves de objeto", limpio.salida.trim().slice(0, 240));
+}
+
 // REGISTRO: `in` sobre un registro acepta las claves del prototipo. Pasó dos
 // veces (#282) y las dos las cazó una prueba escrita a propósito; el freno es
 // lo que cubre al registro nuevo que nadie pensó en probar.

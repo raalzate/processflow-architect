@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useAgent } from "@/context/AgentContext";
+import { useRouter } from "next/navigation";
 import { useViews } from "@/context/ViewsContext";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -37,8 +38,10 @@ import {
   CheckCheck,
   Layers,
   Plus,
+  Hammer,
 } from "lucide-react";
 import { documentDefinitions, getDefinition } from "@/lib/artifacts/registry";
+import { getAgentProfile } from "@/lib/ai/agent-profiles";
 import { resolveContextRevisions } from "@/lib/artifacts/versioning";
 import { iconForArtifact, iconForArtifactKind } from "./artifact-icon";
 import {
@@ -69,13 +72,9 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-const SUGGESTIONS = [
-  "Extrae los drivers de arquitectura",
-  "Identifica riesgos y restricciones",
-  "Genera una propuesta técnica completa",
-  "Crea un diagrama C4 de contenedores",
-  "Redacta un ADR para la persistencia",
-];
+// La bienvenida y los ejemplos ya NO viven acá: son del PERFIL del agente
+// (`agent-profiles.ts`). Con dos agentes en el mismo panel, tenerlos cableados
+// hacía que el constructor invitara a redactar ADRs — cosas del otro agente.
 
 function StepIcon({ type }: { type: AgentStep["type"] }) {
   // Sin `switch` exhaustivo a propósito: agregar un paso al esquema no debe
@@ -274,6 +273,8 @@ export function AgentChatPanel() {
     sendMessage,
     resumeRun,
     cancelRun,
+    answerBuilderQuestion,
+    agentId,
     artifacts,
     contextArtifactIds,
     toggleContextArtifact,
@@ -283,6 +284,8 @@ export function AgentChatPanel() {
     addAttachments,
     removeAttachment,
   } = useAgent();
+  const perfil = getAgentProfile(agentId);
+  const router = useRouter();
   const { views, injectedViews, injectedViewIds, toggleInject } = useViews();
 
   // Cronómetro de la corrida: arranca cuando el agente se pone a trabajar y se
@@ -431,12 +434,16 @@ export function AgentChatPanel() {
         {messages.length === 0 && (
           <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
             <div className="mb-2 flex items-center gap-2 font-medium text-foreground">
-              <Sparkles className="h-4 w-4 text-primary" /> Agente de Arquitectura
+              {perfil.escribe ? (
+                <Hammer className="h-4 w-4 text-warning" />
+              ) : (
+                <Sparkles className="h-4 w-4 text-primary" />
+              )}{" "}
+              {perfil.bienvenida.titulo}
             </div>
-            Pídeme que diseñe o analice tu sistema. Generaré artefactos (drivers, riesgos,
-            propuesta, roadmap, ADRs, diagramas...) en el lienzo principal.
+            {perfil.bienvenida.invitacion}
             <div className="mt-2 flex flex-wrap gap-1">
-              {SUGGESTIONS.map((s) => (
+              {perfil.bienvenida.ejemplos.map((s) => (
                 <button
                   key={s}
                   onClick={() => setInput(s)}
@@ -489,6 +496,64 @@ export function AgentChatPanel() {
                       <span className="truncate">{a.name}</span>
                     </span>
                   ))}
+                </div>
+              )}
+              {/* El constructor pregunta con OPCIONES: sin esto, un aviso como
+                  «el pedido no entra en la IA local» era un callejón sin salida
+                  —decía qué hacer y no dejaba hacerlo— (#321). Lo destructivo
+                  usa el mismo mecanismo, con el marco en rojo. */}
+              {m.role === "assistant" && m.builderQuestion && (
+                <div
+                  className={cn(
+                    "mt-2 rounded-md border bg-background/60 p-2",
+                    m.builderQuestion.destructiva ? "border-destructive/50" : "border-primary/40"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex items-center gap-1.5 text-xs font-semibold",
+                      m.builderQuestion.destructiva ? "text-destructive" : "text-primary"
+                    )}
+                  >
+                    {m.builderQuestion.destructiva ? (
+                      <>
+                        <Trash2 className="h-3.5 w-3.5" /> Confirmá antes de que lo haga
+                      </>
+                    ) : (
+                      <>
+                        <HelpCircle className="h-3.5 w-3.5" /> El agente necesita una decisión
+                      </>
+                    )}
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
+                    {m.builderQuestion.texto}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {m.builderQuestion.opciones.map((o) => (
+                      <Button
+                        key={o.id}
+                        size="sm"
+                        variant={
+                          m.builderQuestion?.destructiva && o.id === "si"
+                            ? "destructive"
+                            : o.accion === "cancelar" || o.id === "no"
+                              ? "ghost"
+                              : "outline"
+                        }
+                        className="h-7 text-xs"
+                        disabled={busy}
+                        title={o.detalle}
+                        onClick={() => {
+                          // La opción que manda a la nube ABRE Ajustes: el modo no
+                          // se cambia por el humano (§P4, el default es local).
+                          if (o.accion === "abrir-ajustes-ia") router.push("/settings#motor");
+                          answerBuilderQuestion(m.id, o.id);
+                        }}
+                      >
+                        {o.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               )}
               {m.role === "assistant" && m.run?.pause && (
@@ -666,14 +731,20 @@ export function AgentChatPanel() {
                 submit();
               }
             }}
-            placeholder="Pregunta, conversa o pide que diseñe/analice…  (@ para incluir una vista · + para pedir un artefacto)"
+            placeholder={
+              perfil.escribe
+                ? `Pedile que construya: «${perfil.bienvenida.ejemplos[0]}»`
+                : "Pregunta, conversa o pide que diseñe/analice…  (@ para incluir una vista · + para pedir un artefacto)"
+            }
             className="min-h-[52px] max-h-36 w-full resize-none border-0 bg-transparent px-3 py-2.5 text-sm shadow-none outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
             disabled={busy}
           />
 
           {/* Barra inferior: pedir artefacto · adjuntar · enviar */}
           <div className="flex items-center gap-1 px-2 pb-2">
-            {/* «+»: elegir el artefacto en vez de esperar que la frase lo delate. */}
+            {/* «+»: elegir el artefacto en vez de esperar que la frase lo delate.
+                Sólo para el agente que redacta: el constructor cambia el modelo. */}
+            {perfil.artefactos && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <IconAction
@@ -706,6 +777,7 @@ export function AgentChatPanel() {
                 })}
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
 
             <IconAction
               variant="ghost"

@@ -199,6 +199,22 @@ export interface ChatMessage {
    * responder); al terminar se limpia y quedan `steps`/`producedArtifactIds`.
    */
   run?: AgentRunState;
+  /**
+   * Corrida del agente CONSTRUCTOR (014). Con `builderPending` presente, el
+   * mensaje es una acción destructiva esperando el sí/no del humano; el estado
+   * viaja acá para poder retomar la corrida donde quedó.
+   */
+  builderRun?: unknown;
+  /**
+   * Pregunta abierta del constructor: texto y opciones concretas. Mientras esté,
+   * la corrida está detenida esperando que el humano elija (#321).
+   */
+  builderQuestion?: {
+    texto: string;
+    opciones: { id: string; label: string; detalle?: string; accion?: string }[];
+    /** true cuando la pregunta confirma una acción destructiva. */
+    destructiva?: boolean;
+  };
 }
 
 /* -------------------------------------------------------------------------- */

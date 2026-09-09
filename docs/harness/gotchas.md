@@ -433,3 +433,24 @@ Mecanismo: `src/components/graph/designer/__tests__/shape-coverage.test.ts` lee 
          silueta que el registro ya no declara. Verificada en rojo agregando una silueta sin su
          `case`.
 
+
+### GOTCHA: el callback se queda con el estado que había al montar
+
+Issue: #308
+
+Síntoma: el selector del panel decía «Constructor» y el chat contestaba «Soy el agente Analista».
+         El estado se veía bien en pantalla; el que estaba viejo era el callback. No falla ningún
+         comando: se descubre usando la app, y sólo si mirás qué agente contestó.
+Causa:   `sendMessage` es un `useCallback` y su lista de dependencias no incluía `agentId` ni
+         `correrConstructor`. El closure quedó con el valor del primer render. La regla DEPSHOOK
+         ya existía para esta clase de error, pero vigilaba UN identificador (`notationId`) y sólo
+         bajo `src/components/`; además su regex de dependencias exigía que el callback cerrara
+         con `)`, así que ningún hook con cuerpo de bloque —la mayoría— entraba siquiera al
+         chequeo. Una regla que sólo mira el caso que ya pasó no frena el siguiente.
+Regla:   un `useMemo`/`useCallback` declara en sus dependencias TODO estado del componente que
+         lee. Si de verdad querés el valor viejo, va por `ref`, no por omisión.
+Mecanismo: regla DEPSHOOK de `scripts/repo-lint.mjs`, ahora por estado declarado (`useState`) en
+         el archivo y extendida a `src/components/`, `src/context/` y `src/hooks/`. La prueban
+         tres casos del self-test: el hook de una línea, el callback con cuerpo de bloque que
+         omite `agentId` —el de este incidente— y un contracaso que exige NO acusar por una
+         mención en un comentario ni por una clave de objeto homónima.
