@@ -17,12 +17,14 @@ import {
   summarizeRun,
   MAX_BUILDER_STEPS,
   MAX_BUILDER_FAILURES,
+  MAX_SIN_PROGRESO,
   askUser,
   answerUser,
   extendRun,
   preguntaDeContinuar,
   yaRespondida,
   yaEjecutada,
+  relecturaEsteril,
 } from "@/lib/ai/builder-run";
 
 const call = (tool: string, args: Record<string, unknown> = {}) => ({ tool, args });
@@ -336,5 +338,61 @@ describe("una acción ya hecha no se hace dos veces", () => {
     // Releer el estado dos veces es legítimo: el modelo cambió entre medio.
     const s = applyObservation(startRun(), call("get_app_state"), ok("proyecto Demo"));
     expect(yaEjecutada(s, call("get_app_state"))).toBe(false);
+  });
+});
+
+/**
+ * Leer no puede ser una forma de no terminar nunca (#326). Traza real: `get_view`
+ * de una vista que no existe, `get_app_state` que devuelve siempre lo mismo, y
+ * vuelta a empezar — doce pasos de presupuesto gastados en releer lo mismo. Las
+ * lecturas quedaron fuera del freno de idempotencia a propósito (releer es
+ * legítimo si el modelo cambió); lo que no es legítimo es releer y obtener el
+ * MISMO texto.
+ */
+describe("relecturas que no aportan nada", () => {
+  const estado = "Proyecto activo: Demo. 0 contenedores.";
+
+  it("una relectura con el mismo resultado se reconoce", () => {
+    const s = applyObservation(startRun(), call("get_app_state"), ok(estado));
+    expect(relecturaEsteril(s, call("get_app_state"))).toBe(estado);
+  });
+
+  it("si el resultado puede haber cambiado, no se bloquea", () => {
+    // Hubo una escritura después de la lectura: el estado del modelo cambió.
+    let s = applyObservation(startRun(), call("get_app_state"), ok(estado));
+    s = applyObservation(s, call("add_node", { name: "Orden" }), ok("agregado"));
+    expect(relecturaEsteril(s, call("get_app_state"))).toBeUndefined();
+  });
+
+  it("una lectura que nunca se hizo no es estéril", () => {
+    const s = applyObservation(startRun(), call("get_app_state"), ok(estado));
+    expect(relecturaEsteril(s, call("list_views"))).toBeUndefined();
+  });
+});
+
+describe("turnos sin progreso", () => {
+  it("una lectura no cuenta como progreso, una escritura sí", () => {
+    const leido = applyObservation(startRun(), call("get_app_state"), ok("estado"));
+    expect(leido.sinProgreso).toBe(1);
+    const escrito = applyObservation(leido, call("add_node", { name: "Orden" }), ok("agregado"));
+    expect(escrito.sinProgreso).toBe(0);
+  });
+
+  it("al tope de turnos sin progreso la corrida para", () => {
+    let s = startRun();
+    for (let i = 0; i < MAX_SIN_PROGRESO; i++) {
+      s = applyObservation(s, call("get_view", { name: `V${i}` }), ok("no existe"));
+    }
+    expect(runFinished(s)).toBe(true);
+  });
+
+  it("y lo dice sin fingir que se acabaron los pasos", () => {
+    let s = startRun();
+    for (let i = 0; i < MAX_SIN_PROGRESO; i++) {
+      s = applyObservation(s, call("get_view", { name: `V${i}` }), ok("no existe"));
+    }
+    const texto = summarizeRun(s);
+    expect(texto).toMatch(/sin construir|no llegu|leyendo/i);
+    expect(texto).not.toMatch(/tope de pasos/i);
   });
 });

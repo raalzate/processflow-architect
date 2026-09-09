@@ -40,6 +40,7 @@ import {
   resolveConfirmation,
   runFinished,
   startRun,
+  relecturaEsteril,
   summarizeRun,
   yaEjecutada,
   yaRespondida,
@@ -306,6 +307,18 @@ async function bucle(
       paso({ type: "observation", content: veredicto.motivo });
       state = applyObservation(state, parsed.call, { ok: false, texto: veredicto.motivo });
       continue;
+    }
+
+    if (veredicto.kind === "ejecutar") {
+      // Releer algo que no pudo cambiar no es orientarse: es girar. Se le devuelve
+      // el resultado que ya tenía, sin gastar el viaje al MCP (#326).
+      const anterior = relecturaEsteril(state, veredicto.call);
+      if (anterior !== undefined) {
+        const recordatorio = `Eso ya lo leíste y no cambió: ${anterior.slice(0, 300)}`;
+        paso({ type: "observation", content: recordatorio });
+        state = applyObservation(state, { tool: "(relectura)", args: {} }, { ok: false, texto: recordatorio });
+        continue;
+      }
     }
 
     if (veredicto.kind === "ejecutar" && yaEjecutada(state, veredicto.call)) {

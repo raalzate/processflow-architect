@@ -58,6 +58,11 @@ export interface BuilderRunState {
   restantes: number;
   /** Fallos SEGUIDOS del modelo (JSON roto, herramienta inventada, args inválidos). */
   fallos: number;
+  /**
+   * Turnos SEGUIDOS que no cambiaron el modelo. Leer está bien; leer y releer sin
+   * construir nunca es la otra forma de no terminar (#326).
+   */
+  sinProgreso: number;
   cancelada?: boolean;
   /** El humano dijo que no a algo: se recuerda para no fingir que se hizo. */
   rechazos: string[];
@@ -82,6 +87,13 @@ export const MAX_BUILDER_STEPS = 12;
  * que se recupere de un JSON roto; al quinto no se está recuperando.
  */
 export const MAX_BUILDER_FAILURES = 4;
+
+/**
+ * Tope de turnos SEGUIDOS sin tocar el modelo. Orientarse cuesta dos o tres
+ * lecturas; seis sin escribir una sola vez no es orientarse, es girar — y el tope
+ * de fallos no lo agarra, porque una lectura que sale bien limpia la racha.
+ */
+export const MAX_SIN_PROGRESO = 6;
 
 /** Herramientas que cambian el modelo (las demás sólo miran). */
 const ESCRIBEN = new Set([
@@ -133,7 +145,7 @@ function frase(call: BuilderCall): string {
 }
 
 export function startRun(): BuilderRunState {
-  return { pasos: [], cambios: [], restantes: MAX_BUILDER_STEPS, fallos: 0, rechazos: [], decisiones: [] };
+  return { pasos: [], cambios: [], restantes: MAX_BUILDER_STEPS, fallos: 0, sinProgreso: 0, rechazos: [], decisiones: [] };
 }
 
 /** Detiene la corrida con una pregunta concreta. No gasta paso: todavía no pasó nada. */
@@ -201,6 +213,19 @@ function huella(call: BuilderCall): string {
  * ¿Esta llamada ya se ejecutó BIEN en esta corrida? Un fallo previo no cuenta:
  * reintentar lo que no salió no es repetir trabajo (#325).
  */
+/**
+ * ¿Esta lectura ya se hizo y devolvería lo mismo? Devuelve el resultado anterior
+ * para recordárselo al modelo. Sólo cuenta si NO hubo escrituras después: si el
+ * modelo cambió entre medio, releer es legítimo (#326).
+ */
+export function relecturaEsteril(state: BuilderRunState, call: BuilderCall): string | undefined {
+  const h = huella(call);
+  const idx = state.pasos.findIndex((p) => p.ok && huella({ tool: p.tool, args: p.args }) === h);
+  if (idx < 0) return undefined;
+  const escribióDespués = state.pasos.slice(idx + 1).some((p) => p.ok && ESCRIBEN.has(p.tool));
+  return escribióDespués ? undefined : state.pasos[idx].texto;
+}
+
 export function yaEjecutada(state: BuilderRunState, call: BuilderCall): boolean {
   if (REPETIBLES.has(call.tool)) return false;
   const h = huella(call);
@@ -239,6 +264,9 @@ export function applyObservation(
     restantes: obs.ok ? Math.max(0, state.restantes - 1) : state.restantes,
     // Un acierto limpia la racha: el modelo se recuperó y merece el crédito entero.
     fallos: obs.ok ? 0 : state.fallos + 1,
+    // Progreso es CAMBIAR el modelo. Una lectura, por más que salga bien, deja
+    // la corrida donde estaba.
+    sinProgreso: obs.ok && ESCRIBEN.has(call.tool) ? 0 : state.sinProgreso + 1,
     pregunta: undefined,
   };
 }
@@ -292,7 +320,7 @@ export function resolveConfirmation(
  */
 export function extendRun(state: BuilderRunState, pasos = MAX_BUILDER_STEPS): BuilderRunState {
   if (state.cancelada) return state;
-  return { ...state, restantes: pasos, fallos: 0, pregunta: undefined };
+  return { ...state, restantes: pasos, fallos: 0, sinProgreso: 0, pregunta: undefined };
 }
 
 /** La pregunta del tope: qué se hizo hasta acá y las dos salidas. */
@@ -318,7 +346,12 @@ export function cancelRun(state: BuilderRunState): BuilderRunState {
 }
 
 export function runFinished(state: BuilderRunState): boolean {
-  return Boolean(state.cancelada) || state.restantes <= 0 || state.fallos >= MAX_BUILDER_FAILURES;
+  return (
+    Boolean(state.cancelada) ||
+    state.restantes <= 0 ||
+    state.fallos >= MAX_BUILDER_FAILURES ||
+    state.sinProgreso >= MAX_SIN_PROGRESO
+  );
 }
 
 /** El cierre: qué cambió, qué se rechazó y por qué terminó. */
@@ -336,6 +369,12 @@ export function summarizeRun(state: BuilderRunState): string {
   }
   if (state.cancelada) {
     partes.push("Corrida cancelada.");
+  } else if (state.sinProgreso >= MAX_SIN_PROGRESO) {
+    // Distinto de quedarse sin pasos: acá los pasos se fueron mirando el modelo.
+    const ultimo = [...state.pasos].reverse().find((p) => p.ok)?.tool ?? "";
+    partes.push(
+      `Me quedé leyendo sin construir: ${MAX_SIN_PROGRESO} turnos seguidos sin tocar el modelo (lo último, ${ultimo}). Probá con un pedido más concreto —qué vista y qué elementos— o pasá a IA remota para pedidos abiertos.`
+    );
   } else if (state.fallos >= MAX_BUILDER_FAILURES) {
     // Decir «se agotó el tope» acá sería mentir: lo que pasó es que el modelo no
     // logró emitir una acción válida, y eso se arregla de otra manera.

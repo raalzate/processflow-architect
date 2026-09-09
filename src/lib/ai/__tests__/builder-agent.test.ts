@@ -13,7 +13,7 @@ import {
   answerBuilderAgent,
   type BuilderDeps,
 } from "@/lib/ai/builder-agent";
-import { MAX_BUILDER_STEPS } from "@/lib/ai/builder-run";
+import { MAX_BUILDER_STEPS, MAX_SIN_PROGRESO } from "@/lib/ai/builder-run";
 import type { ToolSpec } from "@/lib/ai/builder-tools";
 
 const TOOLS: ToolSpec[] = [
@@ -130,7 +130,9 @@ describe("bucle del constructor", () => {
   });
 
   it("el tope de pasos corta una corrida que no termina nunca", async () => {
-    const { deps } = guion(['{"tool":"list_views","args":{}}']);
+    // Construyendo: releer lo mismo ya no llega tan lejos (#326), y el tope de
+    // pasos mide justamente trabajo.
+    const { deps } = guionQueConstruye();
     const r = await runBuilderAgent({ ...base, deps });
     expect(r.state.restantes).toBe(0);
     expect(r.reply).toMatch(/tope de pasos/i);
@@ -193,13 +195,14 @@ describe("presupuesto del motor local durante la corrida", () => {
   });
 
   it("las observaciones se recortan en vez de reventar el presupuesto", async () => {
+    let n = 0;
     const gordo = {
       listTools: async () => TOOLS,
       callTool: async () => ({ ok: true, texto: "x".repeat(20_000) }),
       generate: async (prompt: string) => {
         // El prompt NUNCA puede pasarse del presupuesto del motor local.
         expect(prompt.length).toBeLessThan(5018);
-        return '{"tool":"list_views","args":{}}';
+        return `{"tool":"add_node","args":{"name":"N${++n}","type":"Comando"}}`;
       },
     };
     const r = await runBuilderAgent({ ...base, maxTokens: 4096, deps: gordo });
@@ -437,5 +440,46 @@ describe("no repetir lo ya hecho (#325)", () => {
     ]);
     await runBuilderAgent({ ...base, deps });
     expect(llamadas).toHaveLength(2);
+  });
+});
+
+describe("no girar leyendo (#326)", () => {
+  it("una relectura idéntica no llega al MCP ni gasta paso", async () => {
+    const llamadas: string[] = [];
+    let turno = 0;
+    const deps = {
+      listTools: async () => TOOLS,
+      callTool: async (name: string) => {
+        llamadas.push(name);
+        return { ok: true, texto: "Proyecto Demo, 0 elementos." };
+      },
+      generate: async () => {
+        turno++;
+        if (turno <= 2) return '{"tool":"list_views","args":{}}';
+        return '{"final":"Ya vi el estado."}';
+      },
+    };
+    const r = await runBuilderAgent({ ...base, deps });
+    expect(llamadas).toEqual(["list_views"]); // la segunda no se ejecutó
+    expect(r.state.restantes).toBe(MAX_BUILDER_STEPS - 1);
+  });
+
+  it("el ciclo leer-fallar-leer termina, en vez de gastar los doce pasos", async () => {
+    const llamadas: string[] = [];
+    let turno = 0;
+    const deps = {
+      listTools: async () => TOOLS,
+      callTool: async (name: string, args: Record<string, unknown>) => {
+        llamadas.push(`${name}:${JSON.stringify(args)}`);
+        return { ok: true, texto: `resultado ${JSON.stringify(args)}` };
+      },
+      // El bucle real: pide una vista distinta cada vez y nunca construye.
+      generate: async () => `{"tool":"list_views","args":{"project":"P${++turno}"}}`,
+    };
+    const r = await runBuilderAgent({ ...base, deps });
+    expect(llamadas.length).toBeLessThanOrEqual(MAX_SIN_PROGRESO);
+    expect(r.reply).toMatch(/leyendo|sin construir/i);
+    // Y no miente diciendo que se acabaron los pasos de trabajo.
+    expect(r.reply).not.toMatch(/tope de pasos/i);
   });
 });
