@@ -391,3 +391,45 @@ Mecanismo: regla REGISTRO de `scripts/repo-lint.mjs` (config `registry`: `dirs`,
          `for (const k in REGISTRO)` no se marca: recorrer las claves propias enumerables de un
          literal es legítimo. Lo que decide está probado en `src/lib/__tests__/registro.test.ts`,
          que barre `toString`, `constructor`, `valueOf`, `hasOwnProperty` y `__proto__`.
+
+### GOTCHA: el force-push se lleva lo que el humano mergeó en la rama
+
+Issue: #306
+
+Síntoma: la rama remota tenía un merge del humano (un PR mergeado DENTRO de ella) y el agente,
+         que venía rebasando esa misma rama, iba a empujar su versión reescrita: el merge
+         desaparecía. Lo frenó `--force-with-lease` («stale info»), no el arnés.
+Causa:   el lease sólo pregunta «¿el remoto está donde yo creo?». Con la referencia de
+         seguimiento FRESCA responde que sí y deja pasar el push, aunque esa referencia tenga
+         commits que la rama local no tiene: ahí el force-push los borra. La regla de
+         `bash.deny` cubría el otro caso —`--force` sin lease— y por eso parecía cubierto.
+         El disparador es trabajar en paralelo sobre una rama con PR abierto: el humano mergea
+         algo mientras el agente reescribe historia, que es lo normal cuando hay PRs apilados.
+Regla:   antes de un force-push se mide qué se pierde. Si `origin/<rama>` tiene commits que la
+         rama local no, **no se reescribe: se mergea** (`git fetch && git merge origin/<rama>`).
+         Descartar esos commits exige confirmación explícita del humano, dicha en el mensaje.
+Mecanismo: `.claude/hooks/push-guard.mjs` (lo que decide, puro) + `bash-guard.mjs`, que bloquea
+         el push y lista los commits que se perderían. Mide contra la referencia de seguimiento,
+         sin red, así que los dos frenos se reparten el trabajo: referencia vieja → la frena el
+         servidor con el lease; referencia fresca → la frena el hook antes de tocar la red. Tres
+         casos en `scripts/harness-selftest.mjs` con un remoto de verdad en un temporal (borra
+         trabajo → bloquea; rama nueva → pasa; push normal → ni lo mira).
+
+### GOTCHA: una silueta nueva se dibuja como una caja y nadie se entera
+
+Issue: #306
+
+Síntoma: se agrega un tipo con una forma nueva, la app no falla, no hay error en consola, y el
+         nodo se dibuja como un rectángulo redondeado. Sólo se ve mirando la pantalla.
+Causa:   el `switch` de `NodeShape` termina en `default:` → caja redondeada. Es lo correcto para
+         un `tipo_elemento` desconocido que viene de un archivo viejo, pero convierte el olvido
+         de un `case` en un silencio: el registro declara la silueta, el lienzo no la dibuja, y
+         ninguna señal del gate se entera. Es la misma clase de hueco que el icono que caía a
+         `FilePlus` sin avisar.
+Regla:   agregar un `ShapeKind` es agregar su `case` en el mismo cambio. La única silueta sin
+         `case` es la que el `default` cubre a propósito (`rounded`), y está declarada como tal.
+Mecanismo: `src/components/graph/designer/__tests__/shape-coverage.test.ts` lee el `ShapeKind`
+         del registro y exige un `case` por silueta; también avisa si queda un `case` de una
+         silueta que el registro ya no declara. Verificada en rojo agregando una silueta sin su
+         `case`.
+
