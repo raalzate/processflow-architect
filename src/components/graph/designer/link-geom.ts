@@ -9,9 +9,11 @@
  * `DesignerCanvas` lo reexporta para no cambiar los imports de quien ya lo usa.
  */
 
+import { tableBoxSize } from "@/lib/mer/table-box";
 import {
   ALL_ELEMENTS,
   isLifelineContainer,
+  isTableType,
   sizeOfType,
   defaultRoutingFor,
   type NotationId,
@@ -97,6 +99,9 @@ export function nodeBox(node: DesignerNode, notation?: NotationId): { w: number;
       h: node.height || AGGREGATE_DEFAULT_HEIGHT,
     };
   }
+  // Caja de TABLA (MER físico): mide lo que miden sus filas. El tamaño de la
+  // notación no sirve acá — una tabla de veinte columnas no cabe en la ficha.
+  if (isTableType(node.tipo_elemento)) return tableBoxSize(node.nombre, node.columnas);
   return sizeOfType(node.tipo_elemento, notation);
 }
 

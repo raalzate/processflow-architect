@@ -241,7 +241,7 @@ los datos que lo enriquecen. Tipos: `texto` · `numero` · `booleano` · `url` �
 datos que quien va a construir busca a mano. Un documento de negocio muchas veces
 no los trae — entonces poné el valor explícito `pendiente` y decílo en el resumen
 al humano; nunca inventes una url. En el big picture DDD y en los BPMN no se
-exigen.
+exigen; tampoco en un MER.
 
 ```
 add_node { id: "c4-api-pagos", name: "API de Pagos", type: "Contenedor", container: "Pagos",

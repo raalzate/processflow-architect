@@ -39,9 +39,12 @@ import {
   upsertVarios,
   type ElementMetadata,
 } from "../element-metadata";
+import { normalizarColumnas, tableBoxSize, validarColumnas, type TableColumn } from "../mer/table-box";
 import {
   getNotation,
   hasRole,
+  isTableType,
+  NOTATION_IDS,
   isBlobContainer,
   isNotationContainer,
   nodeSizeForNotation,
@@ -152,6 +155,13 @@ export interface BuilderNode {
    * MCP; en las dos direcciones pasa por `sanitizeSpec`.
    */
   spec?: ElementSpec;
+  /**
+   * Columnas de la tabla (MER físico): de ellas salen los compartimentos
+   * «column»/«FK»/«index»/«PK» de la caja. Sólo tienen sentido en un tipo que se
+   * dibuja como caja de tabla; `validateDiagram` avisa si se declaran en otro.
+   * Ver `src/lib/mer/table-box.ts`.
+   */
+  columnas?: TableColumn[];
   /** Nombre del contenedor al que pertenece (los contenedores lo dejan vacío). */
   container?: string;
   estado_comparativo?: Estado;
@@ -476,7 +486,7 @@ export function reorderMessage(
 export function updateNode(
   model: DiagramModel,
   id: string,
-  patch: Partial<Pick<BuilderNode, "nombre" | "descripcion" | "source" | "tags_tecnologia" | "tipo_elemento" | "estado_comparativo">> & {
+  patch: Partial<Pick<BuilderNode, "nombre" | "descripcion" | "source" | "tags_tecnologia" | "tipo_elemento" | "estado_comparativo" | "columnas">> & {
     /** Metadatos a agregar o reemplazar POR CLAVE (no reemplaza la lista entera). */
     metadata?: ElementMetadata[];
     /** Claves de metadatos a borrar. */
@@ -749,7 +759,7 @@ export function traceabilityWarnings(model: DiagramModel): string[] {
 function allContainerTypes(): Set<string> {
   // Recolecta de todas las notaciones los tipos marcados como contenedor.
   const types = new Set<string>();
-  for (const id of ["ddd", "bpmn", "c4", "uml"] as NotationId[]) {
+  for (const id of NOTATION_IDS) {
     for (const e of getNotation(id).elements) {
       if (e.container) types.add(e.type);
     }
@@ -759,7 +769,7 @@ function allContainerTypes(): Set<string> {
 
 /** Primera notación cuyo catálogo incluye `type` (para pistas de validación). */
 function notationOwningType(type: string): NotationId | undefined {
-  for (const id of ["ddd", "bpmn", "c4", "uml"] as NotationId[]) {
+  for (const id of NOTATION_IDS) {
     if (getNotation(id).elements.some((e) => e.type === type)) return id;
   }
   return undefined;
@@ -869,6 +879,10 @@ export function validate(model: DiagramModel): ValidationResult {
   // debería ahorrarle. Lo que no se sabe todavía se declara "pendiente".
   for (const p of problemasDePropiedades(model)) errors.push(p.detalle);
 
+  // Columnas de las cajas de tabla (MER físico).
+  const { errors: colErrors, warnings: colWarnings } = tableWarnings(model);
+  errors.push(...colErrors);
+  warnings.push(...colWarnings);
   // Reglas de flujo propias de la notación (hoy BPMN: pools vs carriles).
   warnings.push(...bpmnFlowWarnings(model));
   // Trazabilidad contra la fuente (sostiene la revisión humana).
@@ -877,9 +891,59 @@ export function validate(model: DiagramModel): ValidationResult {
   return { ok: errors.length === 0, errors, warnings };
 }
 
+/**
+ * Reglas de las cajas de TABLA (MER físico). Una columna mal declarada es un
+ * ERROR —la caja no se puede dibujar y el modelo miente sobre la base—; que
+ * falte la clave primaria es un AVISO, porque hay tablas intermedias que se
+ * modelan sin ella antes de decidirla.
+ */
+function tableWarnings(model: DiagramModel): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  for (const n of model.nodes) {
+    const esTabla = isTableType(n.tipo_elemento);
+    if (!n.columnas?.length) {
+      if (esTabla)
+        warnings.push(
+          `"${n.nombre}" (${n.id}) es una tabla sin columnas: la caja se dibuja vacía. Declaralas con \`columns\`.`
+        );
+      continue;
+    }
+    if (!esTabla) {
+      warnings.push(
+        `"${n.nombre}" (${n.id}) declara columnas, pero el tipo "${n.tipo_elemento}" no se dibuja como caja de tabla: no se van a ver.`
+      );
+      continue;
+    }
+    for (const problema of validarColumnas(n.columnas))
+      errors.push(`"${n.nombre}" (${n.id}): ${problema}.`);
+    if (!n.columnas.some((c) => c.pk))
+      warnings.push(
+        `"${n.nombre}" (${n.id}) no declara clave primaria; marcá \`pk\` en la columna que identifica la fila.`
+      );
+  }
+  return { errors, warnings };
+}
+
 // =============================================================================
 // Layout automático (asigna geometría a lo que no la tenga)
 // =============================================================================
+
+/**
+ * Tamaño de la CELDA con la que reparte el layout. Es el de la notación, salvo
+ * que el diagrama tenga cajas de tabla: entonces manda la más grande. Una tabla
+ * de veinte columnas mide varias veces la ficha, y con la celda de la ficha las
+ * cajas se pisaban entre sí.
+ */
+function cellSize(model: DiagramModel): { w: number; h: number } {
+  const base = nodeSizeForNotation(model.meta.notation);
+  const tablas = model.nodes.filter((n) => isTableType(n.tipo_elemento));
+  if (!tablas.length) return base;
+  return tablas.reduce((max, n) => {
+    const s = tableBoxSize(n.nombre, n.columnas);
+    return { w: Math.max(max.w, s.w), h: Math.max(max.h, s.h) };
+  }, base);
+}
 
 // --- Origen del lienzo (el resto de la geometría sale del preset) ---
 const X0 = 60;
@@ -991,7 +1055,7 @@ function isMessageEdge(model: DiagramModel, e: BuilderEdge): boolean {
  * largo y no la suma de todos.
  */
 function layoutPorFlujo(model: DiagramModel, preset: LayoutPreset): DiagramModel {
-  const sz = nodeSizeForNotation(model.meta.notation);
+  const sz = cellSize(model);
   const { colX, laneHeight, laneWidthFor } = metrics(preset, sz);
   const containers = model.nodes.filter(isContainerNode);
   const nodes = model.nodes.filter((n) => !isContainerNode(n));
@@ -1094,7 +1158,7 @@ function layoutPorFlujo(model: DiagramModel, preset: LayoutPreset): DiagramModel
  * de qué depende— y dentro de cada capa se reparte en rejilla.
  */
 function layoutPorRol(model: DiagramModel, preset: LayoutPreset): DiagramModel {
-  const sz = nodeSizeForNotation(model.meta.notation);
+  const sz = cellSize(model);
   const { colX, laneWidthFor } = metrics(preset, sz);
   const containers = model.nodes.filter(isContainerNode);
   const nodes = model.nodes.filter((n) => !isContainerNode(n));
@@ -1198,7 +1262,7 @@ function layoutRadial(model: DiagramModel, preset: LayoutPreset): DiagramModel {
   const containers = model.nodes.filter(isContainerNode);
   const nodes = model.nodes.filter((n) => !isContainerNode(n));
   if (!nodes.length) return layoutPorRol(model, preset);
-  const sz = nodeSizeForNotation(model.meta.notation);
+  const sz = cellSize(model);
 
   // 1 · Adyacencia sin dirección (una relación acerca, apunte donde apunte).
   const vecinos = new Map<string, string[]>();
@@ -1367,7 +1431,7 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): DiagramMo
   if (allPlaced) return model;
 
   // El aire se escala al tamaño de nodo de la notación (ver `scalePreset`).
-  const preset = scalePreset(getPreset(opts.density), nodeSizeForNotation(model.meta.notation));
+  const preset = scalePreset(getPreset(opts.density), cellSize(model));
   const strategy = resolveStrategy(opts.strategy, model.meta.notation);
   const dispuesto =
     strategy === "flujo"
@@ -1397,6 +1461,7 @@ function toDomainNode(n: BuilderNode): Omit<GraphNode, "agregado"> {
     descripcion,
     metadata: n.metadata,
     spec: sanitizeSpec(n.spec),
+    columnas: normalizarColumnas(n.columnas),
     estado_comparativo: n.estado_comparativo ?? "nuevo",
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
@@ -1539,6 +1604,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
         container: agg.nombre_agregado,
         metadata: normalizarLista((n as any).metadata),
         spec: sanitizeSpec((n as any).spec),
+        columnas: normalizarColumnas((n as any).columnas),
       });
     }
     for (const a of agg.aristas || []) {
@@ -1560,6 +1626,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       container: "",
       metadata: normalizarLista((n as any).metadata),
       spec: sanitizeSpec((n as any).spec),
+      columnas: normalizarColumnas((n as any).columnas),
     });
   }
   const pushEdge = (a: any) =>

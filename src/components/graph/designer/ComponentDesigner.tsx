@@ -7,6 +7,8 @@ import {
   Edit,
   Settings2,
   Plus,
+  KeyRound,
+  Link,
   X,
   Workflow,
   Undo2,
@@ -42,6 +44,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
+import { ColumnsField } from "./ColumnsField";
+import {
+  agregarColumna,
+  MAX_COLUMNAS_POR_TABLA,
+  type TableColumn,
+} from "@/lib/mer/table-box";
 import { accion } from "@/lib/action-labels";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -88,6 +96,7 @@ import {
   type InspectorWidthId,
 } from "@/lib/panel-size";
 import {
+  EDGE_MARKER_SHAPES,
   EDGE_RELATIONS,
   EDGE_RELATION_LIST,
   relationStyle,
@@ -117,6 +126,7 @@ import {
 } from "@/lib/ai/tasks";
 import {
   getNotation,
+  isTableType,
   sizeOfType,
   DEFAULT_NOTATION_ID,
   type NotationId,
@@ -1205,6 +1215,17 @@ const EditNodeDialog: React.FC<{
               onChange={(lista) => setDraft((d) => (d ? { ...d, metadata: lista } : d))}
             />
           </div>
+
+          {/* Columnas: sólo en los tipos que se dibujan como caja de tabla (MER
+              físico). En cualquier otro tipo no habría dónde mostrarlas. */}
+          {isTableType(draft.tipo_elemento) && (
+            <div className="mt-4">
+              <ColumnsField
+                value={draft.columnas}
+                onChange={(lista) => setDraft((d) => (d ? { ...d, columnas: lista } : d))}
+              />
+            </div>
+          )}
 
           {/* Vista embebida (subproceso): el nodo apunta a otra vista para dar
               profundidad, como un "call activity" de BPMN. Full-width bajo la grilla. */}
@@ -3303,6 +3324,30 @@ export const ComponentDesigner: React.FC<{
     [updateLinks]
   );
 
+  /**
+   * Añade una columna a una caja de tabla desde el LIENZO. Existe porque abrir
+   * la ficha para cada columna rompe el ritmo de modelar: se dibuja la tabla y
+   * se le van sumando columnas ahí mismo. El nombre libre lo decide
+   * `nuevaColumna` (dos columnas con el mismo nombre no son dos columnas).
+   */
+  const addColumn = useCallback(
+    (nodeId: string, base: Partial<TableColumn> = {}) => {
+      updateNodes((prev) => {
+        const n = prev.get(nodeId);
+        if (!n || !isTableType(n.tipo_elemento)) return prev;
+        if ((n.columnas?.length ?? 0) >= MAX_COLUMNAS_POR_TABLA) {
+          toast({
+            title: `Máximo ${MAX_COLUMNAS_POR_TABLA} columnas`,
+            description: `"${n.nombre}" ya llegó al tope.`,
+          });
+          return prev;
+        }
+        return new Map(prev).set(nodeId, { ...n, columnas: agregarColumna(n.columnas, base) });
+      });
+    },
+    [updateNodes, toast]
+  );
+
   const startMessageReorder = useCallback(
     (e: React.MouseEvent, linkId: string) => {
       const link = linksRef.current.get(linkId);
@@ -3831,6 +3876,32 @@ export const ComponentDesigner: React.FC<{
         onSelect: () => addSelfCall(n.id),
       });
     }
+    // Caja de tabla (MER físico): sumar columnas es EL gesto de modelar datos, y
+    // abrir la ficha para cada una corta el ritmo. La ficha sigue estando para
+    // renombrar, tipar y marcar claves.
+    if (!varios && n && isTableType(n.tipo_elemento)) {
+      items.push(
+        {
+          id: "add-column",
+          label: "Añadir columna",
+          icon: Plus,
+          onSelect: () => addColumn(n.id),
+        },
+        {
+          id: "add-column-pk",
+          label: "Añadir columna clave (PK)",
+          icon: KeyRound,
+          onSelect: () => addColumn(n.id, { nombre: "id", tipo: "integer", pk: true }),
+        },
+        {
+          id: "add-column-fk",
+          label: "Añadir clave foránea (FK)",
+          icon: Link,
+          onSelect: () =>
+            addColumn(n.id, { nombre: "ref_id", tipo: "integer", fk: true, indice: true }),
+        }
+      );
+    }
     if (!varios && (n || l)) {
       items.push({
         id: "edit",
@@ -4237,37 +4308,57 @@ export const ComponentDesigner: React.FC<{
               <marker id="arrow-start-selected" viewBox="0 -5 10 10" refX="10" refY="0" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                 <path d="M0,-5L10,0L0,5" className="fill-blue-600" />
               </marker>
-              {/* Marcas de RELACIÓN (UML): la punta ES el significado.
-                  · triángulo HUECO al destino = herencia / realización
-                  · rombo RELLENO en el origen = composición
-                  · rombo HUECO en el origen  = agregación
+              {/* Marcas de RELACIÓN: la punta ES el significado.
+                  · triángulo HUECO al destino = herencia / realización (UML)
+                  · rombo RELLENO/HUECO en el origen = composición / agregación
+                  · raya y pata de gallo = cardinalidad del MER (1, N, 0..1, 0..N)
+                  La geometría la declara `EDGE_MARKER_SHAPES` (dato puro y con
+                  pruebas): acá sólo se traduce a `<marker>`. Cada marca sale en
+                  cuatro variantes —destino/origen × normal/seleccionada—: la de
+                  origen se orienta con `auto-start-reverse` y la seleccionada
+                  cambia de color.
                   El relleno de los huecos es el color del lienzo (no
                   `transparent`): así la línea no se ve cruzando la figura. */}
-              {(["", "-selected"] as const).map((sel) => (
-                <React.Fragment key={`uml${sel}`}>
-                  <marker id={`uml-triangle${sel}`} viewBox="0 -6 12 12" refX="12" refY="0" markerWidth="7" markerHeight="7" orient="auto">
-                    <path
-                      d="M0,-6L12,0L0,6z"
-                      className={cn("fill-canvas", sel ? "stroke-blue-600" : "stroke-gray-400 dark:stroke-zinc-500")}
-                      strokeWidth={1.5}
-                    />
-                  </marker>
-                  <marker id={`uml-diamond${sel}`} viewBox="0 -5 16 10" refX="0" refY="0" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-                    <path
-                      d="M0,0L8,-5L16,0L8,5z"
-                      className={cn(sel ? "fill-blue-600 stroke-blue-600" : "fill-gray-400 stroke-gray-400 dark:fill-zinc-500 dark:stroke-zinc-500")}
-                      strokeWidth={1}
-                    />
-                  </marker>
-                  <marker id={`uml-diamond-open${sel}`} viewBox="0 -5 16 10" refX="0" refY="0" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-                    <path
-                      d="M0,0L8,-5L16,0L8,5z"
-                      className={cn("fill-canvas", sel ? "stroke-blue-600" : "stroke-gray-400 dark:stroke-zinc-500")}
-                      strokeWidth={1.5}
-                    />
-                  </marker>
-                </React.Fragment>
-              ))}
+              {(["", "-selected"] as const).map((sel) =>
+                (["end", "start"] as const).map((punta) =>
+                  Object.entries(EDGE_MARKER_SHAPES).map(([nombre, m]) => {
+                    const trazo = sel ? "stroke-blue-600" : "stroke-gray-400 dark:stroke-zinc-500";
+                    const relleno =
+                      m.fill === "solid"
+                        ? sel
+                          ? "fill-blue-600"
+                          : "fill-gray-400 dark:fill-zinc-500"
+                        : m.fill === "hollow"
+                          ? "fill-canvas"
+                          : "fill-none";
+                    return (
+                      <marker
+                        key={`mark-${nombre}-${punta}${sel}`}
+                        id={`mark-${nombre}-${punta}${sel}`}
+                        viewBox={m.viewBox}
+                        refX={punta === "start" ? m.refXStart : m.refX}
+                        refY="0"
+                        markerWidth={m.size}
+                        markerHeight={m.size}
+                        orient={punta === "start" ? "auto-start-reverse" : "auto"}
+                      >
+                        {m.circle && (
+                          <circle
+                            cx={m.circle.cx}
+                            cy={0}
+                            r={m.circle.r}
+                            className={cn("fill-canvas", trazo)}
+                            strokeWidth={m.strokeWidth}
+                          />
+                        )}
+                        {m.paths.map((d) => (
+                          <path key={d} d={d} className={cn(relleno, trazo)} strokeWidth={m.strokeWidth} />
+                        ))}
+                      </marker>
+                    );
+                  })
+                )
+              )}
             </defs>
 
             {/* Fondo con cuadrícula. pointerEvents none → los clics en vacío llegan

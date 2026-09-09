@@ -6,6 +6,7 @@ import type { FragmentOp, FragmentPart } from "./sequence/fragments";
 import type { ElementMetadata } from "./element-metadata";
 import type { ElementSpec } from "./element-spec";
 import type { SourceDoc } from "./source-docs";
+import type { TableColumn } from "./mer/table-box";
 import type { NotationId } from "./notations";
 import { z } from "zod";
 
@@ -85,6 +86,14 @@ export interface GraphNode extends SimulationNodeDatum {
    * proyectos existentes no cambian de forma al abrir la ficha.
    */
   spec?: ElementSpec;
+  /**
+   * Columnas de la tabla, cuando el tipo se dibuja como caja de tabla (MER
+   * físico: `Tabla Relacional`). Campo TIPADO y no metadatos libres: de acá
+   * salen la clave primaria, las foráneas y los índices que la caja muestra en
+   * sus compartimentos, y un `pk` escrito como texto no se puede derivar. Ver
+   * `src/lib/mer/table-box.ts`.
+   */
+  columnas?: TableColumn[];
   /**
    * Id de la vista embebida (subproceso). Si está presente, el nodo actúa como
    * un "call activity" BPMN: al abrirlo se entra a esa vista para dar profundidad.

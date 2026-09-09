@@ -22,6 +22,7 @@ import { type SequenceMessageKind } from "@/lib/sequence/messages";
 import { type FragmentOp, type FragmentPart } from "@/lib/sequence/fragments";
 import { normalizarLista, type ElementMetadata } from "@/lib/element-metadata";
 import { sanitizeSpec, type ElementSpec } from "@/lib/element-spec";
+import { normalizarColumnas, type TableColumn } from "@/lib/mer/table-box";
 import {
   isNotationContainer,
   sizeOfType,
@@ -60,6 +61,11 @@ export interface DesignerNode {
    * Ver `src/lib/element-spec.ts`.
    */
   spec?: ElementSpec;
+  /**
+   * Columnas de la tabla (MER físico). De ellas salen los compartimentos
+   * «column»/«FK»/«index»/«PK» de la caja y su alto — ver `mer/table-box.ts`.
+   */
+  columnas?: TableColumn[];
   /** Id de la vista embebida (subproceso): abrirlo entra a esa vista. */
   viewRef?: string;
   /**
@@ -270,6 +276,9 @@ function toDomainNode(n: DesignerNode): Omit<GraphNode, "agregado"> {
     borderColor: n.borderColor,
     metadata: n.metadata,
     spec: sanitizeSpec(n.spec),
+    // Sin columnas no viaja el campo: un proyecto que no es un MER no cambia de
+    // forma al pasar por el lienzo.
+    columnas: n.columnas?.length ? n.columnas : undefined,
     viewRef: n.viewRef,
     x: n.x,
     y: n.y,
@@ -389,6 +398,9 @@ function hydrateNode(
     borderColor: n.borderColor,
     metadata: normalizarLista(n.metadata),
     spec: sanitizeSpec(n.spec),
+    // Lo que viene del archivo o de un agente se normaliza: nombres recortados,
+    // repetidas fuera y el tope respetado (`normalizarColumnas`).
+    columnas: normalizarColumnas((n as { columnas?: unknown }).columnas),
     viewRef: n.viewRef,
     x,
     y,
