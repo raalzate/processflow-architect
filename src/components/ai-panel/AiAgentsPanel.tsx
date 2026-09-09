@@ -34,48 +34,16 @@ export function AiAgentsPanel() {
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Bot className="w-5 h-5" /> Agentes de IA
-          {/* Qué agente atiende el chat. El que escribe se distingue a simple
-              vista: leer y modificar el modelo no son el mismo permiso. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                className={cn(
-                  "h-6 gap-1 px-2 text-xs font-medium",
-                  perfil.escribe && "border-warning/60 text-warning"
-                )}
-                title={perfil.descripcion}
-              >
-                {perfil.escribe ? <Hammer className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                {perfil.nombre}
-                <ChevronDown className="h-3 w-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-72">
-              <DropdownMenuLabel className="text-xs">Agente del chat</DropdownMenuLabel>
-              {AGENT_PROFILES.map((p) => (
-                <DropdownMenuItem
-                  key={p.id}
-                  onClick={() => setAgentId(p.id)}
-                  className={cn("flex-col items-start gap-0.5", p.id === agentId && "bg-accent")}
-                >
-                  <span className="flex items-center gap-1.5 text-xs font-medium">
-                    {p.escribe ? <Hammer className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                    {p.nombre}
-                  </span>
-                  <span className="text-2xs text-muted-foreground">{p.descripcion}</span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <AiProvenanceBadge />
-        </div>
-        <div className="flex items-center">
+      {/* Dos filas a propósito: en el ancho del sidebar, título + selector +
+          procedencia + dos botones en una sola línea partía «Agentes de IA» y
+          «IA local» en dos renglones cada uno. Arriba, qué panel es y sus
+          acciones; abajo, con QUÉ agente y en qué motor se va a trabajar. */}
+      <SidebarGroupLabel className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-2">
+          <Bot className="w-5 h-5 shrink-0" />
+          <span className="truncate">Agentes de IA</span>
+        </span>
+        <div className="flex shrink-0 items-center">
           <IconAction
             variant="ghost"
             className="h-7 w-7"
@@ -99,6 +67,51 @@ export function AiAgentsPanel() {
           />
         </div>
       </SidebarGroupLabel>
+
+      <div className="flex min-w-0 items-center gap-1.5 px-2 pb-1">
+        {/* Qué agente atiende el chat. El que escribe se distingue a simple
+            vista: leer y modificar el modelo no son el mismo permiso. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              className={cn(
+                "h-6 min-w-0 gap-1 px-2 text-xs font-medium",
+                perfil.escribe && "border-warning/60 text-warning"
+              )}
+              title={perfil.descripcion}
+            >
+              {perfil.escribe ? (
+                <Hammer className="h-3 w-3 shrink-0" />
+              ) : (
+                <Eye className="h-3 w-3 shrink-0" />
+              )}
+              <span className="truncate">{perfil.nombre}</span>
+              <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-72">
+            <DropdownMenuLabel className="text-xs">Agente del chat</DropdownMenuLabel>
+            {AGENT_PROFILES.map((p) => (
+              <DropdownMenuItem
+                key={p.id}
+                onClick={() => setAgentId(p.id)}
+                className={cn("flex-col items-start gap-0.5", p.id === agentId && "bg-accent")}
+              >
+                <span className="flex items-center gap-1.5 text-xs font-medium">
+                  {p.escribe ? <Hammer className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                  {p.nombre}
+                </span>
+                <span className="text-2xs text-muted-foreground">{p.descripcion}</span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <AiProvenanceBadge className="shrink-0 whitespace-nowrap" />
+      </div>
+
       <div className="w-full p-1">
         <AgentChatPanel />
         <ArtifactsPanel />
