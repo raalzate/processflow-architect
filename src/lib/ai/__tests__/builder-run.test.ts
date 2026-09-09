@@ -22,6 +22,7 @@ import {
   extendRun,
   preguntaDeContinuar,
   yaRespondida,
+  yaEjecutada,
 } from "@/lib/ai/builder-run";
 
 const call = (tool: string, args: Record<string, unknown> = {}) => ({ tool, args });
@@ -294,5 +295,46 @@ describe("las decisiones del humano se recuerdan", () => {
   it("la confirmación de un destructivo no ensucia el registro de decisiones", () => {
     const s = pendingConfirmation(startRun(), call("delete_view", { name: "Pagos" }), "Se elimina Pagos.");
     expect(resolveConfirmation(s, true).state.decisiones ?? []).toEqual([]);
+  });
+});
+
+/**
+ * Idempotencia (#325). El motor local no recuerda lo que hizo: las observaciones
+ * viejas se recortan y con ellas se va la evidencia de que el diagrama ya existía.
+ * En una corrida real el mismo diagrama quedó creado cinco veces. Que el agente
+ * olvide es esperable; que la app le crea y ejecute de nuevo, no.
+ */
+describe("una acción ya hecha no se hace dos veces", () => {
+  it("reconoce la llamada idéntica ya ejecutada con éxito", () => {
+    const s = applyObservation(startRun(), call("create_diagram", { name: "FinOps" }), ok("creado"));
+    expect(yaEjecutada(s, call("create_diagram", { name: "FinOps" }))).toBe(true);
+  });
+
+  it("el orden de los argumentos no la disfraza de distinta", () => {
+    const s = applyObservation(
+      startRun(),
+      call("add_node", { name: "Orden", type: "Comando" }),
+      ok("agregado")
+    );
+    expect(yaEjecutada(s, call("add_node", { type: "Comando", name: "Orden" }))).toBe(true);
+  });
+
+  it("una llamada que FALLÓ se puede reintentar: eso no es repetir trabajo", () => {
+    const s = applyObservation(startRun(), call("add_node", { name: "Orden" }), {
+      ok: false,
+      texto: "falta type",
+    });
+    expect(yaEjecutada(s, call("add_node", { name: "Orden" }))).toBe(false);
+  });
+
+  it("no bloquea de más: otro elemento con la misma herramienta pasa", () => {
+    const s = applyObservation(startRun(), call("add_node", { name: "Orden" }), ok("agregado"));
+    expect(yaEjecutada(s, call("add_node", { name: "Pago" }))).toBe(false);
+  });
+
+  it("tampoco bloquea las herramientas que se repiten a propósito", () => {
+    // Releer el estado dos veces es legítimo: el modelo cambió entre medio.
+    const s = applyObservation(startRun(), call("get_app_state"), ok("proyecto Demo"));
+    expect(yaEjecutada(s, call("get_app_state"))).toBe(false);
   });
 });

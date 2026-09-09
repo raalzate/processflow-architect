@@ -41,6 +41,7 @@ import {
   runFinished,
   startRun,
   summarizeRun,
+  yaEjecutada,
   yaRespondida,
   type BuilderOption,
   type BuilderRunState,
@@ -131,9 +132,16 @@ export function buildBuilderPrompt(
         .map((d) => `- ${d.pregunta} → ${d.eleccion}`)
         .join("\n")}`
     : "";
+  // Lo YA HECHO tampoco se recorta: sin esto el modelo local vuelve a crear el
+  // diagrama que acaba de crear, porque su evidencia era una observación vieja
+  // que el recorte se llevó (#325).
+  const hecho = state.cambios.length
+    ? `YA HECHO en esta corrida (no lo repitas):\n${state.cambios.map((c) => `- ${c}`).join("\n")}`
+    : "";
   return [
     `PEDIDO DEL USUARIO:\n${input.message}`,
     decididas,
+    hecho,
     input.notation ? `NOTACIÓN DE LA VISTA EN CURSO: ${input.notation}` : "",
     `HERRAMIENTAS DISPONIBLES:\n${menu}`,
     observado ? `LO QUE YA HICISTE:\n${observado}` : "Todavía no hiciste nada.",
@@ -297,6 +305,15 @@ async function bucle(
     if (veredicto.kind === "rechazar") {
       paso({ type: "observation", content: veredicto.motivo });
       state = applyObservation(state, parsed.call, { ok: false, texto: veredicto.motivo });
+      continue;
+    }
+
+    if (veredicto.kind === "ejecutar" && yaEjecutada(state, veredicto.call)) {
+      // El modelo olvidó que ya lo hizo: que olvide es esperable, que la app le
+      // crea y lo ejecute de nuevo, no (#325).
+      const recordatorio = `Eso ya lo hiciste en esta corrida: ${veredicto.call.tool}. Seguí con lo que falta.`;
+      paso({ type: "observation", content: recordatorio });
+      state = applyObservation(state, { tool: "(repetida)", args: {} }, { ok: false, texto: recordatorio });
       continue;
     }
 

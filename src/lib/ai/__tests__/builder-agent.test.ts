@@ -51,6 +51,27 @@ function guion(turnos: string[]): { deps: Partial<BuilderDeps>; llamadas: string
 
 const base = { message: "construí algo", vistas: VISTAS, allow: ALLOW, mode: "local" as const };
 
+/**
+ * Modelo que construye SIN repetirse: un elemento nuevo por turno. Hace falta
+ * desde #325 —una llamada idéntica ya no se ejecuta—, así que agotar el tope de
+ * pasos exige trabajo de verdad, que es justamente lo que el tope mide.
+ */
+function guionQueConstruye(): { deps: Partial<BuilderDeps>; llamadas: string[] } {
+  const llamadas: string[] = [];
+  let n = 0;
+  return {
+    llamadas,
+    deps: {
+      listTools: async () => TOOLS,
+      callTool: async (name, args) => {
+        llamadas.push(`${name}:${JSON.stringify(args)}`);
+        return { ok: true, texto: "hecho" };
+      },
+      generate: async () => `{"tool":"add_node","args":{"name":"Orden ${++n}","type":"Comando"}}`,
+    },
+  };
+}
+
 describe("bucle del constructor", () => {
   it("ejecuta la herramienta que pide el modelo y cierra con el resumen", async () => {
     const { deps, llamadas } = guion([
@@ -271,7 +292,7 @@ describe("preguntas con opciones", () => {
 
 describe("seguir cuando se agota el tope (#322)", () => {
   it("al agotarse pregunta en vez de cerrar, mostrando lo hecho", async () => {
-    const { deps } = guion(['{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}']);
+    const { deps } = guionQueConstruye();
     const r = await runBuilderAgent({ ...base, deps });
     expect(r.state.restantes).toBe(0);
     expect(r.state.pregunta?.opciones.map((o) => o.id)).toEqual(["seguir", "terminar"]);
@@ -279,7 +300,7 @@ describe("seguir cuando se agota el tope (#322)", () => {
   });
 
   it("«seguir» continúa la MISMA corrida, con sus cambios y su traza", async () => {
-    const { deps } = guion(['{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}']);
+    const { deps } = guionQueConstruye();
     const primera = await runBuilderAgent({ ...base, deps });
     const cambiosAntes = primera.state.cambios.length;
 
@@ -291,7 +312,7 @@ describe("seguir cuando se agota el tope (#322)", () => {
   });
 
   it("«terminar» cierra con el resumen y no vuelve a preguntar", async () => {
-    const { deps } = guion(['{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}']);
+    const { deps } = guionQueConstruye();
     const primera = await runBuilderAgent({ ...base, deps });
     const r = await answerBuilderAgent({ ...base, deps }, primera.state, "terminar");
     expect(r.state.cancelada).toBe(true);
@@ -374,5 +395,47 @@ describe("no repetir una pregunta ya respondida (#324)", () => {
     const otra = guion(['{"pregunta":"¿En qué vista lo pongo?","opciones":["Pagos","Checkout"]}']);
     const r = await answerBuilderAgent({ ...base, deps: otra.deps }, primera.state, "op1");
     expect(r.state.pregunta?.texto).toMatch(/vista/i);
+  });
+});
+
+describe("no repetir lo ya hecho (#325)", () => {
+  it("una llamada idéntica no llega al MCP: se le recuerda al modelo", async () => {
+    const { deps, llamadas } = guion([
+      '{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}',
+      '{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}',
+      '{"final":"Listo."}',
+    ]);
+    const r = await runBuilderAgent({ ...base, deps });
+    expect(llamadas).toEqual(['add_node:{"name":"Orden","type":"Comando"}']);
+    expect(r.state.pasos.some((p) => !p.ok && /ya .*hiciste|ya lo/i.test(p.texto))).toBe(true);
+    // Y no se anota dos veces el mismo cambio en el resumen.
+    expect(r.state.cambios.filter((c) => c.includes("Orden"))).toHaveLength(1);
+  });
+
+  it("lo hecho viaja en el prompt: el modelo no depende de acordarse", async () => {
+    const prompts: string[] = [];
+    const deps = {
+      listTools: async () => TOOLS,
+      callTool: async () => ({ ok: true, texto: "hecho" }),
+      generate: async (p: string) => {
+        prompts.push(p);
+        return prompts.length === 1
+          ? '{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}'
+          : '{"final":"Listo."}';
+      },
+    };
+    await runBuilderAgent({ ...base, deps });
+    expect(prompts[1]).toMatch(/YA HECHO/);
+    expect(prompts[1]).toMatch(/Orden/);
+  });
+
+  it("construir otra cosa con la misma herramienta sigue funcionando", async () => {
+    const { deps, llamadas } = guion([
+      '{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}',
+      '{"tool":"add_node","args":{"name":"Pago","type":"Comando"}}',
+      '{"final":"Listo."}',
+    ]);
+    await runBuilderAgent({ ...base, deps });
+    expect(llamadas).toHaveLength(2);
   });
 });

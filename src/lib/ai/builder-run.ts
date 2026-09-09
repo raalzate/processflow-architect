@@ -171,6 +171,42 @@ export function answerUser(
   };
 }
 
+/**
+ * Herramientas que se pueden repetir a propósito: leer el estado dos veces es
+ * legítimo —el modelo cambió entre medio— y reacomodar también. La idempotencia
+ * es para lo que CREA.
+ */
+const REPETIBLES = new Set([
+  "get_app_state",
+  "list_views",
+  "get_view",
+  "get_diagram",
+  "list_notations",
+  "describe_notation",
+  "use_diagram",
+  "validate_diagram",
+  "relayout_diagram",
+]);
+
+/** Huella de una llamada: herramienta + argumentos, sin que el orden la disfrace. */
+function huella(call: BuilderCall): string {
+  const args = Object.keys(call.args)
+    .sort()
+    .map((k) => `${k}=${JSON.stringify(call.args[k])}`)
+    .join("|");
+  return `${call.tool}(${args})`;
+}
+
+/**
+ * ¿Esta llamada ya se ejecutó BIEN en esta corrida? Un fallo previo no cuenta:
+ * reintentar lo que no salió no es repetir trabajo (#325).
+ */
+export function yaEjecutada(state: BuilderRunState, call: BuilderCall): boolean {
+  if (REPETIBLES.has(call.tool)) return false;
+  const h = huella(call);
+  return state.pasos.some((p) => p.ok && huella({ tool: p.tool, args: p.args }) === h);
+}
+
 /** Forma comparable de una pregunta: el modelo la reescribe con otro formato. */
 const claveDePregunta = (texto: string) =>
   texto
