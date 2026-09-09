@@ -26,11 +26,35 @@ export interface BuilderStep {
   texto: string;
 }
 
+/**
+ * Una opción de una pregunta al humano. `accion` es lo que la app hace ADEMÁS de
+ * devolver la elección al agente: hoy, abrir Ajustes o cortar la corrida.
+ */
+export interface BuilderOption {
+  id: string;
+  label: string;
+  /** Pista para la UI. Sin esto, elegir sólo devuelve el id al agente. */
+  accion?: "abrir-ajustes-ia" | "cancelar";
+  /** Texto de apoyo bajo la opción (por qué elegirla). */
+  detalle?: string;
+}
+
+export interface BuilderQuestion {
+  texto: string;
+  opciones: BuilderOption[];
+  /**
+   * Presente cuando la pregunta es la confirmación de una acción destructiva: el
+   * «sí» ejecuta esta llamada. Confirmar dejó de ser un mecanismo aparte (#321).
+   */
+  call?: BuilderCall;
+}
+
 export interface BuilderRunState {
   pasos: BuilderStep[];
   /** Cambios REALES aplicados al modelo, en palabras, para el resumen final. */
   cambios: string[];
-  pendiente?: { call: BuilderCall; alcance: string };
+  /** Pregunta abierta: mientras esté, la corrida está detenida esperando al humano. */
+  pregunta?: BuilderQuestion;
   restantes: number;
   cancelada?: boolean;
   /** El humano dijo que no a algo: se recuerda para no fingir que se hizo. */
@@ -96,6 +120,28 @@ export function startRun(): BuilderRunState {
   return { pasos: [], cambios: [], restantes: MAX_BUILDER_STEPS, rechazos: [] };
 }
 
+/** Detiene la corrida con una pregunta concreta. No gasta paso: todavía no pasó nada. */
+export function askUser(state: BuilderRunState, pregunta: BuilderQuestion): BuilderRunState {
+  return { ...state, pregunta };
+}
+
+/**
+ * La elección del humano. Una opción que no está en la lista NO se acepta: si el
+ * agente pudiera inventar respuestas por él, la pausa no serviría de nada.
+ */
+export function answerUser(
+  state: BuilderRunState,
+  opcionId: string
+): { state: BuilderRunState; eleccion?: BuilderOption } {
+  const pregunta = state.pregunta;
+  const eleccion = pregunta?.opciones.find((o) => o.id === opcionId);
+  if (!pregunta || !eleccion) return { state };
+  if (eleccion.accion === "cancelar") {
+    return { state: { ...state, pregunta: undefined, cancelada: true }, eleccion };
+  }
+  return { state: { ...state, pregunta: undefined }, eleccion };
+}
+
 export function applyObservation(
   state: BuilderRunState,
   call: BuilderCall,
@@ -109,39 +155,52 @@ export function applyObservation(
     // prometerle al humano un cambio que el MCP rechazó.
     cambios: obs.ok && ESCRIBEN.has(call.tool) ? [...state.cambios, frase(call)] : state.cambios,
     restantes: Math.max(0, state.restantes - 1),
-    pendiente: undefined,
+    pregunta: undefined,
   };
 }
 
-/** Deja la llamada esperando el sí del humano. No gasta paso: todavía no pasó nada. */
+/**
+ * Confirmar un destructivo es preguntar con dos opciones. Se mantiene la función
+ * por lo que significa —esto NO es una pregunta cualquiera— pero por dentro es
+ * el mismo mecanismo que el resto de las pausas (#321).
+ */
 export function pendingConfirmation(
   state: BuilderRunState,
   call: BuilderCall,
   alcance: string
 ): BuilderRunState {
-  return { ...state, pendiente: { call, alcance } };
+  return askUser(state, {
+    texto: `${alcance}\n\n¿Lo hago?`,
+    opciones: [
+      { id: "si", label: "Sí, hacelo" },
+      { id: "no", label: "No" },
+    ],
+    call,
+  });
 }
 
 export function resolveConfirmation(
   state: BuilderRunState,
   aceptada: boolean
 ): { state: BuilderRunState; ejecutar?: BuilderCall } {
-  const pendiente = state.pendiente;
-  if (!pendiente) return { state };
+  const pregunta = state.pregunta;
+  const call = pregunta?.call;
+  if (!pregunta || !call) return { state };
   if (aceptada) {
-    return { state: { ...state, pendiente: undefined }, ejecutar: pendiente.call };
+    return { state: { ...state, pregunta: undefined }, ejecutar: call };
   }
   return {
     state: {
       ...state,
-      pendiente: undefined,
-      rechazos: [...state.rechazos, pendiente.alcance],
+      pregunta: undefined,
+      // El alcance es la primera línea del texto: es lo que el humano leyó.
+      rechazos: [...state.rechazos, pregunta.texto.split("\n")[0]],
     },
   };
 }
 
 export function cancelRun(state: BuilderRunState): BuilderRunState {
-  return { ...state, cancelada: true, pendiente: undefined };
+  return { ...state, cancelada: true, pregunta: undefined };
 }
 
 export function runFinished(state: BuilderRunState): boolean {

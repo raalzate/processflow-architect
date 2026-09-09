@@ -205,7 +205,16 @@ export interface ChatMessage {
    * viaja acá para poder retomar la corrida donde quedó.
    */
   builderRun?: unknown;
-  builderPending?: { tool: string; alcance: string };
+  /**
+   * Pregunta abierta del constructor: texto y opciones concretas. Mientras esté,
+   * la corrida está detenida esperando que el humano elija (#321).
+   */
+  builderQuestion?: {
+    texto: string;
+    opciones: { id: string; label: string; detalle?: string; accion?: string }[];
+    /** true cuando la pregunta confirma una acción destructiva. */
+    destructiva?: boolean;
+  };
 }
 
 /* -------------------------------------------------------------------------- */

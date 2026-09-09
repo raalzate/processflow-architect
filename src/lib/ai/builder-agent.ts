@@ -30,13 +30,16 @@ import {
   type ToolSpec,
 } from "./builder-tools";
 import {
+  answerUser,
   applyObservation,
+  askUser,
   cancelRun,
   pendingConfirmation,
   resolveConfirmation,
   runFinished,
   startRun,
   summarizeRun,
+  type BuilderOption,
   type BuilderRunState,
 } from "./builder-run";
 import type { VistaConocida } from "../mcp/app-actions";
@@ -66,7 +69,7 @@ export interface BuilderAgentResult {
   reply: string;
   steps: AgentStep[];
   state: BuilderRunState;
-  /** Presente cuando la corrida quedó esperando el sí/no del humano. */
+  /** Presente cuando la pausa es la confirmación de una acción destructiva. */
   pendiente?: { call: BuilderCall; alcance: string };
 }
 
@@ -95,6 +98,8 @@ const SYSTEM = [
   "Sos el agente CONSTRUCTOR de Processflow Architect.",
   "Construís y modificás el modelo del usuario llamando herramientas, de a UNA por turno.",
   'Respondé SIEMPRE con UN objeto JSON: {"tool":"<nombre>","args":{…}} para actuar,',
+  'o {"pregunta":"<qué necesitás saber>","opciones":["…","…"]} cuando el pedido sea ambiguo',
+  "—preguntá con opciones concretas en vez de suponer—,",
   'o {"final":"<qué hiciste, en español>"} cuando la tarea esté terminada.',
   "Nunca inventes herramientas ni argumentos: usá sólo los del menú.",
   "Antes de construir, orientate (get_app_state / list_views). Antes de cerrar, validá y exportá.",
@@ -155,6 +160,50 @@ export function promptQueEntra(
   return null;
 }
 
+/**
+ * ¿El turno es una PREGUNTA al humano? El modelo la escribe con opciones; acá se
+ * normalizan a `BuilderOption` (id estable, label legible). Una pregunta sin
+ * opciones no es una pausa útil —deja al humano escribiendo prosa otra vez—, así
+ * que se ignora y el bucle sigue.
+ */
+export function preguntaDelTurno(raw: string): { texto: string; opciones: BuilderOption[] } | null {
+  let obj: any = null;
+  try {
+    const start = raw.indexOf("{");
+    if (start < 0) return null;
+    obj = JSON.parse(raw.slice(start, raw.lastIndexOf("}") + 1));
+  } catch {
+    return null;
+  }
+  const texto = obj?.pregunta ?? obj?.question;
+  const crudas = obj?.opciones ?? obj?.options;
+  if (typeof texto !== "string" || !texto.trim() || !Array.isArray(crudas) || crudas.length < 2) {
+    return null;
+  }
+  const opciones = crudas
+    .map((o: unknown, i: number) =>
+      typeof o === "string"
+        ? { id: `op${i + 1}`, label: o.trim() }
+        : { id: String((o as any)?.id ?? `op${i + 1}`), label: String((o as any)?.label ?? "").trim() }
+    )
+    .filter((o) => o.label);
+  return opciones.length >= 2 ? { texto: texto.trim(), opciones } : null;
+}
+
+/** Las salidas que se le ofrecen al humano cuando el motor local no da para más. */
+export function opcionesDePresupuesto(): BuilderOption[] {
+  return [
+    { id: "partir", label: "Partirlo en pasos", detalle: "Trabajo una vista por vez, con lo que ya sé." },
+    {
+      id: "ajustes",
+      label: "Abrir Ajustes de IA",
+      accion: "abrir-ajustes-ia",
+      detalle: "Configurar un proveedor remoto para pedidos grandes.",
+    },
+    { id: "cancelar", label: "Cancelar", accion: "cancelar" },
+  ];
+}
+
 /** ¿El modelo dio por terminada la tarea? */
 function textoFinal(raw: string): string | null {
   const m = raw.match(/"final"\s*:\s*"([\s\S]*?)"\s*[},]/);
@@ -180,9 +229,16 @@ async function bucle(
   while (!runFinished(state)) {
     const prompt = promptQueEntra(input, tools, state, presupuesto);
     if (prompt === null) {
-      // Ni el menú compacto sin observaciones entra: acá sí no hay corrida
-      // posible. El aviso viaja CON lo que ya se hizo, no en lugar de eso.
-      return { reply: [avisoPedidoGrande(), summarizeRun(state)].join("\n\n"), steps, state };
+      // Ni el menú compacto sin observaciones entra. Antes esto era un párrafo
+      // sin salida; ahora es una pregunta: las dos cosas que el aviso sugería
+      // son botones, y el humano decide sin reescribir el pedido (#321).
+      const conPregunta = askUser(state, { texto: avisoPedidoGrande(), opciones: opcionesDePresupuesto() });
+      paso({ type: "question", content: avisoPedidoGrande() });
+      return {
+        reply: [avisoPedidoGrande(), summarizeRun(state)].join("\n\n"),
+        steps,
+        state: conPregunta,
+      };
     }
 
     let raw: string;
@@ -190,6 +246,13 @@ async function bucle(
       raw = await deps.generate(prompt, SYSTEM, input.mode, input.provider, input.model);
     } catch (e: any) {
       return { reply: `No pude pensar el próximo paso: ${e?.message ?? e}`, steps, state };
+    }
+
+    const consulta = preguntaDelTurno(raw);
+    if (consulta) {
+      paso({ type: "question", content: consulta.texto });
+      const conPregunta = askUser(state, consulta);
+      return { reply: consulta.texto, steps, state: conPregunta };
     }
 
     const fin = textoFinal(raw);
@@ -221,10 +284,10 @@ async function bucle(
       state = pendingConfirmation(state, veredicto.call, veredicto.alcance);
       paso({ type: "question", content: veredicto.alcance });
       return {
-        reply: `${veredicto.alcance}\n\n¿Lo hago?`,
+        reply: state.pregunta?.texto ?? veredicto.alcance,
         steps,
         state,
-        pendiente: state.pendiente,
+        pendiente: { call: veredicto.call, alcance: veredicto.alcance },
       };
     }
 
@@ -288,6 +351,41 @@ export async function resumeBuilderAgent(
   // Un "no" no cancela la corrida: el agente puede seguir por otro camino. Lo que
   // no puede es volver a intentar lo mismo, y eso lo ve en la traza.
   return bucle(input, deps, tools, siguiente, steps);
+}
+
+/**
+ * La respuesta del humano a una pregunta con opciones. Si la pregunta era la
+ * confirmación de un destructivo, «sí» ejecuta la llamada guardada; si era una
+ * pregunta cualquiera, la elección entra como contexto del próximo turno.
+ */
+export async function answerBuilderAgent(
+  input: BuilderAgentInput,
+  estado: BuilderRunState,
+  opcionId: string
+): Promise<BuilderAgentResult> {
+  const pregunta = estado.pregunta;
+  if (pregunta?.call) return resumeBuilderAgent(input, estado, opcionId === "si");
+
+  const deps: BuilderDeps = { ...defaultBuilderDeps, ...input.deps };
+  const steps: AgentStep[] = [];
+  const { state, eleccion } = answerUser(estado, opcionId);
+  // Opción inventada o pregunta ya respondida: no se sigue a ciegas.
+  if (!eleccion) return { reply: pregunta?.texto ?? summarizeRun(state), steps, state };
+
+  const paso = (s: AgentStep) => {
+    steps.push(s);
+    input.onStep?.(s);
+  };
+  paso({ type: "decision", content: eleccion.label });
+  if (state.cancelada) return { reply: summarizeRun(state), steps, state };
+
+  const tools = await deps.listTools();
+  // La elección viaja en el pedido: es la respuesta a lo que el agente preguntó.
+  const conRespuesta = {
+    ...input,
+    message: `${input.message}\n\n[Respuesta del humano a «${pregunta?.texto ?? ""}»: ${eleccion.label}]`,
+  };
+  return bucle(conRespuesta, deps, tools, state, steps);
 }
 
 /** Cancelación explícita desde el chat. */

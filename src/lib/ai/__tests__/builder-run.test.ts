@@ -16,6 +16,8 @@ import {
   runFinished,
   summarizeRun,
   MAX_BUILDER_STEPS,
+  askUser,
+  answerUser,
 } from "@/lib/ai/builder-run";
 
 const call = (tool: string, args: Record<string, unknown> = {}) => ({ tool, args });
@@ -68,7 +70,7 @@ describe("corrida del constructor", () => {
 
   it("una confirmación pendiente frena la corrida hasta que el humano responda", () => {
     const s = pendingConfirmation(startRun(), call("delete_view", { name: "Pagos" }), "Se elimina Pagos.");
-    expect(s.pendiente?.alcance).toMatch(/Pagos/);
+    expect(s.pregunta?.texto).toMatch(/Pagos/);
     // Pendiente no gasta paso: el paso lo gasta la ejecución, si la hay.
     expect(s.restantes).toBe(MAX_BUILDER_STEPS);
   });
@@ -77,7 +79,7 @@ describe("corrida del constructor", () => {
     const s = pendingConfirmation(startRun(), call("delete_view", { name: "Pagos" }), "Se elimina Pagos.");
     const r = resolveConfirmation(s, true);
     expect(r.ejecutar).toEqual(call("delete_view", { name: "Pagos" }));
-    expect(r.state.pendiente).toBeUndefined();
+    expect(r.state.pregunta).toBeUndefined();
   });
 
   it("un no deja el modelo intacto y lo deja dicho", () => {
@@ -105,5 +107,57 @@ describe("corrida del constructor", () => {
   it("una corrida sin cambios lo dice, en vez de fingir trabajo", () => {
     const s = applyObservation(startRun(), call("list_views"), ok("2 vistas"));
     expect(summarizeRun(s)).toMatch(/sin cambios|no se cambió|no cambió/i);
+  });
+});
+
+/**
+ * Pausa con OPCIONES (#321). El agente que no puede seguir tenía un solo recurso:
+ * escribir un párrafo y morirse. «Partilo en pasos o activá la nube» decía las dos
+ * cosas que se podían hacer y no dejaba hacer ninguna. Una pausa con opciones es el
+ * mismo mecanismo que la confirmación de un borrado —de hecho, ésta pasa a ser un
+ * caso de aquélla—: la corrida se detiene con su estado y la elección la retoma.
+ */
+describe("pausa con opciones", () => {
+  const pregunta = {
+    texto: "El pedido no entra en una corrida del motor local. ¿Cómo seguimos?",
+    opciones: [
+      { id: "partir", label: "Partilo en pasos" },
+      { id: "ajustes", label: "Abrir Ajustes de IA", accion: "abrir-ajustes-ia" as const },
+      { id: "cancelar", label: "Cancelar", accion: "cancelar" as const },
+    ],
+  };
+
+  it("preguntar detiene la corrida sin gastar un paso", () => {
+    const s = askUser(startRun(), pregunta);
+    expect(s.pregunta?.opciones).toHaveLength(3);
+    expect(s.restantes).toBe(MAX_BUILDER_STEPS);
+    expect(runFinished(s)).toBe(false);
+  });
+
+  it("la respuesta retoma la corrida y queda en la traza", () => {
+    const s = answerUser(askUser(startRun(), pregunta), "partir");
+    expect(s.state.pregunta).toBeUndefined();
+    expect(s.eleccion?.id).toBe("partir");
+    expect(summarizeRun(s.state)).not.toMatch(/cancel/i);
+  });
+
+  it("una opción inventada no se acepta: la corrida sigue esperando", () => {
+    const s = answerUser(askUser(startRun(), pregunta), "borrar-todo");
+    expect(s.eleccion).toBeUndefined();
+    expect(s.state.pregunta).toBeDefined();
+  });
+
+  it("la opción de cancelar cierra la corrida", () => {
+    const s = answerUser(askUser(startRun(), pregunta), "cancelar");
+    expect(runFinished(s.state)).toBe(true);
+    expect(summarizeRun(s.state)).toMatch(/cancel/i);
+  });
+
+  it("la confirmación de lo destructivo es una pregunta con dos opciones", () => {
+    const s = pendingConfirmation(startRun(), { tool: "delete_view", args: { name: "Pagos" } }, "Se elimina Pagos.");
+    expect(s.pregunta?.texto).toMatch(/Pagos/);
+    expect(s.pregunta?.opciones.map((o) => o.id)).toEqual(["si", "no"]);
+    // Y el sí sigue devolviendo la llamada a ejecutar, como antes.
+    expect(resolveConfirmation(s, true).ejecutar?.tool).toBe("delete_view");
   });
 });

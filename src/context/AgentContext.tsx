@@ -38,7 +38,7 @@ import {
   saveAgentId,
   type AgentId,
 } from "@/lib/ai/agent-profiles";
-import { runBuilderAgent, resumeBuilderAgent } from "@/lib/ai/builder-agent";
+import { runBuilderAgent, answerBuilderAgent } from "@/lib/ai/builder-agent";
 import type { BuilderRunState } from "@/lib/ai/builder-run";
 import { loadAiSettings, modelFor } from "@/lib/ai/remote-settings";
 import { safeGraphToToon } from "@/lib/ai/graph-toon";
@@ -171,8 +171,8 @@ export interface AgentContextType {
 
   /** `requestedKind`: artefacto elegido en el menú «+» (salta el gate de intención). */
   sendMessage: (text: string, requestedKind?: string) => Promise<void>;
-  /** Responde el sí/no de una acción destructiva del constructor (014). */
-  resolveBuilderConfirmation: (messageId: string, aceptada: boolean) => Promise<void>;
+  /** Elige una opción de la pregunta del constructor y retoma la corrida (#321). */
+  answerBuilderQuestion: (messageId: string, opcionId: string) => Promise<void>;
   /** Reanuda la corrida del mensaje con la decisión del humano (spec 005). */
   resumeRun: (messageId: string, decision: ResumeDecision) => Promise<void>;
   /** Descarta una corrida en espera sin generar nada. */
@@ -475,7 +475,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
    * así el sí/no del humano retoma exactamente donde quedó.
    */
   const correrConstructor = useCallback(
-    async (mensaje: string, assistantId: string, previo?: { estado: BuilderRunState; aceptada: boolean }) => {
+    async (mensaje: string, assistantId: string, previo?: { estado: BuilderRunState; opcionId: string }) => {
       const ajustes = loadAiSettings();
       const entrada = {
         message: mensaje,
@@ -497,7 +497,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       };
 
       const r = previo
-        ? await resumeBuilderAgent(entrada, previo.estado, previo.aceptada)
+        ? await answerBuilderAgent(entrada, previo.estado, previo.opcionId)
         : await runBuilderAgent(entrada);
 
       setMessages((prev) =>
@@ -508,8 +508,12 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
                 content: r.reply,
                 steps: [...(m.steps ?? []), ...r.steps.slice((m.steps ?? []).length)],
                 builderRun: r.state,
-                builderPending: r.pendiente
-                  ? { tool: r.pendiente.call.tool, alcance: r.pendiente.alcance }
+                builderQuestion: r.state.pregunta
+                  ? {
+                      texto: r.state.pregunta.texto,
+                      opciones: r.state.pregunta.opciones,
+                      destructiva: Boolean(r.state.pregunta.call),
+                    }
                   : undefined,
               }
             : m
@@ -521,9 +525,9 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     [vistasConocidas, activeView?.notation, graphData?.notation]
   );
 
-  /** El sí/no de una acción destructiva: retoma la corrida guardada en el mensaje. */
-  const resolveBuilderConfirmation = useCallback(
-    async (messageId: string, aceptada: boolean) => {
+  /** La elección del humano: retoma la corrida guardada en el mensaje. */
+  const answerBuilderQuestion = useCallback(
+    async (messageId: string, opcionId: string) => {
       const mensaje = messages.find((m) => m.id === messageId);
       const estado = mensaje?.builderRun as BuilderRunState | undefined;
       if (!estado || busy) return;
@@ -531,10 +535,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
       setBusy(true);
       setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, builderPending: undefined } : m))
+        prev.map((m) => (m.id === messageId ? { ...m, builderQuestion: undefined } : m))
       );
       try {
-        await correrConstructor(pedidoOriginal, messageId, { estado, aceptada });
+        await correrConstructor(pedidoOriginal, messageId, { estado, opcionId });
       } finally {
         setBusy(false);
       }
@@ -955,7 +959,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     agentId,
     setAgentId,
     sendMessage,
-    resolveBuilderConfirmation,
+    answerBuilderQuestion,
     resumeRun,
     cancelRun,
     historyOf,

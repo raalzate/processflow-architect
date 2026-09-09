@@ -7,7 +7,13 @@
  * un borrado NO se ejecute sin el sí del humano— sin depender de la app corriendo.
  */
 import { describe, it, expect, vi } from "vitest";
-import { runBuilderAgent, resumeBuilderAgent, type BuilderDeps } from "@/lib/ai/builder-agent";
+import {
+  runBuilderAgent,
+  resumeBuilderAgent,
+  answerBuilderAgent,
+  type BuilderDeps,
+} from "@/lib/ai/builder-agent";
+import { MAX_BUILDER_STEPS } from "@/lib/ai/builder-run";
 import type { ToolSpec } from "@/lib/ai/builder-tools";
 
 const TOOLS: ToolSpec[] = [
@@ -201,5 +207,64 @@ describe("presupuesto del motor local durante la corrida", () => {
     });
     expect(r.reply).toMatch(/nube|parti/i);
     expect(r.reply).toMatch(/Sin cambios|Cambios aplicados/);
+  });
+});
+
+/**
+ * El agente pregunta (#321). Un aviso sin salida obliga al humano a reescribir el
+ * pedido o irse a Ajustes; una pregunta con opciones deja seguir desde donde la
+ * corrida se detuvo.
+ */
+describe("preguntas con opciones", () => {
+  it("el modelo puede preguntar en vez de actuar, y la corrida se detiene sin gastar paso", async () => {
+    const { deps, llamadas } = guion([
+      '{"pregunta":"¿Sobre qué vista trabajo?","opciones":["Pagos","Checkout"]}',
+    ]);
+    const r = await runBuilderAgent({ ...base, deps });
+    expect(llamadas).toEqual([]);
+    expect(r.state.pregunta?.texto).toMatch(/vista/i);
+    expect(r.state.pregunta?.opciones.map((o) => o.label)).toEqual(["Pagos", "Checkout"]);
+    expect(r.state.restantes).toBe(MAX_BUILDER_STEPS);
+  });
+
+  it("la elección del humano retoma la corrida", async () => {
+    const { deps } = guion(['{"pregunta":"¿Cuál?","opciones":["Pagos","Checkout"]}']);
+    const primera = await runBuilderAgent({ ...base, deps });
+    const seguir = guion([
+      '{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}',
+      '{"final":"Hecho sobre Pagos."}',
+    ]);
+    const r = await answerBuilderAgent(
+      { ...base, deps: seguir.deps },
+      primera.state,
+      primera.state.pregunta!.opciones[0].id
+    );
+    expect(seguir.llamadas).toHaveLength(1);
+    expect(r.reply).toMatch(/Pagos/);
+  });
+
+  it("cuando el pedido no entra en la ventana local, ofrece opciones en vez de un párrafo", async () => {
+    const { deps, llamadas } = guion(['{"final":"nunca llega"}']);
+    const r = await runBuilderAgent({
+      ...base,
+      message: "construí ".repeat(400),
+      maxTokens: 512,
+      deps,
+    });
+    expect(llamadas).toEqual([]);
+    const ids = r.state.pregunta?.opciones.map((o) => o.id) ?? [];
+    expect(ids).toContain("partir");
+    expect(ids).toContain("ajustes");
+    expect(ids).toContain("cancelar");
+    // Y la opción de la nube lleva su acción: el botón hace algo, no describe algo.
+    expect(r.state.pregunta?.opciones.find((o) => o.id === "ajustes")?.accion).toBe("abrir-ajustes-ia");
+  });
+
+  it("la confirmación destructiva sigue siendo una pregunta de dos opciones", async () => {
+    const { deps, llamadas } = guion(['{"tool":"delete_view","args":{"name":"Pagos"}}']);
+    const r = await runBuilderAgent({ ...base, deps });
+    expect(llamadas).toEqual([]);
+    expect(r.state.pregunta?.opciones.map((o) => o.id)).toEqual(["si", "no"]);
+    expect(r.pendiente?.call.tool).toBe("delete_view");
   });
 });

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useAgent } from "@/context/AgentContext";
+import { useRouter } from "next/navigation";
 import { useViews } from "@/context/ViewsContext";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -272,7 +273,7 @@ export function AgentChatPanel() {
     sendMessage,
     resumeRun,
     cancelRun,
-    resolveBuilderConfirmation,
+    answerBuilderQuestion,
     agentId,
     artifacts,
     contextArtifactIds,
@@ -284,6 +285,7 @@ export function AgentChatPanel() {
     removeAttachment,
   } = useAgent();
   const perfil = getAgentProfile(agentId);
+  const router = useRouter();
   const { views, injectedViews, injectedViewIds, toggleInject } = useViews();
 
   // Cronómetro de la corrida: arranca cuando el agente se pone a trabajar y se
@@ -496,33 +498,61 @@ export function AgentChatPanel() {
                   ))}
                 </div>
               )}
-              {/* Acción destructiva del constructor: nada se ejecuta hasta el sí
-                  del humano, y el alcance se ve antes de decidir (§P10). */}
-              {m.role === "assistant" && m.builderPending && (
-                <div className="mt-2 rounded-md border border-destructive/50 bg-background/60 p-2">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-destructive">
-                    <Trash2 className="h-3.5 w-3.5" /> Confirmá antes de que lo haga
+              {/* El constructor pregunta con OPCIONES: sin esto, un aviso como
+                  «el pedido no entra en la IA local» era un callejón sin salida
+                  —decía qué hacer y no dejaba hacerlo— (#321). Lo destructivo
+                  usa el mismo mecanismo, con el marco en rojo. */}
+              {m.role === "assistant" && m.builderQuestion && (
+                <div
+                  className={cn(
+                    "mt-2 rounded-md border bg-background/60 p-2",
+                    m.builderQuestion.destructiva ? "border-destructive/50" : "border-primary/40"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex items-center gap-1.5 text-xs font-semibold",
+                      m.builderQuestion.destructiva ? "text-destructive" : "text-primary"
+                    )}
+                  >
+                    {m.builderQuestion.destructiva ? (
+                      <>
+                        <Trash2 className="h-3.5 w-3.5" /> Confirmá antes de que lo haga
+                      </>
+                    ) : (
+                      <>
+                        <HelpCircle className="h-3.5 w-3.5" /> El agente necesita una decisión
+                      </>
+                    )}
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{m.builderPending.alcance}</p>
-                  <div className="mt-2 flex gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="h-7 text-xs"
-                      disabled={busy}
-                      onClick={() => resolveBuilderConfirmation(m.id, true)}
-                    >
-                      Sí, hacelo
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      disabled={busy}
-                      onClick={() => resolveBuilderConfirmation(m.id, false)}
-                    >
-                      No
-                    </Button>
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
+                    {m.builderQuestion.texto}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {m.builderQuestion.opciones.map((o) => (
+                      <Button
+                        key={o.id}
+                        size="sm"
+                        variant={
+                          m.builderQuestion?.destructiva && o.id === "si"
+                            ? "destructive"
+                            : o.accion === "cancelar" || o.id === "no"
+                              ? "ghost"
+                              : "outline"
+                        }
+                        className="h-7 text-xs"
+                        disabled={busy}
+                        title={o.detalle}
+                        onClick={() => {
+                          // La opción que manda a la nube ABRE Ajustes: el modo no
+                          // se cambia por el humano (§P4, el default es local).
+                          if (o.accion === "abrir-ajustes-ia") router.push("/settings#motor");
+                          answerBuilderQuestion(m.id, o.id);
+                        }}
+                      >
+                        {o.label}
+                      </Button>
+                    ))}
                   </div>
                 </div>
               )}
