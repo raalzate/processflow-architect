@@ -41,6 +41,7 @@ import {
   runFinished,
   startRun,
   summarizeRun,
+  yaRespondida,
   type BuilderOption,
   type BuilderRunState,
 } from "./builder-run";
@@ -122,8 +123,17 @@ export function buildBuilderPrompt(
         `- ${p.tool}(${JSON.stringify(p.args)}) → ${p.ok ? "OK" : "ERROR"}: ${p.texto.slice(0, recorte.porObservacion)}`
     )
     .join("\n");
+  // Las decisiones del humano NO se recortan nunca: son lo único del contexto
+  // que el agente no puede volver a averiguar solo, y perderlas lo dejaba
+  // preguntando lo mismo en círculos (#324).
+  const decididas = state.decisiones.length
+    ? `YA LO DECIDIÓ EL HUMANO (no vuelvas a preguntarlo):\n${state.decisiones
+        .map((d) => `- ${d.pregunta} → ${d.eleccion}`)
+        .join("\n")}`
+    : "";
   return [
     `PEDIDO DEL USUARIO:\n${input.message}`,
+    decididas,
     input.notation ? `NOTACIÓN DE LA VISTA EN CURSO: ${input.notation}` : "",
     `HERRAMIENTAS DISPONIBLES:\n${menu}`,
     observado ? `LO QUE YA HICISTE:\n${observado}` : "Todavía no hiciste nada.",
@@ -252,9 +262,17 @@ async function bucle(
 
     const consulta = preguntaDelTurno(raw);
     if (consulta) {
+      const decidido = yaRespondida(state, consulta.texto);
+      if (decidido) {
+        // Volver a frenar al humano por algo que ya contestó es el bucle de
+        // #324: se le devuelve su propia decisión y la corrida sigue.
+        const recordatorio = `Ya lo respondió el humano: ${decidido}. Seguí con eso, no vuelvas a preguntarlo.`;
+        paso({ type: "observation", content: recordatorio });
+        state = applyObservation(state, { tool: "(pregunta repetida)", args: {} }, { ok: false, texto: recordatorio });
+        continue;
+      }
       paso({ type: "question", content: consulta.texto });
-      const conPregunta = askUser(state, consulta);
-      return { reply: consulta.texto, steps, state: conPregunta };
+      return { reply: consulta.texto, steps, state: askUser(state, consulta) };
     }
 
     const fin = textoFinal(raw);

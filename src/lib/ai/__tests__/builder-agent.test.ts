@@ -323,3 +323,56 @@ describe("trabarse no es lo mismo que quedarse sin pasos (#323)", () => {
     expect(r.state.restantes).toBe(MAX_BUILDER_STEPS - 1);
   });
 });
+
+describe("no repetir una pregunta ya respondida (#324)", () => {
+  const pregunta = '{"pregunta":"¿Persona o Contenedor?","opciones":["Persona (Actor)","Contenedor (Pool)"]}';
+
+  it("la decisión sobrevive a la SIGUIENTE continuación, que es donde se perdía", async () => {
+    const primera = await runBuilderAgent({ ...base, deps: guion([pregunta]).deps });
+    // Continuación 1: responde y el agente hace algo, hasta preguntar otra cosa.
+    const segunda = await answerBuilderAgent(
+      { ...base, deps: guion(['{"pregunta":"¿En qué vista?","opciones":["Pagos","Checkout"]}']).deps },
+      primera.state,
+      "op1"
+    );
+
+    // Continuación 2: el chat rearma el pedido desde el mensaje ORIGINAL —así lo
+    // hace AgentContext—, así que si la decisión no vive en el estado, acá se
+    // pierde y el modelo vuelve a preguntar lo de antes. Ese era el bucle.
+    const prompts: string[] = [];
+    await answerBuilderAgent(
+      {
+        ...base,
+        deps: {
+          listTools: async () => TOOLS,
+          callTool: async () => ({ ok: true, texto: "hecho" }),
+          generate: async (p: string) => {
+            prompts.push(p);
+            return '{"final":"Listo."}';
+          },
+        },
+      },
+      segunda.state,
+      "op1"
+    );
+    expect(prompts[0]).toMatch(/Persona \(Actor\)/);
+    expect(prompts[0]).toMatch(/no vuelvas a preguntarlo/i);
+  });
+
+  it("si el modelo la repite, se le recuerda la decisión en vez de frenar al humano otra vez", async () => {
+    const primera = await runBuilderAgent({ ...base, deps: guion([pregunta]).deps });
+    const terco = guion([pregunta, '{"final":"Ah, cierto."}']);
+    const r = await answerBuilderAgent({ ...base, deps: terco.deps }, primera.state, "op1");
+    // La corrida NO vuelve a quedar en pausa…
+    expect(r.state.pregunta).toBeUndefined();
+    // …y el turno repetido cuenta como fallo: preguntar en círculos no es gratis.
+    expect(r.state.pasos.some((p) => !p.ok && /ya.*respond/i.test(p.texto))).toBe(true);
+  });
+
+  it("una pregunta NUEVA sí puede frenar la corrida", async () => {
+    const primera = await runBuilderAgent({ ...base, deps: guion([pregunta]).deps });
+    const otra = guion(['{"pregunta":"¿En qué vista lo pongo?","opciones":["Pagos","Checkout"]}']);
+    const r = await answerBuilderAgent({ ...base, deps: otra.deps }, primera.state, "op1");
+    expect(r.state.pregunta?.texto).toMatch(/vista/i);
+  });
+});

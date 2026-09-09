@@ -21,6 +21,7 @@ import {
   answerUser,
   extendRun,
   preguntaDeContinuar,
+  yaRespondida,
 } from "@/lib/ai/builder-run";
 
 const call = (tool: string, args: Record<string, unknown> = {}) => ({ tool, args });
@@ -253,5 +254,45 @@ describe("los fallos no gastan el tope de pasos", () => {
     for (let i = 0; i < MAX_BUILDER_FAILURES; i++) s = applyObservation(s, call("inventada"), fallo());
     expect(extendRun(s).fallos).toBe(0);
     expect(runFinished(extendRun(s))).toBe(false);
+  });
+});
+
+/**
+ * La decisión del humano PERSISTE (#324). El bucle real: el agente preguntó si el
+ * «FinOps Team» iba como Persona o como Contenedor, el humano eligió, y el agente
+ * volvió a preguntar lo mismo — la elección viajaba sólo en el pedido de esa
+ * continuación y el turno siguiente rearmaba el pedido desde cero. Si la decisión
+ * no vive en el estado, no existe.
+ */
+describe("las decisiones del humano se recuerdan", () => {
+  const pregunta = {
+    texto: "¿Persona o Contenedor?",
+    opciones: [
+      { id: "persona", label: "Persona (Actor)" },
+      { id: "contenedor", label: "Contenedor (Pool/Agregado)" },
+    ],
+  };
+
+  it("la elección queda en el estado, no sólo en el turno", () => {
+    const { state } = answerUser(askUser(startRun(), pregunta), "persona");
+    expect(state.decisiones).toEqual([
+      { pregunta: "¿Persona o Contenedor?", eleccion: "Persona (Actor)" },
+    ]);
+  });
+
+  it("una pregunta ya respondida se reconoce aunque cambie el formato", () => {
+    const { state } = answerUser(askUser(startRun(), pregunta), "persona");
+    expect(yaRespondida(state, "  ¿PERSONA o contenedor?  ")).toEqual("Persona (Actor)");
+    expect(yaRespondida(state, "¿Sobre qué vista trabajo?")).toBeUndefined();
+  });
+
+  it("las decisiones sobreviven a extender la corrida", () => {
+    const { state } = answerUser(askUser(startRun(), pregunta), "contenedor");
+    expect(extendRun(state).decisiones).toHaveLength(1);
+  });
+
+  it("la confirmación de un destructivo no ensucia el registro de decisiones", () => {
+    const s = pendingConfirmation(startRun(), call("delete_view", { name: "Pagos" }), "Se elimina Pagos.");
+    expect(resolveConfirmation(s, true).state.decisiones ?? []).toEqual([]);
   });
 });

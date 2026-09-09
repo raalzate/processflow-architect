@@ -61,6 +61,12 @@ export interface BuilderRunState {
   cancelada?: boolean;
   /** El humano dijo que no a algo: se recuerda para no fingir que se hizo. */
   rechazos: string[];
+  /**
+   * Lo que el humano ya decidió, en el ESTADO. Si vive sólo en el pedido de la
+   * continuación, el turno siguiente lo pierde y el agente vuelve a preguntar lo
+   * mismo — pasó (#324). Se re-inyecta en cada turno.
+   */
+  decisiones: { pregunta: string; eleccion: string }[];
 }
 
 /**
@@ -127,7 +133,7 @@ function frase(call: BuilderCall): string {
 }
 
 export function startRun(): BuilderRunState {
-  return { pasos: [], cambios: [], restantes: MAX_BUILDER_STEPS, fallos: 0, rechazos: [] };
+  return { pasos: [], cambios: [], restantes: MAX_BUILDER_STEPS, fallos: 0, rechazos: [], decisiones: [] };
 }
 
 /** Detiene la corrida con una pregunta concreta. No gasta paso: todavía no pasó nada. */
@@ -149,7 +155,35 @@ export function answerUser(
   if (eleccion.accion === "cancelar") {
     return { state: { ...state, pregunta: undefined, cancelada: true }, eleccion };
   }
-  return { state: { ...state, pregunta: undefined }, eleccion };
+  // La confirmación de un destructivo y la pregunta de continuar son mecánica de
+  // la corrida, no decisiones de MODELADO: no van al registro que se le recuerda
+  // al agente turno a turno.
+  const deModelado = !pregunta.call && !eleccion.accion && opcionId !== "seguir";
+  return {
+    state: {
+      ...state,
+      pregunta: undefined,
+      decisiones: deModelado
+        ? [...state.decisiones, { pregunta: pregunta.texto, eleccion: eleccion.label }]
+        : state.decisiones,
+    },
+    eleccion,
+  };
+}
+
+/** Forma comparable de una pregunta: el modelo la reescribe con otro formato. */
+const claveDePregunta = (texto: string) =>
+  texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+/** ¿Ya se respondió esto? Devuelve la elección del humano, para recordársela. */
+export function yaRespondida(state: BuilderRunState, texto: string): string | undefined {
+  const clave = claveDePregunta(texto);
+  return state.decisiones.find((d) => claveDePregunta(d.pregunta) === clave)?.eleccion;
 }
 
 export function applyObservation(
