@@ -16,6 +16,7 @@ import {
   runFinished,
   summarizeRun,
   MAX_BUILDER_STEPS,
+  MAX_BUILDER_FAILURES,
   askUser,
   answerUser,
   extendRun,
@@ -200,5 +201,57 @@ describe("extender la corrida", () => {
     const s = extendRun(cancelRun(agotada()));
     expect(runFinished(s)).toBe(true);
     expect(s.restantes).toBe(0);
+  });
+});
+
+/**
+ * El tope mide TRABAJO, no intentos (#323). El modelo local devuelve JSON roto,
+ * inventa herramientas y manda argumentos incompletos: si cada uno de esos turnos
+ * gasta paso, la corrida se queda sin cuerda sin haber tocado el modelo. Pero un
+ * bucle sin freno a los fallos gira para siempre, así que los fallos tienen su
+ * propio tope, chico.
+ */
+describe("los fallos no gastan el tope de pasos", () => {
+  const fallo = (texto = "no existe esa herramienta") => ({ ok: false, texto });
+
+  it("una observación fallida no consume presupuesto", () => {
+    const s = applyObservation(startRun(), call("inventada"), fallo());
+    expect(s.restantes).toBe(MAX_BUILDER_STEPS);
+    expect(s.pasos).toHaveLength(1); // pero sí queda en la traza
+  });
+
+  it("una herramienta que salió bien sí lo consume", () => {
+    const s = applyObservation(startRun(), call("list_views"), ok("2 vistas"));
+    expect(s.restantes).toBe(MAX_BUILDER_STEPS - 1);
+  });
+
+  it("los fallos tienen su propio tope: el bucle no gira para siempre", () => {
+    let s = startRun();
+    for (let i = 0; i < MAX_BUILDER_FAILURES; i++) s = applyObservation(s, call("inventada"), fallo());
+    expect(runFinished(s)).toBe(true);
+    expect(s.restantes).toBe(MAX_BUILDER_STEPS); // no gastó ni un paso de trabajo
+  });
+
+  it("un acierto después de fallos limpia el contador: el modelo se recuperó", () => {
+    let s = applyObservation(startRun(), call("inventada"), fallo());
+    s = applyObservation(s, call("inventada"), fallo());
+    s = applyObservation(s, call("list_views"), ok("2 vistas"));
+    expect(s.fallos).toBe(0);
+    expect(runFinished(s)).toBe(false);
+  });
+
+  it("el resumen distingue trabarse de quedarse sin pasos", () => {
+    let s = startRun();
+    for (let i = 0; i < MAX_BUILDER_FAILURES; i++) s = applyObservation(s, call("inventada"), fallo("JSON inválido"));
+    const texto = summarizeRun(s);
+    expect(texto).toMatch(/trab|no logr|inválid/i);
+    expect(texto).not.toMatch(/tope de pasos/i);
+  });
+
+  it("extender la corrida también limpia los fallos", () => {
+    let s = startRun();
+    for (let i = 0; i < MAX_BUILDER_FAILURES; i++) s = applyObservation(s, call("inventada"), fallo());
+    expect(extendRun(s).fallos).toBe(0);
+    expect(runFinished(extendRun(s))).toBe(false);
   });
 });

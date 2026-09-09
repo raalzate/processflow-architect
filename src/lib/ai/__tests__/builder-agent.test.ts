@@ -299,3 +299,27 @@ describe("seguir cuando se agota el tope (#322)", () => {
     expect(r.reply).toMatch(/Orden/);
   });
 });
+
+describe("trabarse no es lo mismo que quedarse sin pasos (#323)", () => {
+  it("un modelo que nunca emite una acción válida corta rápido y lo explica", async () => {
+    const { deps, llamadas } = guion(["esto no es JSON ni nada parecido"]);
+    const r = await runBuilderAgent({ ...base, deps });
+    expect(llamadas).toEqual([]);
+    // No gastó presupuesto de trabajo: no hizo trabajo.
+    expect(r.state.restantes).toBe(MAX_BUILDER_STEPS);
+    expect(r.reply).toMatch(/trab/i);
+    // Y no ofrece «seguir»: darle más cuerda al que no acierta no arregla nada.
+    expect(r.state.pregunta).toBeUndefined();
+  });
+
+  it("los errores del modelo no le roban pasos a la construcción", async () => {
+    const { deps, llamadas } = guion([
+      '{"tool":"inventada","args":{}}',
+      '{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}',
+      '{"final":"Listo."}',
+    ]);
+    const r = await runBuilderAgent({ ...base, deps });
+    expect(llamadas).toEqual(['add_node:{"name":"Orden","type":"Comando"}']);
+    expect(r.state.restantes).toBe(MAX_BUILDER_STEPS - 1);
+  });
+});

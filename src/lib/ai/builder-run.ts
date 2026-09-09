@@ -56,6 +56,8 @@ export interface BuilderRunState {
   /** Pregunta abierta: mientras esté, la corrida está detenida esperando al humano. */
   pregunta?: BuilderQuestion;
   restantes: number;
+  /** Fallos SEGUIDOS del modelo (JSON roto, herramienta inventada, args inválidos). */
+  fallos: number;
   cancelada?: boolean;
   /** El humano dijo que no a algo: se recuerda para no fingir que se hizo. */
   rechazos: string[];
@@ -66,6 +68,14 @@ export interface BuilderRunState {
  * humano y cerrarla; más que eso, con un modelo local, es divagar caro.
  */
 export const MAX_BUILDER_STEPS = 12;
+
+/**
+ * Tope de fallos SEGUIDOS. El presupuesto de pasos mide trabajo hecho, así que un
+ * turno fallido no lo toca (#323) — pero sin este segundo freno, un modelo que se
+ * equivoca siempre deja el bucle girando gratis. Cuatro intentos alcanzan para
+ * que se recupere de un JSON roto; al quinto no se está recuperando.
+ */
+export const MAX_BUILDER_FAILURES = 4;
 
 /** Herramientas que cambian el modelo (las demás sólo miran). */
 const ESCRIBEN = new Set([
@@ -117,7 +127,7 @@ function frase(call: BuilderCall): string {
 }
 
 export function startRun(): BuilderRunState {
-  return { pasos: [], cambios: [], restantes: MAX_BUILDER_STEPS, rechazos: [] };
+  return { pasos: [], cambios: [], restantes: MAX_BUILDER_STEPS, fallos: 0, rechazos: [] };
 }
 
 /** Detiene la corrida con una pregunta concreta. No gasta paso: todavía no pasó nada. */
@@ -154,7 +164,11 @@ export function applyObservation(
     // Un cambio se anota cuando la herramienta VOLVIÓ bien: lo contrario es
     // prometerle al humano un cambio que el MCP rechazó.
     cambios: obs.ok && ESCRIBEN.has(call.tool) ? [...state.cambios, frase(call)] : state.cambios,
-    restantes: Math.max(0, state.restantes - 1),
+    // El presupuesto mide TRABAJO: un turno que no llegó a tocar el modelo no lo
+    // gasta. Lo que frena al modelo que se traba es el tope de fallos (#323).
+    restantes: obs.ok ? Math.max(0, state.restantes - 1) : state.restantes,
+    // Un acierto limpia la racha: el modelo se recuperó y merece el crédito entero.
+    fallos: obs.ok ? 0 : state.fallos + 1,
     pregunta: undefined,
   };
 }
@@ -208,7 +222,7 @@ export function resolveConfirmation(
  */
 export function extendRun(state: BuilderRunState, pasos = MAX_BUILDER_STEPS): BuilderRunState {
   if (state.cancelada) return state;
-  return { ...state, restantes: pasos, pregunta: undefined };
+  return { ...state, restantes: pasos, fallos: 0, pregunta: undefined };
 }
 
 /** La pregunta del tope: qué se hizo hasta acá y las dos salidas. */
@@ -234,7 +248,7 @@ export function cancelRun(state: BuilderRunState): BuilderRunState {
 }
 
 export function runFinished(state: BuilderRunState): boolean {
-  return Boolean(state.cancelada) || state.restantes <= 0;
+  return Boolean(state.cancelada) || state.restantes <= 0 || state.fallos >= MAX_BUILDER_FAILURES;
 }
 
 /** El cierre: qué cambió, qué se rechazó y por qué terminó. */
@@ -250,7 +264,17 @@ export function summarizeRun(state: BuilderRunState): string {
       ["No se hizo (lo rechazaste):", ...state.rechazos.map((r) => `- ${r}`)].join("\n")
     );
   }
-  if (state.cancelada) partes.push("Corrida cancelada.");
-  else if (state.restantes <= 0) partes.push("Se agotó el tope de pasos de la corrida.");
+  if (state.cancelada) {
+    partes.push("Corrida cancelada.");
+  } else if (state.fallos >= MAX_BUILDER_FAILURES) {
+    // Decir «se agotó el tope» acá sería mentir: lo que pasó es que el modelo no
+    // logró emitir una acción válida, y eso se arregla de otra manera.
+    const ultimo = [...state.pasos].reverse().find((p) => !p.ok)?.texto ?? "";
+    partes.push(
+      `Me trabé: ${MAX_BUILDER_FAILURES} intentos seguidos sin una acción válida. Lo último que devolvió el modelo: ${ultimo.slice(0, 200)}`
+    );
+  } else if (state.restantes <= 0) {
+    partes.push("Se agotó el tope de pasos de la corrida.");
+  }
   return partes.join("\n\n");
 }
