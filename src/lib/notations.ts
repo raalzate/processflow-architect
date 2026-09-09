@@ -156,6 +156,15 @@ export interface NotationElement {
    */
   table?: boolean;
   /**
+   * Cómo se rotula un elemento SIN silueta (`shape: "text"`):
+   *  - "label" (por defecto): una línea, centrada. Es un rótulo.
+   *  - "heading": título grande arriba y el texto debajo, más chico y alineado
+   *    a la izquierda. Es el bloque de encabezado de una lámina.
+   * Sin esto, un título y su párrafo se dibujaban del mismo tamaño y el bloque
+   * no se leía como encabezado.
+   */
+  textStyle?: "label" | "heading";
+  /**
    * Tamaño propio del nodo, cuando su silueta lo exige: un cuadrado y un
    * círculo necesitan caja CUADRADA, y en la ficha de 220×104 dejan de ser un
    * cuadrado y un círculo. Manda sobre `Notation.nodeSize`; los compactos
@@ -818,8 +827,11 @@ const GENERAL: Notation = {
     // --- Texto ---
     // Sin silueta: el rótulo suelto es texto sobre el lienzo, y una caja
     // alrededor lo convertiría en otra cosa.
-    { type: "Texto Libre", icon: "Type", shape: "text", hideIcon: true, stroke: "stroke-transparent", bg: "fill-transparent", border: "border-transparent", text: "text-slate-100" },
-    { type: "Título y Texto", icon: "Heading", shape: "text", hideIcon: true, stroke: "stroke-transparent", bg: "fill-transparent", border: "border-transparent", text: "text-slate-100" },
+    // Las cajas del texto son ajustadas: un rótulo con la caja de la ficha deja
+    // un hueco enorme alrededor de una línea, y el hueco se arrastra y se
+    // conecta como si fuera la forma.
+    { type: "Texto Libre", icon: "Type", shape: "text", textStyle: "label", size: { w: 200, h: 44 }, hideIcon: true, stroke: "stroke-transparent", bg: "fill-transparent", border: "border-transparent", text: "text-slate-100" },
+    { type: "Título y Texto", icon: "Heading", shape: "text", textStyle: "heading", size: { w: 240, h: 92 }, hideIcon: true, stroke: "stroke-transparent", bg: "fill-transparent", border: "border-transparent", text: "text-slate-100" },
     // --- Cajas y marcos ---
     { type: "Caja de Proceso", icon: "PanelTop", shape: "process", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
     { type: "Cubo", icon: "Box", shape: "cube", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
@@ -958,6 +970,19 @@ export function notationTypes(
   const els = getNotation(id).elements;
   return (opts.includeContainers ? els : els.filter((e) => !e.container)).map((e) => e.type);
 }
+
+/**
+ * true → el tipo viene de una paleta de DIBUJO LIBRE (ver `Notation.freeform`).
+ * Lo usa el rotulado: en una forma general el tipo ES la silueta, así que
+ * repetirlo debajo del nombre («[Rectángulo]» dentro de un rectángulo) sólo
+ * gasta espacio, y con él se iba también el aire de la ficha.
+ */
+export const isFreeformType = (type: string): boolean =>
+  NOTATION_BY_TYPE[type]?.freeform === true;
+
+/** Cómo se rotula un elemento sin silueta (rótulo o encabezado). */
+export const textStyleOfType = (type: string): "label" | "heading" =>
+  ALL_ELEMENTS[type]?.textStyle ?? "label";
 
 /**
  * true → el tipo se dibuja como CAJA DE TABLA con compartimentos (MER físico).

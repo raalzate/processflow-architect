@@ -143,7 +143,9 @@ import {
   labelLayoutOfType,
   sizeOfType,
   NOTATION_LIST,
+  isFreeformType,
   isTableType,
+  textStyleOfType,
   DEFAULT_NOTATION_ID,
   type Notation,
   type NotationId,
@@ -1455,6 +1457,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   const shape = shapeForType(node.tipo_elemento);
   const compact = !!meta?.compact;
   const isTable = isTableType(node.tipo_elemento);
+  // Forma de dibujo libre: su tipo ES la silueta (ver `isFreeformType`).
+  const libre = isFreeformType(node.tipo_elemento);
   // Anillo BPMN canónico: Fin = grueso, Intermedio = doble; el resto simple.
   const eventRing: "thick" | "double" | undefined =
     node.tipo_elemento === "Evento de Fin"
@@ -1474,7 +1478,10 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   // El rótulo suelto («Texto Libre») es TEXTO: la ficha con `[Tipo]` y su
   // descripción convertiría una etiqueta en una tarjeta.
   const detail =
-    !labelOutside && shape !== "text" && labelLayoutOfType(node.tipo_elemento, notation) === "detail";
+    !labelOutside &&
+    shape !== "text" &&
+    !libre &&
+    labelLayoutOfType(node.tipo_elemento, notation) === "detail";
 
   // CAJA DE TABLA (MER físico): el nombre arriba y un compartimento por
   // estereotipo —«column», «FK», «index», «PK»—. Se dibuja con <text> y no con
@@ -1619,7 +1626,53 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         }}
       />
       <foreignObject width={nodeW} height={nodeH} className="pointer-events-none">
-        {detail ? (
+        {shape === "text" ? (
+          // Texto SIN silueta. El «encabezado» separa jerarquía: título grande
+          // arriba y el cuerpo debajo, más chico. El rótulo es una sola línea.
+          textStyleOfType(node.tipo_elemento) === "heading" ? (
+            <div className={cn("flex h-full w-full flex-col justify-center px-1", color.text)}>
+              <p className={cn("text-base font-bold leading-tight select-none break-words", isDeleted && "line-through")}>
+                {node.nombre}
+              </p>
+              {!!node.descripcion && (
+                <p className="mt-0.5 text-2xs leading-snug opacity-80 select-none break-words line-clamp-4">
+                  {node.descripcion}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className={cn("flex h-full w-full items-center justify-center px-1 text-center", color.text)}>
+              <p className={cn("text-sm font-bold leading-tight select-none break-words line-clamp-3", isDeleted && "line-through")}>
+                {node.nombre}
+              </p>
+            </div>
+          )
+        ) : libre ? (
+          // Forma de propósito general: dentro va el NOMBRE (y su descripción si
+          // la tiene). El `[Tipo]` sería repetir la silueta que ya se ve, y el
+          // icono en la esquina, adornar; sin los dos, la caja respira.
+          <div
+            className={cn(
+              "flex h-full w-full flex-col items-center justify-center gap-0.5 p-2 text-center",
+              color.text,
+              shape === "ellipse" && "px-6"
+            )}
+          >
+            <p
+              className={cn(
+                "text-sm font-bold leading-tight select-none break-words max-w-full line-clamp-3",
+                isDeleted && "line-through"
+              )}
+            >
+              {node.nombre}
+            </p>
+            {!!node.descripcion && (
+              <p className="text-2xs leading-tight opacity-80 select-none break-words max-w-full line-clamp-3">
+                {node.descripcion}
+              </p>
+            )}
+          </div>
+        ) : detail ? (
           // La FICHA: el icono no compite con el texto —va chico, arriba a la
           // izquierda— y el bloque central se lee como una tarjeta: qué es, para
           // qué sirve y de qué tipo es. Es el rotulado de todas las notaciones.
@@ -1673,8 +1726,12 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               hasSubView && !labelOutside && "pb-3"
             )}
           >
-            {/* Símbolos UML canónicos (punto inicial, rombo de decisión): sin icono. */}
-            {!meta?.hideIcon && <Icon className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")} />}
+            {/* Símbolos UML canónicos (punto inicial, rombo de decisión): sin
+                icono. Una forma LIBRE tampoco lo lleva: la silueta ya dice lo
+                que es y el icono dentro del rombo sólo compite con el nombre. */}
+            {!meta?.hideIcon && !libre && (
+              <Icon className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")} />
+            )}
             {!labelOutside && (
               <p
                 className={cn(

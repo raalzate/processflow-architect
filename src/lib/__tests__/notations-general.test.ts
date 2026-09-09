@@ -16,7 +16,9 @@ import {
   NOTATION_IDS,
   NOTATION_LIST,
   getNotation,
+  isFreeformType,
   isTableType,
+  textStyleOfType,
   notationRoles,
   notationTypes,
   sizeOfType,
@@ -163,5 +165,37 @@ describe("los nombres no pisan a otra notación", () => {
     expect(ALL_ELEMENTS["Nube"].shape).toBe("cloud");
     // Y no le cambió la silueta a un tipo ajeno de nombre parecido.
     expect(ALL_ELEMENTS["Nota"].shape).toBe("rect");
+  });
+});
+
+describe("rotulado de las formas libres", () => {
+  it("una forma libre se marca como tal y el resto no", () => {
+    expect(isFreeformType("Rectángulo")).toBe(true);
+    expect(isFreeformType("Nube")).toBe(true);
+    // Un tipo semántico de otra notación NO es libre: sigue mostrando su ficha
+    // con el `[Tipo]` y su icono.
+    for (const t of ["Comando", "Tarea", "Contenedor", "Clase", "Tabla Relacional"]) {
+      expect(isFreeformType(t), t).toBe(false);
+    }
+  });
+
+  it("el título y el rótulo se rotulan distinto (si no, se leen igual)", () => {
+    expect(textStyleOfType("Título y Texto")).toBe("heading");
+    expect(textStyleOfType("Texto Libre")).toBe("label");
+    // Cualquier otro tipo cae al rótulo simple: es el valor por defecto.
+    expect(textStyleOfType("Rectángulo")).toBe("label");
+  });
+
+  it("las cajas de texto son BAJAS: el texto no arrastra el hueco de la ficha", () => {
+    // Lo que molesta en un rótulo es el ALTO: una línea de texto en una caja de
+    // 104 px deja un hueco que se arrastra y se conecta como si fuera la forma.
+    // El ancho es libre — un encabezado necesita renglón largo.
+    for (const t of ["Texto Libre", "Título y Texto"]) {
+      expect(sizeOfType(t, "general").h, t).toBeLessThan(DEFAULT_NODE_SIZE.h);
+    }
+    // Y el título tiene más aire que el rótulo: lleva dos bloques de texto.
+    expect(sizeOfType("Título y Texto", "general").h).toBeGreaterThan(
+      sizeOfType("Texto Libre", "general").h
+    );
   });
 });
