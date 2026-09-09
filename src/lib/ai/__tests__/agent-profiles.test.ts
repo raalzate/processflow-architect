@@ -115,3 +115,37 @@ describe("el analista no escribe", () => {
     expect(avisoAgenteEquivocado()).toMatch(/Constructor/);
   });
 });
+
+describe("bienvenida del perfil", () => {
+  it("cada perfil trae su título, su invitación y sus ejemplos", () => {
+    for (const p of AGENT_PROFILES) {
+      expect(p.bienvenida.titulo.trim().length).toBeGreaterThan(0);
+      expect(p.bienvenida.invitacion.trim().length).toBeGreaterThan(0);
+      expect(p.bienvenida.ejemplos.length).toBeGreaterThan(2);
+      for (const e of p.bienvenida.ejemplos) expect(e.trim()).toBe(e);
+    }
+  });
+
+  it("el analista conserva su tarjeta de siempre: esto no es un rediseño", () => {
+    const b = getAgentProfile("analista").bienvenida;
+    expect(b.titulo).toBe("Agente de Arquitectura");
+    expect(b.ejemplos).toContain("Extrae los drivers de arquitectura");
+    expect(b.ejemplos).toContain("Redacta un ADR para la persistencia");
+  });
+
+  it("el constructor invita a construir, no a redactar", () => {
+    const b = getAgentProfile("constructor").bienvenida;
+    expect(b.titulo).toMatch(/Constructor/i);
+    // Los ejemplos del constructor tienen que ser pedidos que ÉL puede cumplir:
+    // un chip que dispara «redactá un ADR» con el constructor activo sólo enseña
+    // a usarlo mal.
+    for (const e of b.ejemplos) expect(pideEscritura(e)).toBe(true);
+    // Y el humano tiene que saber, antes de escribir, que lo destructivo se pregunta.
+    expect(b.invitacion).toMatch(/confirm/i);
+  });
+
+  it("sólo el que escribe ofrece artefactos: el constructor no produce documentos", () => {
+    expect(getAgentProfile("analista").artefactos).toBe(true);
+    expect(getAgentProfile("constructor").artefactos).toBe(false);
+  });
+});

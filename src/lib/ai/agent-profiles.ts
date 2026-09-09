@@ -14,6 +14,14 @@
 
 export type AgentId = "analista" | "constructor";
 
+/** Tarjeta que ve el humano con el chat vacío: quién atiende y qué pedirle. */
+export interface AgentWelcome {
+  titulo: string;
+  invitacion: string;
+  /** Ejemplos clicables: pedidos que ESTE agente puede cumplir. */
+  ejemplos: string[];
+}
+
 export interface AgentProfile {
   id: AgentId;
   nombre: string;
@@ -23,6 +31,9 @@ export interface AgentProfile {
   escribe: boolean;
   /** Ids de herramientas MCP que se le ofrecen al modelo. Vacío = sólo lectura. */
   tools: string[];
+  /** ¿Produce artefactos de texto (menú «+»)? El constructor cambia el modelo, no redacta. */
+  artefactos: boolean;
+  bienvenida: AgentWelcome;
 }
 
 /**
@@ -65,6 +76,19 @@ export const AGENT_PROFILES: AgentProfile[] = [
     descripcion: "Lee el modelo y redacta documentos. No cambia nada.",
     escribe: false,
     tools: [],
+    artefactos: true,
+    bienvenida: {
+      titulo: "Agente de Arquitectura",
+      invitacion:
+        "Pídeme que diseñe o analice tu sistema. Generaré artefactos (drivers, riesgos, propuesta, roadmap, ADRs, diagramas...) en el lienzo principal.",
+      ejemplos: [
+        "Extrae los drivers de arquitectura",
+        "Identifica riesgos y restricciones",
+        "Genera una propuesta técnica completa",
+        "Crea un diagrama C4 de contenedores",
+        "Redacta un ADR para la persistencia",
+      ],
+    },
   },
   {
     id: "constructor",
@@ -72,6 +96,18 @@ export const AGENT_PROFILES: AgentProfile[] = [
     descripcion: "Crea, edita y elimina vistas y elementos con las herramientas del MCP.",
     escribe: true,
     tools: REPERTORIO_CONSTRUCTOR,
+    artefactos: false,
+    bienvenida: {
+      titulo: "Agente Constructor",
+      invitacion:
+        "Pedime que construya y modifico el modelo con las herramientas del MCP: vistas, cajas y relaciones. Antes de borrar o sobrescribir algo te muestro qué se pierde y espero que lo confirmes.",
+      ejemplos: [
+        "Creá una vista BPMN del proceso de alta",
+        "Agregá el evento Orden creada a la vista Pagos",
+        "Conectá los nodos Checkout y Cobro",
+        "Renombrá la vista Pagos a Cobranzas",
+      ],
+    },
   },
 ];
 
