@@ -43,6 +43,23 @@ export const routingOf = (
   notation?: NotationId | string
 ): "straight" | "curved" | "orthogonal" => link.routing ?? defaultRoutingFor(notation);
 
+/**
+ * Siluetas que se recortan como una ELIPSE. El recorte no distingue lóbulos ni
+ * curvas: lo que decide es si el borde se acerca al centro en las esquinas
+ * (nube, óvalo, medio disco, forma D) o si llega al vértice de la caja
+ * (rectángulos, hexágono, paralelogramo, marco…). Con el recorte rectangular,
+ * la línea que llega a una nube nace flotando en el aire de su esquina.
+ */
+const REDONDEADAS: ReadonlySet<ShapeKind> = new Set<ShapeKind>([
+  "ellipse",
+  "cloud",
+  "callout-oval",
+  "semicircle",
+  "dshape",
+]);
+
+const esRedondeada = (shape: ShapeKind): boolean => REDONDEADAS.has(shape);
+
 // Recorta un extremo al CONTORNO de la forma (en la dirección que sale del centro),
 // así la línea nace/termina en el borde y nunca cruza el interior (clave con relleno
 // transparente). Soporta elipse, rombo y rectángulo (contenedores → rectángulo).
@@ -57,7 +74,7 @@ export const clipToShape = (
 ) => {
   if (dirX === 0 && dirY === 0) return { x: cx, y: cy };
   let scale: number;
-  if (shape === "ellipse") {
+  if (esRedondeada(shape)) {
     scale = 1 / Math.sqrt((dirX / hw) ** 2 + (dirY / hh) ** 2);
   } else if (shape === "diamond") {
     scale = 1 / (Math.abs(dirX) / hw + Math.abs(dirY) / hh);

@@ -104,6 +104,11 @@ import {
   type SkillConfig,
 } from "../../src/lib/mcp-skill";
 import { DEFAULT_NOTATION_ID, NOTATION_IDS, type NotationId } from "../../src/lib/notations";
+import {
+  EDGE_RELATIONS,
+  EDGE_RELATION_LIST,
+  type EdgeRelationKind,
+} from "../../src/lib/edge-relations";
 import { isLifelineContainer } from "../../src/lib/notations";
 import { SEQUENCE_MESSAGES, SEQUENCE_MESSAGE_KINDS } from "../../src/lib/sequence/messages";
 import { FRAGMENT_OPS, FRAGMENT_OPS_LIST, type FragmentOp } from "../../src/lib/sequence/fragments";
@@ -262,6 +267,20 @@ const columnsSchema = z
     })
   ))
   .optional();
+
+/**
+ * Relación que representa la arista: la MARCA de cada punta. El catálogo sale de
+ * `EDGE_RELATION_LIST` y la ayuda de la tabla misma, así que una relación nueva
+ * llega al agente sin tocar esto (el arnés es agnóstico de notación).
+ */
+const relationSchema = z
+  .enum(EDGE_RELATION_LIST as [EdgeRelationKind, ...EdgeRelationKind[]])
+  .optional()
+  .describe(
+    "Qué relación representa la arista; decide la MARCA de cada punta y si el trazo va punteado. Sin esto, una cardinalidad 1:N y una herencia se dibujan las dos como una flecha común. Opciones: " +
+      EDGE_RELATION_LIST.map((k) => `\`${k}\` — ${EDGE_RELATIONS[k].hint}`).join(" · ") +
+      ". En un MER usá las `cardinalidad_*` (pata de gallo); en UML, `herencia`, `realizacion`, `composicion`, `agregacion` o `dependencia`. Ausente = asociación simple."
+  );
 
 const metadataSchema = z
   .preprocess((v) => {
@@ -547,8 +566,18 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             ),
           ].join("\n")
         : "";
+      // La punta de la arista es simbología, igual que la forma del nodo: si el
+      // catálogo no la lista, el agente etiqueta "1:N" como texto y las dos
+      // puntas se dibujan como una flecha cualquiera (#302).
+      const relaciones = [
+        "",
+        "## Relaciones de arista (`relation` en add_edge/update_edge)",
+        ...EDGE_RELATION_LIST.map(
+          (k) => `- \`${k}\` — ${EDGE_RELATIONS[k].label}: ${EDGE_RELATIONS[k].hint}`
+        ),
+      ].join("\n");
       return text(
-        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n\n## Guía\n${n.aiGuidance}`
+        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n${relaciones}\n\n## Guía\n${n.aiGuidance}`
       );
     }
   );
@@ -1117,9 +1146,10 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .describe(
             "Línea discontinua. En un diagrama de secuencia UML marca un MENSAJE DE RETORNO (respuesta); las llamadas síncronas van sólidas."
           ),
+        relation: relationSchema,
       },
     },
-    async ({ diagramId: diagramIdEntrada, from, to, label, arrow, dashed }) => {
+    async ({ diagramId: diagramIdEntrada, from, to, label, arrow, dashed, relation }) => {
       // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
       // configuración, o el único del workspace (`active-diagram.ts`).
       let diagramId: string;
@@ -1130,7 +1160,14 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       }
       const model = await loadModel(diagramId);
       try {
-        const next = addEdge(model, { fuente: from, destino: to, descripcion: label, arrow, dashed });
+        const next = addEdge(model, {
+          fuente: from,
+          destino: to,
+          descripcion: label,
+          arrow,
+          dashed,
+          relation,
+        });
         await saveModel(diagramId, next);
         return text(`Arista ${from} → ${to} añadida.`);
       } catch (e: any) {
@@ -1390,9 +1427,10 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         label: z.string().optional().describe("Etiqueta nueva, corta: verbo + [tecnología]."),
         dashed: z.boolean().optional(),
         arrow: z.enum(["end", "both", "none"]).optional(),
+        relation: relationSchema,
       },
     },
-    async ({ diagramId: diagramIdEntrada, from, to, label, dashed, arrow }) => {
+    async ({ diagramId: diagramIdEntrada, from, to, label, dashed, arrow, relation }) => {
       // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
       // configuración, o el único del workspace (`active-diagram.ts`).
       let diagramId: string;
@@ -1407,6 +1445,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ...(label !== undefined ? { descripcion: label } : {}),
           ...(dashed !== undefined ? { dashed } : {}),
           ...(arrow !== undefined ? { arrow } : {}),
+          ...(relation !== undefined ? { relation } : {}),
         });
         await saveModel(diagramId, next);
         return text(`Relación ${from} → ${to} actualizada.`);

@@ -46,6 +46,34 @@ export function mermaidShapeDelims(tipo: string): [string, string] {
       // Mermaid no tiene triángulo: el trapecio es lo más parecido (la
       // jerarquía ISA del MER se sigue leyendo como "se abre hacia abajo").
       return ["[/", "\\]"];
+    // Siluetas de la paleta General: Mermaid no las tiene todas, así que cada
+    // una cae en la que MÁS se le parece (el hexágono y el paralelogramo sí
+    // existen; una nube o un cubo se dibujan como lo que son por dentro: una
+    // caja). La vista previa es para leer el diseño, no para reemplazar al lienzo.
+    case "hexagon":
+      return ["{{", "}}"];
+    case "parallelogram":
+      return ["[/", "/]"];
+    case "step":
+      return [">", "]"];
+    case "cloud":
+    case "callout-oval":
+    case "semicircle":
+    case "dshape":
+      return ["(", ")"];
+    case "process":
+      return ["[[", "]]"];
+    case "cube":
+    case "document":
+    case "note":
+    case "callout":
+    case "frame":
+    case "list":
+    case "person":
+      return ["[", "]"];
+    case "text":
+      // Rótulo suelto: sin silueta. En Mermaid, la caja más neutra que hay.
+      return ["[", "]"];
     case "rounded":
     default:
       return ["(", ")"];

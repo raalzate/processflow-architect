@@ -236,7 +236,7 @@ export default function DocsPage() {
                   <p>
                     <b className="text-foreground">Añadir elementos:</b> arrastra cualquier tipo
                     desde la paleta de la izquierda al lienzo. El selector de arriba de la paleta
-                    cambia la notación de la vista activa (DDD, BPMN, C4 o UML) y con ella los
+                    cambia la notación de la vista activa (DDD, BPMN, C4, UML, MER o General) y con ella los
                     tipos disponibles.
                   </p>
                   <p>

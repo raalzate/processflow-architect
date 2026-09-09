@@ -3975,7 +3975,7 @@ export const ComponentDesigner: React.FC<{
           <h2 className="text-xl font-semibold text-foreground">Sin proyecto activo</h2>
           <p className="mt-2 text-muted-foreground">
             Crea un nuevo proyecto desde la barra superior y elige su notación
-            (DDD, BPMN, C4 o UML) para empezar a diseñar.
+            (DDD, BPMN, C4, UML, MER o General) para empezar a diseñar.
           </p>
         </div>
       </div>

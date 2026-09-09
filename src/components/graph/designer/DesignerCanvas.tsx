@@ -83,6 +83,12 @@ import {
   FileCode2,
   CircleDashed,
   // MER (entidades, relaciones, atributos y modelo relacional)
+  Hexagon,
+  Cloud,
+  Shapes,
+  PanelTop,
+  Heading,
+  MessageCircle,
   Table,
   Table2,
   TableProperties,
@@ -137,7 +143,9 @@ import {
   labelLayoutOfType,
   sizeOfType,
   NOTATION_LIST,
+  isFreeformType,
   isTableType,
+  textStyleOfType,
   DEFAULT_NOTATION_ID,
   type Notation,
   type NotationId,
@@ -209,6 +217,8 @@ const ICON_MAP: Record<string, React.ElementType> = {
   // multivaluado, derivado) y modelo relacional (tabla, PK, FK, restricción, índice).
   Table, Table2, TableProperties, KeyRound, KeySquare, Network, CopyPlus, Sigma,
   Triangle, Combine, Link, ShieldCheck, Hash,
+  // General: siluetas de dibujo libre (cuadrado, hexágono, nube, marco, lista…).
+  Hexagon, Cloud, Shapes, ChevronRight, PanelTop, Heading, MessageCircle,
 };
 
 export const iconForType = (type: string): React.ElementType =>
@@ -391,6 +401,199 @@ export const NodeShape: React.FC<{
         </g>
       );
     }
+    // --- Siluetas de propósito general (paleta «General») -------------------
+    case "hexagon": {
+      // El corte de los lados crece con el ancho, pero se topa: en una caja
+      // angosta un corte fijo se come la mitad de la figura.
+      const i = Math.min(24, w * 0.18);
+      return (
+        <polygon
+          points={`${i},0 ${w - i},0 ${w},${h / 2} ${w - i},${h} ${i},${h} 0,${h / 2}`}
+          className={className}
+          strokeWidth={strokeWidth}
+          style={style}
+        />
+      );
+    }
+    case "parallelogram": {
+      const i = Math.min(28, w * 0.18);
+      return (
+        <polygon
+          points={`${i},0 ${w},0 ${w - i},${h} 0,${h}`}
+          className={className}
+          strokeWidth={strokeWidth}
+          style={style}
+        />
+      );
+    }
+    case "step": {
+      // Cinta de una secuencia: punta a la derecha y la MISMA muesca a la
+      // izquierda, para que dos pasos encajen uno con otro.
+      const i = Math.min(24, w * 0.16);
+      return (
+        <polygon
+          points={`0,0 ${w - i},0 ${w},${h / 2} ${w - i},${h} 0,${h} ${i},${h / 2}`}
+          className={className}
+          strokeWidth={strokeWidth}
+          style={style}
+        />
+      );
+    }
+    case "cloud": {
+      // Nube en cinco lóbulos, definida en una caja 100×60 y ESCALADA a la del
+      // nodo: escrita con las medidas reales, cada tamaño necesitaba su path.
+      const d =
+        "M25,50 C10,50 5,40 12,32 C6,22 16,12 27,16 C31,6 46,4 53,13 C64,6 78,12 76,24 C90,26 92,44 78,50 Z";
+      return (
+        <g transform={`scale(${w / 100},${h / 60})`} className={className} strokeWidth={strokeWidth} style={style}>
+          <path d={d} vectorEffect="non-scaling-stroke" />
+        </g>
+      );
+    }
+    case "cube": {
+      // Perspectiva: cara frontal + tapa + costado. La profundidad se topa para
+      // que en una caja chica el cubo siga teniendo cara.
+      const d = Math.min(20, w * 0.14, h * 0.28);
+      return (
+        <g className={className} strokeWidth={strokeWidth} style={style}>
+          <rect x={0} y={d} width={w - d} height={h - d} />
+          <path d={`M0,${d} L${d},0 L${w},0 L${w - d},${d} Z`} />
+          <path d={`M${w - d},${d} L${w},0 L${w},${h - d} L${w - d},${h} Z`} />
+        </g>
+      );
+    }
+    case "document": {
+      // Hoja con el borde inferior ondulado (informe, impreso).
+      const o = Math.min(14, h * 0.18);
+      return (
+        <path
+          d={`M0,0 H${w} V${h - o} C${w * 0.75},${h} ${w * 0.25},${h - o * 2} 0,${h - o} Z`}
+          className={className}
+          strokeWidth={strokeWidth}
+          style={style}
+        />
+      );
+    }
+    case "note": {
+      // Esquina doblada: la silueta y el pliegue son dos trazos, y el pliegue va
+      // sin relleno para que se lea como doblez y no como recorte.
+      const f = Math.min(22, w * 0.16, h * 0.3);
+      return (
+        <g className={className} strokeWidth={strokeWidth} style={style}>
+          <path d={`M0,0 H${w - f} L${w},${f} V${h} H0 Z`} />
+          <path d={`M${w - f},0 V${f} H${w}`} style={{ fill: "none" }} />
+        </g>
+      );
+    }
+    case "callout": {
+      // Globo rectangular: la cola sale de abajo a la izquierda, que es como se
+      // dibuja cuando el globo está sobre lo que comenta.
+      const t = Math.min(16, h * 0.22);
+      const x = Math.min(46, w * 0.3);
+      return (
+        <path
+          d={`M4,0 H${w - 4} Q${w},0 ${w},4 V${h - t - 4} Q${w},${h - t} ${w - 4},${h - t} H${x} L${x - 12},${h} L${x - 10},${h - t} H4 Q0,${h - t} 0,${h - t - 4} V4 Q0,0 4,0 Z`}
+          className={className}
+          strokeWidth={strokeWidth}
+          style={style}
+        />
+      );
+    }
+    case "callout-oval": {
+      const t = Math.min(16, h * 0.22);
+      const rx = w / 2;
+      const ry = (h - t) / 2;
+      return (
+        <g className={className} strokeWidth={strokeWidth} style={style}>
+          <ellipse cx={rx} cy={ry} rx={rx} ry={ry} />
+          {/* La cola se dibuja pegada al óvalo y con su mismo relleno. */}
+          <path d={`M${rx - 14},${h - t - 4} L${rx - 22},${h} L${rx + 4},${h - t - 2} Z`} />
+        </g>
+      );
+    }
+    case "semicircle":
+      return (
+        <path
+          d={`M0,${h} A${w / 2},${h} 0 0 1 ${w},${h} Z`}
+          className={className}
+          strokeWidth={strokeWidth}
+          style={style}
+        />
+      );
+    case "dshape": {
+      // Rectángulo con el lado derecho redondeado del todo (forma «D»).
+      const r = Math.min(w * 0.45, h / 2);
+      return (
+        <path
+          d={`M0,0 H${w - r} A${r},${h / 2} 0 0 1 ${w - r},${h} H0 Z`}
+          className={className}
+          strokeWidth={strokeWidth}
+          style={style}
+        />
+      );
+    }
+    case "process": {
+      // Rectángulo con dos barras verticales: el «proceso predefinido» de los
+      // diagramas de flujo. Las barras van sin relleno (son sólo líneas).
+      const b = Math.min(14, w * 0.1);
+      return (
+        <g className={className} strokeWidth={strokeWidth} style={style}>
+          <rect width={w} height={h} />
+          <path d={`M${b},0 V${h} M${w - b},0 V${h}`} style={{ fill: "none" }} />
+        </g>
+      );
+    }
+    case "frame":
+    case "list": {
+      // Marco con banda de título; la lista agrega las filas. Las líneas van sin
+      // relleno para que la banda no tape lo que se escribe dentro.
+      const banda = Math.min(22, h * 0.22);
+      const filas = shape === "list" ? [0.45, 0.62, 0.79] : [];
+      return (
+        <g className={className} strokeWidth={strokeWidth} style={style}>
+          <rect width={w} height={h} />
+          <path
+            d={[`M0,${banda} H${w}`, ...filas.map((f) => `M0,${h * f} H${w}`)].join(" ")}
+            style={{ fill: "none" }}
+          />
+        </g>
+      );
+    }
+    case "person": {
+      // Figura de palitos: cabeza rellena y cuerpo de líneas. El cuerpo va sin
+      // relleno o los brazos y las piernas se dibujarían como una mancha.
+      const cx = w / 2;
+      const cabeza = Math.min(w, h) * 0.16;
+      const hombros = cabeza * 2.6;
+      const cadera = h * 0.62;
+      const brazo = Math.min(w / 2 - 2, cabeza * 2.2);
+      return (
+        <g className={className} strokeWidth={strokeWidth} style={style}>
+          <circle cx={cx} cy={cabeza + 2} r={cabeza} />
+          <path
+            d={[
+              `M${cx},${cabeza * 2 + 2} V${cadera}`,
+              `M${cx - brazo},${hombros} H${cx + brazo}`,
+              `M${cx},${cadera} L${cx - brazo * 0.8},${h}`,
+              `M${cx},${cadera} L${cx + brazo * 0.8},${h}`,
+            ].join(" ")}
+            style={{ fill: "none" }}
+          />
+        </g>
+      );
+    }
+    case "text":
+      // Rótulo suelto: NO hay silueta. El rectángulo transparente existe sólo
+      // para poder agarrar el nodo con el mouse (sin él, el texto se arrastra
+      // pero el hueco entre letras no responde al clic).
+      return (
+        <rect
+          width={w}
+          height={h}
+          className="fill-transparent stroke-transparent"
+          strokeWidth={strokeWidth}
+        />
+      );
     default:
       return <rect width={w} height={h} rx={8} className={className} strokeWidth={strokeWidth} style={style} />;
   }
@@ -1254,6 +1457,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   const shape = shapeForType(node.tipo_elemento);
   const compact = !!meta?.compact;
   const isTable = isTableType(node.tipo_elemento);
+  // Forma de dibujo libre: su tipo ES la silueta (ver `isFreeformType`).
+  const libre = isFreeformType(node.tipo_elemento);
   // Anillo BPMN canónico: Fin = grueso, Intermedio = doble; el resto simple.
   const eventRing: "thick" | "double" | undefined =
     node.tipo_elemento === "Evento de Fin"
@@ -1270,7 +1475,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   const { w: nodeW, h: nodeH } = nodeBox(node, notation);
   const sideInset = compact ? (nodeW - nodeH) / 2 : 0;
   // Ficha C4: icono chico arriba a la izquierda, y nombre · descripción · [Tipo].
-  const detail = !labelOutside && labelLayoutOfType(node.tipo_elemento, notation) === "detail";
+  // El rótulo suelto («Texto Libre») es TEXTO: la ficha con `[Tipo]` y su
+  // descripción convertiría una etiqueta en una tarjeta.
+  const detail =
+    !labelOutside &&
+    shape !== "text" &&
+    !libre &&
+    labelLayoutOfType(node.tipo_elemento, notation) === "detail";
 
   // CAJA DE TABLA (MER físico): el nombre arriba y un compartimento por
   // estereotipo —«column», «FK», «index», «PK»—. Se dibuja con <text> y no con
@@ -1415,7 +1626,53 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         }}
       />
       <foreignObject width={nodeW} height={nodeH} className="pointer-events-none">
-        {detail ? (
+        {shape === "text" ? (
+          // Texto SIN silueta. El «encabezado» separa jerarquía: título grande
+          // arriba y el cuerpo debajo, más chico. El rótulo es una sola línea.
+          textStyleOfType(node.tipo_elemento) === "heading" ? (
+            <div className={cn("flex h-full w-full flex-col justify-center px-1", color.text)}>
+              <p className={cn("text-base font-bold leading-tight select-none break-words", isDeleted && "line-through")}>
+                {node.nombre}
+              </p>
+              {!!node.descripcion && (
+                <p className="mt-0.5 text-2xs leading-snug opacity-80 select-none break-words line-clamp-4">
+                  {node.descripcion}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className={cn("flex h-full w-full items-center justify-center px-1 text-center", color.text)}>
+              <p className={cn("text-sm font-bold leading-tight select-none break-words line-clamp-3", isDeleted && "line-through")}>
+                {node.nombre}
+              </p>
+            </div>
+          )
+        ) : libre ? (
+          // Forma de propósito general: dentro va el NOMBRE (y su descripción si
+          // la tiene). El `[Tipo]` sería repetir la silueta que ya se ve, y el
+          // icono en la esquina, adornar; sin los dos, la caja respira.
+          <div
+            className={cn(
+              "flex h-full w-full flex-col items-center justify-center gap-0.5 p-2 text-center",
+              color.text,
+              shape === "ellipse" && "px-6"
+            )}
+          >
+            <p
+              className={cn(
+                "text-sm font-bold leading-tight select-none break-words max-w-full line-clamp-3",
+                isDeleted && "line-through"
+              )}
+            >
+              {node.nombre}
+            </p>
+            {!!node.descripcion && (
+              <p className="text-2xs leading-tight opacity-80 select-none break-words max-w-full line-clamp-3">
+                {node.descripcion}
+              </p>
+            )}
+          </div>
+        ) : detail ? (
           // La FICHA: el icono no compite con el texto —va chico, arriba a la
           // izquierda— y el bloque central se lee como una tarjeta: qué es, para
           // qué sirve y de qué tipo es. Es el rotulado de todas las notaciones.
@@ -1469,8 +1726,12 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               hasSubView && !labelOutside && "pb-3"
             )}
           >
-            {/* Símbolos UML canónicos (punto inicial, rombo de decisión): sin icono. */}
-            {!meta?.hideIcon && <Icon className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")} />}
+            {/* Símbolos UML canónicos (punto inicial, rombo de decisión): sin
+                icono. Una forma LIBRE tampoco lo lleva: la silueta ya dice lo
+                que es y el icono dentro del rombo sólo compite con el nombre. */}
+            {!meta?.hideIcon && !libre && (
+              <Icon className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")} />
+            )}
             {!labelOutside && (
               <p
                 className={cn(

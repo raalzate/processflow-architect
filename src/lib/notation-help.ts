@@ -2,7 +2,8 @@
  * @fileOverview Ayuda por elemento de notación: explicación + ejemplo.
  *
  * Se muestra en el modal "?" de cada item de la paleta del diseñador.
- * Claves = `type` de NotationElement (ver notations.ts). Cubre DDD/BPMN/C4/UML/MER.
+ * Claves = `type` de NotationElement (ver notations.ts). Cubre DDD/BPMN/C4/UML/MER
+ * y la paleta General.
  * Tipos compartidos (Actor, Sistema Externo, Componente) usan una sola entrada.
  */
 
@@ -425,5 +426,110 @@ export const NOTATION_HELP: Record<string, ElementHelp> = {
   "Esquema": {
     description: "Es la frontera lógica que agrupa las tablas y objetos de una misma base o dominio de datos. Delimita nombres y permisos; no ejecuta nada.",
     example: "En un ERP, el esquema 'ventas' agrupa clientes, facturas y líneas de factura, separado del esquema 'nómina'.",
+  },
+  // --- General: formas de propósito general (dibujo libre) ---
+  "Rectángulo": {
+    description: "Es la caja de propósito general: sirve para cualquier cosa que no tenga una silueta propia. En un diagrama de flujo se lee como un paso o una acción.",
+    example: "En un boceto de proceso, el rectángulo 'Revisar solicitud' es una de las etapas.",
+  },
+  "Rectángulo Redondeado": {
+    description: "Es la misma caja con las esquinas suaves. Se usa para diferenciar sin cambiar de figura: por convención marca el inicio o el fin de un flujo, o un elemento más blando que los pasos.",
+    example: "En un boceto de proceso, el rectángulo redondeado 'Inicio' abre el flujo.",
+  },
+  "Cuadrado": {
+    description: "Es un rectángulo de lados iguales, con caja cuadrada. Se usa cuando la proporción importa: una ficha, un ícono, una celda de una rejilla.",
+    example: "En un tablero, cada cuadrado representa una tarjeta del mismo tamaño.",
+  },
+  "Elipse": {
+    description: "Es el óvalo de propósito general. En los diagramas de flujo clásicos marca el inicio o el final; en un esquema libre agrupa una idea sin darle la rigidez de una caja.",
+    example: "En un mapa de ideas, la elipse 'Objetivo del trimestre' es el centro del esquema.",
+  },
+  "Círculo": {
+    description: "Es la elipse con caja cuadrada, así que se dibuja redonda de verdad. Sirve para nodos, puntos de conexión o elementos numerados.",
+    example: "En un recorrido, los círculos numerados 1, 2 y 3 marcan el orden de los pasos.",
+  },
+  "Rombo": {
+    description: "Es la decisión: una pregunta con dos o más salidas, y cada arista que sale lleva la respuesta que la habilita. Es la figura que más se reconoce de un diagrama de flujo.",
+    example: "En un flujo de compra, el rombo '¿Hay stock?' se ramifica en 'sí' y 'no'.",
+  },
+  "Triángulo": {
+    description: "Es una silueta de énfasis: se usa para advertencias, jerarquías o para indicar dirección. No tiene un significado fijo.",
+    example: "En un esquema de riesgos, el triángulo 'Atención: datos personales' señala el punto delicado.",
+  },
+  "Paralelogramo": {
+    description: "Es la entrada o la salida de datos en un diagrama de flujo: lo que el proceso recibe o entrega. Distinguirla del rectángulo deja ver de un vistazo dónde entra y sale información.",
+    example: "En un flujo de nómina, el paralelogramo 'Cargar horas trabajadas' es la entrada de datos.",
+  },
+  "Hexágono": {
+    description: "Es la preparación: lo que hay que dejar listo antes de que el flujo avance. También se usa para agrupar en mosaico, porque los hexágonos encajan entre sí.",
+    example: "En un despliegue, el hexágono 'Reservar ventana de mantenimiento' precede a los pasos técnicos.",
+  },
+  "Texto Libre": {
+    description: "Es un rótulo suelto: texto sobre el lienzo, sin caja ni contorno. Sirve para titular una zona, anotar una aclaración o poner una leyenda sin que parezca un elemento del diagrama.",
+    example: "En un esquema por fases, el texto libre 'Fase 1 — descubrimiento' rotula la columna de la izquierda.",
+  },
+  "Título y Texto": {
+    description: "Es un bloque de texto con título y cuerpo, también sin caja. Sirve para el encabezado de una lámina o para un párrafo de contexto al costado del dibujo.",
+    example: "En una lámina, el título 'Arquitectura propuesta' con dos líneas de resumen abre el diagrama.",
+  },
+  "Caja de Proceso": {
+    description: "Es el proceso predefinido: un paso que por dentro es otro procedimiento ya conocido, y por eso lleva dos barras verticales. Evita dibujar de nuevo algo que ya está documentado aparte.",
+    example: "En un alta de cliente, la caja de proceso 'Validación de identidad' remite al procedimiento que ya existe.",
+  },
+  "Cubo": {
+    description: "Es una silueta en perspectiva para algo con volumen o con existencia física: un equipo, un lote, un contenedor real. Se distingue de la caja plana justamente por eso.",
+    example: "En un esquema de logística, el cubo 'Pallet' representa la mercancía en depósito.",
+  },
+  "Marco": {
+    description: "Es un marco con banda de título: sirve para bocetar una pantalla, una ventana o cualquier recuadro con encabezado. Es la base de un wireframe rápido.",
+    example: "En un boceto de interfaz, el marco 'Detalle del pedido' es la ventana que se abre al elegir un pedido.",
+  },
+  "Lista de Ítems": {
+    description: "Es el marco con filas: una lista, una tabla simple o un menú, para bocetar interfaces sin dibujar cada renglón. Es la contraparte del marco cuando el contenido es una enumeración.",
+    example: "En un boceto de interfaz, la lista de ítems 'Pedidos del día' muestra los renglones que verá el operador.",
+  },
+  "Forma D": {
+    description: "Es un rectángulo con un lado redondeado. Se usa para terminales, extremos de un flujo o etiquetas que se enganchan a un costado.",
+    example: "En un esquema de integración, la forma D 'Cola de salida' cierra el recorrido del mensaje.",
+  },
+  "Paso": {
+    description: "Es una cinta con punta y muesca: una etapa de una secuencia que encaja con la siguiente. Varios pasos en fila leen como un camino con orden.",
+    example: "En una hoja de ruta, los pasos 'Descubrir', 'Diseñar' y 'Construir' se encadenan uno tras otro.",
+  },
+  "Documento": {
+    description: "Es un papel: un informe, un comprobante, un archivo que alguien lee o firma. El borde inferior ondulado es lo que lo distingue de una caja.",
+    example: "En un flujo de cobros, el documento 'Factura emitida' es lo que recibe el cliente.",
+  },
+  "Nota Doblada": {
+    description: "Es una hoja con la esquina doblada: una anotación al margen del diagrama, no un elemento del sistema. Sirve para explicar una decisión o dejar un pendiente.",
+    example: "En un esquema de migración, la nota doblada 'Falta confirmar la ventana con operaciones' queda pegada al paso en duda.",
+  },
+  "Globo de Diálogo": {
+    description: "Es un globo rectangular con cola: lo que alguien dice, pregunta o responde. La cola apunta a quien habla.",
+    example: "En un recorrido de usuario, el globo '¿Puedo pagar en cuotas?' sale del cliente en el paso del checkout.",
+  },
+  "Globo Ovalado": {
+    description: "Es el mismo globo con silueta ovalada; se usa para diferenciar voces o para un pensamiento en lugar de una frase dicha.",
+    example: "En un recorrido de usuario, el globo ovalado 'No entiendo qué me van a cobrar' muestra lo que el cliente piensa y no dice.",
+  },
+  "Cilindro": {
+    description: "Es almacenamiento: una base de datos, un archivo histórico, un depósito de datos. Es la silueta que todo el mundo lee como «acá se guarda».",
+    example: "En un esquema de reportes, el cilindro 'Histórico de ventas' es de donde salen los datos.",
+  },
+  "Nube": {
+    description: "Es algo que está fuera de tu control: internet, un servicio de terceros, una plataforma que no administras. Marca la frontera de lo que no se puede tocar por dentro.",
+    example: "En un esquema de pagos, la nube 'Pasarela del banco' es el servicio externo que autoriza la transacción.",
+  },
+  "Semicírculo": {
+    description: "Es medio disco con la base plana. Se usa como tope, como mitad de un par o para señalar una porción de algo mayor.",
+    example: "En un esquema de capacidad, el semicírculo 'Mitad del cupo' marca el umbral de alerta.",
+  },
+  "Figura de Persona": {
+    description: "Es una figura de palitos: quien participa, usa o recibe. En un boceto general dice «acá hay una persona» sin comprometerse con el rol formal de un actor de casos de uso.",
+    example: "En un esquema de atención, la figura de persona 'Cajero' está delante del mostrador.",
+  },
+  "Contenedor General": {
+    description: "Es un marco punteado que agrupa formas por afinidad: una fase, una zona, un tema. Agrupa visualmente y no impone ninguna semántica a lo que encierra.",
+    example: "En un esquema por etapas, el contenedor 'Fase de pruebas' encierra las formas de esa etapa.",
   },
 };

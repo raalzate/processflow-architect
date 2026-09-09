@@ -1,6 +1,6 @@
 ---
 name: disenar-diagrama
-description: Diseña UN diagrama (Event Storming DDD, BPMN, C4, UML o MER entidad-relación) en Processflow Architect usando el MCP processflow-architect — lee la fuente (documentos o código), construye el diagrama trazado a ella, lo valida y lo pasa por revisión humana antes de exportarlo al lienzo. Úsalo cuando el usuario pida "diseña un diagrama", "modela este dominio", "crea el event storming", "haz el BPMN de este proceso", "modela la arquitectura C4", "haz el modelo entidad-relación" o "lleva esto a Processflow".
+description: Diseña UN diagrama (Event Storming DDD, BPMN, C4, UML, MER entidad-relación o un esquema con formas generales) en Processflow Architect usando el MCP processflow-architect — lee la fuente (documentos o código), construye el diagrama trazado a ella, lo valida y lo pasa por revisión humana antes de exportarlo al lienzo. Úsalo cuando el usuario pida "diseña un diagrama", "modela este dominio", "crea el event storming", "haz el BPMN de este proceso", "modela la arquitectura C4", "haz el modelo entidad-relación" o "lleva esto a Processflow".
 ---
 
 # Diseñar un diagrama con el MCP de Processflow Architect
@@ -205,6 +205,15 @@ add_node { id: "c4-api-pagos", name: "API de Pagos", type: "Contenedor", contain
               { clave: "owner",    valor: "Equipo Pagos", tipo: "texto" } ] }
 ```
 
+## Cuándo NO usar una notación semántica
+
+La notación `general` es una paleta de FORMAS (rectángulos, elipses, nubes,
+notas, globos): no significa nada y el arnés no razona sobre ella. Elegila sólo
+cuando el usuario pide un boceto o un esquema que no es un modelo de dominio, un
+proceso, una arquitectura ni un modelo de datos. Si encaja en una de ésas, esa
+notación dice más: un rectángulo llamado «Validar pago» en `general` es un
+dibujo; en BPMN es una Tarea y `validate_diagram` puede opinar sobre ella.
+
 ## Modelo entidad-relación (MER): las tablas llevan columnas
 
 En un MER físico la `Tabla Relacional` se dibuja como CAJA con compartimentos, y
@@ -227,8 +236,11 @@ add_node { name: "Reserva", type: "Tabla Relacional",
 - Una FK **tiene que** declarar `referencia`: sin ella `validate_diagram` falla.
 - Una tabla sin `pk` pasa con **aviso**: se modela así sólo si la clave está sin
   decidir.
-- La cardinalidad va en la ARISTA (`relation: "cardinalidad_1_n"`, `…_n_m`, …),
-  que es la que dibuja la pata de gallo.
+- La cardinalidad va en la ARISTA: `add_edge { relation: "cardinalidad_1_n" }`
+  (o `…_1_1`, `…_0_1`, `…_0_n`, `…_n_m`), que es lo que dibuja la pata de gallo.
+  Etiquetar «1:N» como texto NO la dibuja. En UML, la misma opción lleva
+  `herencia`, `realizacion`, `composicion`, `agregacion` y `dependencia`;
+  `describe_notation` lista el catálogo completo.
 - El MER **conceptual** (Chen) es la otra mitad de la notación: entidades,
   rombos y atributos, sin columnas.
 

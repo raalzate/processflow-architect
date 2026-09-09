@@ -13,6 +13,7 @@ import {
   addEdge,
   fromGraphData,
   toGraphData,
+  updateEdge,
   updateNode,
   validate,
 } from "@/lib/mcp/diagram-builder";
@@ -117,5 +118,49 @@ describe("ida y vuelta por GraphData", () => {
     // El layout reparte con celdas del tamaño de la tabla más grande: dos cajas
     // altas no pueden quedar en la misma coordenada.
     expect(a.x === b.x && a.y === b.y).toBe(false);
+  });
+});
+
+describe("relación de la arista (la punta ES el significado)", () => {
+  it("viaja al proyecto y vuelve: la cardinalidad no se pierde en el camino", () => {
+    let m = emptyDiagram({ notation: "mer", nombre_proyecto: "Reservas" });
+    m = addNode(m, { nombre: "Reserva", tipo_elemento: "Tabla Relacional", columnas: COLUMNAS }).model;
+    m = addNode(m, {
+      nombre: "Servicio",
+      tipo_elemento: "Tabla Relacional",
+      columnas: [{ nombre: "id", tipo: "integer", pk: true }],
+    }).model;
+    m = addEdge(m, {
+      fuente: "reserva",
+      destino: "servicio",
+      descripcion: "reserva",
+      relation: "cardinalidad_1_n",
+    });
+    const data = toGraphData(m);
+    const aristas = [
+      ...data.big_picture.aristas,
+      ...data.agregados.flatMap((a) => a.aristas),
+      ...(data.politicas_inter_agregados ?? []),
+    ];
+    expect(aristas[0].relation).toBe("cardinalidad_1_n");
+    expect(fromGraphData(data).edges[0].relation).toBe("cardinalidad_1_n");
+  });
+
+  it("update_edge la corrige sin tocar el resto de la arista", () => {
+    let m = emptyDiagram({ notation: "uml", nombre_proyecto: "Clases" });
+    m = addNode(m, { nombre: "Pedido", tipo_elemento: "Clase" }).model;
+    m = addNode(m, { nombre: "Compra", tipo_elemento: "Clase" }).model;
+    m = addEdge(m, { fuente: "pedido", destino: "compra", descripcion: "es un" });
+    const next = updateEdge(m, "pedido", "compra", { relation: "herencia" });
+    expect(next.edges[0].relation).toBe("herencia");
+    expect(next.edges[0].descripcion).toBe("es un");
+  });
+
+  it("una arista sin relación no gana el campo (asociación simple)", () => {
+    let m = emptyDiagram({ notation: "c4", nombre_proyecto: "Paisaje" });
+    m = addNode(m, { nombre: "Web", tipo_elemento: "Contenedor" }).model;
+    m = addNode(m, { nombre: "API", tipo_elemento: "Contenedor" }).model;
+    m = addEdge(m, { fuente: "web", destino: "api", descripcion: "consume" });
+    expect(toGraphData(m).big_picture.aristas[0].relation).toBeUndefined();
   });
 });
