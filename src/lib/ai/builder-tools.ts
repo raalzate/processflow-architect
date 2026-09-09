@@ -58,8 +58,27 @@ const TOOLS_SOBRE_VISTA: Record<string, "delete-view" | "rename-view"> = {
 
 const esTexto = (v: unknown) => typeof v === "string" && v.trim().length > 0;
 
-/** El menú en texto: nombre, para qué sirve y qué argumentos son obligatorios. */
-export function buildToolMenu(tools: ToolSpec[], allow: string[]): string {
+/**
+ * Primera frase de la descripción, acotada. Las del registro MCP están escritas
+ * para un humano con Claude Code detrás —párrafos con ejemplos— y veinte de esas
+ * no entran en la ventana del motor local: el menú solo se comía el presupuesto
+ * entero y la corrida moría a mitad de camino (#308).
+ */
+function resumenCorto(texto: string, tope = 140): string {
+  const frase = (texto.split(/(?<=\.)\s/)[0] ?? texto).trim();
+  return frase.length <= tope ? frase : `${frase.slice(0, tope - 1).trimEnd()}…`;
+}
+
+/**
+ * El menú en texto: nombre, para qué sirve y qué argumentos son obligatorios.
+ * Con `compacto`, sólo nombre y obligatorios: es el último recorte antes de
+ * rendirse cuando la ventana del modelo es chica.
+ */
+export function buildToolMenu(
+  tools: ToolSpec[],
+  allow: string[],
+  opts: { compacto?: boolean } = {}
+): string {
   const porNombre = new Map(tools.map((t) => [t.name, t]));
   const lineas: string[] = [];
   for (const id of allow) {
@@ -69,17 +88,20 @@ export function buildToolMenu(tools: ToolSpec[], allow: string[]): string {
     if (!t) continue;
     const req = t.inputSchema?.required ?? [];
     const opc = Object.keys(t.inputSchema?.properties ?? {}).filter((k) => !req.includes(k));
+    if (opts.compacto) {
+      lineas.push(`- ${t.name}(${req.join(", ")})`);
+      continue;
+    }
     const args = [
       req.length ? `obligatorios: ${req.join(", ")}` : "sin argumentos obligatorios",
       opc.length ? `opcionales: ${opc.join(", ")}` : "",
     ]
       .filter(Boolean)
       .join(" · ");
-    lineas.push(`- ${t.name} — ${t.description ?? ""} (${args})`);
+    lineas.push(`- ${t.name} — ${resumenCorto(t.description ?? "")} (${args})`);
   }
   return lineas.join("\n");
 }
-
 
 /**
  * El objeto JSON del turno, aunque venga con prosa alrededor: se toma el primer

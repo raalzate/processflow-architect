@@ -7,18 +7,11 @@
  * entra al motor local ANTES de arrancar una corrida que se cortaría a la mitad.
  */
 
-import { budgetFromWindow } from "./agent-run";
-
 /**
  * Techo de entrada del turno para el motor local. Por encima, en modo híbrido el
  * router manda el turno a la nube; en modo local hay que avisar (no hay a dónde ir).
  */
 export const BUILDER_LOCAL_MAX_CHARS = 6_000;
-
-/** ¿El pedido entra en la ventana real del modelo local (Ajustes → máx. tokens)? */
-export function cabeEnMotorLocal(chars: number, maxTokens: number | undefined): boolean {
-  return chars <= budgetFromWindow(maxTokens);
-}
 
 /** Aviso con salida: partir el pedido o encender la nube. Nunca "falló y ya". */
 export function avisoPedidoGrande(): string {

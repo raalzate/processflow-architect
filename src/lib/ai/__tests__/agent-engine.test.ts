@@ -10,11 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { chooseProvider } from "@/lib/ai/router";
 import { builderTurnTask } from "@/lib/ai/tasks";
-import {
-  BUILDER_LOCAL_MAX_CHARS,
-  avisoPedidoGrande,
-  cabeEnMotorLocal,
-} from "@/lib/ai/agent-engine";
+import { BUILDER_LOCAL_MAX_CHARS, avisoPedidoGrande } from "@/lib/ai/agent-engine";
 import { publicarEstadoIaLocal, resetEstadoIaLocal } from "@/lib/ai/local-capability";
 
 beforeEach(() => {
@@ -57,14 +53,6 @@ describe("ruteo del turno del constructor", () => {
 });
 
 describe("presupuesto del motor local", () => {
-  it("un pedido chico cabe", () => {
-    expect(cabeEnMotorLocal(100, 4096)).toBe(true);
-  });
-
-  it("un pedido que desborda la ventana no cabe", () => {
-    expect(cabeEnMotorLocal(500_000, 4096)).toBe(false);
-  });
-
   it("el aviso dice qué hacer, no sólo que falló", () => {
     const aviso = avisoPedidoGrande();
     expect(aviso).toMatch(/parti|dividi|nube/i);

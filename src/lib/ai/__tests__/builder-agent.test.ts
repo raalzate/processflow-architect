@@ -145,3 +145,61 @@ describe("bucle del constructor", () => {
     expect(vistos).toContain("observation");
   });
 });
+
+/**
+ * El aviso de «no entra en la IA local» estaba MAL PUESTO: se evaluaba en cada
+ * turno contra el prompt completo, que crece con el menú y las observaciones. En
+ * la app el agente hizo diez pasos y cerró con el aviso, tirando el trabajo. Un
+ * presupuesto ajustado tiene que RECORTAR el contexto, no matar la corrida; y si
+ * de verdad no entra, el aviso llega antes de empezar y con lo hecho a la vista.
+ */
+describe("presupuesto del motor local durante la corrida", () => {
+  it("con la ventana por defecto, una corrida normal termina sin avisos de tamaño", async () => {
+    const { deps, llamadas } = guion([
+      '{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}',
+      '{"tool":"add_node","args":{"name":"Pago","type":"Comando"}}',
+      '{"final":"Listo."}',
+    ]);
+    const r = await runBuilderAgent({ ...base, maxTokens: 4096, deps });
+    expect(llamadas).toHaveLength(2);
+    expect(r.reply).not.toMatch(/más grande de lo que sostiene/i);
+  });
+
+  it("las observaciones se recortan en vez de reventar el presupuesto", async () => {
+    const gordo = {
+      listTools: async () => TOOLS,
+      callTool: async () => ({ ok: true, texto: "x".repeat(20_000) }),
+      generate: async (prompt: string) => {
+        // El prompt NUNCA puede pasarse del presupuesto del motor local.
+        expect(prompt.length).toBeLessThan(5018);
+        return '{"tool":"list_views","args":{}}';
+      },
+    };
+    const r = await runBuilderAgent({ ...base, maxTokens: 4096, deps: gordo });
+    expect(r.state.restantes).toBe(0);
+    expect(r.reply).toMatch(/tope de pasos/i);
+  });
+
+  it("si aborta por tamaño, el resumen dice lo que sí quedó hecho", async () => {
+    let turno = 0;
+    const deps = {
+      listTools: async () => TOOLS,
+      callTool: async () => ({ ok: true, texto: "hecho" }),
+      generate: async () => {
+        turno++;
+        return turno === 1
+          ? '{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}'
+          : '{"tool":"add_node","args":{"name":"Pago","type":"Comando"}}';
+      },
+    };
+    // Pedido enorme y ventana chica: ni el menú compacto con cero observaciones entra.
+    const r = await runBuilderAgent({
+      ...base,
+      message: "construí ".repeat(400),
+      maxTokens: 512,
+      deps,
+    });
+    expect(r.reply).toMatch(/nube|parti/i);
+    expect(r.reply).toMatch(/Sin cambios|Cambios aplicados/);
+  });
+});

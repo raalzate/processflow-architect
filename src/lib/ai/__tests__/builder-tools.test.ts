@@ -184,3 +184,39 @@ describe("alcance en palabras", () => {
     expect(texto.length).toBeGreaterThan(0);
   });
 });
+
+describe("el menú entra en la ventana del modelo local", () => {
+  const largo: ToolSpec[] = [
+    {
+      name: "add_node",
+      description:
+        "Agrega un elemento al diagrama en curso. " +
+        "Usá el tipo exacto de la notación de la vista; si no existe, la llamada se rechaza. ".repeat(6),
+      inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+    },
+  ];
+
+  it("recorta la descripción a la primera frase: el registro escribe para humanos, no para una ventana de 4k", () => {
+    const menu = buildToolMenu(largo, ["add_node"]);
+    expect(menu).toContain("Agrega un elemento al diagrama en curso.");
+    expect(menu.length).toBeLessThan(220);
+  });
+
+  it("en modo compacto quedan el nombre y los argumentos obligatorios, nada más", () => {
+    const menu = buildToolMenu(largo, ["add_node"], { compacto: true });
+    expect(menu).toContain("add_node");
+    expect(menu).toContain("name");
+    expect(menu).not.toContain("Agrega un elemento");
+  });
+
+  it("veinte herramientas entran en el presupuesto del motor local", () => {
+    const veinte: ToolSpec[] = Array.from({ length: 20 }, (_, i) => ({
+      name: `tool_${i}`,
+      description: "Hace algo muy explicado. ".repeat(30),
+      inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+    }));
+    const ids = veinte.map((t) => t.name);
+    // 5018 caracteres es el presupuesto real con la ventana por defecto (4096).
+    expect(buildToolMenu(veinte, ids, { compacto: true }).length).toBeLessThan(2500);
+  });
+});

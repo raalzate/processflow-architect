@@ -20,7 +20,8 @@ import type { AgentStep } from "../agent-types";
 import type { AiMode, RemoteProvider } from "./remote-settings";
 import { route } from "./router";
 import { builderTurnTask } from "./tasks";
-import { avisoPedidoGrande, cabeEnMotorLocal } from "./agent-engine";
+import { avisoPedidoGrande } from "./agent-engine";
+import { budgetFromWindow } from "./agent-run";
 import {
   buildToolMenu,
   judgeCall,
@@ -103,11 +104,16 @@ const SYSTEM = [
 export function buildBuilderPrompt(
   input: Pick<BuilderAgentInput, "message" | "notation">,
   menu: string,
-  state: BuilderRunState
+  state: BuilderRunState,
+  /** Cuántas observaciones se re-inyectan y cuánto de cada una. */
+  recorte: { observaciones: number; porObservacion: number } = { observaciones: 6, porObservacion: 400 }
 ): string {
   const observado = state.pasos
-    .slice(-6)
-    .map((p) => `- ${p.tool}(${JSON.stringify(p.args)}) → ${p.ok ? "OK" : "ERROR"}: ${p.texto.slice(0, 400)}`)
+    .slice(-recorte.observaciones)
+    .map(
+      (p) =>
+        `- ${p.tool}(${JSON.stringify(p.args)}) → ${p.ok ? "OK" : "ERROR"}: ${p.texto.slice(0, recorte.porObservacion)}`
+    )
     .join("\n");
   return [
     `PEDIDO DEL USUARIO:\n${input.message}`,
@@ -119,6 +125,34 @@ export function buildBuilderPrompt(
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+/**
+ * El prompt más completo que ENTRA en la ventana del motor. Antes se armaba uno
+ * solo y, si no entraba, la corrida se abortaba con un aviso —en la app eso pasó
+ * al décimo paso, tirando todo lo hecho (#308). Un presupuesto ajustado recorta
+ * el contexto; recién cuando ni la versión mínima entra, no hay nada que hacer.
+ */
+export function promptQueEntra(
+  input: Pick<BuilderAgentInput, "message" | "notation" | "allow">,
+  tools: ToolSpec[],
+  state: BuilderRunState,
+  presupuesto: number
+): string | null {
+  const completo = buildToolMenu(tools, input.allow);
+  const compacto = buildToolMenu(tools, input.allow, { compacto: true });
+  const intentos: [string, { observaciones: number; porObservacion: number }][] = [
+    [completo, { observaciones: 6, porObservacion: 400 }],
+    [completo, { observaciones: 3, porObservacion: 200 }],
+    [compacto, { observaciones: 3, porObservacion: 200 }],
+    [compacto, { observaciones: 1, porObservacion: 120 }],
+    [compacto, { observaciones: 0, porObservacion: 0 }],
+  ];
+  for (const [menu, recorte] of intentos) {
+    const p = buildBuilderPrompt(input, menu, state, recorte);
+    if (p.length <= presupuesto) return p;
+  }
+  return null;
 }
 
 /** ¿El modelo dio por terminada la tarea? */
@@ -134,7 +168,9 @@ async function bucle(
   estadoInicial: BuilderRunState,
   steps: AgentStep[]
 ): Promise<BuilderAgentResult> {
-  const menu = buildToolMenu(tools, input.allow);
+  // Sólo el motor local tiene una ventana chica que respetar; la nube se maneja
+  // con su propio límite y no hace falta mutilarle el contexto.
+  const presupuesto = input.mode === "local" ? budgetFromWindow(input.maxTokens) : Infinity;
   let state = estadoInicial;
   const paso = (s: AgentStep) => {
     steps.push(s);
@@ -142,9 +178,11 @@ async function bucle(
   };
 
   while (!runFinished(state)) {
-    const prompt = buildBuilderPrompt(input, menu, state);
-    if (input.mode === "local" && !cabeEnMotorLocal(prompt.length, input.maxTokens)) {
-      return { reply: avisoPedidoGrande(), steps, state };
+    const prompt = promptQueEntra(input, tools, state, presupuesto);
+    if (prompt === null) {
+      // Ni el menú compacto sin observaciones entra: acá sí no hay corrida
+      // posible. El aviso viaja CON lo que ya se hizo, no en lugar de eso.
+      return { reply: [avisoPedidoGrande(), summarizeRun(state)].join("\n\n"), steps, state };
     }
 
     let raw: string;
