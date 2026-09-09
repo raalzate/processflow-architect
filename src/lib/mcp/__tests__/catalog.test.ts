@@ -5,11 +5,15 @@ import {
   validTypesFor,
   isContainerType,
 } from "../catalog";
+import { NOTATION_IDS } from "@/lib/notations";
 
 describe("catalog", () => {
-  it("expone las cuatro notaciones con sus tipos y guía", () => {
+  // El catálogo expone TODAS las notaciones del registro: la lista se toma de
+  // `NOTATION_IDS` y no se cablea acá, porque una notación nueva (MER) tiene que
+  // llegar al agente sola — antes esta prueba era el candado que lo impedía.
+  it("expone todas las notaciones del registro con sus tipos y guía", () => {
     const all = listNotations();
-    expect(all.map((n) => n.id).sort()).toEqual(["bpmn", "c4", "ddd", "uml"]);
+    expect(all.map((n) => n.id).sort()).toEqual([...NOTATION_IDS].sort());
     for (const n of all) {
       expect(n.elements.length).toBeGreaterThan(0);
       expect(n.aiGuidance.length).toBeGreaterThan(0);
