@@ -13,7 +13,7 @@
  *   PUREZA    src/lib/** es lógica pura: sin React, sin Electron, sin Next, sin UI.
  *   NOTACION  los tipos de componente sólo se cablean en src/lib/notations.ts (+ allowlist de deuda).
  *   ONLY      nada de .only( en tests: apaga la suite entera en silencio.
- *   DEPSHOOK  un useMemo/useCallback que lee `notationId` lo declara en sus dependencias.
+ *   DEPSHOOK  un useMemo/useCallback declara en sus dependencias todo estado que lee.
  *   TOKENS    la UI usa los tokens del tema, no colores crudos de Tailwind ni tamaños en px.
  *   SVGFILL   un <text> de SVG pinta con `fill`: sin él, una clase text-* cae a negro.
  *   BOTONMUDO un botón sólo-icono lleva nombre accesible (usá `IconAction`).
@@ -166,26 +166,49 @@ function checkFile(relPath, contenidoDado = null) {
     }
   }
 
-  // DEPSHOOK — un hook que MIDE con la notación tiene que reaccionar a ella.
+  // DEPSHOOK — un hook con dependencias declara TODO estado que lee.
   // Sin ESLint en el repo, `react-hooks/exhaustive-deps` no existe como
-  // mecanismo; esta regla cubre el caso que ya falló: al pasar una vista a C4 en
-  // caliente, el encuadre, el drop y el SVG exportado seguían midiendo con la
-  // caja de la notación anterior porque `notationId` no estaba en las deps.
-  if (relPath.startsWith("src/components/") && !isTest(relPath)) {
-    for (const m of content.matchAll(/\buse(?:Memo|Callback)\s*\(/g)) {
-      const cuerpo = hookBody(content, m.index);
+  // mecanismo. La versión original de esta regla miraba un solo identificador
+  // (`notationId`) y sólo en `src/components/`, así que no vio el segundo caso:
+  // `sendMessage` en `AgentContext` no listaba `agentId`, el callback quedó con
+  // el agente que había al montar y el chat contestaba «soy el Analista» con el
+  // selector en Constructor (#308). Ahora el barrido es por estado declarado en
+  // el archivo, y cubre también `src/context/` y `src/hooks/`.
+  if (/^src\/(components|context|hooks)\//.test(relPath) && !isTest(relPath)) {
+    // El nombre se busca en CÓDIGO: sin comentarios ni literales, o una mención
+    // en prosa («ajusta el zoom») bastaría para acusar al hook.
+    const codigo = content
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/\/\/[^\n]*/g, " ")
+      .replace(/`(?:\\.|[^`\\])*`/g, '""')
+      .replace(/"(?:\\.|[^"\\])*"/g, '""')
+      .replace(/'(?:\\.|[^'\\])*'/g, '""');
+    const estados = [
+      ...codigo.matchAll(/const\s*\[\s*([A-Za-z_$][\w$]*)\s*,\s*set[\w$]*\s*\]\s*=\s*useState/g),
+    ].map((m) => m[1]);
+    for (const m of codigo.matchAll(/\buse(?:Memo|Callback)\s*\(/g)) {
+      const cuerpo = hookBody(codigo, m.index)?.texto;
       if (!cuerpo) continue;
-      const deps = /\)\s*,\s*\[([^\]]*)\]\s*\)\s*;?\s*$/.exec(cuerpo.texto);
+      // El array de deps es el ÚLTIMO `[...]` antes del cierre del hook. Pedir
+      // que el callback termine en `)` —como hacía la versión anterior— dejaba
+      // fuera todo hook con cuerpo de bloque, que son la mayoría.
+      const deps = /,\s*\[([\s\S]*)\]\s*\)\s*;?\s*$/.exec(cuerpo);
       if (!deps) continue;
-      const usa = /\bnotationId\b/.test(cuerpo.texto.slice(0, deps.index));
-      const declara = /\bnotationId\b/.test(deps[1]);
-      if (usa && !declara) {
-        fail(
-          relPath,
-          lineOf(content, m.index),
-          "DEPSHOOK",
-          "el hook usa `notationId` pero no lo declara en sus dependencias: al cambiar la notación de la vista seguiría midiendo los nodos con la caja anterior.",
-        );
+      const cuerpoSolo = cuerpo.slice(0, deps.index);
+      for (const estado of [...estados, "notationId"]) {
+        // Lee el estado = el nombre suelto: ni propiedad (`v.zoom`) ni clave de
+        // objeto (`zoom: 1`), que no son lecturas de la variable.
+        const lee = new RegExp(`(?<![\\w$.])${estado}(?![\\w$])(?!\\s*:)`);
+        const declarado = new RegExp(`(?<![\\w$.])${estado}(?![\\w$])`);
+        if (lee.test(cuerpoSolo) && !declarado.test(deps[1])) {
+          fail(
+            relPath,
+            lineOf(codigo, m.index),
+            "DEPSHOOK",
+            `el hook lee \`${estado}\` pero no lo declara en sus dependencias: el callback se queda con el valor que había al montar y actúa sobre estado viejo.`,
+          );
+          break;
+        }
       }
     }
   }
