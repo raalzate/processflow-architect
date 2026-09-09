@@ -135,6 +135,56 @@ for (const [hook, name, payload, expected] of blocks) {
   else bad(`${hook}: ${name}`, `esperaba exit ${expected}, salió ${res.status}. stderr: ${res.stderr.trim().slice(0, 200)}`);
 }
 
+// El freno del FORCE-PUSH necesita un remoto de verdad para medir qué se
+// perdería: se arma un repo con su origen en un temporal (sin red) y se le pide
+// al hook el push que borraría el commit del "humano". Sin este caso, el freno
+// que evita perder trabajo ajeno no tendría quién lo despierte (#306).
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-push-"));
+  try {
+    const origen = path.join(tmp, "origen");
+    const clon = path.join(tmp, "clon");
+    const git = (cwd, ...args) => spawnSync("git", args, { cwd, encoding: "utf8" });
+    spawnSync("git", ["init", "-q", "--bare", "-b", "main", origen], { encoding: "utf8" });
+    spawnSync("git", ["clone", "-q", origen, clon], { encoding: "utf8" });
+    git(clon, "config", "user.email", "selftest@example.com");
+    git(clon, "config", "user.name", "selftest");
+    git(clon, "checkout", "-q", "-b", "main");
+    fs.writeFileSync(path.join(clon, "a.txt"), "a\n");
+    git(clon, "add", "a.txt");
+    git(clon, "commit", "-qm", "base");
+    git(clon, "push", "-q", "origin", "main");
+    // El "humano" empuja algo más a la rama…
+    fs.writeFileSync(path.join(clon, "b.txt"), "b\n");
+    git(clon, "add", "b.txt");
+    git(clon, "commit", "-qm", "merge del humano");
+    git(clon, "push", "-q", "origin", "main");
+    // …y el agente reescribe su historia sin ese commit.
+    git(clon, "reset", "-q", "--hard", "HEAD~1");
+    git(clon, "fetch", "-q", "origin");
+
+    const casos = [
+      ["force-push que borra trabajo del remoto", "git push --force-with-lease origin main", 2],
+      ["force-push a una rama que el remoto no tiene", "git push --force-with-lease origin rama-nueva", 0],
+      ["push normal no lo mira", "git push origin main", 0],
+    ];
+    for (const [nombre, command, esperado] of casos) {
+      const res = spawnSync("node", [abs(".claude/hooks/bash-guard.mjs")], {
+        input: JSON.stringify({ cwd: clon, tool_input: { command } }),
+        encoding: "utf8",
+      });
+      if (res.status === esperado) ok(`bash-guard.mjs: ${nombre}`);
+      else
+        bad(
+          `bash-guard.mjs: ${nombre}`,
+          `esperaba exit ${esperado}, salió ${res.status}. stderr: ${(res.stderr ?? "").trim().slice(0, 200)}`,
+        );
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 // gate-stop: bloquea con marcador presente, deja pasar sin él. Se restaura el estado real.
 {
   const marker = abs(config.gate.marker);
