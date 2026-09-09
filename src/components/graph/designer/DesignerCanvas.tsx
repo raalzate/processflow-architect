@@ -82,6 +82,20 @@ import {
   Cpu,
   FileCode2,
   CircleDashed,
+  // MER (entidades, relaciones, atributos y modelo relacional)
+  Table,
+  Table2,
+  TableProperties,
+  KeyRound,
+  KeySquare,
+  Network,
+  CopyPlus,
+  Sigma,
+  Triangle,
+  Combine,
+  Link,
+  ShieldCheck,
+  Hash,
 } from "lucide-react";
 import {
   Dialog,
@@ -123,6 +137,7 @@ import {
   labelLayoutOfType,
   sizeOfType,
   NOTATION_LIST,
+  isTableType,
   DEFAULT_NOTATION_ID,
   type Notation,
   type NotationId,
@@ -143,6 +158,7 @@ import {
   AGGREGATE_DEFAULT_WIDTH,
   AGGREGATE_DEFAULT_HEIGHT,
 } from "./link-geom";
+import { TABLE_BOX, tableBoxLayout } from "@/lib/mer/table-box";
 
 // La geometría vive en `link-geom.ts` (puro y con pruebas); se reexporta para no
 // cambiar los imports de quien ya la tomaba de este archivo.
@@ -189,6 +205,10 @@ const ICON_MAP: Record<string, React.ElementType> = {
   // UML: clases (tipo de dato, genérico, asociación, estereotipo), componentes
   // y despliegue (puerto, interfaz requerida, artefacto, dispositivo, entorno).
   Braces, Tag, Link2, Type, Smartphone, Cpu, FileCode2, CircleDashed,
+  // MER: entidades (fuerte, débil, asociativa), atributos (clave, compuesto,
+  // multivaluado, derivado) y modelo relacional (tabla, PK, FK, restricción, índice).
+  Table, Table2, TableProperties, KeyRound, KeySquare, Network, CopyPlus, Sigma,
+  Triangle, Combine, Link, ShieldCheck, Hash,
 };
 
 export const iconForType = (type: string): React.ElementType =>
@@ -268,11 +288,55 @@ export const NodeShape: React.FC<{
    * valor → anillo simple (Evento de Inicio y demás).
    */
   ring?: "thick" | "double";
+  /**
+   * Contorno EXTRA que declara la notación (`NotationElement.outline`):
+   * "double" repite la figura por dentro (entidad débil, relación
+   * identificadora, atributo multivaluado del MER) y "dashed" la puntea
+   * (atributo derivado). Se resuelve acá para que valga en cualquier forma.
+   */
+  outline?: "double" | "dashed";
   /** Estilo inline (p. ej. fill personalizado); prevalece sobre las clases. */
   style?: React.CSSProperties;
-}> = ({ shape, w, h, className, strokeWidth, compact, ring, style }) => {
+}> = ({ shape, w, h, className, strokeWidth, compact, ring, outline, style }) => {
   // Radio del símbolo compacto: la altura del nodo manda (círculo perfecto).
   const r = Math.min(w, h) / 2;
+  // Contorno doble: la MISMA figura encogida por dentro, sin relleno, para que
+  // se lea la segunda línea. Se resuelve antes del switch: así una forma nueva
+  // lo hereda sin tocar este componente.
+  if (outline === "double") {
+    const inset = 4;
+    return (
+      <g>
+        <NodeShape shape={shape} w={w} h={h} className={className} strokeWidth={strokeWidth} compact={compact} style={style} />
+        <g transform={`translate(${inset},${inset})`}>
+          <NodeShape
+            shape={shape}
+            w={w - inset * 2}
+            h={h - inset * 2}
+            className={className}
+            strokeWidth={strokeWidth}
+            compact={compact}
+            style={{ ...style, fill: "none" }}
+          />
+        </g>
+      </g>
+    );
+  }
+  // Contorno punteado: el atributo derivado no se almacena, y en Chen eso se
+  // dice con la línea, no con el color.
+  if (outline === "dashed") {
+    return (
+      <NodeShape
+        shape={shape}
+        w={w}
+        h={h}
+        className={className}
+        strokeWidth={strokeWidth}
+        compact={compact}
+        style={{ ...style, strokeDasharray: "5 3" }}
+      />
+    );
+  }
   switch (shape) {
     case "ellipse":
       if (!compact)
@@ -303,6 +367,20 @@ export const NodeShape: React.FC<{
     }
     case "rect":
       return <rect width={w} height={h} rx={2} className={className} strokeWidth={strokeWidth} style={style} />;
+    case "triangle": {
+      // Jerarquía ISA del MER: la punta ARRIBA (mira al supertipo) y la base
+      // abajo, de donde salen los subtipos.
+      const hw = compact ? r : w / 2;
+      const hh = compact ? r : h / 2;
+      return (
+        <polygon
+          points={`${w / 2},${h / 2 - hh} ${w / 2 + hw},${h / 2 + hh} ${w / 2 - hw},${h / 2 + hh}`}
+          className={className}
+          strokeWidth={strokeWidth}
+          style={style}
+        />
+      );
+    }
     case "cylinder": {
       const e = Math.min(12, h / 4);
       return (
@@ -1175,6 +1253,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   // no compacto tampoco tiene ancho útil en sus vértices → etiqueta fuera.
   const shape = shapeForType(node.tipo_elemento);
   const compact = !!meta?.compact;
+  const isTable = isTableType(node.tipo_elemento);
   // Anillo BPMN canónico: Fin = grueso, Intermedio = doble; el resto simple.
   const eventRing: "thick" | "double" | undefined =
     node.tipo_elemento === "Evento de Fin"
@@ -1182,13 +1261,116 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       : node.tipo_elemento === "Evento Intermedio"
         ? "double"
         : undefined;
-  const labelOutside = compact || shape === "diamond";
+  // Rombo y triángulo no tienen ancho útil en sus vértices: el nombre va fuera
+  // (igual que en los símbolos compactos).
+  const labelOutside = compact || shape === "diamond" || shape === "triangle";
   // Tamaño declarado por la notación del tipo (C4 es más grande: su ficha lleva
-  // tres líneas). Los símbolos compactos se dibujan cuadrados dentro de la caja.
-  const { w: nodeW, h: nodeH } = sizeOfType(node.tipo_elemento, notation);
+  // tres líneas); la caja de tabla mide lo que miden sus filas. Lo resuelve
+  // `nodeBox`, el mismo que usan el recorte de aristas y el minimapa.
+  const { w: nodeW, h: nodeH } = nodeBox(node, notation);
   const sideInset = compact ? (nodeW - nodeH) / 2 : 0;
   // Ficha C4: icono chico arriba a la izquierda, y nombre · descripción · [Tipo].
   const detail = !labelOutside && labelLayoutOfType(node.tipo_elemento, notation) === "detail";
+
+  // CAJA DE TABLA (MER físico): el nombre arriba y un compartimento por
+  // estereotipo —«column», «FK», «index», «PK»—. Se dibuja con <text> y no con
+  // foreignObject porque son filas de ancho fijo: el texto tiene que alinearse
+  // columna a columna, y el HTML dentro del SVG las descuadra al hacer zoom.
+  if (isTable) {
+    const layout = tableBoxLayout(node.nombre, node.columnas ?? []);
+    const trazo = trazoResalte ?? meta?.stroke ?? color.border;
+    return (
+      <g
+        transform={`translate(${node.x},${node.y})`}
+        onMouseDown={onMouseDown}
+        onMouseUp={handleMouseUp}
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+        onContextMenu={onContextMenu}
+        onMouseEnter={onHover}
+        onMouseMove={onHover}
+        onMouseLeave={onHoverEnd}
+        className={cn(
+          "group [filter:drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
+          connecting ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing",
+          isDeleted && "opacity-60"
+        )}
+      >
+        <rect
+          width={layout.w}
+          height={layout.h}
+          rx={2}
+          className={cn(
+            "stroke-2 transition-all",
+            color.bg,
+            trazo,
+            connecting && "group-hover:stroke-blue-500 group-hover:stroke-[3px]"
+          )}
+          strokeWidth={isSelected ? 3 : isRelated ? 2.5 : 2}
+          style={{
+            ...(node.color ? { fill: node.color } : {}),
+            ...(!trazoResalte && node.borderColor ? { stroke: node.borderColor } : {}),
+          }}
+        />
+        {/* Banda del nombre: la tabla se identifica de un vistazo aunque la caja
+            esté llena de filas. */}
+        <text
+          x={layout.w / 2}
+          y={TABLE_BOX.altoTitulo / 2 + 4}
+          textAnchor="middle"
+          fill="currentColor"
+          className={cn("select-none text-[11px] font-bold", color.text, isDeleted && "line-through")}
+        >
+          {node.nombre}
+        </text>
+        {layout.bloques.map((b) => (
+          <g key={b.estereotipo}>
+            {/* Separador del compartimento (la línea horizontal del dibujo clásico). */}
+            <line
+              x1={0}
+              y1={b.y}
+              x2={layout.w}
+              y2={b.y}
+              className={cn("opacity-70", trazo)}
+              strokeWidth={1}
+            />
+            <text
+              x={TABLE_BOX.padX}
+              y={b.y + TABLE_BOX.padCompartimento + TABLE_BOX.altoEstereotipo - 4}
+              fill="currentColor"
+              className={cn("select-none text-[9px] italic opacity-80", color.text)}
+            >
+              «{b.estereotipo}»
+            </text>
+            {b.filas.map((fila, i) => (
+              <text
+                key={fila}
+                x={TABLE_BOX.padX}
+                y={
+                  b.y +
+                  TABLE_BOX.padCompartimento +
+                  TABLE_BOX.altoEstereotipo +
+                  (i + 1) * TABLE_BOX.altoFila -
+                  3
+                }
+                fill="currentColor"
+                className={cn("select-none font-mono text-[9px]", color.text)}
+              >
+                {fila}
+              </text>
+            ))}
+          </g>
+        ))}
+        <ChangeStateBadge estado={node.estado_comparativo} x={layout.w - 2} />
+        <ConnectPorts
+          w={layout.w}
+          h={layout.h}
+          connecting={connecting}
+          onStartConnect={onStartConnect}
+        />
+      </g>
+    );
+  }
 
   return (
     <g
@@ -1214,6 +1396,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         h={nodeH}
         compact={compact}
         ring={eventRing}
+        outline={meta?.outline}
         className={cn(
           "stroke-2 transition-all",
           // Sólo los contenedores son transparentes; los símbolos llevan su tinte.
@@ -1412,7 +1595,10 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   const marca = (m: EdgeMarker, punta: "end" | "start"): string | undefined => {
     if (m === "none") return undefined;
     if (m === "arrow") return `url(#arrow-${punta}${sel})`;
-    return `url(#uml-${m}${sel})`;
+    // Cada marca tiene dos variantes: la de destino (orient auto) y la de
+    // origen (`-rev`, auto-start-reverse). Sin la reversa, la pata de gallo del
+    // extremo de origen apuntaría hacia el nodo equivocado.
+    return `url(#mark-${m}-${punta}${sel})`;
   };
   const markerEnd = arrow === "none" ? undefined : marca(rel.end, "end");
   const markerStart =

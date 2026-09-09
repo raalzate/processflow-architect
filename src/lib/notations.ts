@@ -12,7 +12,7 @@
  * Los iconos se referencian por NOMBRE (string) y se resuelven en la capa de UI.
  */
 
-export type NotationId = "ddd" | "bpmn" | "c4" | "uml";
+export type NotationId = "ddd" | "bpmn" | "c4" | "uml" | "mer";
 
 /**
  * Disposición natural de una notación. Vive acá —y no en el layout— porque el
@@ -31,8 +31,9 @@ export type LayoutHint = "flujo" | "capas" | "radial";
  *  - ellipse: óvalo (eventos BPMN, casos de uso UML, interfaces).
  *  - diamond: rombo (compuertas BPMN, decisiones de flujo).
  *  - cylinder: cilindro (bases de datos / almacenes).
+ *  - triangle: triángulo (jerarquía ISA del modelo entidad-relación).
  */
-export type ShapeKind = "rounded" | "rect" | "ellipse" | "diamond" | "cylinder";
+export type ShapeKind = "rounded" | "rect" | "ellipse" | "diamond" | "cylinder" | "triangle";
 
 /** Metadatos visuales y semánticos de un tipo de componente dentro de una notación. */
 export interface NotationElement {
@@ -94,6 +95,25 @@ export interface NotationElement {
    *    delimitan un territorio, y un rectángulo los hacía leer como sistema.
    */
   containerStyle?: "boundary" | "swimlane" | "blob" | "lifeline" | "fragment";
+  /**
+   * Contorno EXTRA de la figura, cuando la simbología lo usa como significado:
+   *  - "double": segunda línea por dentro (entidad débil, relación
+   *    identificadora y atributo multivaluado del MER).
+   *  - "dashed": trazo discontinuo (atributo derivado: se calcula, no se
+   *    almacena).
+   * Vive en el registro y no en el lienzo porque es notación, no dibujo (P6):
+   * el anillo doble de BPMN se cableó en el lienzo y por eso nadie más lo puede
+   * usar.
+   */
+  outline?: "double" | "dashed";
+  /**
+   * true → el nodo se dibuja como CAJA DE TABLA: nombre arriba y
+   * compartimentos («column», «FK», «index», «PK») derivados de sus columnas.
+   * Es el dibujo del modelo entidad-relación FÍSICO. Vive en el registro porque
+   * es simbología de la notación, y así el alto de la caja lo resuelve
+   * `src/lib/mer/table-box.ts` para todos por igual.
+   */
+  table?: boolean;
   /** Clase tailwind de trazo SVG (stroke-*) que dibuja el contorno del nodo. */
   stroke?: string;
   /** Clases tailwind: relleno SVG, borde y texto. */
@@ -577,6 +597,105 @@ const UML: Notation = {
 };
 
 // =============================================================================
+// MER — Modelo Entidad-Relación (Chen) y su bajada al modelo relacional
+// =============================================================================
+
+const MER: Notation = {
+  id: "mer",
+  label: "MER (Entidad-Relación)",
+  description:
+    "Modelo Entidad-Relación de Chen: entidades, relaciones con cardinalidad, atributos y su bajada a tablas.",
+  paletteGroups: [
+    {
+      label: "Entidades",
+      types: ["Entidad Fuerte", "Entidad Débil", "Entidad Asociativa"],
+    },
+    {
+      // Las relaciones son ROMBOS: el de línea doble es el que identifica a una
+      // entidad débil (sin él la débil no tiene clave propia).
+      label: "Relaciones",
+      types: ["Relación", "Relación Identificadora", "Jerarquía (ISA)", "Categoría (Unión)"],
+    },
+    {
+      label: "Atributos",
+      types: [
+        "Atributo",
+        "Atributo Clave",
+        "Clave Parcial",
+        "Atributo Compuesto",
+        "Atributo Multivaluado",
+        "Atributo Derivado",
+      ],
+    },
+    {
+      // Bajada al modelo relacional: lo que se implementa en la base.
+      label: "Modelo Relacional",
+      types: ["Tabla Relacional", "Clave Primaria (PK)", "Clave Foránea (FK)", "Restricción", "Índice"],
+    },
+    {
+      label: "Contenedores (MER)",
+      types: ["Esquema"],
+    },
+  ],
+  elements: [
+    // --- Entidades: rectángulo. La DÉBIL lleva línea doble (canon de Chen) ---
+    { type: "Entidad Fuerte", icon: "Table", shape: "rect", stroke: "stroke-emerald-400", bg: "fill-zinc-700", border: "border-emerald-400", text: "text-white" },
+    { type: "Entidad Débil", icon: "Table2", shape: "rect", outline: "double", stroke: "stroke-emerald-400", bg: "fill-zinc-700", border: "border-emerald-400", text: "text-white" },
+    // Entidad asociativa (agregación): una relación M:N con atributos propios
+    // que pasa a comportarse como entidad.
+    { type: "Entidad Asociativa", icon: "Link2", shape: "rect", stroke: "stroke-emerald-500", bg: "fill-zinc-700", border: "border-emerald-500", text: "text-white" },
+    // --- Relaciones: rombo. La cardinalidad va en la ARISTA (ver flowRules) ---
+    { type: "Relación", icon: "Diamond", shape: "diamond", stroke: "stroke-amber-500", bg: "fill-amber-900", border: "border-amber-500", text: "text-amber-50" },
+    { type: "Relación Identificadora", icon: "Diamond", shape: "diamond", outline: "double", stroke: "stroke-amber-500", bg: "fill-amber-900", border: "border-amber-500", text: "text-amber-50" },
+    // Jerarquía de especialización: triángulo con la punta al supertipo. El
+    // nombre dice la restricción ("d" disjunta / "o" solapada, total o parcial).
+    { type: "Jerarquía (ISA)", icon: "Triangle", shape: "triangle", compact: true, stroke: "stroke-rose-400", bg: "fill-rose-900", border: "border-rose-400", text: "text-rose-50" },
+    // Categoría (tipo unión): subclase cuyos miembros vienen de varios
+    // supertipos distintos; se dibuja con el símbolo ∪ y es compacta.
+    { type: "Categoría (Unión)", icon: "Combine", shape: "ellipse", compact: true, stroke: "stroke-rose-400", bg: "fill-rose-900", border: "border-rose-400", text: "text-rose-50" },
+    // --- Atributos: elipse pegada a su entidad o relación ---
+    { type: "Atributo", icon: "Circle", shape: "ellipse", stroke: "stroke-sky-400", bg: "fill-sky-900", border: "border-sky-400", text: "text-sky-50" },
+    { type: "Atributo Clave", icon: "KeyRound", shape: "ellipse", stroke: "stroke-sky-300", bg: "fill-sky-800", border: "border-sky-300", text: "text-sky-50" },
+    { type: "Clave Parcial", icon: "KeySquare", shape: "ellipse", stroke: "stroke-sky-300", bg: "fill-sky-800", border: "border-sky-300", text: "text-sky-50" },
+    { type: "Atributo Compuesto", icon: "Network", shape: "ellipse", stroke: "stroke-sky-400", bg: "fill-sky-900", border: "border-sky-400", text: "text-sky-50" },
+    // Multivaluado = elipse doble; derivado = elipse punteada (no se almacena).
+    { type: "Atributo Multivaluado", icon: "CopyPlus", shape: "ellipse", outline: "double", stroke: "stroke-sky-400", bg: "fill-sky-900", border: "border-sky-400", text: "text-sky-50" },
+    { type: "Atributo Derivado", icon: "Sigma", shape: "ellipse", outline: "dashed", stroke: "stroke-sky-400", bg: "fill-sky-900", border: "border-sky-400", text: "text-sky-50" },
+    // --- Modelo relacional: lo que ya se puede crear en la base ---
+    { type: "Tabla Relacional", icon: "TableProperties", shape: "rect", table: true, stroke: "stroke-violet-400", bg: "fill-violet-900", border: "border-violet-400", text: "text-violet-50" },
+    { type: "Clave Primaria (PK)", icon: "KeyRound", shape: "rect", compact: true, stroke: "stroke-violet-300", bg: "fill-violet-800", border: "border-violet-300", text: "text-violet-50" },
+    { type: "Clave Foránea (FK)", icon: "Link", shape: "rect", compact: true, stroke: "stroke-violet-300", bg: "fill-violet-800", border: "border-violet-300", text: "text-violet-50" },
+    { type: "Restricción", icon: "ShieldCheck", shape: "rounded", stroke: "stroke-violet-400", bg: "fill-violet-900", border: "border-violet-400", text: "text-violet-50" },
+    { type: "Índice", icon: "Hash", shape: "rounded", stroke: "stroke-violet-400", bg: "fill-violet-900", border: "border-violet-400", text: "text-violet-50" },
+    // El esquema es la frontera lógica de la base: delimita, no reparte trabajo.
+    { type: "Esquema", icon: "Database", container: true, transparent: true, stroke: "stroke-violet-500", bg: "fill-violet-950/40", border: "border-violet-500", text: "text-violet-900 dark:text-violet-200" },
+  ],
+  aiGuidance:
+    "Aplica el Modelo Entidad-Relación (Chen). Entidad Fuerte para lo que tiene clave propia y Entidad Débil (línea doble) para lo que sólo se identifica a través de su dueña, unida a él por una Relación Identificadora (rombo doble). " +
+    "Toda entidad lleva su Atributo Clave; la débil lleva Clave Parcial (discriminante). Los demás atributos son Atributo, Atributo Compuesto (se descompone en subatributos), Atributo Multivaluado (elipse doble: admite varios valores) y Atributo Derivado (elipse punteada: se calcula, no se almacena). " +
+    "Las Relaciones son rombos y su CARDINALIDAD va en la arista: usá la relación de arista de cardinalidad (1:1, 1:N, N:M, 0:1, 0:N) o etiquetá con la notación (mín,máx) —(1,1), (0,N)— y decí si la participación es total u obligatoria. " +
+    "Una relación N:M con atributos propios se modela como Entidad Asociativa. Para herencia usá Jerarquía (ISA) con el triángulo apuntando al supertipo, indicando en el nombre si es disjunta (d) o solapada (o) y total o parcial; Categoría (Unión) para la subclase que hereda de varios supertipos distintos. " +
+    "Si el usuario pide el modelo FÍSICO, bajá a Tabla Relacional: se dibuja como CAJA con compartimentos y sus filas son sus COLUMNAS, que se declaran con `columns` en add_node ({nombre, tipo, pk, fk, referencia, nulo, unico, indice}). Los compartimentos «FK», «index» y «PK» se deducen de esas marcas: no se declaran aparte. Para lo que la columna no cubre están Clave Primaria (PK), Clave Foránea (FK), Restricción (CHECK/UNIQUE/NOT NULL) e Índice como elementos sueltos, y el Esquema como contenedor.",
+  analystRole: "modelador de datos entidad-relación",
+  modelLabel: "Modelo de Datos",
+  // El MER se lee como una constelación: la entidad en el centro y sus atributos
+  // alrededor. Por capas los atributos quedaban lejos de su entidad.
+  defaultLayout: "radial",
+  flowRules:
+    "- Entidad Fuerte → Relación (relación = la cardinalidad: 1:1, 1:N, N:M)\n" +
+    "- Relación → Entidad Fuerte (relación = la cardinalidad del otro extremo)\n" +
+    "- Entidad Débil → Relación Identificadora (relación \"se identifica por\")\n" +
+    "- Entidad Fuerte → Atributo Clave (relación \"identifica\")\n" +
+    "- Entidad Fuerte → Atributo (relación \"describe\")\n" +
+    "- Atributo Compuesto → Atributo (relación \"se descompone en\")\n" +
+    "- Entidad Fuerte → Jerarquía (ISA) → Entidad Fuerte (subtipo; relación \"hereda\")\n" +
+    "- Tabla Relacional → Clave Foránea (FK) → Tabla Relacional (relación = la cardinalidad)",
+  defaultType: "Entidad Fuerte",
+  namingRule:
+    "Entidades en sustantivo SINGULAR (\"Cliente\", \"Factura\"); Relaciones en verbo en tercera persona (\"realiza\", \"contiene\"); Atributos en sustantivo minúscula (\"fecha_emisión\"); Tablas en plural o singular pero consistente",
+};
+
+// =============================================================================
 // Registro y utilidades
 // =============================================================================
 
@@ -585,10 +704,19 @@ export const NOTATIONS: Record<NotationId, Notation> = {
   bpmn: BPMN,
   c4: C4,
   uml: UML,
+  mer: MER,
 };
 
 /** Lista ordenada para los SELECT. */
-export const NOTATION_LIST: Notation[] = [DDD, BPMN, C4, UML];
+export const NOTATION_LIST: Notation[] = [DDD, BPMN, C4, UML, MER];
+
+/**
+ * Ids de todas las notaciones, en el orden de los SELECT. Quien necesite
+ * recorrerlas (el catálogo del MCP, el esquema de sus herramientas, el
+ * validador) pregunta acá: la lista cableada en el consumidor es lo que deja
+ * una notación nueva invisible a la mitad de la app.
+ */
+export const NOTATION_IDS: NotationId[] = NOTATION_LIST.map((n) => n.id);
 
 export function getNotation(id: NotationId | string | undefined): Notation {
   // La caída es la notación por defecto DECLARADA, no una cableada: si no,
@@ -607,6 +735,7 @@ const NOTATION_BADGE: Record<NotationId, string> = {
   bpmn: "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300",
   c4: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
   uml: "bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300",
+  mer: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300",
 };
 
 export function notationBadgeClass(id: NotationId | string | undefined): string {
@@ -661,6 +790,13 @@ export function notationTypes(
   const els = getNotation(id).elements;
   return (opts.includeContainers ? els : els.filter((e) => !e.container)).map((e) => e.type);
 }
+
+/**
+ * true → el tipo se dibuja como CAJA DE TABLA con compartimentos (MER físico).
+ * Se pregunta por tipo y no por notación: dentro de un MER conviven la burbuja
+ * de Chen y la tabla.
+ */
+export const isTableType = (type: string): boolean => ALL_ELEMENTS[type]?.table === true;
 
 /** true → el contenedor se dibuja como swimlane BPMN (banda lateral, línea continua). */
 export const isSwimlaneContainer = (type: string): boolean =>
@@ -790,6 +926,9 @@ export type ElementRole =
   | "external" // sistema de terceros
   | "system" // pieza de software propia (C4)
   | "datastore" // almacén de datos
+  | "entity" // cosa con identidad y atributos (Entidad, Tabla)
+  | "attribute" // propiedad de una entidad o de una relación (MER)
+  | "relationship" // asociación entre entidades, con cardinalidad (MER)
   | "context" // frontera de dominio (Agregado, Contexto, Subdominio)
   | "pool" // participante de un proceso (proceso independiente)
   | "lane" // rol dentro de un participante
@@ -845,6 +984,23 @@ const ELEMENT_ROLES: Record<NotationId, Partial<Record<ElementRole, string[]>>> 
     // Pool de BPMN (una columna por quien participa).
     pool: ["Línea de Vida"],
     boundary: ["Paquete", "Estado Compuesto", "Fragmento", "Entorno de Ejecución"],
+  },
+  mer: {
+    // El MER no cuenta un flujo: cuenta QUÉ hay (entidades), CÓMO se relaciona
+    // y CON QUÉ se describe. Esos son sus tres roles.
+    entity: ["Entidad Fuerte", "Entidad Débil", "Entidad Asociativa", "Tabla Relacional"],
+    relationship: ["Relación", "Relación Identificadora", "Jerarquía (ISA)", "Categoría (Unión)"],
+    attribute: [
+      "Atributo",
+      "Atributo Clave",
+      "Clave Parcial",
+      "Atributo Compuesto",
+      "Atributo Multivaluado",
+      "Atributo Derivado",
+      "Clave Primaria (PK)",
+      "Clave Foránea (FK)",
+    ],
+    boundary: ["Esquema"],
   },
 };
 

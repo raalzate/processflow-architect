@@ -70,12 +70,19 @@ describe("roles semánticos", () => {
     }
   });
 
-  it("toda notación de flujo declara inicio y fin, o comando y evento", () => {
+  it("toda notación declara su marco: flujo, dominio o datos", () => {
     for (const n of NOTATION_LIST) {
       const tieneFlujo = typesWithRole(n.id, "start").length > 0 && typesWithRole(n.id, "end").length > 0;
       const tieneDominio =
         typesWithRole(n.id, "command").length > 0 || typesWithRole(n.id, "system").length > 0;
-      expect(tieneFlujo || tieneDominio, `${n.id}: sin roles de flujo ni de dominio`).toBe(true);
+      // Una notación de DATOS (MER) no tiene ni flujo ni sistemas: describe QUÉ
+      // hay y cómo se relaciona. Su marco son las entidades, y sin esta rama la
+      // regla obligaba a inventarle un rol que no juega.
+      const tieneDatos = typesWithRole(n.id, "entity").length > 0;
+      expect(
+        tieneFlujo || tieneDominio || tieneDatos,
+        `${n.id}: sin roles de flujo, de dominio ni de datos`,
+      ).toBe(true);
     }
   });
 
@@ -131,8 +138,8 @@ describe("notationTypes", () => {
 });
 
 describe("ALL_NODE_TYPES", () => {
-  it("cubre las cuatro notaciones (semilla de filtros del visor)", () => {
-    for (const t of ["Comando", "Tarea", "Contenedor", "Clase"]) {
+  it("cubre todas las notaciones (semilla de filtros del visor)", () => {
+    for (const t of ["Comando", "Tarea", "Contenedor", "Clase", "Entidad Fuerte"]) {
       expect(ALL_NODE_TYPES).toContain(t);
     }
   });

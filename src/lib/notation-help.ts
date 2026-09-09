@@ -2,7 +2,7 @@
  * @fileOverview Ayuda por elemento de notación: explicación + ejemplo.
  *
  * Se muestra en el modal "?" de cada item de la paleta del diseñador.
- * Claves = `type` de NotationElement (ver notations.ts). Cubre DDD/BPMN/C4/UML.
+ * Claves = `type` de NotationElement (ver notations.ts). Cubre DDD/BPMN/C4/UML/MER.
  * Tipos compartidos (Actor, Sistema Externo, Componente) usan una sola entrada.
  */
 
@@ -347,5 +347,83 @@ export const NOTATION_HELP: Record<string, ElementHelp> = {
   "Mensaje Perdido": {
     description: "Es el mensaje cuya otra punta no está en el diagrama: se envía a alguien que no se modeló (perdido) o llega de alguien de afuera (encontrado). Se dibuja como un círculo relleno en el extremo suelto de la flecha.",
     example: "En un webhook, el mensaje encontrado 'pago.confirmado' llega desde la pasarela externa, que no es parte del diagrama.",
+  },
+  // --- MER: entidades, relaciones y atributos (Chen) ---
+  "Entidad Fuerte": {
+    description: "Es una cosa del mundo real sobre la que se guardan datos y que se identifica POR SÍ MISMA: tiene clave propia y existe sin depender de otra. Se dibuja como un rectángulo y es el bloque básico del modelo entidad-relación.",
+    example: "En facturación, la entidad Cliente se identifica por su número de documento y existe aunque todavía no tenga facturas.",
+  },
+  "Entidad Débil": {
+    description: "Es una entidad que NO tiene clave propia: sólo se identifica a través de la entidad de la que depende, sumando su clave a un discriminante (clave parcial). Se dibuja con rectángulo de línea DOBLE y se une a su dueña con una relación identificadora.",
+    example: "En facturación, la entidad débil Línea de Factura se identifica por el número de factura más el número de renglón; sin la factura no existe.",
+  },
+  "Entidad Asociativa": {
+    description: "Es una relación de muchos a muchos que pasó a tener atributos propios (o a relacionarse con otras entidades), así que se modela como entidad. También se la llama agregación: resuelve lo que un rombo no puede describir por sí solo.",
+    example: "En una universidad, Inscripción entre Estudiante y Curso guarda la fecha y la nota, así que se vuelve entidad asociativa.",
+  },
+  "Relación": {
+    description: "Es la asociación entre dos o más entidades y se dibuja como un ROMBO con el verbo que la nombra. Lo que le da sentido es la cardinalidad de cada extremo (1:1, 1:N, N:M) y si la participación es obligatoria u opcional; eso va en la arista.",
+    example: "En facturación, la relación 'emite' une Cliente (1) con Factura (N): un cliente emite muchas facturas y cada factura es de un solo cliente.",
+  },
+  "Relación Identificadora": {
+    description: "Es la relación que le da identidad a una entidad débil: rombo de línea DOBLE que la conecta con la entidad dueña. La débil hereda la clave de la dueña y la completa con su clave parcial.",
+    example: "En facturación, la relación identificadora 'detalla' une Factura con la entidad débil Línea de Factura.",
+  },
+  "Jerarquía (ISA)": {
+    description: "Es la especialización/generalización: un triángulo con la punta al supertipo del que heredan sus subtipos. Se declara si es disjunta (d: un subtipo por instancia) o solapada (o) y si es total (toda instancia es de algún subtipo) o parcial.",
+    example: "En banca, la jerarquía ISA disjunta y total sobre Cuenta baja a los subtipos Cuenta de Ahorros y Cuenta Corriente.",
+  },
+  "Categoría (Unión)": {
+    description: "Es la subclase cuyos miembros vienen de VARIOS supertipos distintos (tipo unión, símbolo ∪): cada instancia pertenece a uno solo de ellos. Se usa cuando la herencia no viene de un único padre.",
+    example: "En un registro de propietarios, la categoría Propietario reúne instancias de Persona o de Empresa, nunca de las dos a la vez.",
+  },
+  "Atributo": {
+    description: "Es una propiedad de una entidad o de una relación, dibujada como elipse unida a ella. Guarda un dato simple y atómico; si admite varios valores o se descompone, hay un símbolo propio para eso.",
+    example: "En facturación, el atributo 'fecha_emisión' cuelga de la entidad Factura.",
+  },
+  "Atributo Clave": {
+    description: "Es el atributo (o el conjunto de atributos) que identifica de forma única cada instancia de la entidad; en el dibujo clásico va SUBRAYADO. Es el que se convierte en clave primaria al bajar a tablas.",
+    example: "En facturación, el atributo clave 'nit' identifica a cada Cliente.",
+  },
+  "Clave Parcial": {
+    description: "Es el discriminante de una entidad DÉBIL: distingue sus instancias sólo dentro de la entidad dueña, así que por sí solo no identifica. Se dibuja subrayado con línea discontinua y forma la clave junto con la de la dueña.",
+    example: "En facturación, 'número_renglón' es clave parcial de Línea de Factura: se repite entre facturas distintas.",
+  },
+  "Atributo Compuesto": {
+    description: "Es el atributo que se descompone en subatributos con significado propio, y de él cuelgan las elipses de sus partes. Sirve para decidir si en la base se guarda entero o partido en columnas.",
+    example: "En facturación, el atributo compuesto 'dirección' se descompone en calle, ciudad y código postal.",
+  },
+  "Atributo Multivaluado": {
+    description: "Es el atributo que admite VARIOS valores para la misma instancia; se dibuja con elipse de línea DOBLE. Al bajar al modelo relacional se convierte casi siempre en una tabla aparte, porque una columna no guarda un conjunto.",
+    example: "En un directorio, el atributo multivaluado 'teléfono' de Cliente admite el fijo y el celular.",
+  },
+  "Atributo Derivado": {
+    description: "Es el atributo que se CALCULA a partir de otros datos y no se almacena; se dibuja con elipse punteada. Declararlo evita duplicar información que puede quedar desactualizada.",
+    example: "En facturación, el atributo derivado 'total' de Factura se calcula sumando sus líneas.",
+  },
+  // --- MER: bajada al modelo relacional ---
+  "Tabla Relacional": {
+    description: "Es la entidad ya implementada en la base: filas y columnas con tipos, con su clave primaria y sus claves foráneas. Es el modelo FÍSICO, el paso siguiente al conceptual de entidades y rombos.",
+    example: "En facturación, la tabla relacional facturas tiene columnas id, cliente_id, fecha y estado.",
+  },
+  "Clave Primaria (PK)": {
+    description: "Es la columna (o el conjunto de columnas) que identifica de forma única cada fila de la tabla: no admite nulos ni repetidos. Es en lo que se convierte el atributo clave del modelo conceptual.",
+    example: "En facturación, la clave primaria de facturas es la columna id.",
+  },
+  "Clave Foránea (FK)": {
+    description: "Es la columna que apunta a la clave primaria de otra tabla y hace cumplir la integridad referencial. Es la forma en que una relación 1:N del modelo conceptual queda implementada.",
+    example: "En facturación, facturas.cliente_id es clave foránea hacia clientes.id.",
+  },
+  "Restricción": {
+    description: "Es la regla que la base hace cumplir sobre los datos: NOT NULL, UNIQUE, CHECK o la acción al borrar/actualizar (ON DELETE). Es donde una regla de negocio se vuelve garantía del motor y no confianza en la aplicación.",
+    example: "En facturación, la restricción CHECK (total >= 0) impide guardar una factura con total negativo.",
+  },
+  "Índice": {
+    description: "Es la estructura que acelera la búsqueda por ciertas columnas, a cambio de espacio y de un costo en las escrituras. Se modela para dejar claro por qué caminos se va a consultar la tabla.",
+    example: "En facturación, un índice por (cliente_id, fecha) acelera el listado de facturas de un cliente por período.",
+  },
+  "Esquema": {
+    description: "Es la frontera lógica que agrupa las tablas y objetos de una misma base o dominio de datos. Delimita nombres y permisos; no ejecuta nada.",
+    example: "En un ERP, el esquema 'ventas' agrupa clientes, facturas y líneas de factura, separado del esquema 'nómina'.",
   },
 };

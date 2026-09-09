@@ -3,7 +3,8 @@
 import React, { useRef } from "react";
 import { isContainerType, type DesignerNode } from "./serialize";
 import { AGGREGATE_DEFAULT_WIDTH, AGGREGATE_DEFAULT_HEIGHT } from "./link-geom";
-import { sizeOfType, type NotationId } from "@/lib/notations";
+import { isTableType, sizeOfType, type NotationId } from "@/lib/notations";
+import { tableBoxSize } from "@/lib/mer/table-box";
 import { minimapScale, viewportRect, miniPointToCanvas } from "./minimap-geom";
 
 const MINI_W = 168;
@@ -69,9 +70,15 @@ export function Minimap({
         <rect width={MINI_W} height={MINI_H} className="fill-muted/40" />
         {list.map((n) => {
           const isC = isContainerType(n.tipo_elemento);
-          // Igual que en el lienzo: el tamaño guardado manda sólo en contenedores.
-          const w = (isC ? n.width ?? AGGREGATE_DEFAULT_WIDTH : sizeOfType(n.tipo_elemento, notation).w) * s;
-          const h = (isC ? n.height ?? AGGREGATE_DEFAULT_HEIGHT : sizeOfType(n.tipo_elemento, notation).h) * s;
+          // Igual que en el lienzo: el tamaño guardado manda sólo en
+          // contenedores, y la caja de tabla mide lo que miden sus filas.
+          const caja = isC
+            ? { w: n.width ?? AGGREGATE_DEFAULT_WIDTH, h: n.height ?? AGGREGATE_DEFAULT_HEIGHT }
+            : isTableType(n.tipo_elemento)
+              ? tableBoxSize(n.nombre, n.columnas)
+              : sizeOfType(n.tipo_elemento, notation);
+          const w = caja.w * s;
+          const h = caja.h * s;
           return (
             <rect
               key={n.id}

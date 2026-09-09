@@ -30,7 +30,7 @@ function label(text: string): string {
 /**
  * Delimitadores Mermaid de la FORMA que la notación declara para un tipo. Única
  * tabla forma→Mermaid del repo (la usa también `mermaid-diagram.ts`): así DDD,
- * BPMN, C4 y UML exportan con su símbolo sin tablas de tipos cableadas.
+ * BPMN, C4, UML y MER exportan con su símbolo sin tablas de tipos cableadas.
  */
 export function mermaidShapeDelims(tipo: string): [string, string] {
   switch (ALL_ELEMENTS[tipo]?.shape ?? "rounded") {
@@ -42,6 +42,10 @@ export function mermaidShapeDelims(tipo: string): [string, string] {
       return ["{", "}"];
     case "cylinder":
       return ["[(", ")]"];
+    case "triangle":
+      // Mermaid no tiene triángulo: el trapecio es lo más parecido (la
+      // jerarquía ISA del MER se sigue leyendo como "se abre hacia abajo").
+      return ["[/", "\\]"];
     case "rounded":
     default:
       return ["(", ")"];

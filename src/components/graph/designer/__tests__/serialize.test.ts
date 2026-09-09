@@ -1236,3 +1236,43 @@ describe("especificación de la caja: ida y vuelta", () => {
     expect(Object.keys(data.big_picture.aristas[0])).not.toContain("spec");
   });
 });
+
+// -----------------------------------------------------------------------------
+// Columnas de una caja de tabla (MER físico)
+// -----------------------------------------------------------------------------
+
+describe("columnas de tabla", () => {
+  const tabla = makeNode({
+    id: "reserva",
+    nombre: "Reserva",
+    tipo_elemento: "Tabla Relacional",
+    columnas: [
+      { nombre: "id", tipo: "integer", pk: true },
+      { nombre: "servicio_id", tipo: "integer", fk: true, referencia: "servicio.id" },
+    ],
+  });
+
+  it("viajan al proyecto y vuelven al lienzo iguales", () => {
+    const g = canvasToGraphData(nodesMap(tabla), new Map(), BASE);
+    expect(g.big_picture.nodos[0].columnas).toEqual(tabla.columnas);
+    const vuelta = graphDataToCanvas(g);
+    expect(vuelta.nodes.get("reserva")!.columnas).toEqual(tabla.columnas);
+  });
+
+  it("un nodo sin columnas no gana el campo (los proyectos viejos no cambian)", () => {
+    const g = canvasToGraphData(nodesMap(makeNode({ id: "c1" })), new Map(), BASE);
+    expect(g.big_picture.nodos[0].columnas).toBeUndefined();
+    expect(graphDataToCanvas(g).nodes.get("c1")!.columnas).toBeUndefined();
+  });
+
+  it("al abrir, lo que no es columna se descarta en vez de romper el lienzo", () => {
+    const g = canvasToGraphData(nodesMap(tabla), new Map(), BASE);
+    // Un archivo escrito a mano (o por un agente viejo) con basura en el campo.
+    (g.big_picture.nodos[0] as { columnas?: unknown }).columnas = [
+      { nombre: "id" },
+      { sinNombre: true },
+      "columna",
+    ];
+    expect(graphDataToCanvas(g).nodes.get("reserva")!.columnas).toEqual([{ nombre: "id" }]);
+  });
+});

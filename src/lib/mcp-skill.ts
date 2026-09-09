@@ -301,7 +301,7 @@ los datos que lo enriquecen. Tipos: \`texto\` · \`numero\` · \`booleano\` · \
 datos que quien va a construir busca a mano. Un documento de negocio muchas veces
 no los trae — entonces poné el valor explícito \`pendiente\` y decílo en el resumen
 al humano; nunca inventes una url. En el big picture DDD y en los BPMN no se
-exigen.
+exigen; tampoco en un MER.
 
 \`\`\`
 add_node { id: "c4-api-pagos", name: "API de Pagos", type: "Contenedor", container: "Pagos",
@@ -561,7 +561,7 @@ Claves de calidad:
   "disenar-diagrama": {
     "SKILL.md": `---
 name: disenar-diagrama
-description: Diseña UN diagrama (Event Storming DDD, BPMN, C4 o UML) en Processflow Architect usando el MCP processflow-architect — lee la fuente (documentos o código), construye el diagrama trazado a ella, lo valida y lo pasa por revisión humana antes de exportarlo al lienzo. Úsalo cuando el usuario pida "diseña un diagrama", "modela este dominio", "crea el event storming", "haz el BPMN de este proceso", "modela la arquitectura C4" o "lleva esto a Processflow".
+description: Diseña UN diagrama (Event Storming DDD, BPMN, C4, UML o MER entidad-relación) en Processflow Architect usando el MCP processflow-architect — lee la fuente (documentos o código), construye el diagrama trazado a ella, lo valida y lo pasa por revisión humana antes de exportarlo al lienzo. Úsalo cuando el usuario pida "diseña un diagrama", "modela este dominio", "crea el event storming", "haz el BPMN de este proceso", "modela la arquitectura C4", "haz el modelo entidad-relación" o "lleva esto a Processflow".
 ---
 
 # Diseñar un diagrama con el MCP de Processflow Architect
@@ -750,7 +750,8 @@ tipo:"numero"}\` se rechaza.
 **Desplegable** = tiene código y se despliega: en C4 \`Sistema\`, \`Contenedor\`,
 \`Componente\`, \`Base de Datos\`; en UML \`Componente\`, \`Nodo\`, \`Artefacto de
 Despliegue\`. Un \`Sistema Externo\` no lo es (no es nuestro código), y un mapa de
-dominio (DDD) o un proceso (BPMN) tampoco: ahí no se exige nada.
+dominio (DDD), un proceso (BPMN) o un modelo de datos (MER) tampoco: ahí no se
+exige nada.
 
 \`validate_diagram\` **falla** mientras un elemento desplegable no declare \`repo\` y
 \`puerto\`: son los datos que quien va a construir busca a mano cuando faltan. Si
@@ -764,6 +765,33 @@ add_node { id: "c4-api-pagos", name: "API de Pagos", type: "Contenedor", contain
               { clave: "endpoint", valor: "https://api.acme.com/pagos", tipo: "url" },
               { clave: "owner",    valor: "Equipo Pagos", tipo: "texto" } ] }
 \`\`\`
+
+## Modelo entidad-relación (MER): las tablas llevan columnas
+
+En un MER físico la \`Tabla Relacional\` se dibuja como CAJA con compartimentos, y
+sus filas son sus **columnas**: se declaran con \`columns\` en \`add_node\` /
+\`update_element\`. Los compartimentos «FK», «index» y «PK» se **deducen** de las
+marcas de cada columna — no se declaran aparte, así el dibujo no puede
+contradecir al modelo.
+
+\`\`\`
+add_node { name: "Reserva", type: "Tabla Relacional",
+  columns: [ { nombre: "id",          tipo: "integer",     pk: true },
+             { nombre: "fecha_inicio", tipo: "date" },
+             { nombre: "valor",        tipo: "money",      nulo: true },
+             { nombre: "servicio_id",  tipo: "integer",    fk: true,
+               referencia: "servicio.id", indice: true } ] }
+\`\`\`
+
+- Sin marcar, la columna es **obligatoria** (se dibuja con \`*\`); \`nulo: true\` la
+  hace opcional.
+- Una FK **tiene que** declarar \`referencia\`: sin ella \`validate_diagram\` falla.
+- Una tabla sin \`pk\` pasa con **aviso**: se modela así sólo si la clave está sin
+  decidir.
+- La cardinalidad va en la ARISTA (\`relation: "cardinalidad_1_n"\`, \`…_n_m\`, …),
+  que es la que dibuja la pata de gallo.
+- El MER **conceptual** (Chen) es la otra mitad de la notación: entidades,
+  rombos y atributos, sin columnas.
 
 Reglas: la clave repetida **reemplaza** su valor (no duplica); sólo las urls
 \`http(s)\` se vuelven enlace en la app; para sumar una propiedad después usá
@@ -911,7 +939,7 @@ const SKILL_SUMMARIES: Record<string, string> = {
   "documento-a-processflow":
     "Convierte un documento de negocio (PDF, PRD, presentación) en un PORTAFOLIO de diagramas trazados a la fuente: ingesta del estado de la app, extracción con cita, una ronda de ambigüedades, validación de calidad y paquete de revisión antes de exportar.",
   "disenar-diagrama":
-    "Diseña UN diagrama (DDD, BPMN, C4 o UML) con el mismo arnés en versión corta: ingesta, cita de la fuente, ambigüedades registradas, validación de calidad y revisión humana antes de exportar.",
+    "Diseña UN diagrama (DDD, BPMN, C4, UML o MER) con el mismo arnés en versión corta: ingesta, cita de la fuente, ambigüedades registradas, validación de calidad y revisión humana antes de exportar.",
 };
 
 /** Orden de entrega: primero el flujo completo, luego el puntual. */

@@ -103,14 +103,16 @@ import {
   SKILL_IDS,
   type SkillConfig,
 } from "../../src/lib/mcp-skill";
-import { DEFAULT_NOTATION_ID, type NotationId } from "../../src/lib/notations";
+import { DEFAULT_NOTATION_ID, NOTATION_IDS, type NotationId } from "../../src/lib/notations";
 import { isLifelineContainer } from "../../src/lib/notations";
 import { SEQUENCE_MESSAGES, SEQUENCE_MESSAGE_KINDS } from "../../src/lib/sequence/messages";
 import { FRAGMENT_OPS, FRAGMENT_OPS_LIST, type FragmentOp } from "../../src/lib/sequence/fragments";
 import { MAX_CUSTOM_VIEWS } from "../../src/lib/views-types";
 import type { GraphData } from "../../src/lib/types";
 
-const NOTATION = z.enum(["ddd", "bpmn", "c4", "uml"]);
+// El enum sale del registro (P6): con la lista cableada, una notación nueva
+// existía en la app pero el MCP la rechazaba.
+const NOTATION = z.enum(NOTATION_IDS as [NotationId, ...NotationId[]]);
 
 export interface McpToolsOptions {
   /** Directorio donde persisten los modelos en curso y las exportaciones. */
@@ -228,6 +230,39 @@ const estadoSchema = z
  * "string"` sin decir cómo arreglarlo. Se parsea antes de validar; si el texto
  * no es JSON, el mensaje explica la forma esperada.
  */
+/**
+ * Columnas de una caja de TABLA (MER físico). Se acepta también como STRING con
+ * JSON —igual que los metadatos— porque hay clientes MCP que aplanan los arrays
+ * anidados a texto y sin esto la llamada fallaba sin decir por qué.
+ */
+const columnsSchema = z
+  .preprocess((v) => {
+    if (typeof v !== "string") return v;
+    const t = v.trim();
+    if (!t) return undefined;
+    try {
+      return JSON.parse(t);
+    } catch {
+      return v;
+    }
+  }, z
+  .array(
+    z.object({
+      nombre: z.string().describe('Nombre de la columna: "id", "fecha_inicio".'),
+      tipo: z.string().optional().describe('Tipo del motor: "integer", "varchar(50)", "money".'),
+      pk: z.boolean().optional().describe("Forma parte de la clave primaria."),
+      fk: z.boolean().optional().describe("Es clave foránea (exige `referencia`)."),
+      referencia: z
+        .string()
+        .optional()
+        .describe('Tabla (o "tabla.columna") a la que apunta la FK: "servicio.id".'),
+      nulo: z.boolean().optional().describe("Admite nulos. Por defecto la columna es OBLIGATORIA."),
+      unico: z.boolean().optional().describe("Restricción de unicidad."),
+      indice: z.boolean().optional().describe("Se le crea un índice (las FK ya llevan uno)."),
+    })
+  ))
+  .optional();
+
 const metadataSchema = z
   .preprocess((v) => {
     if (typeof v !== "string") return v;
@@ -984,12 +1019,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .describe(
             "Cita de DÓNDE sale en la fuente (\"PRD §3.2 (p. 7)\", \"acta 12-mar\", \"src/pagos/service.ts\"). Aparece en la descripción del elemento y en la tabla elemento←fuente de review_diagram: sin ella el humano no puede contrastar el diagrama."
           ),
+        columns: columnsSchema.describe(
+            "Columnas, SÓLO para los tipos que se dibujan como caja de tabla (MER físico: `Tabla Relacional`). De ellas salen los compartimentos que muestra la caja: «column» son las filas, y «FK», «index» y «PK» se DEDUCEN de sus marcas — no se declaran aparte. Ejemplo: [{nombre:\"id\", tipo:\"integer\", pk:true}, {nombre:\"servicio_id\", tipo:\"integer\", fk:true, referencia:\"servicio.id\", indice:true}, {nombre:\"nombre\", tipo:\"varchar(50)\"}]. Una tabla sin `pk` pasa validate_diagram con AVISO; una FK sin `referencia` es error."
+          ),
         metadata: metadataSchema.describe(
             "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}${p.obligatoria ? ", OBLIGATORIA en lo desplegable" : ""})`).join(" · ") + ". Un elemento desplegable (Contenedor, Componente, Base de Datos, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
           ),
       },
     },
-    async ({ diagramId: diagramIdEntrada, name, type, container, description, estado, tags, id, source, metadata }) => {
+    async ({ diagramId: diagramIdEntrada, name, type, container, description, estado, tags, id, source, metadata, columns }) => {
       // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
       // configuración, o el único del workspace (`active-diagram.ts`).
       let diagramId: string;
@@ -1010,6 +1048,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           tags_tecnologia: tags,
           source,
           metadata,
+          columnas: columns,
         });
         await saveModel(diagramId, r.model);
         return text(`Nodo "${name}" añadido (id=${r.id}).`);
@@ -1123,6 +1162,9 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         metadata: metadataSchema.describe(
             "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}${p.obligatoria ? ", OBLIGATORIA en lo desplegable" : ""})`).join(" · ") + ". Un elemento desplegable (Contenedor, Componente, Base de Datos, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
           ),
+        columns: columnsSchema.describe(
+            "Columnas nuevas de una caja de tabla. REEMPLAZA la lista completa (a diferencia de `metadata`, que va por clave): el orden de las filas es parte del modelo, así que se manda entero."
+          ),
         metadataRemove: z
           .array(z.string())
           .optional()
@@ -1131,7 +1173,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId: diagramIdEntrada, id, name, type, description, estado, source, tags, metadata, metadataRemove }) => {
+    async ({ diagramId: diagramIdEntrada, id, name, type, description, estado, source, tags, metadata, metadataRemove, columns }) => {
       // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
       // configuración, o el único del workspace (`active-diagram.ts`).
       let diagramId: string;
@@ -1151,6 +1193,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ...(tags !== undefined ? { tags_tecnologia: tags } : {}),
           ...(metadata !== undefined ? { metadata } : {}),
           ...(metadataRemove !== undefined ? { metadataRemove } : {}),
+          ...(columns !== undefined ? { columnas: columns } : {}),
         });
         await saveModel(diagramId, next);
         const n = next.nodes.find((x) => x.id === id)!;
