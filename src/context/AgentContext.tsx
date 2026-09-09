@@ -788,6 +788,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       catalog,
       toast,
       updateTokenUsage,
+      // Sin estas dos, el callback queda con el agente que había al montar: el
+      // selector decía «Constructor» y contestaba el analista (closure viejo).
+      agentId,
+      correrConstructor,
     ]
   );
 
