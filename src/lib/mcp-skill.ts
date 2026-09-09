@@ -797,8 +797,11 @@ add_node { name: "Reserva", type: "Tabla Relacional",
 - Una FK **tiene que** declarar \`referencia\`: sin ella \`validate_diagram\` falla.
 - Una tabla sin \`pk\` pasa con **aviso**: se modela así sólo si la clave está sin
   decidir.
-- La cardinalidad va en la ARISTA (\`relation: "cardinalidad_1_n"\`, \`…_n_m\`, …),
-  que es la que dibuja la pata de gallo.
+- La cardinalidad va en la ARISTA: \`add_edge { relation: "cardinalidad_1_n" }\`
+  (o \`…_1_1\`, \`…_0_1\`, \`…_0_n\`, \`…_n_m\`), que es lo que dibuja la pata de gallo.
+  Etiquetar «1:N» como texto NO la dibuja. En UML, la misma opción lleva
+  \`herencia\`, \`realizacion\`, \`composicion\`, \`agregacion\` y \`dependencia\`;
+  \`describe_notation\` lista el catálogo completo.
 - El MER **conceptual** (Chen) es la otra mitad de la notación: entidades,
   rombos y atributos, sin columnas.
 
