@@ -40,6 +40,7 @@ import {
   type ElementMetadata,
 } from "../element-metadata";
 import { normalizarColumnas, tableBoxSize, validarColumnas, type TableColumn } from "../mer/table-box";
+import type { EdgeRelationKind } from "../edge-relations";
 import {
   getNotation,
   hasRole,
@@ -190,6 +191,13 @@ export interface BuilderEdge {
   orden?: number;
   /** Qué clase de mensaje es (sólo secuencia). Ver `sequence/messages.ts`. */
   messageKind?: SequenceMessageKind;
+  /**
+   * Qué RELACIÓN representa la arista: decide la marca de cada punta y si el
+   * trazo va punteado (`src/lib/edge-relations.ts`). Es donde viven la
+   * cardinalidad del MER (pata de gallo) y la herencia, realización,
+   * composición y agregación de UML. Ausente = asociación simple (flecha).
+   */
+  relation?: EdgeRelationKind;
 }
 
 /**
@@ -542,7 +550,9 @@ export function updateEdge(
   model: DiagramModel,
   from: string,
   to: string,
-  patch: Partial<Pick<BuilderEdge, "descripcion" | "dashed" | "arrow" | "routing" | "color">>
+  patch: Partial<
+    Pick<BuilderEdge, "descripcion" | "dashed" | "arrow" | "routing" | "color" | "relation">
+  >
 ): DiagramModel {
   // Los extremos pueden llegar como se dibujan en Mermaid (ver `findNode`).
   const f = findNode(model, from)?.id ?? from;
@@ -1534,6 +1544,10 @@ export function toGraphData(input: DiagramModel): GraphData {
       color: e.color,
       dashed: e.dashed,
       arrow: e.arrow,
+      // La relación es simbología, no estilo: sin ella una cardinalidad 1:N se
+      // dibuja como una flecha cualquiera y el modelo pierde la mitad de lo que
+      // dice.
+      relation: e.relation,
       // Una relación que cruza de una banda a otra en línea recta atraviesa el
       // diagrama en diagonal y pasa por encima de todo. Ortogonal por defecto;
       // si el modelo ya trae un ruteo explícito, manda el suyo.
@@ -1617,6 +1631,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
         arrow: (a as any).arrow,
         color: (a as any).color,
         routing: (a as any).routing,
+        relation: (a as any).relation,
       });
     }
   }
@@ -1639,6 +1654,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       arrow: a.arrow,
       color: a.color,
       routing: a.routing,
+      relation: a.relation,
     });
   for (const a of data.big_picture?.aristas || []) pushEdge(a);
   for (const a of data.politicas_inter_agregados || []) pushEdge(a);
