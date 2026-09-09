@@ -108,6 +108,9 @@ const SYSTEM = [
   'o {"final":"<qué hiciste, en español>"} cuando la tarea esté terminada.',
   "Nunca inventes herramientas ni argumentos: usá sólo los del menú.",
   "Antes de construir, orientate (get_app_state / list_views). Antes de cerrar, validá y exportá.",
+  "OJO: el diagrama que construís vive en el workspace del MCP, NO en el proyecto de la app.",
+  "get_app_state seguirá diciendo 0 elementos mientras trabajás: eso es normal, no es que se haya perdido.",
+  "Usá get_diagram para verlo y export_as_view UNA vez al final para dejarlo en el lienzo del humano.",
 ].join(" ");
 
 /** Prompt del turno: menú, pedido, y lo observado hasta ahora. */
@@ -139,9 +142,17 @@ export function buildBuilderPrompt(
   const hecho = state.cambios.length
     ? `YA HECHO en esta corrida (no lo repitas):\n${state.cambios.map((c) => `- ${c}`).join("\n")}`
     : "";
+  // Dónde vive el trabajo. Sin esto el modelo consultaba `get_app_state`, veía el
+  // proyecto vacío y volvía a crear el diagrama desde cero (#327).
+  const enCurso = state.diagrama
+    ? `DIAGRAMA EN CURSO: "${state.diagrama.nombre}" (id ${state.diagrama.id}), ya fijado — NO crees otro.\n` +
+      "Vive en el workspace del MCP: `get_app_state` y `get_view` miran el proyecto de la app y NO lo muestran. " +
+      "Para ver lo construido usá `get_diagram`; para que el humano lo vea, terminá con `export_as_view`."
+    : "";
   return [
     `PEDIDO DEL USUARIO:\n${input.message}`,
     decididas,
+    enCurso,
     hecho,
     input.notation ? `NOTACIÓN DE LA VISTA EN CURSO: ${input.notation}` : "",
     `HERRAMIENTAS DISPONIBLES:\n${menu}`,
@@ -306,6 +317,17 @@ async function bucle(
     if (veredicto.kind === "rechazar") {
       paso({ type: "observation", content: veredicto.motivo });
       state = applyObservation(state, parsed.call, { ok: false, texto: veredicto.motivo });
+      continue;
+    }
+
+    if (veredicto.kind === "ejecutar" && veredicto.call.tool === "create_diagram" && state.diagrama) {
+      // Crear otro diagrama es la forma en que el modelo "resolvía" no ver su
+      // trabajo en `get_app_state`: quedaban tres a medias y ninguno publicado.
+      const recordatorio =
+        `Ya tenés el diagrama "${state.diagrama.nombre}" (id ${state.diagrama.id}) fijado y con contenido. ` +
+        "No crees otro: seguí con add_container/add_node/add_edge y publicá con export_as_view.";
+      paso({ type: "observation", content: recordatorio });
+      state = applyObservation(state, { tool: "(create repetido)", args: {} }, { ok: false, texto: recordatorio });
       continue;
     }
 

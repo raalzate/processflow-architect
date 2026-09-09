@@ -72,6 +72,12 @@ export interface BuilderRunState {
    * mismo — pasó (#324). Se re-inyecta en cada turno.
    */
   decisiones: { pregunta: string; eleccion: string }[];
+  /**
+   * Diagrama fijado en el workspace del MCP. El agente NO lo ve en
+   * `get_app_state` —eso mira el proyecto de la app—, y sin este recordatorio
+   * concluía que su trabajo se había perdido y lo creaba de nuevo (#327).
+   */
+  diagrama?: { id: string; nombre: string };
 }
 
 /**
@@ -110,6 +116,22 @@ const ESCRIBEN = new Set([
   "rename_view",
   "export_as_view",
 ]);
+
+/**
+ * El diagrama que acaba de fijar el MCP, leído de SU respuesta: `create_diagram`
+ * y `use_diagram` contestan con `diagramId="…"`. Se parsea en vez de asumirlo del
+ * argumento porque el id lo genera el servidor (slug + contador).
+ */
+function diagramaDe(call: BuilderCall, texto: string): { id: string; nombre: string } | undefined {
+  if (call.tool !== "create_diagram" && call.tool !== "use_diagram") return undefined;
+  const id = /diagram(?:Id)?[=:]\s*"([^"]+)"/i.exec(texto)?.[1] ?? /"([^"]+)"/.exec(texto)?.[1];
+  if (!id) return undefined;
+  const nombre =
+    typeof call.args.name === "string" && call.args.name.trim()
+      ? call.args.name.trim()
+      : /\(([^,)]+),/.exec(texto)?.[1]?.trim() || id;
+  return { id, nombre };
+}
 
 /** Qué cambió, en una línea que el humano pueda leer sin abrir la traza. */
 function frase(call: BuilderCall): string {
@@ -267,6 +289,7 @@ export function applyObservation(
     // Progreso es CAMBIAR el modelo. Una lectura, por más que salga bien, deja
     // la corrida donde estaba.
     sinProgreso: obs.ok && ESCRIBEN.has(call.tool) ? 0 : state.sinProgreso + 1,
+    diagrama: (obs.ok && diagramaDe(call, obs.texto)) || state.diagrama,
     pregunta: undefined,
   };
 }
@@ -367,6 +390,20 @@ export function summarizeRun(state: BuilderRunState): string {
       ["No se hizo (lo rechazaste):", ...state.rechazos.map((r) => `- ${r}`)].join("\n")
     );
   }
+  // Construido pero no publicado: el diagrama vive en el workspace del MCP y el
+  // humano no lo ve en el lienzo hasta `export_as_view` (#327).
+  const publico = state.pasos.some((p) => p.ok && (p.tool === "export_as_view" || p.tool === "export_to_app"));
+  const construyó = state.pasos.some(
+    (p) => p.ok && ESCRIBEN.has(p.tool) && p.tool !== "export_as_view" && p.tool !== "export_to_app"
+  );
+  if (construyó && !publico) {
+    partes.push(
+      `El diagrama quedó en el workspace del MCP y todavía NO está en el lienzo: falta \`export_as_view\`${
+        state.diagrama ? ` sobre "${state.diagrama.nombre}"` : ""
+      }.`
+    );
+  }
+
   if (state.cancelada) {
     partes.push("Corrida cancelada.");
   } else if (state.sinProgreso >= MAX_SIN_PROGRESO) {

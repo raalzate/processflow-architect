@@ -483,3 +483,60 @@ describe("no girar leyendo (#326)", () => {
     expect(r.reply).not.toMatch(/tope de pasos/i);
   });
 });
+
+describe("el agente sabe qué está construyendo (#327)", () => {
+  const CREADO =
+    'Diagrama creado y FIJADO. diagramId="finops-1", notación=c4.';
+
+  function conCreate(turnos: string[]) {
+    const llamadas: string[] = [];
+    let i = 0;
+    return {
+      llamadas,
+      deps: {
+        listTools: async () => [
+          ...TOOLS,
+          { name: "create_diagram", description: "Crea un diagrama.", inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
+          { name: "add_container", description: "Agrega contenedor.", inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
+        ],
+        callTool: async (name: string, args: Record<string, unknown>) => {
+          llamadas.push(`${name}:${JSON.stringify(args)}`);
+          return { ok: true, texto: name === "create_diagram" ? CREADO : "listo" };
+        },
+        generate: async () => turnos[Math.min(i++, turnos.length - 1)],
+      },
+    };
+  }
+  const allow = [...ALLOW, "create_diagram", "add_container"];
+
+  it("un segundo create_diagram no llega al MCP: ya hay uno fijado", async () => {
+    const { deps, llamadas } = conCreate([
+      '{"tool":"create_diagram","args":{"name":"FinOps Framework"}}',
+      '{"tool":"create_diagram","args":{"name":"FinOps Framework C4"}}',
+      '{"final":"Listo."}',
+    ]);
+    const r = await runBuilderAgent({ ...base, allow, deps });
+    expect(llamadas.filter((l) => l.startsWith("create_diagram"))).toHaveLength(1);
+    expect(r.state.pasos.some((p) => !p.ok && /ya .*diagrama|finops-1/i.test(p.texto))).toBe(true);
+  });
+
+  it("el diagrama en curso viaja en el prompt de los turnos siguientes", async () => {
+    const prompts: string[] = [];
+    let i = 0;
+    const deps = {
+      listTools: async () => [
+        ...TOOLS,
+        { name: "create_diagram", description: "Crea.", inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
+      ],
+      callTool: async () => ({ ok: true, texto: CREADO }),
+      generate: async (p: string) => {
+        prompts.push(p);
+        return i++ === 0 ? '{"tool":"create_diagram","args":{"name":"FinOps"}}' : '{"final":"Listo."}';
+      },
+    };
+    await runBuilderAgent({ ...base, allow, deps });
+    expect(prompts[1]).toMatch(/finops-1/);
+    // Y la advertencia que evita el bucle: la app no muestra el workspace.
+    expect(prompts[1]).toMatch(/export_as_view/);
+  });
+});

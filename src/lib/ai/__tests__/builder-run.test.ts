@@ -396,3 +396,71 @@ describe("turnos sin progreso", () => {
     expect(texto).not.toMatch(/tope de pasos/i);
   });
 });
+
+/**
+ * El agente tiene que saber QUÉ está construyendo (#327). El diagrama en curso
+ * vive en el workspace del MCP; `get_app_state` mira el proyecto de la app, que
+ * sigue vacío hasta `export_as_view`. El modelo preguntaba «¿quedó?», le decían
+ * «0 elementos» y volvía a crear el diagrama desde cero: tres veces en una
+ * corrida. El estado de la corrida ahora recuerda el diagrama fijado.
+ */
+describe("diagrama en curso", () => {
+  const creado =
+    'Diagrama creado y FIJADO. diagramId="finops-framework-15", notación=c4. Las próximas llamadas pueden omitir `diagramId`.';
+
+  it("se detecta del resultado del MCP, sin que nadie lo declare", () => {
+    const s = applyObservation(startRun(), call("create_diagram", { name: "FinOps Framework" }), ok(creado));
+    expect(s.diagrama).toEqual({ id: "finops-framework-15", nombre: "FinOps Framework" });
+  });
+
+  it("use_diagram lo cambia", () => {
+    let s = applyObservation(startRun(), call("create_diagram", { name: "A" }), ok(creado));
+    s = applyObservation(
+      s,
+      call("use_diagram", { diagramId: "otro-3" }),
+      ok('Diagrama fijado: "otro-3" (Otro, c4).')
+    );
+    expect(s.diagrama?.id).toBe("otro-3");
+  });
+
+  it("una lectura cualquiera no lo pisa", () => {
+    let s = applyObservation(startRun(), call("create_diagram", { name: "A" }), ok(creado));
+    s = applyObservation(s, call("get_app_state"), ok("Proyecto activo: Demo"));
+    expect(s.diagrama?.id).toBe("finops-framework-15");
+  });
+});
+
+describe("relectura estéril: la decide la LLAMADA, no el texto", () => {
+  const estado = (t: string) =>
+    `Proyecto activo: "Demo" (notación c4). Contenido: 0 elemento(s). Estado publicado: ${t}.`;
+
+  it("repetir la misma lectura sin haber escrito nada es estéril, aunque la respuesta traiga un timestamp", () => {
+    // No se puede saber si el texto cambiaría sin volver a llamar; lo que sí se
+    // sabe es que NADA de lo que hizo el agente pudo cambiarlo (#327).
+    const s = applyObservation(startRun(), call("get_app_state"), ok(estado("2026-09-09T21:35:49.936Z")));
+    expect(relecturaEsteril(s, call("get_app_state"))).toBeDefined();
+  });
+});
+
+describe("trabajo sin publicar", () => {
+  it("el resumen avisa que quedó en el workspace", () => {
+    let s = applyObservation(
+      startRun(),
+      call("create_diagram", { name: "FinOps" }),
+      ok('Diagrama creado y FIJADO. diagramId="finops-1", notación=c4.')
+    );
+    s = applyObservation(s, call("add_container", { name: "Informar" }), ok("añadido"));
+    expect(summarizeRun(s)).toMatch(/export_as_view|no .*public|workspace/i);
+  });
+
+  it("si se publicó, no avisa nada", () => {
+    let s = applyObservation(
+      startRun(),
+      call("create_diagram", { name: "FinOps" }),
+      ok('Diagrama creado y FIJADO. diagramId="finops-1", notación=c4.')
+    );
+    s = applyObservation(s, call("add_container", { name: "Informar" }), ok("añadido"));
+    s = applyObservation(s, call("export_as_view", { name: "FinOps" }), ok("vista creada"));
+    expect(summarizeRun(s)).not.toMatch(/no .*public/i);
+  });
+});
