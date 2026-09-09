@@ -199,6 +199,36 @@ export function resolveConfirmation(
   };
 }
 
+/**
+ * Renueva el presupuesto de pasos conservando traza y cambios. Lo pide el humano
+ * viendo el avance (#322): subir el tope a ciegas, con el contexto recortándose,
+ * compra trabajo repetido; extender a pedido compra lo que falta.
+ *
+ * Una corrida CANCELADA no se extiende: el humano ya dijo que no.
+ */
+export function extendRun(state: BuilderRunState, pasos = MAX_BUILDER_STEPS): BuilderRunState {
+  if (state.cancelada) return state;
+  return { ...state, restantes: pasos, pregunta: undefined };
+}
+
+/** La pregunta del tope: qué se hizo hasta acá y las dos salidas. */
+export function preguntaDeContinuar(state: BuilderRunState): BuilderQuestion {
+  const hecho = state.cambios.length
+    ? `Llevo hecho:\n${state.cambios.map((c) => `- ${c}`).join("\n")}`
+    : "Todavía no cambié nada del modelo.";
+  return {
+    texto: `Se agotó el tope de ${MAX_BUILDER_STEPS} pasos de la corrida.\n\n${hecho}\n\n¿Sigo?`,
+    opciones: [
+      {
+        id: "seguir",
+        label: `Seguir ${MAX_BUILDER_STEPS} pasos más`,
+        detalle: "Continúa esta misma corrida, con lo que ya averiguó.",
+      },
+      { id: "terminar", label: "Terminar acá", accion: "cancelar" },
+    ],
+  };
+}
+
 export function cancelRun(state: BuilderRunState): BuilderRunState {
   return { ...state, cancelada: true, pregunta: undefined };
 }

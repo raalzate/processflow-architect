@@ -18,6 +18,8 @@ import {
   MAX_BUILDER_STEPS,
   askUser,
   answerUser,
+  extendRun,
+  preguntaDeContinuar,
 } from "@/lib/ai/builder-run";
 
 const call = (tool: string, args: Record<string, unknown> = {}) => ({ tool, args });
@@ -159,5 +161,44 @@ describe("pausa con opciones", () => {
     expect(s.pregunta?.opciones.map((o) => o.id)).toEqual(["si", "no"]);
     // Y el sí sigue devolviendo la llamada a ejecutar, como antes.
     expect(resolveConfirmation(s, true).ejecutar?.tool).toBe("delete_view");
+  });
+});
+
+/**
+ * Seguir donde quedó (#322). Agotar el tope cerraba la corrida y la única salida
+ * era repetir el pedido desde cero, tirando lo que el agente ya sabía del
+ * proyecto. Subir el número no arregla eso: con el motor local, más pasos con el
+ * contexto recortado terminan en trabajo repetido. Lo que faltaba era que el
+ * humano decida, viendo el avance.
+ */
+describe("extender la corrida", () => {
+  const agotada = () => {
+    let s = startRun();
+    for (let i = 0; i < MAX_BUILDER_STEPS; i++) {
+      s = applyObservation(s, call("add_node", { name: `N${i}`, type: "Comando" }), ok("hecho"));
+    }
+    return s;
+  };
+
+  it("renueva el presupuesto sin perder lo hecho", () => {
+    const s = extendRun(agotada());
+    expect(s.restantes).toBe(MAX_BUILDER_STEPS);
+    expect(s.pasos).toHaveLength(MAX_BUILDER_STEPS);
+    expect(s.cambios).toHaveLength(MAX_BUILDER_STEPS);
+    expect(runFinished(s)).toBe(false);
+  });
+
+  it("la pregunta de continuar muestra el avance y ofrece las dos salidas", () => {
+    const pregunta = preguntaDeContinuar(agotada());
+    expect(pregunta.texto).toMatch(/tope/i);
+    expect(pregunta.texto).toMatch(/N0/); // lo hecho va en la pregunta, no escondido
+    expect(pregunta.opciones.map((o) => o.id)).toEqual(["seguir", "terminar"]);
+    expect(pregunta.opciones.find((o) => o.id === "terminar")?.accion).toBe("cancelar");
+  });
+
+  it("una corrida cancelada por el humano no se extiende", () => {
+    const s = extendRun(cancelRun(agotada()));
+    expect(runFinished(s)).toBe(true);
+    expect(s.restantes).toBe(0);
   });
 });

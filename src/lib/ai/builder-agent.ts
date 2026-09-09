@@ -34,6 +34,8 @@ import {
   applyObservation,
   askUser,
   cancelRun,
+  extendRun,
+  preguntaDeContinuar,
   pendingConfirmation,
   resolveConfirmation,
   runFinished,
@@ -294,6 +296,15 @@ async function bucle(
     state = await ejecutar(veredicto.call, deps, state, paso);
   }
 
+  // Se acabó el tope, pero no el trabajo: en vez de cerrar y obligar a repetir
+  // el pedido desde cero, se pregunta con el avance a la vista (#322). Una
+  // corrida cancelada por el humano no vuelve a molestar.
+  if (!state.cancelada && state.restantes <= 0) {
+    const pregunta = preguntaDeContinuar(state);
+    paso({ type: "question", content: pregunta.texto });
+    return { reply: [summarizeRun(state), "¿Sigo?"].join("\n\n"), steps, state: askUser(state, pregunta) };
+  }
+
   return { reply: summarizeRun(state), steps, state };
 }
 
@@ -380,6 +391,12 @@ export async function answerBuilderAgent(
   if (state.cancelada) return { reply: summarizeRun(state), steps, state };
 
   const tools = await deps.listTools();
+
+  // «Seguir»: la misma corrida con el presupuesto renovado. No se le reinyecta la
+  // pregunta al modelo —no le aporta nada saber que el humano le dio más cuerda—.
+  if (eleccion.id === "seguir") {
+    return bucle(input, deps, tools, extendRun(state), steps);
+  }
   // La elección viaja en el pedido: es la respuesta a lo que el agente preguntó.
   const conRespuesta = {
     ...input,

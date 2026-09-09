@@ -268,3 +268,34 @@ describe("preguntas con opciones", () => {
     expect(r.pendiente?.call.tool).toBe("delete_view");
   });
 });
+
+describe("seguir cuando se agota el tope (#322)", () => {
+  it("al agotarse pregunta en vez de cerrar, mostrando lo hecho", async () => {
+    const { deps } = guion(['{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}']);
+    const r = await runBuilderAgent({ ...base, deps });
+    expect(r.state.restantes).toBe(0);
+    expect(r.state.pregunta?.opciones.map((o) => o.id)).toEqual(["seguir", "terminar"]);
+    expect(r.state.pregunta?.texto).toMatch(/Orden/);
+  });
+
+  it("«seguir» continúa la MISMA corrida, con sus cambios y su traza", async () => {
+    const { deps } = guion(['{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}']);
+    const primera = await runBuilderAgent({ ...base, deps });
+    const cambiosAntes = primera.state.cambios.length;
+
+    const seguir = guion(['{"final":"Ahora sí, terminé."}']);
+    const r = await answerBuilderAgent({ ...base, deps: seguir.deps }, primera.state, "seguir");
+    expect(r.state.cambios.length).toBeGreaterThanOrEqual(cambiosAntes);
+    expect(r.state.pasos.length).toBeGreaterThanOrEqual(primera.state.pasos.length);
+    expect(r.reply).toMatch(/terminé/i);
+  });
+
+  it("«terminar» cierra con el resumen y no vuelve a preguntar", async () => {
+    const { deps } = guion(['{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}']);
+    const primera = await runBuilderAgent({ ...base, deps });
+    const r = await answerBuilderAgent({ ...base, deps }, primera.state, "terminar");
+    expect(r.state.cancelada).toBe(true);
+    expect(r.state.pregunta).toBeUndefined();
+    expect(r.reply).toMatch(/Orden/);
+  });
+});
