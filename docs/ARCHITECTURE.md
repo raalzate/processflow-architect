@@ -81,6 +81,16 @@ componente / hook (useAi)
   ReAct sobre el modelo local. El engine mantiene **una sola conversación viva**: el
   contexto procesado del runtime es un slot único, así que abrir una conversación cierra
   la anterior y las creaciones van en serie (ver `gotchas.md`).
+- **`agent-profiles.ts`** — quién atiende el chat: **Analista** (lee y redacta) y
+  **Constructor** (crea, edita y elimina con las herramientas del MCP). El perfil trae la
+  allowlist de ids de herramientas; que esos ids existan de verdad lo prueba
+  `main/services/__tests__/builder-allowlist.test.ts`.
+- **`builder-tools.ts` / `builder-run.ts` / `builder-agent.ts`** — el agente constructor:
+  veredicto de cada llamada (`ejecutar` · `confirmar` · `rechazar`), estado de la corrida
+  (tope de pasos, cambios aplicados, resumen) y el bucle, que ejecuta por el transporte MCP
+  **en memoria** (`mcpPlaygroundCall`) sin necesidad de encender el servidor HTTP. Lo
+  destructivo NUNCA se ejecuta sin el sí del humano (§P10). El turno del modelo es la
+  `AiTask` `builder-turn`, así que respeta el modo de IA vigente sin política propia (§P5).
 - **`agent-run.ts`** — estado puro de una corrida del agente: lecturas, notas, plan,
   preguntas al humano, cobertura y citas. Incluye `fallbackPlan`, el plan de rescate con
   lo ya leído para cuando el modelo no logra redactar uno válido.

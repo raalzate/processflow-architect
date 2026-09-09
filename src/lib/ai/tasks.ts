@@ -24,6 +24,7 @@ import {
 } from "@/lib/template-prompt";
 import { getNotation, notationTypes } from "@/lib/notations";
 import { specFromLines, type ElementSpec } from "@/lib/element-spec";
+import { BUILDER_LOCAL_MAX_CHARS } from "./agent-engine";
 
 /**
  * Tipos que puede devolver la IA para una vista: los de SU notación. Sin
@@ -237,4 +238,23 @@ export const suggestSpecTask: AiTask<
     system: SYSTEM_PROMPT_DESIGNER,
   }),
   parse: (raw) => specFromLines(raw),
+};
+
+// --- Turno del agente CONSTRUCTOR (014, #308) ---
+
+/**
+ * Un turno del bucle del agente constructor: el prompt ya viene armado (menú de
+ * herramientas + estado de la corrida) y la salida es la acción en texto, que
+ * `builder-tools.parseBuilderAction` interpreta.
+ *
+ * Es `light` con techo de entrada a propósito: en modo local corre local, y en
+ * híbrido el propio router lo manda a la nube cuando el pedido crece. Así el
+ * constructor respeta el modo vigente sin una segunda política de ruteo.
+ */
+export const builderTurnTask: AiTask<{ prompt: string; system?: string }, string> = {
+  id: "builder-turn",
+  tier: "light",
+  maxLocalChars: BUILDER_LOCAL_MAX_CHARS,
+  buildPrompt: (i) => ({ prompt: i.prompt, system: i.system }),
+  parse: (raw) => raw.trim(),
 };

@@ -199,6 +199,13 @@ export interface ChatMessage {
    * responder); al terminar se limpia y quedan `steps`/`producedArtifactIds`.
    */
   run?: AgentRunState;
+  /**
+   * Corrida del agente CONSTRUCTOR (014). Con `builderPending` presente, el
+   * mensaje es una acción destructiva esperando el sí/no del humano; el estado
+   * viaja acá para poder retomar la corrida donde quedó.
+   */
+  builderRun?: unknown;
+  builderPending?: { tool: string; alcance: string };
 }
 
 /* -------------------------------------------------------------------------- */

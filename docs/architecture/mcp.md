@@ -17,6 +17,7 @@ revisión humana antes de subir nada— sin que el agente tenga que conocer el f
 
 ```
 Claude Code / Codex ──stdio──▶ mcp-server/index.ts ───┐
+Agente Constructor (panel de IA) ─memoria─▶ mcp-playground.ts ──┤
 Claude Code / Codex ──HTTP───▶ main/services/mcp-http.ts ──┤
 Guía /mcp (playground) ─memoria─▶ main/services/mcp-playground.ts ──┤
                                                       │
@@ -31,7 +32,7 @@ Guía /mcp (playground) ─memoria─▶ main/services/mcp-playground.ts ──�
 | `main/services/mcp-tools.ts` | `registerProcessflowTools(server, opts)`: **la** definición de las herramientas. Lo comparten los tres transportes. |
 | `mcp-server/index.ts` | transporte **stdio** (modo desarrollo, `.mcp.json`). Workspace = `PROCESSFLOW_WORKSPACE` o cwd. |
 | `main/services/mcp-http.ts` | transporte **HTTP Streamable** embebido en la app; se activa en Ajustes → Servidor MCP (apagado por defecto). |
-| `main/services/mcp-playground.ts` | cliente+servidor por transporte **en memoria** para el playground de `/mcp`: prueba herramientas sin abrir el puerto. |
+| `main/services/mcp-playground.ts` | cliente+servidor por transporte **en memoria**: lo usa el playground de `/mcp` **y el agente Constructor del panel de IA** (014), que así construye sin abrir el puerto. |
 | `main/services/mcp-app-state.ts` | cachea en el main el último retrato del lienzo que publica el renderer. |
 | `main/services/mcp-app-read.ts` | puente de LECTURA bajo demanda (main pregunta → renderer contesta, con timeout). |
 | `src/lib/mcp/*` | modelo, layout, validación, calidad, revisión, plan de vistas, estado de la app. Sin Electron, sin React (§P3). |

@@ -274,6 +274,8 @@ export function AgentChatPanel() {
     sendMessage,
     resumeRun,
     cancelRun,
+    resolveBuilderConfirmation,
+    agentId,
     artifacts,
     contextArtifactIds,
     toggleContextArtifact,
@@ -491,6 +493,36 @@ export function AgentChatPanel() {
                   ))}
                 </div>
               )}
+              {/* Acción destructiva del constructor: nada se ejecuta hasta el sí
+                  del humano, y el alcance se ve antes de decidir (§P10). */}
+              {m.role === "assistant" && m.builderPending && (
+                <div className="mt-2 rounded-md border border-destructive/50 bg-background/60 p-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-destructive">
+                    <Trash2 className="h-3.5 w-3.5" /> Confirmá antes de que lo haga
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{m.builderPending.alcance}</p>
+                  <div className="mt-2 flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-7 text-xs"
+                      disabled={busy}
+                      onClick={() => resolveBuilderConfirmation(m.id, true)}
+                    >
+                      Sí, hacelo
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      disabled={busy}
+                      onClick={() => resolveBuilderConfirmation(m.id, false)}
+                    >
+                      No
+                    </Button>
+                  </div>
+                </div>
+              )}
               {m.role === "assistant" && m.run?.pause && (
                 <RunPauseCard
                   message={m}
@@ -666,7 +698,11 @@ export function AgentChatPanel() {
                 submit();
               }
             }}
-            placeholder="Pregunta, conversa o pide que diseñe/analice…  (@ para incluir una vista · + para pedir un artefacto)"
+            placeholder={
+              agentId === "constructor"
+                ? "Pedile que construya: «creá una vista de Pagos con el agregado Orden y sus eventos»"
+                : "Pregunta, conversa o pide que diseñe/analice…  (@ para incluir una vista · + para pedir un artefacto)"
+            }
             className="min-h-[52px] max-h-36 w-full resize-none border-0 bg-transparent px-3 py-2.5 text-sm shadow-none outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
             disabled={busy}
           />
