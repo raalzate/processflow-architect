@@ -59,6 +59,13 @@ export interface BuilderRunState {
   /** Fallos SEGUIDOS del modelo (JSON roto, herramienta inventada, args inválidos). */
   fallos: number;
   /**
+   * Veces SEGUIDAS que el bucle tuvo que frenar al modelo (relectura estéril,
+   * diagrama repetido). No son fallos del modelo ni turnos sin progreso: son el
+   * arnés diciendo «no». Tienen su propio tope porque cada una cuesta una
+   * inferencia igual (#328).
+   */
+  bloqueos: number;
+  /**
    * Turnos SEGUIDOS que no cambiaron el modelo. Leer está bien; leer y releer sin
    * construir nunca es la otra forma de no terminar (#326).
    */
@@ -100,6 +107,9 @@ export const MAX_BUILDER_FAILURES = 4;
  * de fallos no lo agarra, porque una lectura que sale bien limpia la racha.
  */
 export const MAX_SIN_PROGRESO = 6;
+
+/** Tope de frenos SEGUIDOS del propio bucle antes de dar la corrida por perdida. */
+export const MAX_BLOQUEOS = 3;
 
 /** Herramientas que cambian el modelo (las demás sólo miran). */
 const ESCRIBEN = new Set([
@@ -167,7 +177,7 @@ function frase(call: BuilderCall): string {
 }
 
 export function startRun(): BuilderRunState {
-  return { pasos: [], cambios: [], restantes: MAX_BUILDER_STEPS, fallos: 0, sinProgreso: 0, rechazos: [], decisiones: [] };
+  return { pasos: [], cambios: [], restantes: MAX_BUILDER_STEPS, fallos: 0, sinProgreso: 0, bloqueos: 0, rechazos: [], decisiones: [] };
 }
 
 /** Detiene la corrida con una pregunta concreta. No gasta paso: todavía no pasó nada. */
@@ -254,6 +264,24 @@ export function yaEjecutada(state: BuilderRunState, call: BuilderCall): boolean 
   return state.pasos.some((p) => p.ok && huella({ tool: p.tool, args: p.args }) === h);
 }
 
+/**
+ * El error más probable en cualquier notación: pedir como CONTENEDOR algo que es
+ * elemento, o al revés. El MCP contesta con los tipos válidos pero no dice qué
+ * herramienta corresponde, y el modelo local no lo deduce: se queda releyendo la
+ * notación (#328). Acá se traduce el rechazo en la acción concreta.
+ */
+export function pistaDeHerramienta(call: BuilderCall, error: string): string | undefined {
+  const nombre = String(call.args.name ?? "").trim();
+  const tipo = String(call.args.type ?? "").trim();
+  if (call.tool === "add_container" && /no es un tipo contenedor/i.test(error)) {
+    return `"${tipo}" es un ELEMENTO, no un contenedor: agregá "${nombre}" con add_node (mismos argumentos). Los contenedores son otros tipos.`;
+  }
+  if (call.tool === "add_node" && /es un tipo contenedor|us[aá] add_container/i.test(error)) {
+    return `"${tipo}" es un CONTENEDOR: agregá "${nombre}" con add_container (mismos argumentos).`;
+  }
+  return undefined;
+}
+
 /** Forma comparable de una pregunta: el modelo la reescribe con otro formato. */
 const claveDePregunta = (texto: string) =>
   texto
@@ -272,7 +300,16 @@ export function yaRespondida(state: BuilderRunState, texto: string): string | un
 export function applyObservation(
   state: BuilderRunState,
   call: BuilderCall,
-  obs: ToolObservation
+  obs: ToolObservation,
+  /**
+   * `neutra`: ni trabajo ni error del modelo. Es lo que devuelve un freno del
+   * propio bucle (una relectura bloqueada, por ejemplo): no gasta paso porque no
+   * se hizo nada, no suma fallo porque el modelo no se equivocó —corregirse no es
+   * girar— y no cuenta como turno sin progreso, porque el turno lo consumió el
+   * freno, no el modelo (#328). La insistencia la acota el tope de fallos, que sí
+   * cuenta a partir de la segunda vez.
+   */
+  opts: { neutra?: boolean } = {}
 ): BuilderRunState {
   const paso: BuilderStep = { tool: call.tool, args: call.args, ok: obs.ok, texto: obs.texto };
   return {
@@ -283,13 +320,21 @@ export function applyObservation(
     cambios: obs.ok && ESCRIBEN.has(call.tool) ? [...state.cambios, frase(call)] : state.cambios,
     // El presupuesto mide TRABAJO: un turno que no llegó a tocar el modelo no lo
     // gasta. Lo que frena al modelo que se traba es el tope de fallos (#323).
-    restantes: obs.ok ? Math.max(0, state.restantes - 1) : state.restantes,
+    restantes: obs.ok && !opts.neutra ? Math.max(0, state.restantes - 1) : state.restantes,
     // Un acierto limpia la racha: el modelo se recuperó y merece el crédito entero.
-    fallos: obs.ok ? 0 : state.fallos + 1,
+    fallos: opts.neutra ? state.fallos : obs.ok ? 0 : state.fallos + 1,
+    bloqueos: opts.neutra ? state.bloqueos + 1 : 0,
     // Progreso es CAMBIAR el modelo. Una lectura, por más que salga bien, deja
     // la corrida donde estaba.
-    sinProgreso: obs.ok && ESCRIBEN.has(call.tool) ? 0 : state.sinProgreso + 1,
-    diagrama: (obs.ok && diagramaDe(call, obs.texto)) || state.diagrama,
+    // Una observación neutra no mueve NINGÚN contador: no la produjo el modelo,
+    // la produjo un freno del bucle. Lo que acota la insistencia es el tope de
+    // fallos, que sí cuenta desde la segunda vez (#328).
+    sinProgreso: opts.neutra
+      ? state.sinProgreso
+      : obs.ok && ESCRIBEN.has(call.tool)
+        ? 0
+        : state.sinProgreso + 1,
+    diagrama: (obs.ok && !opts.neutra && diagramaDe(call, obs.texto)) || state.diagrama,
     pregunta: undefined,
   };
 }
@@ -343,7 +388,7 @@ export function resolveConfirmation(
  */
 export function extendRun(state: BuilderRunState, pasos = MAX_BUILDER_STEPS): BuilderRunState {
   if (state.cancelada) return state;
-  return { ...state, restantes: pasos, fallos: 0, sinProgreso: 0, pregunta: undefined };
+  return { ...state, restantes: pasos, fallos: 0, sinProgreso: 0, bloqueos: 0, pregunta: undefined };
 }
 
 /** La pregunta del tope: qué se hizo hasta acá y las dos salidas. */
@@ -373,12 +418,15 @@ export function runFinished(state: BuilderRunState): boolean {
     Boolean(state.cancelada) ||
     state.restantes <= 0 ||
     state.fallos >= MAX_BUILDER_FAILURES ||
-    state.sinProgreso >= MAX_SIN_PROGRESO
+    state.sinProgreso >= MAX_SIN_PROGRESO ||
+    state.bloqueos >= MAX_BLOQUEOS
   );
 }
 
 /** El cierre: qué cambió, qué se rechazó y por qué terminó. */
 export function summarizeRun(state: BuilderRunState): string {
+  // El motivo de la parada va PRIMERO cuando lo hay: era lo último que se leía y
+  // es lo único que dice qué hacer ahora (#328).
   const partes: string[] = [];
   if (state.cambios.length) {
     partes.push(["Cambios aplicados:", ...state.cambios.map((c) => `- ${c}`)].join("\n"));
@@ -404,23 +452,30 @@ export function summarizeRun(state: BuilderRunState): string {
     );
   }
 
+  const motivo: string[] = [];
   if (state.cancelada) {
-    partes.push("Corrida cancelada.");
+    motivo.push("Corrida cancelada.");
+  } else if (state.bloqueos >= MAX_BLOQUEOS) {
+    // Distinto de «me trabé»: el modelo emitía acciones válidas, pero eran las
+    // mismas que el bucle ya había frenado.
+    motivo.push(
+      `Insistí ${MAX_BLOQUEOS} veces con algo que ya estaba hecho o leído y no encontré cómo seguir. Probá con un pedido más concreto —qué vista y qué elementos— o pasá a IA remota.`
+    );
   } else if (state.sinProgreso >= MAX_SIN_PROGRESO) {
     // Distinto de quedarse sin pasos: acá los pasos se fueron mirando el modelo.
     const ultimo = [...state.pasos].reverse().find((p) => p.ok)?.tool ?? "";
-    partes.push(
+    motivo.push(
       `Me quedé leyendo sin construir: ${MAX_SIN_PROGRESO} turnos seguidos sin tocar el modelo (lo último, ${ultimo}). Probá con un pedido más concreto —qué vista y qué elementos— o pasá a IA remota para pedidos abiertos.`
     );
   } else if (state.fallos >= MAX_BUILDER_FAILURES) {
     // Decir «se agotó el tope» acá sería mentir: lo que pasó es que el modelo no
     // logró emitir una acción válida, y eso se arregla de otra manera.
     const ultimo = [...state.pasos].reverse().find((p) => !p.ok)?.texto ?? "";
-    partes.push(
+    motivo.push(
       `Me trabé: ${MAX_BUILDER_FAILURES} intentos seguidos sin una acción válida. Lo último que devolvió el modelo: ${ultimo.slice(0, 200)}`
     );
   } else if (state.restantes <= 0) {
-    partes.push("Se agotó el tope de pasos de la corrida.");
+    motivo.push("Se agotó el tope de pasos de la corrida.");
   }
-  return partes.join("\n\n");
+  return [...motivo, ...partes].join("\n\n");
 }

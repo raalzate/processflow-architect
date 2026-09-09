@@ -40,6 +40,7 @@ import {
   resolveConfirmation,
   runFinished,
   startRun,
+  pistaDeHerramienta,
   relecturaEsteril,
   summarizeRun,
   yaEjecutada,
@@ -327,7 +328,12 @@ async function bucle(
         `Ya tenés el diagrama "${state.diagrama.nombre}" (id ${state.diagrama.id}) fijado y con contenido. ` +
         "No crees otro: seguí con add_container/add_node/add_edge y publicá con export_as_view.";
       paso({ type: "observation", content: recordatorio });
-      state = applyObservation(state, { tool: "(create repetido)", args: {} }, { ok: false, texto: recordatorio });
+      state = applyObservation(
+        state,
+        { tool: "(create repetido)", args: {} },
+        { ok: false, texto: recordatorio },
+        { neutra: true }
+      );
       continue;
     }
 
@@ -336,9 +342,24 @@ async function bucle(
       // el resultado que ya tenía, sin gastar el viaje al MCP (#326).
       const anterior = relecturaEsteril(state, veredicto.call);
       if (anterior !== undefined) {
-        const recordatorio = `Eso ya lo leíste y no cambió: ${anterior.slice(0, 300)}`;
+        // Devolverle el texto que ya tiene no le sirve de nada: si releía era
+        // porque algo le falló, y lo que necesita es QUÉ HACER con el error
+        // (#328). La primera vez es neutra: corregirse no es girar.
+        const ultimoError = [...state.pasos].reverse().find((p) => !p.ok)?.texto;
+        const recordatorio = [
+          `Ya leíste ${veredicto.call.tool} y nada de lo que hiciste después pudo cambiarlo.`,
+          ultimoError ? `Tu último error fue: ${ultimoError.slice(0, 300)}` : "",
+          "Actuá con lo que ya sabés: agregá, corregí o exportá. No vuelvas a leer.",
+        ]
+          .filter(Boolean)
+          .join(" ");
         paso({ type: "observation", content: recordatorio });
-        state = applyObservation(state, { tool: "(relectura)", args: {} }, { ok: false, texto: recordatorio });
+        state = applyObservation(
+          state,
+          { tool: "(relectura)", args: {} },
+          { ok: false, texto: recordatorio },
+          { neutra: true }
+        );
         continue;
       }
     }
@@ -348,7 +369,12 @@ async function bucle(
       // crea y lo ejecute de nuevo, no (#325).
       const recordatorio = `Eso ya lo hiciste en esta corrida: ${veredicto.call.tool}. Seguí con lo que falta.`;
       paso({ type: "observation", content: recordatorio });
-      state = applyObservation(state, { tool: "(repetida)", args: {} }, { ok: false, texto: recordatorio });
+      state = applyObservation(
+        state,
+        { tool: "(repetida)", args: {} },
+        { ok: false, texto: recordatorio },
+        { neutra: true }
+      );
       continue;
     }
 
@@ -391,6 +417,10 @@ async function ejecutar(
   } catch (e: any) {
     obs = { ok: false, texto: String(e?.message ?? e) };
   }
+  // Un rechazo por tipo (contenedor vs elemento) trae los tipos válidos pero no
+  // la herramienta correcta: se la agregamos, que es lo único que le falta (#328).
+  const pista = obs.ok ? undefined : pistaDeHerramienta(call, obs.texto);
+  if (pista) obs = { ...obs, texto: `${obs.texto}\n${pista}` };
   paso({ type: "observation", content: obs.texto.slice(0, 600) });
   return applyObservation(state, call, obs);
 }

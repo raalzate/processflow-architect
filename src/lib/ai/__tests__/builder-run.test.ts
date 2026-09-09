@@ -18,6 +18,7 @@ import {
   MAX_BUILDER_STEPS,
   MAX_BUILDER_FAILURES,
   MAX_SIN_PROGRESO,
+  MAX_BLOQUEOS,
   askUser,
   answerUser,
   extendRun,
@@ -25,6 +26,7 @@ import {
   yaRespondida,
   yaEjecutada,
   relecturaEsteril,
+  pistaDeHerramienta,
 } from "@/lib/ai/builder-run";
 
 const call = (tool: string, args: Record<string, unknown> = {}) => ({ tool, args });
@@ -462,5 +464,86 @@ describe("trabajo sin publicar", () => {
     s = applyObservation(s, call("add_container", { name: "Informar" }), ok("añadido"));
     s = applyObservation(s, call("export_as_view", { name: "FinOps" }), ok("vista creada"));
     expect(summarizeRun(s)).not.toMatch(/no .*public/i);
+  });
+});
+
+/**
+ * Corregirse no es girar (#328). El modelo pidió add_container con un tipo de
+ * elemento, el MCP lo rechazó, y al releer la notación para arreglarlo el freno
+ * de #326 lo bloqueó tres veces hasta cerrar la corrida. Una observación puede
+ * ser NEUTRA: no gasta paso (no hubo trabajo) y no suma fallo (no hubo error del
+ * modelo), pero tampoco es progreso.
+ */
+describe("observaciones neutras", () => {
+  it("no gastan paso ni suman fallo", () => {
+    const s = applyObservation(startRun(), call("(relectura)"), { ok: false, texto: "ya lo leíste" }, { neutra: true });
+    expect(s.restantes).toBe(MAX_BUILDER_STEPS);
+    expect(s.fallos).toBe(0);
+  });
+
+  it("no cuentan como fallo ni como turno sin progreso: el turno lo consumió el freno", () => {
+    // Sin esto, el tope de «sin progreso» mataba corridas que estaban a un paso de
+    // recuperarse: el modelo se corregía y el arnés lo contaba en contra.
+    const s = applyObservation(startRun(), call("(relectura)"), { ok: false, texto: "ya lo leíste" }, { neutra: true });
+    expect(s.sinProgreso).toBe(0);
+    expect(s.fallos).toBe(0);
+    expect(s.bloqueos).toBe(1);
+  });
+
+  it("pero insistir tiene tope propio: cada freno cuesta una inferencia igual", () => {
+    let s = startRun();
+    for (let i = 0; i < MAX_BLOQUEOS; i++) {
+      s = applyObservation(s, call("(relectura)"), { ok: false, texto: "ya lo leíste" }, { neutra: true });
+    }
+    expect(runFinished(s)).toBe(true);
+    expect(summarizeRun(s)).toMatch(/insist/i);
+  });
+
+  it("una acción válida limpia los bloqueos: el modelo se reencaminó", () => {
+    let s = applyObservation(startRun(), call("(relectura)"), { ok: false, texto: "x" }, { neutra: true });
+    s = applyObservation(s, call("add_node", { name: "Orden" }), ok("agregado"));
+    expect(s.bloqueos).toBe(0);
+  });
+});
+
+/**
+ * El error más probable de cualquier notación: pedir como contenedor algo que es
+ * elemento, o al revés. El MCP lo rechaza con la lista de tipos válidos, pero no
+ * dice CUÁL herramienta corresponde, y el modelo local no lo deduce (#328).
+ */
+describe("traducir contenedor ↔ elemento", () => {
+  it("un tipo de elemento pedido como contenedor manda a add_node", () => {
+    const pista = pistaDeHerramienta(
+      call("add_container", { name: "Cliente", type: "Persona" }),
+      '"Persona" no es un tipo contenedor. Contenedores válidos: Límite de Sistema, Pool, Carril.'
+    );
+    expect(pista).toMatch(/add_node/);
+    expect(pista).toMatch(/Cliente/);
+  });
+
+  it("un tipo contenedor pedido como elemento manda a add_container", () => {
+    const pista = pistaDeHerramienta(
+      call("add_node", { name: "Ventas", type: "Límite de Sistema" }),
+      '"Límite de Sistema" es un tipo CONTENEDOR: usá add_container.'
+    );
+    expect(pista).toMatch(/add_container/);
+  });
+
+  it("un error cualquiera no inventa pistas", () => {
+    expect(pistaDeHerramienta(call("add_node", { name: "X" }), "Falta el argumento name.")).toBeUndefined();
+  });
+});
+
+describe("el cierre dice primero por qué paró", () => {
+  it("el motivo va antes que la lista de cambios", () => {
+    let s = applyObservation(startRun(), call("add_node", { name: "Orden" }), ok("agregado"));
+    s = cancelRun(s);
+    const texto = summarizeRun(s);
+    expect(texto.indexOf("Corrida cancelada")).toBeLessThan(texto.indexOf("Cambios aplicados"));
+  });
+
+  it("sin motivo especial, el resumen sigue abriendo con lo hecho", () => {
+    const s = applyObservation(startRun(), call("add_node", { name: "Orden" }), ok("agregado"));
+    expect(summarizeRun(s).startsWith("Cambios aplicados")).toBe(true);
   });
 });
