@@ -12,7 +12,7 @@
  * Los iconos se referencian por NOMBRE (string) y se resuelven en la capa de UI.
  */
 
-export type NotationId = "ddd" | "bpmn" | "c4" | "uml" | "mer";
+export type NotationId = "ddd" | "bpmn" | "c4" | "uml" | "mer" | "general";
 
 /**
  * Disposición natural de una notación. Vive acá —y no en el layout— porque el
@@ -32,8 +32,49 @@ export type LayoutHint = "flujo" | "capas" | "radial";
  *  - diamond: rombo (compuertas BPMN, decisiones de flujo).
  *  - cylinder: cilindro (bases de datos / almacenes).
  *  - triangle: triángulo (jerarquía ISA del modelo entidad-relación).
+ *
+ * Las que siguen son de la paleta de PROPÓSITO GENERAL (dibujo libre); no
+ * significan nada por sí mismas, así que ninguna regla del arnés las mira:
+ *  - hexagon:       hexágono.
+ *  - parallelogram: paralelogramo (entrada/salida en los diagramas de flujo).
+ *  - cloud:         nube.
+ *  - cube:          cubo en perspectiva.
+ *  - document:      hoja con el borde inferior ondulado.
+ *  - step:          cinta/paso (rectángulo con punta y muesca).
+ *  - note:          hoja con la esquina doblada.
+ *  - callout:       globo de diálogo rectangular (con cola).
+ *  - callout-oval:  globo de diálogo ovalado.
+ *  - semicircle:    medio disco con la base plana.
+ *  - dshape:        rectángulo con un lado redondeado (forma «D»).
+ *  - process:       rectángulo con dos barras verticales a los lados.
+ *  - frame:         marco con banda de título arriba.
+ *  - list:          marco con banda de título y filas.
+ *  - person:        figura de palitos.
+ *  - text:          SIN silueta: sólo el texto (para rótulos sueltos).
  */
-export type ShapeKind = "rounded" | "rect" | "ellipse" | "diamond" | "cylinder" | "triangle";
+export type ShapeKind =
+  | "rounded"
+  | "rect"
+  | "ellipse"
+  | "diamond"
+  | "cylinder"
+  | "triangle"
+  | "hexagon"
+  | "parallelogram"
+  | "cloud"
+  | "cube"
+  | "document"
+  | "step"
+  | "note"
+  | "callout"
+  | "callout-oval"
+  | "semicircle"
+  | "dshape"
+  | "process"
+  | "frame"
+  | "list"
+  | "person"
+  | "text";
 
 /** Metadatos visuales y semánticos de un tipo de componente dentro de una notación. */
 export interface NotationElement {
@@ -114,6 +155,13 @@ export interface NotationElement {
    * `src/lib/mer/table-box.ts` para todos por igual.
    */
   table?: boolean;
+  /**
+   * Tamaño propio del nodo, cuando su silueta lo exige: un cuadrado y un
+   * círculo necesitan caja CUADRADA, y en la ficha de 220×104 dejan de ser un
+   * cuadrado y un círculo. Manda sobre `Notation.nodeSize`; los compactos
+   * siguen midiendo `COMPACT_NODE_SIZE`.
+   */
+  size?: { w: number; h: number };
   /** Clase tailwind de trazo SVG (stroke-*) que dibuja el contorno del nodo. */
   stroke?: string;
   /** Clases tailwind: relleno SVG, borde y texto. */
@@ -191,6 +239,15 @@ export interface Notation {
    * una sola y la curva deja ver cuál va a dónde.
    */
   defaultRouting?: "straight" | "curved" | "orthogonal";
+  /**
+   * true → paleta de DIBUJO LIBRE: sus tipos son siluetas, no conceptos. Un
+   * rectángulo no es un comando ni una tabla, así que la notación no declara
+   * roles y las reglas de calidad que razonan sobre ellos (¿hay inicio?, ¿la
+   * política cruza contextos?) no tienen nada que decir. Está declarado y no
+   * deducido de "no tiene roles" para que se lea como decisión: una notación
+   * semántica a la que se le olvidaron los roles es un error, ésta no.
+   */
+  freeform?: boolean;
 }
 
 /**
@@ -696,6 +753,115 @@ const MER: Notation = {
 };
 
 // =============================================================================
+// General — formas de propósito general (dibujo libre, sin semántica)
+// =============================================================================
+
+/** Caja CUADRADA, para las siluetas que la exigen (cuadrado, círculo, persona). */
+const SQUARE_SIZE = { w: 140, h: 140 } as const;
+
+const GENERAL: Notation = {
+  id: "general",
+  label: "General (formas)",
+  description:
+    "Formas de propósito general para bocetar: cajas, siluetas, notas y globos. Sin semántica.",
+  // Es dibujo libre: sus tipos son siluetas, no conceptos (ver `freeform`).
+  freeform: true,
+  paletteGroups: [
+    {
+      label: "Básicas",
+      types: [
+        "Rectángulo",
+        "Rectángulo Redondeado",
+        "Cuadrado",
+        "Elipse",
+        "Círculo",
+        "Rombo",
+        "Triángulo",
+        "Paralelogramo",
+        "Hexágono",
+      ],
+    },
+    {
+      label: "Texto",
+      types: ["Texto Libre", "Título y Texto"],
+    },
+    {
+      label: "Cajas y marcos",
+      types: ["Caja de Proceso", "Cubo", "Marco", "Lista de Ítems", "Forma D", "Paso"],
+    },
+    {
+      label: "Papel y anotación",
+      types: ["Documento", "Nota Doblada", "Globo de Diálogo", "Globo Ovalado"],
+    },
+    {
+      label: "Otras siluetas",
+      types: ["Cilindro", "Nube", "Semicírculo", "Figura de Persona"],
+    },
+    {
+      label: "Contenedores",
+      types: ["Contenedor General"],
+    },
+  ],
+  elements: [
+    // --- Básicas ---
+    { type: "Rectángulo", icon: "RectangleHorizontal", shape: "rect", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Rectángulo Redondeado", icon: "SquareDashedBottom", shape: "rounded", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    // El cuadrado y el círculo miden IGUAL de ancho que de alto: con la ficha
+    // rectangular no son un cuadrado ni un círculo, son otra forma.
+    { type: "Cuadrado", icon: "Square", shape: "rect", size: SQUARE_SIZE, stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Elipse", icon: "Circle", shape: "ellipse", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Círculo", icon: "CircleDot", shape: "ellipse", size: SQUARE_SIZE, stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Rombo", icon: "Diamond", shape: "diamond", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Triángulo", icon: "Triangle", shape: "triangle", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Paralelogramo", icon: "Shapes", shape: "parallelogram", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Hexágono", icon: "Hexagon", shape: "hexagon", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    // --- Texto ---
+    // Sin silueta: el rótulo suelto es texto sobre el lienzo, y una caja
+    // alrededor lo convertiría en otra cosa.
+    { type: "Texto Libre", icon: "Type", shape: "text", hideIcon: true, stroke: "stroke-transparent", bg: "fill-transparent", border: "border-transparent", text: "text-slate-100" },
+    { type: "Título y Texto", icon: "Heading", shape: "text", hideIcon: true, stroke: "stroke-transparent", bg: "fill-transparent", border: "border-transparent", text: "text-slate-100" },
+    // --- Cajas y marcos ---
+    { type: "Caja de Proceso", icon: "PanelTop", shape: "process", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Cubo", icon: "Box", shape: "cube", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Marco", icon: "Frame", shape: "frame", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Lista de Ítems", icon: "List", shape: "list", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Forma D", icon: "Rows3", shape: "dshape", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Paso", icon: "ChevronRight", shape: "step", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    // --- Papel y anotación ---
+    { type: "Documento", icon: "FileText", shape: "document", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Nota Doblada", icon: "StickyNote", shape: "note", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Globo de Diálogo", icon: "MessageSquare", shape: "callout", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Globo Ovalado", icon: "MessageCircle", shape: "callout-oval", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    // --- Otras siluetas ---
+    { type: "Cilindro", icon: "Database", shape: "cylinder", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Nube", icon: "Cloud", shape: "cloud", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Semicírculo", icon: "Boxes", shape: "semicircle", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Figura de Persona", icon: "PersonStanding", shape: "person", size: SQUARE_SIZE, hideIcon: true, stroke: "stroke-slate-300", bg: "fill-slate-700", border: "border-slate-300", text: "text-white" },
+    // --- Contenedor ---
+    // Agrupa por afinidad y no delimita un territorio: marco punteado con el
+    // nombre en la esquina, como el resto de las fronteras lógicas.
+    { type: "Contenedor General", icon: "Boxes", container: true, transparent: true, stroke: "stroke-slate-400", bg: "fill-slate-800/40", border: "border-slate-400", text: "text-slate-900 dark:text-slate-200" },
+  ],
+  aiGuidance:
+    "Paleta de PROPÓSITO GENERAL: sus tipos son siluetas, no conceptos. Usala sólo cuando el usuario pide un boceto o un esquema que no es un modelo de dominio (DDD), un proceso (BPMN), una arquitectura (C4/UML) ni un modelo de datos (MER) — si encaja en una de ésas, esa notación dice más. " +
+    "Elegí la silueta por lo que el lector espera: Rectángulo y Rectángulo Redondeado para una caja cualquiera, Rombo para una decisión, Paralelogramo para entrada/salida, Hexágono para preparación, Cilindro para almacenamiento, Documento para un papel o informe, Nube para un servicio de terceros o internet, Cubo para algo físico, Paso para una etapa de una secuencia, Marco y Lista de Ítems para bocetar pantallas, Globo de Diálogo y Nota Doblada para anotar, Figura de Persona para quien participa, y Texto Libre o Título y Texto cuando lo que va es un rótulo sin caja. " +
+    "Agrupá con Contenedor General. La relación entre formas es libre: etiquetá la arista con lo que la conecta.",
+  analystRole: "dibujante de esquemas",
+  modelLabel: "Esquema",
+  // Sin flujo declarado, el layout reparte por capas: es lo que corresponde a un
+  // conjunto de formas sin inicio ni fin.
+  defaultLayout: "capas",
+  flowRules:
+    "- Rectángulo → Rectángulo (relación libre: etiquetá la arista)\n" +
+    "- Rombo → Rectángulo (relación = la condición de la rama)\n" +
+    "- Paralelogramo → Caja de Proceso (relación \"alimenta\")\n" +
+    "- Caja de Proceso → Documento (relación \"produce\")",
+  defaultType: "Rectángulo",
+  namingRule:
+    "lo que la forma dice, en pocas palabras y con las palabras del usuario; no hay convención que imponer porque la forma no significa nada por sí misma",
+};
+
+// =============================================================================
 // Registro y utilidades
 // =============================================================================
 
@@ -705,10 +871,11 @@ export const NOTATIONS: Record<NotationId, Notation> = {
   c4: C4,
   uml: UML,
   mer: MER,
+  general: GENERAL,
 };
 
 /** Lista ordenada para los SELECT. */
-export const NOTATION_LIST: Notation[] = [DDD, BPMN, C4, UML, MER];
+export const NOTATION_LIST: Notation[] = [DDD, BPMN, C4, UML, MER, GENERAL];
 
 /**
  * Ids de todas las notaciones, en el orden de los SELECT. Quien necesite
@@ -736,6 +903,7 @@ const NOTATION_BADGE: Record<NotationId, string> = {
   c4: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
   uml: "bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300",
   mer: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300",
+  general: "bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300",
 };
 
 export function notationBadgeClass(id: NotationId | string | undefined): string {
@@ -840,6 +1008,10 @@ const NOTATION_BY_TYPE: Record<string, Notation> = (() => {
  */
 export function sizeOfType(type: string, notation?: NotationId | string): { w: number; h: number } {
   if (ALL_ELEMENTS[type]?.compact) return COMPACT_NODE_SIZE;
+  // El tamaño del ELEMENTO manda sobre el de su notación: un cuadrado y un
+  // círculo necesitan caja cuadrada aunque el resto de su paleta use la ficha.
+  const propio = ALL_ELEMENTS[type]?.size;
+  if (propio) return propio;
   return notationOf(type, notation).nodeSize ?? DEFAULT_NODE_SIZE;
 }
 
@@ -1002,6 +1174,9 @@ const ELEMENT_ROLES: Record<NotationId, Partial<Record<ElementRole, string[]>>> 
     ],
     boundary: ["Esquema"],
   },
+  // La paleta General es dibujo libre (`freeform`): una silueta no juega ningún
+  // papel, así que no declara roles. La tabla vacía es la declaración.
+  general: {},
 };
 
 /** Tipos de una notación que juegan un rol dado (vacío si la notación no lo tiene). */

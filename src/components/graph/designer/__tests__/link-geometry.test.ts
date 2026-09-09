@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  clipToShape,
   linkGeometry,
   handleGeom,
   HANDLE_PX,
@@ -469,5 +470,38 @@ describe("auto-llamada: un participante se habla a sí mismo (#285)", () => {
     // definen una dirección. El caso propio es sólo de secuencia.
     const nodes = new Map<string, DesignerNode>([["a", nodo("a", SISTEMA, 0, 0)]]);
     expect(linkEndpoints(auto(), nodes)).toBeNull();
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Recorte de las siluetas de la paleta General
+// -----------------------------------------------------------------------------
+
+describe("clipToShape con las siluetas nuevas", () => {
+  // Diagonal hacia la esquina inferior derecha de una caja de 200×100.
+  const hacia = (forma: Parameters<typeof clipToShape>[4]) =>
+    clipToShape(0, 0, 100, 50, forma, 100, 50);
+
+  it("las redondeadas recortan como una elipse: la línea no nace en el aire", () => {
+    // En el vértice de la caja, una silueta curva está MUY adentro; recortarla
+    // como rectángulo dejaba la punta flotando fuera del dibujo.
+    const rect = hacia("rect");
+    for (const forma of ["ellipse", "cloud", "callout-oval", "semicircle", "dshape"] as const) {
+      const p = hacia(forma);
+      expect(Math.hypot(p.x, p.y), forma).toBeLessThan(Math.hypot(rect.x, rect.y));
+    }
+  });
+
+  it("las de vértice recto recortan como rectángulo (llegan a la esquina)", () => {
+    const rect = hacia("rect");
+    for (const forma of ["hexagon", "parallelogram", "step", "cube", "note", "frame", "list", "text"] as const) {
+      expect(hacia(forma), forma).toEqual(rect);
+    }
+  });
+
+  it("el rombo sigue recortando por sus diagonales", () => {
+    const p = hacia("diamond");
+    // Sobre la arista del rombo: |x|/hw + |y|/hh = 1.
+    expect(Math.abs(p.x) / 100 + Math.abs(p.y) / 50).toBeCloseTo(1, 5);
   });
 });

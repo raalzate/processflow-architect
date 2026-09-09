@@ -70,8 +70,12 @@ describe("roles semánticos", () => {
     }
   });
 
-  it("toda notación declara su marco: flujo, dominio o datos", () => {
+  it("toda notación SEMÁNTICA declara su marco: flujo, dominio o datos", () => {
     for (const n of NOTATION_LIST) {
+      // Una paleta de dibujo libre (`freeform`) no tiene marco porque no tiene
+      // conceptos: un rectángulo no es un comando ni una tabla. Se exige que lo
+      // DECLARE, no que se le adivine, y a cambio no se le piden roles.
+      if (n.freeform) continue;
       const tieneFlujo = typesWithRole(n.id, "start").length > 0 && typesWithRole(n.id, "end").length > 0;
       const tieneDominio =
         typesWithRole(n.id, "command").length > 0 || typesWithRole(n.id, "system").length > 0;
@@ -83,6 +87,17 @@ describe("roles semánticos", () => {
         tieneFlujo || tieneDominio || tieneDatos,
         `${n.id}: sin roles de flujo, de dominio ni de datos`,
       ).toBe(true);
+    }
+  });
+
+  it("una notación de dibujo libre no declara roles (y ninguna otra es libre)", () => {
+    for (const n of NOTATION_LIST) {
+      const roles = Object.values(notationRoles(n.id)).flatMap((t) => t ?? []);
+      if (n.freeform) {
+        expect(roles, `${n.id} es freeform pero declara roles`).toEqual([]);
+      } else {
+        expect(roles.length, `${n.id} no declara ningún rol`).toBeGreaterThan(0);
+      }
     }
   });
 
