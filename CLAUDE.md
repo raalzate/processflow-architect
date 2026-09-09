@@ -96,8 +96,9 @@ npm run typecheck      # tsc renderer + electron, sin emitir
 npm test               # vitest (todas las pruebas deben pasar)
 ```
 
-- CI (`.github/workflows/ci.yml`) corre **el mismo `npm run gate`** en cada push/PR a
-  `main`. No mergear en rojo.
+- CI (`.github/workflows/ci.yml`) corre **el mismo `npm run gate`** en cada push a
+  `main` y en **todo** pull request, apunte a la rama que apunte (un PR apilado
+  también). No mergear en rojo.
 - Pre-commit real: `npm run hooks:install` (`core.hooksPath=.githooks`). Prohibido
   `--no-verify`: si el gate estorba, se arregla el gate.
 - **TDD para `src/lib/`:** toda función nueva o cambio de comportamiento lleva prueba.
