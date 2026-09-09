@@ -3,8 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
+  # Sin filtro de rama A PROPÓSITO: el gate corre en TODO pull request, apunte a
+  # donde apunte. Un PR apilado (base = otra rama, lo normal cuando dos cambios
+  # tocan los mismos archivos) no ejecutaba nada, y como la rama protegida exige
+  # este check en verde, quedaba imposible de mergear hasta empujarle algo. El
+  # `push` sí se queda en `main`: las demás ramas ya vienen cubiertas por su PR y
+  # con las dos se pagaría el runner dos veces por el mismo commit.
   pull_request:
-    branches: [main]
 
 # Cancela ejecuciones previas del mismo ref cuando llega un push nuevo.
 concurrency:
