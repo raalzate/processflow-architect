@@ -27,6 +27,7 @@ import {
   yaEjecutada,
   relecturaEsteril,
   pistaDeHerramienta,
+  ultimoErrorReal,
 } from "@/lib/ai/builder-run";
 
 const call = (tool: string, args: Record<string, unknown> = {}) => ({ tool, args });
@@ -58,7 +59,9 @@ describe("corrida del constructor", () => {
     let s = applyObservation(startRun(), call("list_views"), ok("2 vistas"));
     expect(s.cambios).toEqual([]);
     s = applyObservation(s, call("add_node", { name: "Orden", type: "Comando" }), ok("agregado"));
-    expect(s.cambios.join(" ")).toMatch(/Orden/);
+    expect(s.cambios.map((c) => c.texto).join(" ")).toMatch(/Orden/);
+    // Y queda marcado como trabajo de workspace: el lienzo del humano no cambió.
+    expect(s.cambios[0].lienzo).toBe(false);
   });
 
   it("una herramienta que falla queda en la traza y NO cuenta como cambio", () => {
@@ -539,11 +542,96 @@ describe("el cierre dice primero por qué paró", () => {
     let s = applyObservation(startRun(), call("add_node", { name: "Orden" }), ok("agregado"));
     s = cancelRun(s);
     const texto = summarizeRun(s);
-    expect(texto.indexOf("Corrida cancelada")).toBeLessThan(texto.indexOf("Cambios aplicados"));
+    expect(texto.indexOf("Corrida cancelada")).toBeLessThan(texto.indexOf("Orden"));
   });
 
-  it("sin motivo especial, el resumen sigue abriendo con lo hecho", () => {
+  it("sin motivo especial, el resumen abre por el estado del lienzo", () => {
     const s = applyObservation(startRun(), call("add_node", { name: "Orden" }), ok("agregado"));
-    expect(summarizeRun(s).startsWith("Cambios aplicados")).toBe(true);
+    // add_node es workspace: lo primero que se dice es que el lienzo sigue igual.
+    expect(summarizeRun(s).startsWith("Tu lienzo sigue igual")).toBe(true);
+  });
+});
+
+/**
+ * El reporte tiene que decir lo que PASÓ, no lo que el agente pidió (#329). El
+ * humano ve su lienzo; lo que quedó en el workspace del MCP no es un cambio para
+ * él. Llamar «cambios aplicados» a las dos cosas es mentir con formato de informe.
+ */
+describe("qué llegó al lienzo y qué no", () => {
+  const conTrabajo = () => {
+    let s = applyObservation(
+      startRun(),
+      call("create_diagram", { name: "MVC" }),
+      ok('Diagrama creado y FIJADO. diagramId="mvc", notación=c4.')
+    );
+    return applyObservation(s, call("add_container", { name: "App", type: "Límite de Sistema" }), ok("añadido"));
+  };
+
+  it("sin exportar: el titular dice que el lienzo NO cambió", () => {
+    const texto = summarizeRun(conTrabajo());
+    expect(texto).toMatch(/tu lienzo (sigue|no)/i);
+    // Y no puede abrir diciendo que aplicó cambios.
+    expect(texto.startsWith("Cambios aplicados")).toBe(false);
+  });
+
+  it("lo del workspace se lista aparte, dicho como lo que es", () => {
+    const texto = summarizeRun(conTrabajo());
+    expect(texto).toMatch(/workspace/i);
+    expect(texto).toMatch(/App/);
+    expect(texto).toMatch(/export_as_view/);
+  });
+
+  it("al exportar, eso sí es un cambio del lienzo", () => {
+    const s = applyObservation(conTrabajo(), call("export_as_view", { name: "MVC" }), ok("Vista creada."));
+    const texto = summarizeRun(s);
+    expect(texto).toMatch(/En tu lienzo/i);
+    expect(texto).toMatch(/MVC/);
+    expect(texto).not.toMatch(/todav[íi]a NO est[áa] en el lienzo/i);
+  });
+
+  it("borrar una vista también es del lienzo, no del workspace", () => {
+    const s = applyObservation(startRun(), call("delete_view", { name: "Vieja" }), ok("eliminada"));
+    expect(summarizeRun(s)).toMatch(/En tu lienzo[\s\S]*Vieja/i);
+  });
+});
+
+/**
+ * El mensaje de bloqueo se citaba a sí mismo y crecía en cada vuelta (#330): el
+ * último paso no-ok era el propio bloqueo del arnés, no un error del MCP.
+ */
+describe("el último error es del MCP, no del arnés", () => {
+  it("ignora los pasos que genera el propio bucle", () => {
+    let s = applyObservation(startRun(), call("create_diagram", { notation: "C4" }), {
+      ok: false,
+      texto: "MCP error -32602: invalid_enum_value",
+    });
+    s = applyObservation(s, call("(relectura)"), { ok: false, texto: "Ya leíste describe_notation…" }, { neutra: true });
+    expect(ultimoErrorReal(s)).toMatch(/-32602/);
+    expect(ultimoErrorReal(s)).not.toMatch(/Ya leíste/);
+  });
+
+  it("sin errores reales, no inventa uno", () => {
+    const s = applyObservation(startRun(), call("(relectura)"), { ok: false, texto: "x" }, { neutra: true });
+    expect(ultimoErrorReal(s)).toBeUndefined();
+  });
+});
+
+describe("enum inválido: la corrección está en el propio error (#330)", () => {
+  it("traduce el valor recibido al válido", () => {
+    const pista = pistaDeHerramienta(
+      call("create_diagram", { name: "MVC", notation: "C4" }),
+      'Input validation error: [{"received":"C4","code":"invalid_enum_value","options":["ddd","bpmn","c4","uml"],"path":["notation"]}]'
+    );
+    expect(pista).toMatch(/notation/);
+    expect(pista).toMatch(/"c4"/);
+  });
+
+  it("si ninguna opción se parece, ofrece la lista", () => {
+    const pista = pistaDeHerramienta(
+      call("create_diagram", { name: "MVC", notation: "arquitectura" }),
+      'Input validation error: [{"received":"arquitectura","code":"invalid_enum_value","options":["ddd","bpmn","c4"],"path":["notation"]}]'
+    );
+    expect(pista).toMatch(/ddd/);
+    expect(pista).toMatch(/bpmn/);
   });
 });

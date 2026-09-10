@@ -59,34 +59,76 @@ const TOOLS: ToolSpec[] = [
 ];
 const ALLOW = TOOLS.map((t) => t.name);
 
-/** MCP simulado: aplica las reglas que importan y devuelve los textos reales. */
+/**
+ * MCP simulado: aplica las reglas que de verdad importan —tipos, enums, workspace
+ * vs lienzo— y contesta con los textos del servidor real. Separa los dos mundos
+ * como el MCP: lo que se agrega vive en el WORKSPACE y sólo aparece en el
+ * proyecto de la app cuando se publica con export_as_view (#327, #329).
+ */
 function mcpSimulado() {
-  const estado = { diagrama: "", contenedores: [] as string[], nodos: [] as string[], vistas: [] as string[] };
+  const estado = {
+    diagrama: "",
+    workspaceContenedores: [] as string[],
+    workspaceNodos: [] as string[],
+    // Lo que el humano ve en su lienzo.
+    contenedores: [] as string[],
+    nodos: [] as string[],
+    vistas: [] as string[],
+  };
   const llamadas: string[] = [];
+  const NOTACIONES = ["ddd", "bpmn", "c4", "uml", "mer", "general"];
+
   const callTool = async (name: string, args: Record<string, unknown>) => {
     llamadas.push(name);
     const nombre = String(args.name ?? "");
     switch (name) {
       case "get_app_state":
-        return { ok: true, texto: RESPUESTAS.appState };
+        // Refleja el estado REAL del simulador: es lo que hace VERIFICABLE el
+        // reporte del agente en vez de creerle su propio log (#329).
+        return {
+          ok: true,
+          texto:
+            `Proyecto activo: "Demo" (notación c4). Contenido: ${estado.contenedores.length} contenedor(es) · ` +
+            `${estado.nodos.length} elemento(s) · 0 relación(es). ` +
+            (estado.vistas.length
+              ? `Vistas custom: ${estado.vistas.join(", ")}.`
+              : "Sin vistas custom (cupo 50).") +
+            " Estado publicado: 2026-09-09T23:13:33.506Z.",
+        };
       case "describe_notation":
         return { ok: true, texto: RESPUESTAS.notacion };
-      case "create_diagram":
+      case "create_diagram": {
+        const notacion = String(args.notation ?? "");
+        // El error real de la traza: "C4" no pasa el enum del servidor (#330).
+        if (notacion && !NOTACIONES.includes(notacion)) {
+          return {
+            ok: false,
+            texto:
+              "MCP error -32602: Input validation error: Invalid arguments for tool create_diagram: " +
+              `[{"received":"${notacion}","code":"invalid_enum_value","options":["ddd","bpmn","c4","uml","mer","general"],"path":["notation"]}]`,
+          };
+        }
         estado.diagrama = nombre;
         return {
           ok: true,
           texto: `Diagrama creado y FIJADO. diagramId="${nombre.toLowerCase().replace(/\s+/g, "-")}", notación=c4.`,
         };
+      }
       case "add_container":
+        if (!estado.diagrama) return { ok: false, texto: "No hay diagrama en curso." };
         // La regla que rompió la corrida real: Persona NO es contenedor.
         if (args.type === "Persona") return { ok: false, texto: RESPUESTAS.tipoMal };
-        estado.contenedores.push(nombre);
+        estado.workspaceContenedores.push(nombre);
         return { ok: true, texto: `Contenedor "${nombre}" añadido (id=${nombre.toLowerCase()}).` };
       case "add_node":
-        estado.nodos.push(nombre);
+        if (!estado.diagrama) return { ok: false, texto: "No hay diagrama en curso." };
+        estado.workspaceNodos.push(nombre);
         return { ok: true, texto: `Elemento "${nombre}" añadido.` };
       case "export_as_view":
         if (!estado.diagrama) return { ok: false, texto: "No hay diagrama en curso." };
+        // Publicar es lo ÚNICO que mueve trabajo del workspace al lienzo.
+        estado.contenedores.push(...estado.workspaceContenedores);
+        estado.nodos.push(...estado.workspaceNodos);
         estado.vistas.push(nombre);
         return { ok: true, texto: `Vista "${nombre}" creada en el proyecto activo.` };
       default:
@@ -276,16 +318,132 @@ describe("humo: del pedido al lienzo", () => {
     let n = 0;
     const deps = {
       listTools: async () => TOOLS,
-      callTool: mcp.callTool,
-      generate: async () => `{"tool":"add_node","args":{"name":"Elemento ${++n}","type":"Persona"}}`,
+      callTool: async (name: string, args: Record<string, unknown>) => {
+        n++;
+        return mcp.callTool(name, args);
+      },
+      generate: async () =>
+        n === 0
+          ? `{"tool":"create_diagram","args":{"name":"MVC","notation":"c4"}}`
+          : `{"tool":"add_node","args":{"name":"Elemento ${n}","type":"Persona"}}`,
     };
     const primera = await runBuilderAgent({ ...base, deps });
     expect(primera.state.restantes).toBe(0);
     expect(primera.state.pregunta?.opciones.map((o) => o.id)).toEqual(["seguir", "terminar"]);
-    expect(mcp.estado.nodos).toHaveLength(MAX_BUILDER_STEPS);
+    // Doce pasos de trabajo: el create_diagram del primer turno y once elementos.
+    // Todavía en el workspace: sin export, el lienzo del humano sigue vacío.
+    expect(mcp.estado.workspaceNodos).toHaveLength(MAX_BUILDER_STEPS - 1);
+    expect(mcp.estado.nodos).toEqual([]);
 
     const segunda = await answerBuilderAgent({ ...base, deps }, primera.state, "seguir");
-    expect(mcp.estado.nodos.length).toBeGreaterThan(MAX_BUILDER_STEPS);
+    expect(mcp.estado.workspaceNodos.length).toBeGreaterThan(MAX_BUILDER_STEPS - 1);
     expect(segunda.state.cambios.length).toBeGreaterThan(MAX_BUILDER_STEPS);
+  });
+});
+
+/**
+ * Honestidad del reporte (#329). El agente decía «Cambios aplicados» por trabajo
+ * que quedó en el workspace, con el lienzo del humano vacío. Acá se fija que el
+ * cierre diga la verdad y que además la VERIFIQUE contra el estado real de la app.
+ */
+describe("humo: el reporte dice la verdad", () => {
+  it("construir sin exportar no es un cambio del lienzo, y se verifica", async () => {
+    const mcp = mcpSimulado();
+    const guion = [
+      '{"tool":"create_diagram","args":{"name":"MVC","notation":"c4"}}',
+      '{"tool":"add_container","args":{"name":"App","type":"Límite de Sistema"}}',
+      '{"final":"Ya está el marco."}',
+    ];
+    let i = 0;
+    const r = await runBuilderAgent({
+      ...base,
+      deps: {
+        listTools: async () => TOOLS,
+        callTool: mcp.callTool,
+        generate: async () => guion[Math.min(i++, guion.length - 1)],
+      },
+    });
+
+    expect(r.reply).toMatch(/Tu lienzo sigue igual/i);
+    expect(r.reply).toMatch(/workspace/i);
+    // Y el cierre trae la comprobación contra la app, no la palabra del agente.
+    expect(r.reply).toMatch(/Verificado en la app/i);
+    expect(r.reply).toMatch(/0 contenedor/);
+    expect(mcp.llamadas.filter((l) => l === "get_app_state").length).toBeGreaterThan(0);
+  });
+
+  it("al exportar, el reporte lo dice y la verificación lo confirma", async () => {
+    const mcp = mcpSimulado();
+    const guion = [
+      '{"tool":"create_diagram","args":{"name":"MVC","notation":"c4"}}',
+      '{"tool":"add_node","args":{"name":"Cliente","type":"Persona"}}',
+      '{"tool":"export_as_view","args":{"name":"MVC"}}',
+      '{"final":"Publicado."}',
+    ];
+    let i = 0;
+    const r = await runBuilderAgent({
+      ...base,
+      deps: {
+        listTools: async () => TOOLS,
+        callTool: mcp.callTool,
+        generate: async () => guion[Math.min(i++, guion.length - 1)],
+      },
+    });
+
+    expect(r.reply).toMatch(/En tu lienzo/i);
+    expect(r.reply).toMatch(/Verificado en la app/i);
+    expect(mcp.estado.vistas).toEqual(["MVC"]);
+  });
+
+  it("el enum en mayúsculas se corrige y la corrida sigue (#330)", async () => {
+    const mcp = mcpSimulado();
+    const guion = [
+      '{"tool":"create_diagram","args":{"name":"MVC","notation":"C4"}}',
+      '{"tool":"create_diagram","args":{"name":"MVC","notation":"c4"}}',
+      '{"tool":"add_node","args":{"name":"Cliente","type":"Persona"}}',
+      '{"tool":"export_as_view","args":{"name":"MVC"}}',
+      '{"final":"Listo."}',
+    ];
+    let i = 0;
+    const prompts: string[] = [];
+    const r = await runBuilderAgent({
+      ...base,
+      deps: {
+        listTools: async () => TOOLS,
+        callTool: mcp.callTool,
+        generate: async (p: string) => {
+          prompts.push(p);
+          return guion[Math.min(i++, guion.length - 1)];
+        },
+      },
+    });
+    // La pista con el valor exacto llegó al modelo…
+    expect(prompts.join("\n")).toMatch(/"c4"/);
+    // …y la corrida terminó publicando.
+    expect(mcp.estado.vistas).toEqual(["MVC"]);
+    expect(r.reply).toMatch(/En tu lienzo/i);
+  });
+
+  it("el mensaje de bloqueo no se cita a sí mismo ni crece (#330)", async () => {
+    const mcp = mcpSimulado();
+    let i = 0;
+    const guion = [
+      '{"tool":"create_diagram","args":{"name":"MVC","notation":"c4"}}',
+      '{"tool":"describe_notation","args":{"notation":"c4"}}',
+    ];
+    const r = await runBuilderAgent({
+      ...base,
+      deps: {
+        listTools: async () => TOOLS,
+        callTool: mcp.callTool,
+        generate: async () => guion[Math.min(i++, guion.length - 1)],
+      },
+    });
+    const bloqueos = r.steps.filter((s) => /Ya leíste/.test(s.content));
+    expect(bloqueos.length).toBeGreaterThan(1);
+    // Ninguno cita a otro bloqueo: el texto no se anida.
+    for (const b of bloqueos) {
+      expect(b.content.match(/Ya leíste/g)).toHaveLength(1);
+    }
   });
 });

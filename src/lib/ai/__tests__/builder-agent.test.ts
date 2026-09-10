@@ -102,7 +102,7 @@ describe("bucle del constructor", () => {
       true
     );
     expect(llamadas).toEqual(['delete_view:{"name":"Pagos"}']);
-    expect(seguir.state.cambios.join(" ")).toMatch(/Pagos/);
+    expect(seguir.state.cambios.map((c) => c.texto).join(" ")).toMatch(/Pagos/);
   });
 
   it("con el no, no se toca nada y queda dicho", async () => {
@@ -412,7 +412,7 @@ describe("no repetir lo ya hecho (#325)", () => {
     expect(llamadas).toEqual(['add_node:{"name":"Orden","type":"Comando"}']);
     expect(r.state.pasos.some((p) => !p.ok && /ya .*hiciste|ya lo/i.test(p.texto))).toBe(true);
     // Y no se anota dos veces el mismo cambio en el resumen.
-    expect(r.state.cambios.filter((c) => c.includes("Orden"))).toHaveLength(1);
+    expect(r.state.cambios.filter((c) => c.texto.includes("Orden"))).toHaveLength(1);
   });
 
   it("lo hecho viaja en el prompt: el modelo no depende de acordarse", async () => {

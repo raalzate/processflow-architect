@@ -51,8 +51,11 @@ export interface BuilderQuestion {
 
 export interface BuilderRunState {
   pasos: BuilderStep[];
-  /** Cambios REALES aplicados al modelo, en palabras, para el resumen final. */
-  cambios: string[];
+  /**
+   * Cambios REALES, con su ámbito: `lienzo` es lo que el humano ve; el resto vive
+   * en el workspace del MCP hasta que se publica (#329).
+   */
+  cambios: { texto: string; lienzo: boolean }[];
   /** Pregunta abierta: mientras esté, la corrida está detenida esperando al humano. */
   pregunta?: BuilderQuestion;
   restantes: number;
@@ -111,6 +114,13 @@ export const MAX_SIN_PROGRESO = 6;
 /** Tope de frenos SEGUIDOS del propio bucle antes de dar la corrida por perdida. */
 export const MAX_BLOQUEOS = 3;
 
+/**
+ * Herramientas cuyo efecto ve el HUMANO en su lienzo. Las demás escrituras quedan
+ * en el workspace del MCP: son trabajo, pero no son un cambio del modelo del
+ * humano hasta que se publican (#329).
+ */
+const TOCAN_EL_LIENZO = new Set(["export_as_view", "export_to_app", "delete_view", "rename_view"]);
+
 /** Herramientas que cambian el modelo (las demás sólo miran). */
 const ESCRIBEN = new Set([
   "create_diagram",
@@ -141,6 +151,25 @@ function diagramaDe(call: BuilderCall, texto: string): { id: string; nombre: str
       ? call.args.name.trim()
       : /\(([^,)]+),/.exec(texto)?.[1]?.trim() || id;
   return { id, nombre };
+}
+
+/**
+ * Pasos que genera el propio bucle, no el MCP. No son errores del modelo y no
+ * pueden citarse como «tu último error»: el mensaje se citaba a sí mismo y crecía
+ * en cada vuelta (#330).
+ */
+const TOOLS_DEL_ARNES = new Set([
+  "(relectura)",
+  "(repetida)",
+  "(create repetido)",
+  "(inválida)",
+  "(pregunta repetida)",
+  "(verificación)",
+]);
+
+/** El último error de una llamada REAL al MCP. */
+export function ultimoErrorReal(state: BuilderRunState): string | undefined {
+  return [...state.pasos].reverse().find((p) => !p.ok && !TOOLS_DEL_ARNES.has(p.tool))?.texto;
 }
 
 /** Qué cambió, en una línea que el humano pueda leer sin abrir la traza. */
@@ -279,6 +308,19 @@ export function pistaDeHerramienta(call: BuilderCall, error: string): string | u
   if (call.tool === "add_node" && /es un tipo contenedor|us[aá] add_container/i.test(error)) {
     return `"${tipo}" es un CONTENEDOR: agregá "${nombre}" con add_container (mismos argumentos).`;
   }
+  // Enum inválido: la corrección viene DENTRO del error (options + received), y el
+  // caso típico es sólo mayúsculas —"C4" por "c4"— (#330).
+  if (/invalid_enum_value/.test(error)) {
+    const recibido = /"received"\s*:\s*"([^"]*)"/.exec(error)?.[1] ?? "";
+    const campo = /"path"\s*:\s*\[\s*"([^"]+)"/.exec(error)?.[1] ?? "el argumento";
+    const opciones = [...error.matchAll(/"options"\s*:\s*\[([^\]]*)\]/g)]
+      .flatMap((m) => m[1].split(",").map((o) => o.trim().replace(/^"|"$/g, "")))
+      .filter(Boolean);
+    const equivalente = opciones.find((o) => o.toLowerCase() === recibido.toLowerCase());
+    return equivalente
+      ? `${campo} debe ir tal cual: "${equivalente}" (mandaste "${recibido}"). Repetí la llamada con ese valor.`
+      : `${campo} sólo acepta: ${opciones.join(", ")}. Mandaste "${recibido}".`;
+  }
   return undefined;
 }
 
@@ -317,7 +359,10 @@ export function applyObservation(
     pasos: [...state.pasos, paso],
     // Un cambio se anota cuando la herramienta VOLVIÓ bien: lo contrario es
     // prometerle al humano un cambio que el MCP rechazó.
-    cambios: obs.ok && ESCRIBEN.has(call.tool) ? [...state.cambios, frase(call)] : state.cambios,
+    cambios:
+      obs.ok && !opts.neutra && ESCRIBEN.has(call.tool)
+        ? [...state.cambios, { texto: frase(call), lienzo: TOCAN_EL_LIENZO.has(call.tool) }]
+        : state.cambios,
     // El presupuesto mide TRABAJO: un turno que no llegó a tocar el modelo no lo
     // gasta. Lo que frena al modelo que se traba es el tope de fallos (#323).
     restantes: obs.ok && !opts.neutra ? Math.max(0, state.restantes - 1) : state.restantes,
@@ -394,7 +439,7 @@ export function extendRun(state: BuilderRunState, pasos = MAX_BUILDER_STEPS): Bu
 /** La pregunta del tope: qué se hizo hasta acá y las dos salidas. */
 export function preguntaDeContinuar(state: BuilderRunState): BuilderQuestion {
   const hecho = state.cambios.length
-    ? `Llevo hecho:\n${state.cambios.map((c) => `- ${c}`).join("\n")}`
+    ? `Llevo hecho:\n${state.cambios.map((c) => `- ${c.texto}`).join("\n")}`
     : "Todavía no cambié nada del modelo.";
   return {
     texto: `Se agotó el tope de ${MAX_BUILDER_STEPS} pasos de la corrida.\n\n${hecho}\n\n¿Sigo?`,
@@ -425,57 +470,57 @@ export function runFinished(state: BuilderRunState): boolean {
 
 /** El cierre: qué cambió, qué se rechazó y por qué terminó. */
 export function summarizeRun(state: BuilderRunState): string {
-  // El motivo de la parada va PRIMERO cuando lo hay: era lo último que se leía y
-  // es lo único que dice qué hacer ahora (#328).
-  const partes: string[] = [];
-  if (state.cambios.length) {
-    partes.push(["Cambios aplicados:", ...state.cambios.map((c) => `- ${c}`)].join("\n"));
-  } else {
-    partes.push("Sin cambios: el modelo quedó como estaba.");
-  }
-  if (state.rechazos.length) {
-    partes.push(
-      ["No se hizo (lo rechazaste):", ...state.rechazos.map((r) => `- ${r}`)].join("\n")
-    );
-  }
-  // Construido pero no publicado: el diagrama vive en el workspace del MCP y el
-  // humano no lo ve en el lienzo hasta `export_as_view` (#327).
-  const publico = state.pasos.some((p) => p.ok && (p.tool === "export_as_view" || p.tool === "export_to_app"));
-  const construyó = state.pasos.some(
-    (p) => p.ok && ESCRIBEN.has(p.tool) && p.tool !== "export_as_view" && p.tool !== "export_to_app"
-  );
-  if (construyó && !publico) {
-    partes.push(
-      `El diagrama quedó en el workspace del MCP y todavía NO está en el lienzo: falta \`export_as_view\`${
-        state.diagrama ? ` sobre "${state.diagrama.nombre}"` : ""
-      }.`
-    );
-  }
+  const enLienzo = state.cambios.filter((c) => c.lienzo);
+  const enWorkspace = state.cambios.filter((c) => !c.lienzo);
+  const lista = (titulo: string, items: { texto: string }[]) =>
+    [titulo, ...items.map((c) => `- ${c.texto}`)].join("\n");
 
+  // El motivo de la parada va PRIMERO cuando lo hay: es lo único que dice qué
+  // hacer ahora (#328).
   const motivo: string[] = [];
   if (state.cancelada) {
     motivo.push("Corrida cancelada.");
   } else if (state.bloqueos >= MAX_BLOQUEOS) {
-    // Distinto de «me trabé»: el modelo emitía acciones válidas, pero eran las
-    // mismas que el bucle ya había frenado.
     motivo.push(
       `Insistí ${MAX_BLOQUEOS} veces con algo que ya estaba hecho o leído y no encontré cómo seguir. Probá con un pedido más concreto —qué vista y qué elementos— o pasá a IA remota.`
     );
   } else if (state.sinProgreso >= MAX_SIN_PROGRESO) {
-    // Distinto de quedarse sin pasos: acá los pasos se fueron mirando el modelo.
     const ultimo = [...state.pasos].reverse().find((p) => p.ok)?.tool ?? "";
     motivo.push(
       `Me quedé leyendo sin construir: ${MAX_SIN_PROGRESO} turnos seguidos sin tocar el modelo (lo último, ${ultimo}). Probá con un pedido más concreto —qué vista y qué elementos— o pasá a IA remota para pedidos abiertos.`
     );
   } else if (state.fallos >= MAX_BUILDER_FAILURES) {
-    // Decir «se agotó el tope» acá sería mentir: lo que pasó es que el modelo no
-    // logró emitir una acción válida, y eso se arregla de otra manera.
-    const ultimo = [...state.pasos].reverse().find((p) => !p.ok)?.texto ?? "";
+    const ultimo = ultimoErrorReal(state) ?? "";
     motivo.push(
-      `Me trabé: ${MAX_BUILDER_FAILURES} intentos seguidos sin una acción válida. Lo último que devolvió el modelo: ${ultimo.slice(0, 200)}`
+      `Me trabé: ${MAX_BUILDER_FAILURES} intentos seguidos sin una acción válida. Lo último que devolvió el MCP: ${ultimo.slice(0, 200)}`
     );
   } else if (state.restantes <= 0) {
     motivo.push("Se agotó el tope de pasos de la corrida.");
   }
+
+  const partes: string[] = [];
+  // Lo primero que el humano necesita saber: si SU lienzo cambió o no. Decir
+  // «cambios aplicados» por trabajo que quedó en el workspace es mentirle (#329).
+  if (enLienzo.length) {
+    partes.push(lista("En tu lienzo:", enLienzo));
+  } else if (enWorkspace.length) {
+    partes.push("Tu lienzo sigue igual: nada de esto llegó todavía al proyecto.");
+  } else {
+    partes.push("Sin cambios: el modelo quedó como estaba.");
+  }
+
+  if (enWorkspace.length) {
+    partes.push(
+      lista(
+        `En el diagrama en curso${state.diagrama ? ` "${state.diagrama.nombre}"` : ""} (workspace del MCP, todavía sin publicar — falta \`export_as_view\`):`,
+        enWorkspace
+      )
+    );
+  }
+
+  if (state.rechazos.length) {
+    partes.push(["No se hizo (lo rechazaste):", ...state.rechazos.map((r) => `- ${r}`)].join("\n"));
+  }
+
   return [...motivo, ...partes].join("\n\n");
 }

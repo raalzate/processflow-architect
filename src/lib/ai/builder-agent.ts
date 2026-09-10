@@ -42,6 +42,7 @@ import {
   startRun,
   pistaDeHerramienta,
   relecturaEsteril,
+  ultimoErrorReal,
   summarizeRun,
   yaEjecutada,
   yaRespondida,
@@ -141,7 +142,7 @@ export function buildBuilderPrompt(
   // diagrama que acaba de crear, porque su evidencia era una observación vieja
   // que el recorte se llevó (#325).
   const hecho = state.cambios.length
-    ? `YA HECHO en esta corrida (no lo repitas):\n${state.cambios.map((c) => `- ${c}`).join("\n")}`
+    ? `YA HECHO en esta corrida (no lo repitas):\n${state.cambios.map((c) => `- ${c.texto}`).join("\n")}`
     : "";
   // Dónde vive el trabajo. Sin esto el modelo consultaba `get_app_state`, veía el
   // proyecto vacío y volvía a crear el diagrama desde cero (#327).
@@ -298,7 +299,7 @@ async function bucle(
 
     const fin = textoFinal(raw);
     if (fin) {
-      return { reply: [fin, summarizeRun(state)].filter(Boolean).join("\n\n"), steps, state };
+      return { reply: await cierre(state, deps, input.allow, fin), steps, state };
     }
 
     const parsed = parseBuilderAction(raw, input.allow);
@@ -345,7 +346,9 @@ async function bucle(
         // Devolverle el texto que ya tiene no le sirve de nada: si releía era
         // porque algo le falló, y lo que necesita es QUÉ HACER con el error
         // (#328). La primera vez es neutra: corregirse no es girar.
-        const ultimoError = [...state.pasos].reverse().find((p) => !p.ok)?.texto;
+        // Sólo errores del MCP: citar los pasos del arnés hacía que el mensaje se
+        // anidara sobre sí mismo y creciera en cada vuelta (#330).
+        const ultimoError = ultimoErrorReal(state);
         const recordatorio = [
           `Ya leíste ${veredicto.call.tool} y nada de lo que hiciste después pudo cambiarlo.`,
           ultimoError ? `Tu último error fue: ${ultimoError.slice(0, 300)}` : "",
@@ -401,7 +404,46 @@ async function bucle(
     return { reply: [summarizeRun(state), "¿Sigo?"].join("\n\n"), steps, state: askUser(state, pregunta) };
   }
 
-  return { reply: summarizeRun(state), steps, state };
+  return { reply: await cierre(state, deps, input.allow), steps, state };
+}
+
+/** El cierre del agente: su resumen + la comprobación contra la app (#329). */
+async function cierre(
+  state: BuilderRunState,
+  deps: BuilderDeps,
+  allow: string[],
+  encabezado?: string
+): Promise<string> {
+  const verificacion = state.pasos.length ? await verificarLienzo(deps, allow) : undefined;
+  return [encabezado, summarizeRun(state), verificacion].filter(Boolean).join("\n\n");
+}
+
+/**
+ * COMPROBACIÓN final contra la app. El agente reportaba su propio log de llamadas
+ * —«cambios aplicados»— con el lienzo del humano vacío (#329). Esto pregunta cómo
+ * quedó de verdad y lo pega al cierre: la evidencia gana sobre la palabra del
+ * modelo. La hace el arnés, no el modelo, así que no gasta pasos ni se puede
+ * "olvidar" de hacerla.
+ */
+export async function verificarLienzo(
+  deps: BuilderDeps,
+  allow: string[]
+): Promise<string | undefined> {
+  if (!allow.includes("get_app_state")) return undefined;
+  try {
+    const r = await deps.callTool("get_app_state", {});
+    if (!r.ok) return undefined;
+    // Del retrato de la app sólo interesa lo que el humano puede contrastar
+    // mirando su pantalla: cuánto hay y qué vistas existen.
+    const contenido = /Contenido:[^.]*\./.exec(r.texto)?.[0]?.trim();
+    const vistas = /(Vistas custom:[^.]*\.|Sin vistas custom[^.]*\.)/.exec(r.texto)?.[0]?.trim();
+    const partes = [contenido, vistas].filter(Boolean).join(" ");
+    return partes ? `Verificado en la app — ${partes}` : undefined;
+  } catch {
+    // Si la comprobación falla, se calla: prometer una verificación que no se
+    // hizo sería exactamente el problema que esto viene a arreglar.
+    return undefined;
+  }
 }
 
 async function ejecutar(
