@@ -25,6 +25,7 @@ import { budgetFromWindow } from "./agent-run";
 import {
   buildToolMenu,
   judgeCall,
+  ordenDeConstruir,
   parseBuilderAction,
   type BuilderCall,
   type ToolSpec,
@@ -314,6 +315,9 @@ async function bucle(
       tools,
       vistas: input.vistas,
       notation: input.notation,
+      // El diagrama en curso manda: su notación es la que valida los tipos, y su
+      // nombre el que nombra la vista al publicar (#331).
+      diagrama: state.diagrama,
     });
 
     if (veredicto.kind === "rechazar") {
@@ -349,11 +353,31 @@ async function bucle(
         // Sólo errores del MCP: citar los pasos del arnés hacía que el mensaje se
         // anidara sobre sí mismo y creciera en cada vuelta (#330).
         const ultimoError = ultimoErrorReal(state);
-        const recordatorio = [
-          `Ya leíste ${veredicto.call.tool} y nada de lo que hiciste después pudo cambiarlo.`,
-          ultimoError ? `Tu último error fue: ${ultimoError.slice(0, 300)}` : "",
-          "Actuá con lo que ya sabés: agregá, corregí o exportá. No vuelvas a leer.",
-        ]
+        // El aviso suave se da UNA vez. Repetirlo palabra por palabra no cambia
+        // lo que hace el modelo —tres frenos idénticos y la corrida muerta con
+        // el diagrama vacío (#331)—: a la segunda se le dice qué herramienta usar
+        // y con qué tipos, que es lo único que le falta para escribir.
+        const notacion = state.diagrama?.notacion ?? input.notation;
+        // Los frenos de relectura se cuentan sobre TODA la corrida, no sobre la
+        // racha: `bloqueos` lo resetea cualquier rechazo, y la traza real alterna
+        // freno → rechazo → freno → rechazo, así que la escalada no llegaba a
+        // dispararse nunca y el modelo recibía el mismo texto hasta morir (#331).
+        const frenosPrevios = state.pasos.filter((p) => p.tool === "(relectura)").length;
+        const recordatorio = (
+          frenosPrevios >= 1
+            ? [
+                // Sin afirmar CUÁNTAS veces: `bloqueos` lo comparten los otros
+                // frenos del bucle, y decirle un número falso es darle un dato
+                // que no le consta.
+                `${veredicto.call.tool} ya no te va a decir nada nuevo, y avisártelo suave no alcanzó.`,
+                ordenDeConstruir(notacion),
+              ]
+            : [
+                `Ya leíste ${veredicto.call.tool} y nada de lo que hiciste después pudo cambiarlo.`,
+                ultimoError ? `Tu último error fue: ${ultimoError.slice(0, 300)}` : "",
+                "Actuá con lo que ya sabés: agregá, corregí o exportá. No vuelvas a leer.",
+              ]
+        )
           .filter(Boolean)
           .join(" ");
         paso({ type: "observation", content: recordatorio });

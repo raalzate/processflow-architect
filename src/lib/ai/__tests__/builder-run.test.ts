@@ -110,7 +110,8 @@ describe("corrida del constructor", () => {
 
   it("el resumen enumera los cambios aplicados", () => {
     let s = applyObservation(startRun(), call("add_node", { name: "Orden", type: "Comando" }), ok("ok"));
-    s = applyObservation(s, call("export_as_view", { name: "Pagos" }), ok("ok"));
+    // `viewName` es el argumento que declara el MCP; `name` lo ignora (#331).
+    s = applyObservation(s, call("export_as_view", { viewName: "Pagos" }), ok("ok"));
     const texto = summarizeRun(s);
     expect(texto).toMatch(/Orden/);
     expect(texto).toMatch(/Pagos/);
@@ -415,7 +416,12 @@ describe("diagrama en curso", () => {
 
   it("se detecta del resultado del MCP, sin que nadie lo declare", () => {
     const s = applyObservation(startRun(), call("create_diagram", { name: "FinOps Framework" }), ok(creado));
-    expect(s.diagrama).toEqual({ id: "finops-framework-15", nombre: "FinOps Framework" });
+    // La notación entró al estado en #331: es lo que valida los tipos.
+    expect(s.diagrama).toEqual({
+      id: "finops-framework-15",
+      nombre: "FinOps Framework",
+      notacion: "c4",
+    });
   });
 
   it("use_diagram lo cambia", () => {
@@ -633,5 +639,108 @@ describe("enum inválido: la corrección está en el propio error (#330)", () =>
     );
     expect(pista).toMatch(/ddd/);
     expect(pista).toMatch(/bpmn/);
+  });
+});
+
+/**
+ * Un error SUPERADO no es «tu último error». En la traza de #331 el
+ * `create_diagram` con `notation:"C4"` falló, el reintento con `"c4"` salió bien,
+ * y el freno le seguía ordenando corregir lo que ya había corregido: tres turnos
+ * idénticos y la corrida muerta con el diagrama vacío.
+ */
+describe("el último error es uno VIGENTE (#331)", () => {
+  it("un error anterior al último acierto ya no se cita", () => {
+    let s = applyObservation(startRun(), call("create_diagram", { notation: "C4" }), {
+      ok: false,
+      texto: "MCP error -32602: invalid_enum_value",
+    });
+    s = applyObservation(s, call("create_diagram", { notation: "c4" }), ok('Diagrama creado y FIJADO. diagramId="mvc", notación=c4.'));
+    s = applyObservation(s, call("describe_notation", { notation: "c4" }), ok("# C4"));
+    expect(ultimoErrorReal(s)).toBeUndefined();
+  });
+
+  it("una lectura exitosa NO borra un error de escritura pendiente", () => {
+    // El modelo lee PORQUE algo le falló: si el describe_notation exitoso
+    // borrara el error, el freno perdería justo el dato que #326/#328 le
+    // devuelven para que se corrija.
+    let s = applyObservation(startRun(), call("create_diagram", { notation: "c4" }), ok("Diagrama creado"));
+    s = applyObservation(s, call("add_container", { name: "Cliente", type: "Persona" }), {
+      ok: false,
+      texto: '"Persona" no es un tipo contenedor.',
+    });
+    s = applyObservation(s, call("describe_notation", { notation: "c4" }), ok("# C4"));
+    expect(ultimoErrorReal(s)).toMatch(/no es un tipo contenedor/);
+  });
+
+  it("un error POSTERIOR al último acierto sí se cita", () => {
+    let s = applyObservation(startRun(), call("create_diagram", { notation: "c4" }), ok("Diagrama creado"));
+    s = applyObservation(s, call("add_container", { name: "Cliente", type: "Persona" }), {
+      ok: false,
+      texto: '"Persona" no es un tipo contenedor.',
+    });
+    expect(ultimoErrorReal(s)).toMatch(/no es un tipo contenedor/);
+  });
+});
+
+/**
+ * La notación del diagrama la dice el MCP en su respuesta. Sin guardarla, el
+ * arnés validaba los tipos contra la vista abierta del humano (#331).
+ */
+describe("notación del diagrama en curso (#331)", () => {
+  it("la lee de la respuesta de create_diagram", () => {
+    const s = applyObservation(
+      startRun(),
+      call("create_diagram", { name: "MVC", notation: "c4" }),
+      ok('Diagrama creado y FIJADO. diagramId="mvc-1", notación=c4. Las próximas llamadas pueden omitir `diagramId`.')
+    );
+    expect(s.diagrama).toEqual({ id: "mvc-1", nombre: "MVC", notacion: "c4" });
+  });
+
+  it("la lee de la respuesta de use_diagram", () => {
+    const s = applyObservation(
+      startRun(),
+      call("use_diagram", { diagramId: "mvc-1" }),
+      ok('Diagrama fijado: "mvc-1" (MVC Spring Boot, c4). Las próximas llamadas pueden omitir `diagramId`.')
+    );
+    expect(s.diagrama?.notacion).toBe("c4");
+    expect(s.diagrama?.nombre).toBe("MVC Spring Boot");
+  });
+});
+
+/**
+ * El cierre decía `Vista "" publicada en el lienzo.` porque leía `args.name` y el
+ * MCP declara `viewName` (#331).
+ */
+describe("el cierre nombra la vista publicada (#331)", () => {
+  it("con viewName", () => {
+    const s = applyObservation(startRun(), call("export_as_view", { viewName: "MVC C4" }), ok("Vista creada"));
+    expect(s.cambios.at(-1)?.texto).toBe('Vista "MVC C4" publicada en el lienzo.');
+  });
+
+  it("sin viewName usa el nombre del diagrama en curso", () => {
+    let s = applyObservation(
+      startRun(),
+      call("create_diagram", { name: "MVC", notation: "c4" }),
+      ok('Diagrama creado y FIJADO. diagramId="mvc-1", notación=c4.')
+    );
+    s = applyObservation(s, call("export_as_view", {}), ok("Vista creada"));
+    expect(s.cambios.at(-1)?.texto).toBe('Vista "MVC" publicada en el lienzo.');
+  });
+});
+
+/**
+ * El nombre del proyecto puede tener comas y la notación de `use_diagram` viaja
+ * al final del paréntesis: partir por la primera coma dejaba el nombre mutilado
+ * y la notación sin parsear, o sea el bug de #331 en versión angosta.
+ */
+describe("notación de use_diagram con comas en el nombre (#331)", () => {
+  it("parte por la última coma", () => {
+    const s = applyObservation(
+      startRun(),
+      call("use_diagram", { diagramId: "mvc-1" }),
+      ok('Diagrama fijado: "mvc-1" (Ventas, Cobros y Postventa, c4). Las próximas llamadas pueden omitir `diagramId`.')
+    );
+    expect(s.diagrama?.nombre).toBe("Ventas, Cobros y Postventa");
+    expect(s.diagrama?.notacion).toBe("c4");
   });
 });

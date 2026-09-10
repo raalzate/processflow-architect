@@ -11,7 +11,7 @@
  * Ninguna función ejecuta nada ni muta su entrada: devuelven estado nuevo.
  */
 
-import type { BuilderCall } from "./builder-tools";
+import { nombreDeVista, type BuilderCall } from "./builder-tools";
 
 /** Resultado de haber llamado a una herramienta (lo trae el adaptador). */
 export interface ToolObservation {
@@ -87,7 +87,7 @@ export interface BuilderRunState {
    * `get_app_state` —eso mira el proyecto de la app—, y sin este recordatorio
    * concluía que su trabajo se había perdido y lo creaba de nuevo (#327).
    */
-  diagrama?: { id: string; nombre: string };
+  diagrama?: { id: string; nombre: string; notacion?: string };
 }
 
 /**
@@ -142,15 +142,29 @@ const ESCRIBEN = new Set([
  * y `use_diagram` contestan con `diagramId="…"`. Se parsea en vez de asumirlo del
  * argumento porque el id lo genera el servidor (slug + contador).
  */
-function diagramaDe(call: BuilderCall, texto: string): { id: string; nombre: string } | undefined {
+function diagramaDe(
+  call: BuilderCall,
+  texto: string
+): { id: string; nombre: string; notacion?: string } | undefined {
   if (call.tool !== "create_diagram" && call.tool !== "use_diagram") return undefined;
   const id = /diagram(?:Id)?[=:]\s*"([^"]+)"/i.exec(texto)?.[1] ?? /"([^"]+)"/.exec(texto)?.[1];
   if (!id) return undefined;
+  // El paréntesis de `use_diagram` es «(Nombre, notación)» y el nombre puede
+  // tener comas: se parte por la ÚLTIMA (el `[^()]*` es codicioso), no por la
+  // primera, o el nombre sale mutilado y la notación no sale (#331).
+  const parentesis = /\(([^()]*),\s*([a-z0-9]+)\s*\)/i.exec(texto);
   const nombre =
     typeof call.args.name === "string" && call.args.name.trim()
       ? call.args.name.trim()
-      : /\(([^,)]+),/.exec(texto)?.[1]?.trim() || id;
-  return { id, nombre };
+      : parentesis?.[1]?.trim() || id;
+  // La NOTACIÓN también sale de la respuesta: `create_diagram` la escribe como
+  // «notación=c4» y `use_diagram` como «(nombre, c4)». Sin ella, el arnés
+  // validaba los tipos contra la vista abierta del humano (#331).
+  const notacion =
+    /notaci[oó]n\s*=\s*([a-z0-9]+)/i.exec(texto)?.[1] ??
+    parentesis?.[2] ??
+    (typeof call.args.notation === "string" ? call.args.notation : undefined);
+  return { id, nombre, notacion: notacion?.toLowerCase() };
 }
 
 /**
@@ -167,14 +181,34 @@ const TOOLS_DEL_ARNES = new Set([
   "(verificación)",
 ]);
 
-/** El último error de una llamada REAL al MCP. */
+/**
+ * El último error VIGENTE de una llamada real al MCP. Un error está SUPERADO
+ * cuando la MISMA herramienta volvió a salir bien después —el `notation:"C4"`
+ * que el reintento con `"c4"` arregló—: citarlo como si siguiera abierto le
+ * ordenaba al modelo corregir lo que ya había corregido, y con el mismo texto
+ * tres turnos seguidos la corrida moría con el diagrama vacío (#331).
+ *
+ * Que corte por herramienta y no por «el último acierto» importa: el modelo lee
+ * PORQUE algo le falló, así que un `describe_notation` exitoso no arregla el
+ * `add_container` que lo mandó a leer — y ese error es justo lo que el freno
+ * tiene que devolverle (#326, #328).
+ */
 export function ultimoErrorReal(state: BuilderRunState): string | undefined {
-  return [...state.pasos].reverse().find((p) => !p.ok && !TOOLS_DEL_ARNES.has(p.tool))?.texto;
+  const reales = state.pasos.filter((p) => !TOOLS_DEL_ARNES.has(p.tool));
+  for (let i = reales.length - 1; i >= 0; i--) {
+    if (reales[i].ok) continue;
+    const superado = reales.slice(i + 1).some((p) => p.ok && p.tool === reales[i].tool);
+    if (!superado) return reales[i].texto;
+  }
+  return undefined;
 }
 
 /** Qué cambió, en una línea que el humano pueda leer sin abrir la traza. */
-function frase(call: BuilderCall): string {
-  const nombre = String(call.args.name ?? call.args.id ?? "");
+function frase(call: BuilderCall, diagramaNombre?: string): string {
+  const nombre =
+    call.tool === "export_as_view"
+      ? nombreDeVista(call, diagramaNombre)
+      : String(call.args.name ?? call.args.id ?? "");
   switch (call.tool) {
     case "add_node":
       return `Elemento "${nombre}" agregado${call.args.type ? ` (${String(call.args.type)})` : ""}.`;
@@ -361,7 +395,10 @@ export function applyObservation(
     // prometerle al humano un cambio que el MCP rechazó.
     cambios:
       obs.ok && !opts.neutra && ESCRIBEN.has(call.tool)
-        ? [...state.cambios, { texto: frase(call), lienzo: TOCAN_EL_LIENZO.has(call.tool) }]
+        ? [
+            ...state.cambios,
+            { texto: frase(call, state.diagrama?.nombre), lienzo: TOCAN_EL_LIENZO.has(call.tool) },
+          ]
         : state.cambios,
     // El presupuesto mide TRABAJO: un turno que no llegó a tocar el modelo no lo
     // gasta. Lo que frena al modelo que se traba es el tope de fallos (#323).

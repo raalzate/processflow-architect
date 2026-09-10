@@ -14,6 +14,7 @@ import { describe, it, expect } from "vitest";
 import { runBuilderAgent, answerBuilderAgent } from "@/lib/ai/builder-agent";
 import type { ToolSpec } from "@/lib/ai/builder-tools";
 import { MAX_BUILDER_STEPS } from "@/lib/ai/builder-run";
+import { NOTATION_IDS } from "@/lib/notations";
 
 /** Respuestas textuales del MCP real (copiadas de las trazas de la app). */
 const RESPUESTAS = {
@@ -34,7 +35,16 @@ const TOOLS: ToolSpec[] = [
   {
     name: "create_diagram",
     description: "Crea un diagrama.",
-    inputSchema: { type: "object", properties: { name: { type: "string" }, notation: { type: "string" } }, required: ["name"] },
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        // El registro real publica el enum: es lo que deja corregir "C4" antes
+        // de gastar un turno contra el -32602 del servidor (#331).
+        notation: { type: "string", enum: NOTATION_IDS },
+      },
+      required: ["name"],
+    },
   },
   {
     name: "describe_notation",
@@ -54,7 +64,9 @@ const TOOLS: ToolSpec[] = [
   {
     name: "export_as_view",
     description: "Publica el diagrama como vista.",
-    inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+    // El MCP real declara `viewName`, y opcional: sin nombre, la vista toma el
+    // del diagrama (#331).
+    inputSchema: { type: "object", properties: { viewName: { type: "string" } } },
   },
 ];
 const ALLOW = TOOLS.map((t) => t.name);
@@ -76,7 +88,7 @@ function mcpSimulado() {
     vistas: [] as string[],
   };
   const llamadas: string[] = [];
-  const NOTACIONES = ["ddd", "bpmn", "c4", "uml", "mer", "general"];
+  const NOTACIONES: string[] = NOTATION_IDS;
 
   const callTool = async (name: string, args: Record<string, unknown>) => {
     llamadas.push(name);
@@ -124,13 +136,17 @@ function mcpSimulado() {
         if (!estado.diagrama) return { ok: false, texto: "No hay diagrama en curso." };
         estado.workspaceNodos.push(nombre);
         return { ok: true, texto: `Elemento "${nombre}" añadido.` };
-      case "export_as_view":
+      case "export_as_view": {
         if (!estado.diagrama) return { ok: false, texto: "No hay diagrama en curso." };
+        // El MCP nombra la pestaña con `viewName` y, sin él, con el nombre del
+        // diagrama (#331).
+        const vista = String(args.viewName ?? args.name ?? estado.diagrama);
         // Publicar es lo ÚNICO que mueve trabajo del workspace al lienzo.
         estado.contenedores.push(...estado.workspaceContenedores);
         estado.nodos.push(...estado.workspaceNodos);
-        estado.vistas.push(nombre);
-        return { ok: true, texto: `Vista "${nombre}" creada en el proyecto activo.` };
+        estado.vistas.push(vista);
+        return { ok: true, texto: `Vista "${vista}" creada en el proyecto activo.` };
+      }
       default:
         return { ok: false, texto: `Herramienta desconocida: ${name}` };
     }
@@ -439,11 +455,116 @@ describe("humo: el reporte dice la verdad", () => {
         generate: async () => guion[Math.min(i++, guion.length - 1)],
       },
     });
-    const bloqueos = r.steps.filter((s) => /Ya leíste/.test(s.content));
+    // El segundo freno cambia de redacción a propósito (la orden concreta de
+    // #331), así que se buscan los dos textos.
+    const bloqueos = r.steps.filter((s) =>
+      /Ya leíste|no te va a decir nada nuevo/.test(s.content)
+    );
     expect(bloqueos.length).toBeGreaterThan(1);
-    // Ninguno cita a otro bloqueo: el texto no se anida.
+    // Ninguno cita a otro bloqueo: el texto no se anida ni crece en cada vuelta.
     for (const b of bloqueos) {
-      expect(b.content.match(/Ya leíste/g)).toHaveLength(1);
+      expect(b.content.match(/Ya leíste/g)?.length ?? 0).toBeLessThanOrEqual(1);
+      expect(b.content.length).toBeLessThan(600);
     }
+  });
+});
+
+/**
+ * La traza COMPLETA de #331, tal como quedó en la app: 11 pasos y el lienzo en
+ * cero. Cuatro de esos turnos los gastó el arnés en cosas que podía resolver
+ * solo —el enum en mayúsculas, un error ya corregido citado como vigente, y el
+ * mismo freno repetido tres veces hasta matar la corrida—.
+ */
+describe("humo: la corrida de #331 termina construyendo", () => {
+  it("normaliza el enum, no cita el error superado y escala el freno", async () => {
+    const mcp = mcpSimulado();
+    const guion = [
+      '{"tool":"get_app_state","args":{}}',
+      // Tal cual la traza: el modelo escribe la notación en mayúsculas.
+      '{"tool":"create_diagram","args":{"name":"MVC Spring Boot Example","notation":"C4"}}',
+      '{"tool":"describe_notation","args":{"notation":"c4"}}',
+      // Y acá se quedaba: relee lo mismo, dos veces.
+      '{"tool":"describe_notation","args":{"notation":"c4"}}',
+      '{"tool":"describe_notation","args":{"notation":"c4"}}',
+      '{"tool":"add_container","args":{"name":"Aplicación MVC","type":"Límite de Sistema"}}',
+      '{"tool":"add_node","args":{"name":"Controlador de Producto","type":"Componente"}}',
+      '{"tool":"export_as_view","args":{"viewName":"MVC Producto C4"}}',
+      '{"final":"Vista C4 del MVC publicada."}',
+    ];
+    let i = 0;
+    const prompts: string[] = [];
+    const r = await runBuilderAgent({
+      ...base,
+      // La vista abierta es DDD y el diagrama es C4: el tipo lo manda el diagrama.
+      notation: "ddd",
+      deps: {
+        listTools: async () => TOOLS,
+        callTool: mcp.callTool,
+        generate: async (p: string) => {
+          prompts.push(p);
+          return guion[Math.min(i++, guion.length - 1)];
+        },
+      },
+    });
+
+    const contexto = prompts.join("\n");
+    // El -32602 nunca llegó al MCP: un solo create_diagram, y salió bien.
+    expect(mcp.llamadas.filter((l) => l === "create_diagram")).toHaveLength(1);
+    expect(contexto).not.toMatch(/-32602/);
+    // El segundo freno da la orden concreta, no el mismo texto de la primera vez.
+    expect(contexto).toMatch(/DEBE ser una escritura/);
+    expect(contexto).toMatch(/Límite de Sistema/);
+    // Y la corrida llegó al lienzo con el nombre que pidió el modelo.
+    expect(mcp.estado.vistas).toEqual(["MVC Producto C4"]);
+    expect(mcp.estado.contenedores).toEqual(["Aplicación MVC"]);
+    expect(mcp.estado.nodos).toEqual(["Controlador de Producto"]);
+    expect(r.reply).toMatch(/Vista "MVC Producto C4" publicada/);
+    expect(r.reply).not.toMatch(/Insistí/);
+  });
+});
+
+/**
+ * La OTRA mitad de la traza de #331: el modelo pidió «Container» (inglés), el
+ * arnés lo rechazó tres veces sin sugerir nada, y entre rechazo y rechazo el
+ * freno de relectura repetía su texto porque `bloqueos` se le reseteaba. La
+ * corrida murió con «4 intentos seguidos sin una acción válida».
+ */
+describe("humo: el tipo en otro idioma no mata la corrida (#331)", () => {
+  it("sugiere el tipo del registro y escala el freno aunque haya rechazos entre medio", async () => {
+    const mcp = mcpSimulado();
+    const guion = [
+      '{"tool":"create_diagram","args":{"name":"Spring Boot MVC","notation":"c4"}}',
+      '{"tool":"describe_notation","args":{"notation":"c4"}}',
+      // El modelo insiste en inglés, con una relectura entre medio: es la
+      // alternancia que reseteaba el contador de la escalada.
+      '{"tool":"add_node","args":{"name":"App","type":"Container"}}',
+      '{"tool":"describe_notation","args":{"notation":"c4"}}',
+      '{"tool":"add_node","args":{"name":"App","type":"Container"}}',
+      '{"tool":"describe_notation","args":{"notation":"c4"}}',
+      // Con la sugerencia en la mano, la escribe bien.
+      '{"tool":"add_node","args":{"name":"App","type":"Contenedor"}}',
+      '{"tool":"export_as_view","args":{"viewName":"MVC C4"}}',
+      '{"final":"Publicada."}',
+    ];
+    let i = 0;
+    const prompts: string[] = [];
+    const r = await runBuilderAgent({
+      ...base,
+      notation: "c4",
+      deps: {
+        listTools: async () => TOOLS,
+        callTool: mcp.callTool,
+        generate: async (p: string) => {
+          prompts.push(p);
+          return guion[Math.min(i++, guion.length - 1)];
+        },
+      },
+    });
+    const contexto = prompts.join("\n");
+    expect(contexto).toMatch(/¿Querías "Contenedor"\?/);
+    // El segundo freno escala aunque entre los dos hubo un rechazo.
+    expect(contexto).toMatch(/DEBE ser una escritura/);
+    expect(mcp.estado.vistas).toEqual(["MVC C4"]);
+    expect(r.reply).not.toMatch(/Me trabé/);
   });
 });

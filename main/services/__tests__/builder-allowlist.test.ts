@@ -8,8 +8,12 @@
  * pidiendo algo que el servidor no tiene. Acá se descubre en el gate.
  */
 import { describe, it, expect } from "vitest";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { registerProcessflowTools } from "../mcp-tools";
 import { getAgentProfile, BUILDER_TOOLS } from "../../../src/lib/ai/agent-profiles";
+import { NOTATION_IDS } from "../../../src/lib/notations";
 
 /** Server MCP falso: sólo interesa QUÉ nombres se registran. */
 function nombresRegistrados(modoApp: boolean): Set<string> {
@@ -55,5 +59,49 @@ describe("repertorio del constructor vs. registro MCP", () => {
 
   it("el analista no lleva ninguna herramienta de escritura", () => {
     expect(getAgentProfile("analista").tools).toEqual([]);
+  });
+});
+
+/**
+ * El SCHEMA que el arnés recibe de verdad, no el que escriben los fixtures.
+ *
+ * Dos arreglos de #331 dependen de lo que publica el registro: `normalizarEnums`
+ * necesita `properties.notation.enum` para corregir «C4» antes de gastar un turno
+ * contra el `-32602`, y `nombreDeVista` lee `viewName` porque es el argumento que
+ * el servidor tiene. Los dos se vuelven un no-op SILENCIOSO si el SDK cambia la
+ * serialización de zod (`anyOf`, `$ref`) o si alguien renombra el argumento: los
+ * tests del arnés seguirían verdes contra fixtures escritos a mano. Acá se mira
+ * el JSON Schema real, por el mismo camino que usa `mcpPlaygroundListTools`.
+ */
+describe("el schema publicado sostiene los arreglos del arnés (#331)", () => {
+  async function schemasPublicados(): Promise<Record<string, any>> {
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerProcessflowTools(server as any, {
+      workspace: "/tmp/pf-test",
+      exportToApp: async () => true,
+      exportViewToApp: async () => true,
+      getAppState: () => null,
+      readApp: async () => ({ ok: false, error: "test" }) as any,
+      actOnApp: async () => ({ ok: false, error: "test" }) as any,
+    });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test-client", version: "0.0.0" });
+    await Promise.all([server.connect(b), client.connect(a)]);
+    const { tools } = await client.listTools();
+    await client.close();
+    return Object.fromEntries(tools.map((t) => [t.name, t.inputSchema as any]));
+  }
+
+  it("create_diagram publica la notación como enum, con todas las notaciones", async () => {
+    const schemas = await schemasPublicados();
+    const notation = schemas.create_diagram?.properties?.notation;
+    expect(notation?.enum).toEqual(NOTATION_IDS);
+  });
+
+  it("export_as_view nombra la pestaña con viewName, no con name", async () => {
+    const schemas = await schemasPublicados();
+    const props = schemas.export_as_view?.properties ?? {};
+    expect(Object.keys(props)).toContain("viewName");
+    expect(Object.keys(props)).not.toContain("name");
   });
 });
