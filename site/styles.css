@@ -367,6 +367,9 @@ td.nota { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; colo
 }
 .chapa-sponsor:hover { border-color: var(--acento); transform: translateY(-2px); }
 .chapa-sponsor img { width: 240px; max-width: 100%; }
+/* El primer párrafo lleva el mensaje: sin titular, es él quien tiene que pesar. */
+.texto-patrocinio { font-size: 1.14rem; color: var(--tinta); margin-top: 0; }
+.texto-patrocinio strong { font-weight: 600; }
 @media (min-width: 860px) { .chapa-sponsor { justify-self: center; } }
 
 /* ---------- pie ---------- */
