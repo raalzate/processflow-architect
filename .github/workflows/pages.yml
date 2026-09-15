@@ -15,6 +15,7 @@ on:
       - "site/**"
       - "docs/screenshots/**"
       - "assets/icon.png"
+      - "assets/sponsors/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -49,6 +50,8 @@ jobs:
           cp docs/screenshots/*.png _site/img/
           # El icono de la app es el favicon y la marca de la barra: una sola copia.
           cp assets/icon.png _site/img/icon.png
+          # Logos de quienes patrocinan el proyecto, en su versión oficial.
+          cp assets/sponsors/*.png _site/img/
           # .nojekyll: sin él, Pages ignoraría cualquier ruta que empiece por "_".
           touch _site/.nojekyll
 
