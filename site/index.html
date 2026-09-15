@@ -3,453 +3,386 @@
   Página pública del proyecto (GitHub Pages).
 
   La publica .github/workflows/pages.yml, que copia este directorio a `_site` y
-  además `docs/screenshots/` a `_site/img/`. Las capturas NO se duplican en el repo:
-  son las mismas del README y las regenera `npm run screenshots` contra la UI real.
-  Por eso `img/…` no resuelve abriendo este archivo con file:// — resuelve publicado,
-  o sirviendo el artefacto del workflow.
+  además `docs/screenshots/` a `_site/img/` y `assets/icon.png` a `_site/img/icon.png`.
+  Las capturas NO se duplican en el repo: son las mismas del README y las regenera
+  `npm run screenshots` contra la UI real. Por eso `img/…` no resuelve abriendo este
+  archivo con file:// — resuelve publicado, o sirviendo el artefacto del workflow.
 
-  Sin build ni dependencias: un archivo, CSS propio, cero JS. El bundle de la app ya
-  es pesado; la página del proyecto no agrega nada que mantener.
+  Sin build ni dependencias: HTML, una hoja de estilo y un script de 80 líneas que
+  sólo mejora la descarga cuando hay red. Sin él la página sigue siendo correcta.
 -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>ProcessFlow Architect</title>
-<meta name="description" content="Un modelo vivo del sistema con vistas en DDD, BPMN, C4, UML y MER — con IA que corre en tu máquina.">
-<meta property="og:title" content="ProcessFlow Architect">
-<meta property="og:description" content="Un modelo vivo del sistema con vistas en DDD, BPMN, C4, UML y MER — con IA que corre en tu máquina.">
+<title>ProcessFlow Architect — un modelo vivo del sistema, con IA que corre en tu máquina</title>
+<meta name="description" content="App de escritorio para modelar sistemas: un solo grafo con vistas en DDD, BPMN, C4, UML y MER. La IA corre local sobre tu GPU; el modelo no sale de tu equipo. Descarga para macOS, Windows y Linux.">
+<meta property="og:title" content="ProcessFlow Architect — un modelo, cinco notaciones, IA local">
+<meta property="og:description" content="Un grafo con semántica, no un editor de diagramas. Claude Code construye el modelo por MCP y la IA local lo documenta sin que nada salga de tu máquina.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="img/02-canvas.png">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23D2490A'/><rect x='7' y='9' width='8' height='6' fill='%23fff'/><rect x='17' y='17' width='8' height='6' fill='%23fff'/><path d='M15 12h4v8h-2' stroke='%23fff' stroke-width='1.6' fill='none'/></svg>">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="img/icon.png">
+<link rel="apple-touch-icon" href="img/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=JetBrains+Mono:wght@400;600&display=swap">
-<style>
-  /* Paleta: gris frío de pizarra + el naranja del post-it de evento como único acento.
-     Los cinco colores de notación son los mismos que usa la app (src/lib/notations.ts). */
-  :root {
-    --ground: #EEEFF1;
-    --wall: #E4E6E9;
-    --surface: #FFFFFF;
-    --ink: #14171C;
-    --muted: #5D6673;
-    --rule: #CFD3D9;
-    --rule-soft: #DEE1E6;
-    --accent: #D2490A;
-    --accent-soft: #FBE7DA;
-    --ddd: #C2410C;
-    --bpmn: #0369A1;
-    --c4: #1D4ED8;
-    --uml: #6D28D9;
-    --mer: #047857;
-    --shadow: 0 1px 0 rgba(20,23,28,.06), 0 8px 24px -16px rgba(20,23,28,.4);
-  }
-  /* Tres estados de tema: sin marca (sistema), y las dos elecciones explícitas. */
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --ground: #101318; --wall: #161A20; --surface: #1A1F26;
-      --ink: #E7EAEE; --muted: #97A1AE; --rule: #2C333C; --rule-soft: #232931;
-      --accent: #FF8A46; --accent-soft: rgba(55,32,18,.85);
-      --ddd: #FDBA74; --bpmn: #7DD3FC; --c4: #93B4FD; --uml: #C4B5FD; --mer: #6EE7B7;
-      --shadow: 0 1px 0 rgba(0,0,0,.4), 0 10px 28px -18px #000;
-    }
-  }
-  :root[data-theme="dark"] {
-    --ground: #101318; --wall: #161A20; --surface: #1A1F26;
-    --ink: #E7EAEE; --muted: #97A1AE; --rule: #2C333C; --rule-soft: #232931;
-    --accent: #FF8A46; --accent-soft: rgba(55,32,18,.85);
-    --ddd: #FDBA74; --bpmn: #7DD3FC; --c4: #93B4FD; --uml: #C4B5FD; --mer: #6EE7B7;
-    --shadow: 0 1px 0 rgba(0,0,0,.4), 0 10px 28px -18px #000;
-  }
-
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body {
-    margin: 0;
-    padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    background: var(--ground);
-    color: var(--ink);
-    font-family: "Newsreader", Georgia, "Times New Roman", serif;
-    font-size: 17px; line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-  }
-  h1, h2, h3, .brand {
-    font-family: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
-    text-wrap: balance; letter-spacing: -.02em; margin: 0;
-  }
-  .mono, code, .eyebrow, .chip, .who, dt, thead th, .tab, .wall-label, .adv-key, .step::before {
-    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-  a { color: inherit; }
-  img { max-width: 100%; display: block; }
-  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
-
-  .wrap { max-width: 1080px; margin: 0 auto; padding-inline: 20px; }
-  section { padding-block: 72px; }
-  .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .16em; color: var(--muted); margin: 0 0 14px; }
-  .lede { font-size: 20px; color: var(--muted); max-width: 62ch; }
-  h2.sec { font-size: clamp(27px, 4vw, 38px); font-weight: 700; }
-  .sec-intro { margin-top: 14px; color: var(--muted); max-width: 62ch; }
-
-  /* ── Cabecera ─────────────────────────────────────────── */
-  header.top {
-    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
-    background: var(--ground); border-bottom: 1px solid var(--rule-soft);
-  }
-  .topbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-block: 12px; }
-  .brand { font-weight: 800; font-size: 17px; }
-  .brand span { color: var(--accent); }
-  .topbar nav { margin-left: auto; display: flex; gap: 20px; flex-wrap: wrap; }
-  .topbar nav a { font-family: "JetBrains Mono", monospace; font-size: 12px; text-decoration: none; color: var(--muted); }
-  .topbar nav a:hover { color: var(--accent); }
-
-  /* ── Hero ─────────────────────────────────────────────── */
-  .hero { padding-block: 60px 44px; }
-  .hero h1 { font-size: clamp(36px, 6.6vw, 72px); line-height: 1; font-weight: 800; }
-  .hero h1 em { font-style: normal; color: var(--accent); }
-  .hero .lede { margin-top: 22px; }
-  .hero-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 26px; }
-  .chip { font-size: 11px; letter-spacing: .04em; padding: 5px 10px; border: 1px solid var(--rule); color: var(--muted); background: var(--surface); }
-  .chip strong { color: var(--ink); font-weight: 600; }
-
-  /* Un modelo, cinco vistas: la tira imita las pestañas de vistas de la app. */
-  .views { margin-top: 40px; background: var(--wall); border: 1px solid var(--rule-soft); padding: 20px; overflow-x: auto; }
-  .wall-label { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 14px; }
-  .tabs { display: flex; gap: 8px; min-width: 640px; }
-  .tab {
-    flex: 1; background: var(--surface); border: 1px solid var(--rule-soft);
-    border-top: 3px solid var(--t); padding: 12px 14px 14px;
-  }
-  .tab b { display: block; font-size: 12px; letter-spacing: .08em; color: var(--t); margin-bottom: 8px; }
-  .tab span { font-family: "Newsreader", Georgia, serif; font-size: 13.5px; color: var(--muted); line-height: 1.45; display: block; }
-  .views > p.foot-note { margin: 14px 0 0; font-size: 13.5px; color: var(--muted); }
-
-  /* ── Capturas ─────────────────────────────────────────── */
-  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 34px; }
-  figure { margin: 0; }
-  figure img { border: 1px solid var(--rule); background: var(--surface); }
-  .shot-hero img { box-shadow: var(--shadow); }
-  figcaption { margin-top: 10px; font-size: 13.5px; color: var(--muted); }
-  figcaption b { color: var(--ink); font-weight: 500; }
-
-  /* ── Ventajas: lista con regla, no tarjetas ───────────── */
-  .adv { margin-top: 34px; border-top: 1px solid var(--rule); }
-  .adv-item { display: grid; grid-template-columns: 180px 1fr; gap: 24px; padding-block: 22px; border-bottom: 1px solid var(--rule-soft); }
-  .adv-key { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); padding-top: 4px; }
-  .adv-item h3 { font-size: 18px; font-weight: 700; }
-  .adv-item p { margin: 8px 0 0; color: var(--muted); font-size: 16px; }
-
-  /* ── Casos de uso ─────────────────────────────────────── */
-  .cases { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 34px; }
-  .case {
-    background: var(--surface); border: 1px solid var(--rule-soft);
-    border-top: 3px solid var(--case, var(--accent));
-    padding: 22px; display: flex; flex-direction: column; gap: 12px;
-  }
-  .who { margin: 0; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--case, var(--accent)); }
-  .case h3 { font-size: 20px; font-weight: 700; }
-  .case p { margin: 0; color: var(--muted); font-size: 15.5px; }
-  .case dl { margin: 0; display: grid; grid-template-columns: 74px 1fr; gap: 6px 14px; font-size: 14px; }
-  .case dt { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding-top: 4px; }
-  .case dd { margin: 0; }
-
-  /* ── Tabla de notaciones ──────────────────────────────── */
-  .table-scroll { overflow-x: auto; margin-top: 30px; border: 1px solid var(--rule-soft); background: var(--surface); }
-  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 15px; }
-  th, td { text-align: left; padding: 13px 18px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
-  thead th { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 400; }
-  tbody tr:last-child td { border-bottom: 0; }
-  td.nota { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; color: var(--n, var(--ink)); white-space: nowrap; }
-  .quiet-note { margin-top: 26px; padding: 16px 18px; border-left: 3px solid var(--accent); background: var(--accent-soft); font-size: 15px; }
-
-  /* ── Pasos: aquí la numeración sí es secuencia ────────── */
-  .steps { counter-reset: s; margin-top: 30px; display: grid; gap: 2px; }
-  .step { counter-increment: s; display: grid; grid-template-columns: 44px 1fr; gap: 18px; background: var(--surface); border: 1px solid var(--rule-soft); padding: 18px 20px; }
-  .step::before { content: counter(s, decimal-leading-zero); font-size: 12px; color: var(--accent); padding-top: 3px; }
-  .step h3 { font-size: 17px; font-weight: 700; }
-  .step p { margin: 6px 0 0; color: var(--muted); font-size: 15.5px; }
-  pre {
-    margin: 12px 0 0; padding: 12px 14px; overflow-x: auto;
-    background: var(--wall); border: 1px solid var(--rule-soft);
-    font-family: "JetBrains Mono", monospace; font-size: 12.5px; line-height: 1.6; color: var(--ink);
-  }
-  code { font-family: "JetBrains Mono", monospace; font-size: .92em; }
-
-  footer { border-top: 1px solid var(--rule); padding-block: 40px 56px; color: var(--muted); font-size: 14px; }
-  .foot { display: flex; gap: 20px; flex-wrap: wrap; align-items: baseline; }
-  footer a { color: var(--accent); }
-
-  @media (max-width: 760px) {
-    section { padding-block: 52px; }
-    .shots, .cases { grid-template-columns: 1fr; }
-    .adv-item { grid-template-columns: 1fr; gap: 4px; }
-    .case dl { grid-template-columns: 1fr; gap: 2px 0; }
-    .case dt { padding-top: 8px; }
-  }
-</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-<header class="top">
-  <div class="wrap topbar">
-    <div class="brand">ProcessFlow Architect<span>.</span></div>
+<header class="barra">
+  <div class="envoltura">
+    <a class="marca" href="#"><img src="img/icon.png" alt="" width="30" height="30">ProcessFlow<span>.</span></a>
     <nav>
-      <a href="#modelo">El modelo</a>
-      <a href="#capturas">Capturas</a>
-      <a href="#ventajas">Ventajas</a>
+      <a href="#como-funciona">Cómo funciona</a>
+      <a href="#la-app">La app por dentro</a>
+      <a href="#local">IA local</a>
       <a href="#casos">Casos de uso</a>
-      <a href="#empezar">Empezar</a>
+      <a class="boton boton-primario" href="#descarga">Descargar</a>
     </nav>
   </div>
 </header>
 
 <main>
-  <section class="wrap hero" id="modelo">
-    <p class="eyebrow">Aplicación de escritorio · Electron + Next.js · Apache 2.0</p>
-    <h1>Un modelo vivo del sistema. <em>Cinco notaciones</em> para mirarlo.</h1>
-    <p class="lede">
-      No es un editor de diagramas: es un grafo con semántica. La misma caja es un agregado en la
-      vista DDD, un contenedor en el C4 y una entidad en el MER — y cada vista sabe qué notación
-      habla. Encima, una IA que corre en tu máquina razona sobre ese modelo y lo documenta.
-    </p>
-    <div class="hero-meta">
-      <span class="chip"><strong>1 modelo</strong> hasta 50 vistas</span>
-      <span class="chip"><strong>5 notaciones</strong> DDD · BPMN · C4 · UML · MER</span>
-      <span class="chip"><strong>IA local</strong> LiteRT-LM sobre WebGPU</span>
-      <span class="chip"><strong>MCP</strong> Claude Code diseña, la app pinta</span>
-      <span class="chip"><strong>Exporta</strong> Mermaid · Markdown · PDF</span>
-    </div>
 
-    <div class="views">
-      <p class="wall-label">El mismo sistema, cinco lecturas</p>
-      <div class="tabs">
-        <div class="tab" style="--t: var(--ddd)"><b>DDD</b><span>Qué pasa en el negocio: eventos, comandos, agregados, políticas.</span></div>
-        <div class="tab" style="--t: var(--bpmn)"><b>BPMN</b><span>Quién hace qué y en qué orden: pools, tareas, gateways.</span></div>
-        <div class="tab" style="--t: var(--c4)"><b>C4</b><span>Con qué piezas está construido: sistemas, contenedores, componentes.</span></div>
-        <div class="tab" style="--t: var(--uml)"><b>UML</b><span>Cómo se habla por dentro: clases, estados, secuencias.</span></div>
-        <div class="tab" style="--t: var(--mer)"><b>MER</b><span>Qué datos quedan: entidades, atributos, cardinalidades.</span></div>
-      </div>
-      <p class="foot-note">
-        Las notaciones salen de un registro único (<code>src/lib/notations.ts</code>): la paleta, la
-        validación y la IA leen de ahí. Agregar una notación no toca el lienzo.
+<section class="portada">
+  <div class="envoltura portada-rejilla">
+    <div>
+      <p class="sello"><i class="punto"></i> <span data-version-sello>Beta pública · macOS, Windows y Linux</span></p>
+      <h1>Un modelo vivo del sistema. <em>Cinco notaciones</em> para mirarlo.</h1>
+      <p class="entradilla">
+        No es un editor de diagramas: es un grafo con semántica. La misma caja es un agregado
+        en la vista DDD, un contenedor en el C4 y una entidad en el MER — y cada vista sabe qué
+        notación habla. Encima, una IA que corre en tu GPU razona sobre ese modelo y lo documenta.
       </p>
+      <div class="acciones">
+        <a class="boton boton-primario" href="#descarga">Descargar ProcessFlow</a>
+        <a class="boton boton-plano" href="#la-app">Ver la app por dentro</a>
+      </div>
+      <p class="nota-descarga">Gratis y de código abierto (Apache-2.0). Sin cuenta, sin suscripción, sin factura por token.</p>
     </div>
-  </section>
+    <figure class="marco" style="margin:0">
+      <div class="marco-cabecera"><i></i><i></i><i></i></div>
+      <img src="img/02-canvas.png" width="2880" height="1800" alt="Lienzo de ProcessFlow Architect: elementos agrupados en bandas, paleta de la notación activa a la izquierda y pestañas de vistas abajo.">
+    </figure>
+  </div>
+</section>
 
-  <section class="wrap" id="capturas">
-    <p class="eyebrow">Capturas reales de la app</p>
-    <h2 class="sec">Un modelo, no un dibujo.</h2>
-    <p class="sec-intro">
+<section class="papel-hondo" style="padding-block: 2.2rem">
+  <div class="envoltura">
+    <div class="cifras">
+      <div class="cifra"><b>1 modelo</b><span>hasta 50 vistas derivadas</span></div>
+      <div class="cifra"><b>5 notaciones</b><span>DDD · BPMN · C4 · UML · MER</span></div>
+      <div class="cifra"><b>0 bytes</b><span>salen de tu equipo en modo local</span></div>
+      <div class="cifra"><b>MCP</b><span>Claude Code diseña, la app pinta</span></div>
+      <div class="cifra"><b>Mermaid · MD · PDF</b><span>lo que sale, vive en el repo</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="como-funciona">
+  <div class="envoltura">
+    <p class="rotulo">De cero a un modelo</p>
+    <h2 class="seccion-titulo">Cuatro pasos y el sistema está sobre la mesa</h2>
+    <p class="seccion-texto">
+      No hay servidor que montar ni proyecto que crear en la nube. Instalás, bajás un modelo
+      una vez, y a partir de ahí el trabajo es tuyo y de tu máquina.
+    </p>
+    <div class="pasos">
+      <article class="paso">
+        <h3>Instalá el binario</h3>
+        <p>
+          <code>.dmg</code> para Apple Silicon, instalador <code>.exe</code> y <code>.AppImage</code>.
+          O cloná el repo si querés el modo desarrollo.
+        </p>
+        <pre><code>git clone https://github.com/raalzate/processflow-architect
+cd processflow-architect
+npm install
+npm run electron-dev</code></pre>
+      </article>
+      <article class="paso">
+        <h3>Descargá un modelo, una sola vez</h3>
+        <p>En <strong>Ajustes</strong> elegís el <code>.litertlm</code>. A partir de ahí la IA funciona sin conexión, en tu GPU.</p>
+      </article>
+      <article class="paso">
+        <h3>Traé el material</h3>
+        <p>Modelás a mano en el lienzo, o conectás Claude Code por MCP y le pedís que construya el modelo desde tus documentos o tu repo y lo exporte al lienzo.</p>
+      </article>
+      <article class="paso">
+        <h3>Derivá, preguntá, exportá</h3>
+        <p>Las vistas se abren en pestañas y los artefactos del agente quedan versionados al lado del lienzo. Salen como Mermaid, Markdown o PDF.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="papel-hondo">
+  <div class="envoltura">
+    <p class="rotulo">Una vista, una gramática</p>
+    <h2 class="seccion-titulo">El mismo sistema, cinco lecturas</h2>
+    <p class="seccion-texto">
+      Las notaciones salen de un registro único (<code>src/lib/notations.ts</code>): la paleta, la
+      validación y la IA leen de ahí. En una vista BPMN el agente propone tareas y gateways; en una
+      C4, contenedores. Nada de cajas genéricas con texto adentro.
+    </p>
+    <div class="notaciones">
+      <div class="notacion" style="--n: var(--ddd)"><b>DDD</b><span>Qué pasa en el negocio: eventos, comandos, agregados, políticas.</span></div>
+      <div class="notacion" style="--n: var(--bpmn)"><b>BPMN</b><span>Quién hace qué y en qué orden: pools, tareas, gateways.</span></div>
+      <div class="notacion" style="--n: var(--c4)"><b>C4</b><span>Con qué piezas está construido: sistemas, contenedores, componentes.</span></div>
+      <div class="notacion" style="--n: var(--uml)"><b>UML</b><span>Cómo se habla por dentro: clases, estados, secuencias.</span></div>
+      <div class="notacion" style="--n: var(--mer)"><b>MER</b><span>Qué datos quedan: entidades, atributos, cardinalidades.</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="la-app">
+  <div class="envoltura">
+    <p class="rotulo">Capturas de la app corriendo, sin retoques</p>
+    <h2 class="seccion-titulo">Un modelo, no un dibujo</h2>
+    <p class="seccion-texto">
       Cada caja tiene tipo, ficha y relaciones. Por eso una vista se puede derivar de otra, por eso
       la IA puede razonar sobre el modelo, y por eso exportarlo produce un documento — no una imagen.
     </p>
 
-    <figure class="shot-hero" style="margin-top:34px">
-      <img src="img/02-canvas.png" width="1600" height="1000" alt="Lienzo de ProcessFlow Architect: elementos agrupados en bandas, paleta de la notación activa a la izquierda y pestañas de vistas abajo.">
-      <figcaption><b>El lienzo.</b> Paleta de la notación activa a la izquierda, pestañas de vistas abajo.
-      Filtros por tipo, copiar/pegar, subprocesos embebidos y organización automática del layout.</figcaption>
-    </figure>
+    <div class="vitrina">
 
-    <div class="shots">
-      <figure>
-        <img src="img/01-home.png" width="1600" height="1000" alt="Pantalla de bienvenida con la lista de proyectos locales.">
-        <figcaption><b>Proyectos locales.</b> Todo vive en tu disco; arrastrás un <code>.json</code> exportado por MCP y ya tenés modelo.</figcaption>
+      <figure class="toma">
+        <figcaption>
+          <h3>El lienzo, con la gramática puesta</h3>
+          <p>
+            Paleta de la notación activa a la izquierda, pestañas de vistas abajo. Filtros por tipo,
+            copiar y pegar, subprocesos embebidos y organización automática del layout.
+          </p>
+          <p class="detalle">Si un filtro vacía el resultado, el lienzo vuelve a la vista general e incluye los nodos sueltos. Nunca queda en blanco.</p>
+          <a class="ampliar" href="img/02-canvas.png">Ver la captura a tamaño completo</a>
+        </figcaption>
+        <a class="marco" href="img/02-canvas.png" title="Abrir la captura a tamaño completo">
+          <img src="img/02-canvas.png" width="2880" height="1800" loading="lazy" alt="Lienzo con elementos agrupados en bandas y la paleta de la notación activa.">
+        </a>
       </figure>
-      <figure>
-        <img src="img/03-settings.png" width="1600" height="1000" alt="Ajustes: descarga del modelo, motor de IA y servidor MCP.">
-        <figcaption><b>Motor de IA.</b> Descargás el modelo una vez. El modo por defecto es <code>local</code>; la nube sólo si la activás con tu propia llave.</figcaption>
+
+      <figure class="toma invertida">
+        <figcaption>
+          <h3>Tus proyectos viven en tu disco</h3>
+          <p>
+            Sin cuenta, sin espacio de trabajo remoto, sin sincronización que pedirle a nadie.
+            Arrastrás un <code>.json</code> exportado por MCP y ya tenés modelo.
+          </p>
+          <a class="ampliar" href="img/01-home.png">Ver la captura a tamaño completo</a>
+        </figcaption>
+        <a class="marco" href="img/01-home.png" title="Abrir la captura a tamaño completo">
+          <img src="img/01-home.png" width="2880" height="1800" loading="lazy" alt="Pantalla de bienvenida con la lista de proyectos locales.">
+        </a>
       </figure>
-      <figure>
-        <img src="img/04-mcp.png" width="1600" height="1000" alt="Guía MCP dentro de la app para conectar Claude Code o Codex.">
-        <figcaption><b>Puente MCP.</b> Claude Code o Codex leen tus documentos o tu repo, construyen el modelo y lo exportan al lienzo.</figcaption>
+
+      <figure class="toma">
+        <figcaption>
+          <h3>Claude Code construye, la app pinta</h3>
+          <p>
+            La guía del puente MCP viene dentro de la app. Claude Code o Codex leen tus documentos
+            o tu repo, arman el modelo y lo exportan al lienzo; vos corregís lo que la máquina leyó mal.
+          </p>
+          <p class="detalle">El documento fuente viaja dentro del proyecto: la cita de una caja resuelve al fragmento exacto que la originó.</p>
+          <a class="ampliar" href="img/04-mcp.png">Ver la captura a tamaño completo</a>
+        </figcaption>
+        <a class="marco" href="img/04-mcp.png" title="Abrir la captura a tamaño completo">
+          <img src="img/04-mcp.png" width="2880" height="1800" loading="lazy" alt="Guía MCP dentro de la aplicación para conectar Claude Code o Codex.">
+        </a>
       </figure>
-      <figure>
-        <img src="img/06-merger.png" width="1600" height="1000" alt="Agrupador de nodos: fusión de sesiones y depuración de duplicados.">
-        <figcaption><b>Fusión de sesiones.</b> Dos workshops, un modelo: detecta duplicados («Prima cobrada» ← «Cobro confirmado») y los une.</figcaption>
+
+      <figure class="toma invertida">
+        <figcaption>
+          <h3>Tres sesiones paralelas, un solo modelo</h3>
+          <p>
+            El agrupador detecta los duplicados que siempre aparecen —«Prima cobrada» y «Cobro
+            confirmado» son lo mismo— y los fusiona antes de la puesta en común.
+          </p>
+          <p class="detalle">Se acabó la tarde de copiar y pegar después del workshop.</p>
+          <a class="ampliar" href="img/06-merger.png">Ver la captura a tamaño completo</a>
+        </figcaption>
+        <a class="marco" href="img/06-merger.png" title="Abrir la captura a tamaño completo">
+          <img src="img/06-merger.png" width="2880" height="1800" loading="lazy" alt="Agrupador de nodos: fusión de sesiones y depuración de duplicados.">
+        </a>
       </figure>
+
+      <figure class="toma">
+        <figcaption>
+          <h3>La documentación viaja con el binario</h3>
+          <p>
+            La guía del diseñador está dentro de la app: sirve sin conexión, igual que la IA.
+            Nadie tiene que buscar una wiki para saber qué significa cada tipo de caja.
+          </p>
+          <a class="ampliar" href="img/05-docs.png">Ver la captura a tamaño completo</a>
+        </figcaption>
+        <a class="marco" href="img/05-docs.png" title="Abrir la captura a tamaño completo">
+          <img src="img/05-docs.png" width="2880" height="1800" loading="lazy" alt="Documentación del diseñador incluida dentro de la aplicación.">
+        </a>
+      </figure>
+
     </div>
+  </div>
+</section>
 
-    <figure style="margin-top:22px">
-      <img src="img/05-docs.png" width="1600" height="1000" alt="Documentación del diseñador incluida dentro de la aplicación.">
-      <figcaption><b>Documentación in-app.</b> La guía del diseñador viaja con el binario: sirve sin conexión, igual que la IA.</figcaption>
-    </figure>
-  </section>
-
-  <section class="wrap" id="ventajas">
-    <p class="eyebrow">Qué gana el equipo</p>
-    <h2 class="sec">Las ventajas, en concreto.</h2>
-
-    <div class="adv">
-      <div class="adv-item">
-        <div class="adv-key">Un solo modelo</div>
-        <div>
-          <h3>Las vistas no se desincronizan entre sí</h3>
-          <p>El C4 y el diagrama de procesos no son dos archivos que alguien tiene que acordarse de actualizar:
-          son dos lecturas del mismo grafo. Hasta 50 vistas, y las que importan se inyectan al chat del agente
-          en vez de darle el modelo entero.</p>
-        </div>
-      </div>
-      <div class="adv-item">
-        <div class="adv-key">Semántica</div>
-        <div>
-          <h3>Cada notación con su gramática, desde un registro único</h3>
-          <p><code>src/lib/notations.ts</code> es la única fuente de verdad de los tipos. En una vista BPMN la IA
-          propone tareas y gateways; en una C4, contenedores. Nada de cajas genéricas con texto adentro.</p>
-        </div>
-      </div>
-      <div class="adv-item">
-        <div class="adv-key">Trazabilidad</div>
-        <div>
-          <h3>Cada caja dice de dónde salió</h3>
-          <p>Ficha por elemento: descripción, especificación y criterios. Adjuntás el documento fuente al proyecto
-          y la cita de una caja resuelve al fragmento exacto que la originó. Los artefactos del agente son
-          versionados y guardan su historial.</p>
-        </div>
-      </div>
-      <div class="adv-item">
-        <div class="adv-key">Privacidad</div>
-        <div>
-          <h3>El modelo nunca sale del equipo</h3>
-          <p>La inferencia corre en tu GPU con LiteRT-LM sobre WebGPU: cero llamadas a la nube por defecto.
-          Es la diferencia entre poder usar IA sobre el core de un banco o de una EPS, y no poder. Si activás
-          un proveedor remoto, la llave se guarda cifrada con <code>safeStorage</code> en el proceso principal:
-          nunca llega al renderer ni a los logs.</p>
-        </div>
-      </div>
-      <div class="adv-item">
-        <div class="adv-key">Offline</div>
-        <div>
-          <h3>Funciona en un avión y en una sala sin wifi</h3>
-          <p>Descargás el modelo una vez. Después el trabajo no depende de la red, de una cuota de tokens
-          ni de que el proveedor tenga un mal día — y no hay factura por token.</p>
-        </div>
-      </div>
-      <div class="adv-item">
-        <div class="adv-key">Interoperable</div>
-        <div>
-          <h3>Entra por MCP, sale como texto</h3>
-          <p>Claude Code y Codex construyen el modelo desde tus documentos o tu código y lo exportan al lienzo.
-          De vuelta salen Mermaid, Markdown estructurado y PDF: cosas que viven en el repo y se revisan en un PR.</p>
-        </div>
-      </div>
-      <div class="adv-item">
-        <div class="adv-key">Robustez</div>
-        <div>
-          <h3>El lienzo nunca queda en blanco</h3>
-          <p>Si un filtro vacía el resultado, el procesador vuelve a la vista general e incluye los nodos sueltos.
-          Es un principio con prueba en el gate, no una buena intención.</p>
-        </div>
-      </div>
+<section id="local" class="privacidad">
+  <div class="envoltura">
+    <div>
+      <p class="rotulo">Local-first, no local-a-veces</p>
+      <h2 class="seccion-titulo">El modelo del core no sale del equipo</h2>
+      <p class="seccion-texto">
+        La inferencia corre en tu GPU con LiteRT-LM sobre WebGPU: cero llamadas a la nube por
+        defecto. Es la diferencia entre poder usar IA sobre el core de un banco o de una EPS,
+        y no poder.
+      </p>
+      <ul class="hechos">
+        <li><span class="tilde">✓</span><span><b>Proyectos y modelo en tu disco</b>Archivos locales; ni cuenta, ni servidor, ni telemetría.</span></li>
+        <li><span class="tilde">✓</span><span><b>Funciona en un avión</b>Descargás el modelo una vez y después no dependés de la red ni de una cuota de tokens.</span></li>
+        <li><span class="tilde">✓</span><span><b>Nube opcional y explícita</b>Modos local, híbrido o remoto; la llave se cifra con <code>safeStorage</code> en el proceso principal y nunca llega al renderer ni a los logs.</span></li>
+      </ul>
     </div>
-  </section>
+    <a class="marco" href="img/03-settings.png" title="Abrir la captura a tamaño completo">
+      <img src="img/03-settings.png" width="2880" height="1800" loading="lazy" alt="Ajustes: descarga del modelo local, motor de IA y servidor MCP.">
+    </a>
+  </div>
+</section>
 
-  <section class="wrap" id="casos">
-    <p class="eyebrow">Para qué sirve, con nombre y apellido</p>
-    <h2 class="sec">Ocho casos de uso.</h2>
-    <p class="sec-intro">
+<section>
+  <div class="envoltura">
+    <p class="rotulo">Qué gana el equipo</p>
+    <h2 class="seccion-titulo">Las ventajas, en concreto</h2>
+    <div class="ventajas">
+      <article class="ventaja">
+        <p class="clave">Un solo modelo</p>
+        <h3>Las vistas no se desincronizan entre sí</h3>
+        <p>El C4 y el diagrama de procesos no son dos archivos que alguien tiene que acordarse de actualizar: son dos lecturas del mismo grafo. Hasta 50 vistas, y las que importan se inyectan al chat del agente en vez de darle el modelo entero.</p>
+      </article>
+      <article class="ventaja">
+        <p class="clave">Semántica</p>
+        <h3>Cada notación con su gramática, desde un registro único</h3>
+        <p><code>src/lib/notations.ts</code> es la única fuente de verdad de los tipos. La validación y la IA leen de ahí, así que agregar una notación no toca el lienzo.</p>
+      </article>
+      <article class="ventaja">
+        <p class="clave">Trazabilidad</p>
+        <h3>Cada caja dice de dónde salió</h3>
+        <p>Ficha por elemento: descripción, especificación y criterios. Adjuntás el documento fuente al proyecto y la cita de una caja resuelve al fragmento exacto que la originó. Los artefactos del agente son versionados y guardan su historial.</p>
+      </article>
+      <article class="ventaja">
+        <p class="clave">Interoperable</p>
+        <h3>Entra por MCP, sale como texto</h3>
+        <p>Claude Code y Codex construyen el modelo desde tus documentos o tu código. De vuelta salen Mermaid, Markdown estructurado y PDF: cosas que viven en el repo y se revisan en un PR.</p>
+      </article>
+      <article class="ventaja">
+        <p class="clave">Robustez</p>
+        <h3>El lienzo nunca queda en blanco</h3>
+        <p>Si un filtro vacía el resultado, el procesador vuelve a la vista general e incluye los nodos sueltos. Es un principio con prueba en el gate, no una buena intención.</p>
+      </article>
+      <article class="ventaja">
+        <p class="clave">Sin costo variable</p>
+        <h3>Modelar todo el día no tiene factura</h3>
+        <p>La inferencia local no consume tokens: ni cuota que administrar ni sorpresa a fin de mes cuando el equipo entero se engancha a documentar.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="casos" class="papel-hondo">
+  <div class="envoltura">
+    <p class="rotulo">Para qué sirve, con nombre y apellido</p>
+    <h2 class="seccion-titulo">Ocho casos de uso</h2>
+    <p class="seccion-texto">
       Cada uno se apoya en una pieza que ya existe: el puente MCP, las vistas derivadas, la ficha de
       cada elemento, el agrupador de sesiones o la exportación.
     </p>
 
-    <div class="cases">
-      <article class="case" style="--case: var(--c4)">
-        <p class="who">Documentar código</p>
+    <div class="casos">
+      <article class="caso" style="--caso: var(--c4)">
+        <p class="quien">Documentar código</p>
         <h3>Levantar la arquitectura de un legado que ya nadie explica</h3>
-        <p>Claude Code recorre el repo por MCP, deduce sistemas, contenedores y componentes, y construye el C4
-        más las secuencias de los flujos críticos. Vos corregís sobre el lienzo lo que la máquina leyó mal.</p>
+        <p>Claude Code recorre el repo por MCP, deduce sistemas, contenedores y componentes, y construye el C4 más las secuencias de los flujos críticos. Vos corregís sobre el lienzo lo que la máquina leyó mal.</p>
         <dl>
           <dt>Entra</dt><dd>El repositorio</dd>
           <dt>Sale</dt><dd>C4 + secuencias UML + Markdown y PDF para el repo</dd>
         </dl>
       </article>
 
-      <article class="case" style="--case: var(--ddd)">
-        <p class="who">Base de conocimiento</p>
+      <article class="caso" style="--caso: var(--ddd)">
+        <p class="quien">Base de conocimiento</p>
         <h3>El glosario vivo del negocio, con la ficha de cada concepto</h3>
-        <p>La ficha de cada elemento guarda definición, especificación y la cita al documento que lo originó.
-        El modelo deja de ser el diagrama del onboarding y pasa a ser donde se busca qué significa
-        «póliza vigente» — y quién la toca.</p>
+        <p>La ficha de cada elemento guarda definición, especificación y la cita al documento que lo originó. El modelo deja de ser el diagrama del onboarding y pasa a ser donde se busca qué significa «póliza vigente» — y quién la toca.</p>
         <dl>
           <dt>Entra</dt><dd>Sesiones de trabajo + documentos del proyecto</dd>
           <dt>Sale</dt><dd>Vistas consultables, exportables y con fuente</dd>
         </dl>
       </article>
 
-      <article class="case" style="--case: var(--bpmn)">
-        <p class="who">Análisis de procesos</p>
+      <article class="caso" style="--caso: var(--bpmn)">
+        <p class="quien">Análisis de procesos</p>
         <h3>Pasar un manual de procedimientos a un BPMN que se lee</h3>
-        <p>Cargás el documento, el agente propone pools, tareas y gateways, y los subprocesos se embeben como
-        <em>call activity</em> en su propia vista. Los cuellos de botella se ven antes de que alguien los sufra.</p>
+        <p>Cargás el documento, el agente propone pools, tareas y gateways, y los subprocesos se embeben como <em>call activity</em> en su propia vista. Los cuellos de botella se ven antes de que alguien los sufra.</p>
         <dl>
           <dt>Entra</dt><dd>Manual, procedimiento, acta</dd>
-          <dt>Sale</dt><dd>BPMN por proceso + ambigüedades marcadas para resolver</dd>
+          <dt>Sale</dt><dd>BPMN por proceso + ambigüedades marcadas</dd>
         </dl>
       </article>
 
-      <article class="case" style="--case: var(--uml)">
-        <p class="who">Preventa y discovery</p>
+      <article class="caso" style="--caso: var(--uml)">
+        <p class="quien">Preventa y discovery</p>
         <h3>Convertir la documentación del cliente en una propuesta técnica</h3>
-        <p>De un documento de negocio salen la vista general del dominio, el BPMN de cada proceso operativo y el
-        C4 del paisaje de sistemas. Encima, el agente arma drivers, riesgos, propuesta y roadmap — versionados.</p>
+        <p>De un documento de negocio salen la vista general del dominio, el BPMN de cada proceso operativo y el C4 del paisaje de sistemas. Encima, el agente arma drivers, riesgos, propuesta y roadmap — versionados.</p>
         <dl>
           <dt>Entra</dt><dd>El PDF que mandó el cliente</dd>
           <dt>Sale</dt><dd>Portafolio de diagramas + drivers, riesgos y roadmap</dd>
         </dl>
       </article>
 
-      <article class="case" style="--case: var(--mer)">
-        <p class="who">Modernización</p>
+      <article class="caso" style="--caso: var(--mer)">
+        <p class="quien">Modernización</p>
         <h3>Cortar el monolito por donde el dominio ya está cortado</h3>
-        <p>Los agregados son los candidatos a servicio y el grafo de read models muestra quién lee qué.
-        El debate de fronteras se hace sobre un modelo, no sobre opiniones.</p>
+        <p>Los agregados son los candidatos a servicio y el grafo de read models muestra quién lee qué. El debate de fronteras se hace sobre un modelo, no sobre opiniones.</p>
         <dl>
           <dt>Entra</dt><dd>Modelo del sistema actual</dd>
           <dt>Sale</dt><dd>Contextos candidatos + la decisión escrita como ADR</dd>
         </dl>
       </article>
 
-      <article class="case" style="--case: var(--ddd)">
-        <p class="who">Onboarding</p>
+      <article class="caso" style="--caso: var(--ddd)">
+        <p class="quien">Onboarding</p>
         <h3>Que alguien nuevo entienda el sistema en una tarde</h3>
-        <p>Abre la app, recorre las vistas y le pregunta al agente lo que no entiende, con el modelo del equipo
-        como contexto — y sin pedirle permiso a nadie para usar IA, porque nada sale del portátil.</p>
+        <p>Abre la app, recorre las vistas y le pregunta al agente lo que no entiende, con el modelo del equipo como contexto — y sin pedirle permiso a nadie para usar IA, porque nada sale del portátil.</p>
         <dl>
           <dt>Entra</dt><dd>El proyecto del equipo</dd>
           <dt>Sale</dt><dd>Respuestas contra el modelo real, no contra la wiki de 2023</dd>
         </dl>
       </article>
 
-      <article class="case" style="--case: var(--bpmn)">
-        <p class="who">Cumplimiento</p>
+      <article class="caso" style="--caso: var(--bpmn)">
+        <p class="quien">Cumplimiento</p>
         <h3>Modelar sistemas que no pueden salir de la red interna</h3>
-        <p>Banca, salud, defensa, datos personales: sectores donde mandar el modelo del core a una API de terceros
-        es directamente un hallazgo de auditoría. Acá la inferencia ocurre en la máquina del analista.</p>
+        <p>Banca, salud, defensa, datos personales: sectores donde mandar el modelo del core a una API de terceros es directamente un hallazgo de auditoría. Acá la inferencia ocurre en la máquina del analista.</p>
         <dl>
           <dt>Entra</dt><dd>Procesos y datos regulados</dd>
           <dt>Sale</dt><dd>El mismo trabajo, sin transferencia a terceros</dd>
         </dl>
       </article>
 
-      <article class="case" style="--case: var(--c4)">
-        <p class="who">Facilitación</p>
+      <article class="caso" style="--caso: var(--c4)">
+        <p class="quien">Facilitación</p>
         <h3>Consolidar tres sesiones paralelas en un solo modelo</h3>
-        <p>Cada grupo modela su parte; el agrupador detecta los duplicados que siempre aparecen
-        («Prima cobrada» y «Cobro confirmado» son lo mismo) y los fusiona antes de la puesta en común.</p>
+        <p>Cada grupo modela su parte; el agrupador detecta los duplicados que siempre aparecen y los fusiona antes de la puesta en común.</p>
         <dl>
           <dt>Entra</dt><dd>Varias sesiones exportadas</dd>
           <dt>Sale</dt><dd>Un modelo depurado, sin la tarde de copiar y pegar</dd>
         </dl>
       </article>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section class="wrap">
-    <p class="eyebrow">Una vista, una notación</p>
-    <h2 class="sec">Las cinco gramáticas.</h2>
-    <div class="table-scroll">
+<section>
+  <div class="envoltura">
+    <p class="rotulo">La letra chica que importa</p>
+    <h2 class="seccion-titulo">Las cinco gramáticas, elemento por elemento</h2>
+    <div class="tabla-scroll">
       <table>
         <thead>
           <tr><th scope="col">Notación</th><th scope="col">Para qué</th><th scope="col">Elementos típicos</th></tr>
@@ -463,61 +396,66 @@
         </tbody>
       </table>
     </div>
-    <p class="quiet-note">
+    <p class="aparte">
       En UML el tipo de relación lo dice la punta: flecha (asociación), triángulo hueco (herencia),
       triángulo punteado (realización), rombo relleno (composición), rombo hueco (agregación) y
       punteada con flecha (dependencia).
     </p>
-  </section>
+  </div>
+</section>
 
-  <section class="wrap" id="empezar">
-    <p class="eyebrow">De cero a un modelo</p>
-    <h2 class="sec">Empezar.</h2>
-    <div class="steps">
-      <div class="step">
-        <div>
-          <h3>Instalá el binario o cloná el repo</h3>
-          <p>En <a href="https://github.com/raalzate/processflow-architect/releases">Releases</a> hay
-          <code>.dmg</code> (Apple Silicon), instalador <code>.exe</code> y <code>.AppImage</code>.
-          Para el modo desarrollo: Node 20+ y una GPU con WebGPU, obligatoria para la IA local.</p>
-          <pre>git clone https://github.com/raalzate/processflow-architect
-cd processflow-architect
-npm install
-npm run electron-dev</pre>
-        </div>
-      </div>
-      <div class="step">
-        <div>
-          <h3>Descargá un modelo, una sola vez</h3>
-          <p>En <strong>Ajustes</strong> elegís el <code>.litertlm</code>. A partir de ahí la IA funciona sin conexión.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div>
-          <h3>Traé el material: sesión, documento o repo</h3>
-          <p>Modelás a mano en el lienzo, o conectás Claude Code por MCP y le pedís que construya el modelo
-          desde tus fuentes y lo exporte al lienzo.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div>
-          <h3>Derivá vistas, preguntá, exportá</h3>
-          <p>Las vistas se abren en pestañas y los artefactos del agente quedan versionados al lado del lienzo.
-          Cuando sirven, salen como Mermaid, Markdown o PDF y se van al repo con el resto de la documentación.</p>
-        </div>
-      </div>
+<section id="descarga" class="papel-hondo">
+  <div class="envoltura descarga">
+    <p class="rotulo" style="text-align:center">Gratis y de código abierto</p>
+    <h2 class="seccion-titulo">Descargá la beta</h2>
+    <p class="seccion-texto">
+      Los instaladores de las tres plataformas viven en la página de releases del proyecto.
+    </p>
+    <div class="plataformas">
+      <article class="plataforma" data-so="mac">
+        <h3>macOS</h3>
+        <p>Imagen .dmg para Apple Silicon.</p>
+        <a class="boton boton-primario" href="https://github.com/raalzate/processflow-architect/releases/latest">Ir a la descarga</a>
+      </article>
+      <article class="plataforma" data-so="win">
+        <h3>Windows</h3>
+        <p>Instalador .exe de 64 bits.</p>
+        <a class="boton boton-primario" href="https://github.com/raalzate/processflow-architect/releases/latest">Ir a la descarga</a>
+      </article>
+      <article class="plataforma" data-so="linux">
+        <h3>Linux</h3>
+        <p>AppImage portable.</p>
+        <a class="boton boton-primario" href="https://github.com/raalzate/processflow-architect/releases/latest">Ir a la descarga</a>
+      </article>
     </div>
-  </section>
+    <p class="version" data-version-linea>
+      Los botones llevan a la última versión publicada.
+    </p>
+    <p class="requisitos">
+      Necesitás una GPU con WebGPU: sin ella la IA local no arranca. El modelo
+      <code>.litertlm</code> se descarga una vez desde Ajustes. Todavía no hay certificado de
+      desarrollador, así que la primera apertura pide un permiso extra: en macOS, clic derecho
+      sobre la app y «Abrir»; en Windows, «Más información» y «Ejecutar de todas formas»; en
+      Linux, <code>chmod +x</code> sobre el AppImage. Es una beta: si algo se rompe, contalo en los
+      <a href="https://github.com/raalzate/processflow-architect/issues">issues del repositorio</a>.
+    </p>
+  </div>
+</section>
+
 </main>
 
 <footer>
-  <div class="wrap foot">
-    <span><strong>ProcessFlow Architect</strong> · beta · Apache 2.0</span>
-    <span>Electron · Next.js · LiteRT-LM sobre WebGPU</span>
-    <span><a href="https://github.com/raalzate/processflow-architect">Código y releases en GitHub</a></span>
-    <span>Raúl Andrés Alzate Gómez</span>
+  <div class="envoltura">
+    <span>ProcessFlow Architect · Electron + Next.js · LiteRT-LM sobre WebGPU · Apache-2.0</span>
+    <nav>
+      <a href="https://github.com/raalzate/processflow-architect">Código</a>
+      <a href="https://github.com/raalzate/processflow-architect/releases">Releases</a>
+      <a href="https://github.com/raalzate/processflow-architect/issues">Reportar un problema</a>
+    </nav>
   </div>
 </footer>
+
+<script src="ultima-version.js"></script>
 
 </body>
 </html>
