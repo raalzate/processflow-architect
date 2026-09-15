@@ -353,7 +353,24 @@ td.nota { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; colo
 .version { margin-top: 1.6rem; font-size: .95rem; color: var(--tinta-suave); }
 .requisitos { margin-top: 1.6rem; font-size: .88rem; color: var(--tinta-suave); max-width: 48rem; margin-inline: auto; text-align: left; }
 
+/* ---------- patrocinio ---------- */
+.patrocinio { background: var(--papel); border-bottom: 1px solid var(--borde-suave); padding-block: clamp(2.5rem, 4vw, 3.5rem); }
+.patrocinio .envoltura { display: grid; gap: 2rem; align-items: center; }
+@media (min-width: 860px) { .patrocinio .envoltura { grid-template-columns: 1.3fr 1fr; gap: 3.5rem; } }
+/* El logo va sobre blanco en los dos temas: es marca ajena y no se retoca ni se
+   invierte para que encaje con el fondo. La chapa blanca es el fondo que pide. */
+.chapa-sponsor {
+  display: grid; place-items: center; justify-self: start;
+  background: #FFFFFF; border: 1px solid var(--borde); border-radius: var(--radio);
+  padding: 1.8rem 2.2rem; box-shadow: var(--sombra-suave);
+  transition: border-color .15s ease, transform .15s ease;
+}
+.chapa-sponsor:hover { border-color: var(--acento); transform: translateY(-2px); }
+.chapa-sponsor img { width: 240px; max-width: 100%; }
+@media (min-width: 860px) { .chapa-sponsor { justify-self: center; } }
+
 /* ---------- pie ---------- */
 footer { border-top: 1px solid var(--borde); padding-block: 2.5rem 3.5rem; font-size: .9rem; color: var(--tinta-suave); }
 footer .envoltura { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: center; }
 footer nav { margin-left: auto; display: flex; gap: 1.2rem; flex-wrap: wrap; }
+.pie-sponsor a { font-weight: 600; }

@@ -3,7 +3,8 @@
   Página pública del proyecto (GitHub Pages).
 
   La publica .github/workflows/pages.yml, que copia este directorio a `_site` y
-  además `docs/screenshots/` a `_site/img/` y `assets/icon.png` a `_site/img/icon.png`.
+  además `docs/screenshots/` a `_site/img/`, `assets/icon.png` a `_site/img/icon.png` y
+  los logos de `assets/sponsors/` al mismo `_site/img/`.
   Las capturas NO se duplican en el repo: son las mismas del README y las regenera
   `npm run screenshots` contra la UI real. Por eso `img/…` no resuelve abriendo este
   archivo con file:// — resuelve publicado, o sirviendo el artefacto del workflow.
@@ -78,6 +79,23 @@
       <div class="cifra"><b>MCP</b><span>Claude Code diseña, la app pinta</span></div>
       <div class="cifra"><b>Mermaid · MD · PDF</b><span>lo que sale, vive en el repo</span></div>
     </div>
+  </div>
+</section>
+
+<section class="patrocinio">
+  <div class="envoltura">
+    <div>
+      <p class="rotulo">Con el apoyo de</p>
+      <h2 class="seccion-titulo" style="font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.1rem)">Sofka Technologies patrocina el proyecto</h2>
+      <p class="seccion-texto">
+        ProcessFlow Architect nace de modelar sistemas reales con equipos reales. Sofka Technologies
+        acompaña el desarrollo y lo pone a prueba en sus propios proyectos — y la app sigue siendo
+        libre, de código abierto y local-first.
+      </p>
+    </div>
+    <a class="chapa-sponsor" href="https://sofka.com.co/" target="_blank" rel="noopener sponsored">
+      <img src="img/sofka.png" width="900" height="257" loading="lazy" alt="Sofka Technologies">
+    </a>
   </div>
 </section>
 
@@ -447,6 +465,7 @@ npm run electron-dev</code></pre>
 <footer>
   <div class="envoltura">
     <span>ProcessFlow Architect · Electron + Next.js · LiteRT-LM sobre WebGPU · Apache-2.0</span>
+    <span class="pie-sponsor">Patrocinado por <a href="https://sofka.com.co/" target="_blank" rel="noopener sponsored">Sofka Technologies</a></span>
     <nav>
       <a href="https://github.com/raalzate/processflow-architect">Código</a>
       <a href="https://github.com/raalzate/processflow-architect/releases">Releases</a>
