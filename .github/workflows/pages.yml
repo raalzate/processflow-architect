@@ -14,6 +14,7 @@ on:
     paths:
       - "site/**"
       - "docs/screenshots/**"
+      - "assets/icon.png"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -46,6 +47,8 @@ jobs:
           mkdir -p _site/img
           cp -R site/. _site/
           cp docs/screenshots/*.png _site/img/
+          # El icono de la app es el favicon y la marca de la barra: una sola copia.
+          cp assets/icon.png _site/img/icon.png
           # .nojekyll: sin él, Pages ignoraría cualquier ruta que empiece por "_".
           touch _site/.nojekyll
 
