@@ -1,0 +1,62 @@
+name: Pages
+
+# Publica la página del proyecto (site/) en GitHub Pages.
+#
+# No corre el gate: el gate es el entregable del CÓDIGO y ya se ejecuta en el PR y
+# en el push a main (ci.yml). Este workflow sólo despliega lo que ya se mergeó.
+#
+# Las capturas NO se duplican en el repo: se copian desde docs/screenshots/, que es
+# lo que regenera `npm run screenshots` contra la UI real. Una sola copia = una sola
+# cosa que puede quedar vieja.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/screenshots/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# Permisos mínimos que exige el despliegue oficial de Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un despliegue a la vez, sin cancelar el que ya está corriendo (deja el sitio a medias).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publicar site/ en Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # Sin build ni dependencias: la página es un HTML con su CSS adentro.
+      - name: Armar el sitio
+        run: |
+          mkdir -p _site/img
+          cp -R site/. _site/
+          cp docs/screenshots/*.png _site/img/
+          # .nojekyll: sin él, Pages ignoraría cualquier ruta que empiece por "_".
+          touch _site/.nojekyll
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
