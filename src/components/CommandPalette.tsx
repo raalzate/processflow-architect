@@ -14,6 +14,7 @@ import {
   HelpCircle, Layers, Plus, GitGraph, Plug, FileDown, ArrowRight, PanelLeft,
   FilePlus2, Copy, Scissors, ClipboardPaste, CopyPlus, BoxSelect,
 } from "lucide-react";
+import { pathToView } from "@/lib/view-embeds";
 import { useViews } from "@/context/ViewsContext";
 import { useGraphContext } from "@/context/GraphContext";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -53,7 +54,7 @@ export function CommandPalette() {
   const listRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  const { views, setActiveView, createView } = useViews();
+  const { views, embedViews, setActiveView, enterViewPath, createView } = useViews();
   const { handleDownloadJson, currentFileId } = useGraphContext();
   const { toggleSidebar, setOpen: setSidebarOpen } = useSidebar();
   const { artifacts } = useAgent();
@@ -83,7 +84,13 @@ export function CommandPalette() {
         group: "Vistas",
         icon: Layers,
         keywords: `vista ${v.name} ${v.kind}`,
-        run: () => setActiveView(v.id),
+        // Una vista embebida no tiene pestaña: se entra por su ruta para que quede
+        // el breadcrumb y la tira resalte la pestaña por la que se llegó.
+        run: () => {
+          const ruta = pathToView(embedViews, v.id);
+          if (ruta.length > 1) enterViewPath(ruta);
+          else setActiveView(v.id);
+        },
       });
     }
 
@@ -208,7 +215,7 @@ export function CommandPalette() {
     }
 
     return cmds;
-  }, [views, setActiveView, createView, router, toggleSidebar, currentFileId, handleDownloadJson, artifacts, setSidebarOpen]);
+  }, [views, embedViews, setActiveView, enterViewPath, createView, router, toggleSidebar, currentFileId, handleDownloadJson, artifacts, setSidebarOpen]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
