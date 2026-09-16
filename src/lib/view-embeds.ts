@@ -218,3 +218,40 @@ export function pathToView(views: EmbedView[], viewId: string): string[] {
   }
   return [viewId];
 }
+
+/**
+ * Pestañas virtuales: subprocesos que el usuario abrió y que se pintan en la tira
+ * junto a las raíces hasta que los cierre. Saneadas contra el estado real, porque
+ * la lista se persiste y el grafo cambia por debajo: se cae la vista que ya no
+ * existe y la que volvió a ser raíz (ya tiene pestaña propia: duplicarla sería
+ * mostrar la misma vista dos veces). Conserva el orden en que se abrieron.
+ */
+export function openTabIds(views: EmbedView[], abiertas: string[]): string[] {
+  const existentes = new Set(views.map((v) => v.id));
+  const raices = new Set(rootViewIds(views));
+  const vistas = new Set<string>();
+  return abiertas.filter((id) => {
+    if (!existentes.has(id) || raices.has(id) || vistas.has(id)) return false;
+    vistas.add(id);
+    return true;
+  });
+}
+
+/**
+ * Qué vista queda activa al cerrar la pestaña `cerrada`. Prefiere su padre —de ahí
+ * se llegó— y si no, la pestaña abierta anterior o la primera raíz. Nunca devuelve
+ * la vista que se cierra ni `null` mientras haya una raíz: la app no puede quedarse
+ * sin vista activa.
+ */
+export function viewAfterClosing(
+  views: EmbedView[],
+  abiertas: string[],
+  cerrada: string
+): string | null {
+  const candidatos = [
+    ...(buildParentMap(views).get(cerrada) ?? []),
+    ...abiertas.filter((id) => id !== cerrada),
+    ...rootViewIds(views),
+  ];
+  return candidatos.find((id) => id !== cerrada) ?? null;
+}

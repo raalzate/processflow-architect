@@ -54,7 +54,7 @@ export function CommandPalette() {
   const listRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  const { views, setActiveView, enterViewPath, createView } = useViews();
+  const { views, embedViews, setActiveView, enterViewPath, createView } = useViews();
   const { handleDownloadJson, currentFileId } = useGraphContext();
   const { toggleSidebar, setOpen: setSidebarOpen } = useSidebar();
   const { artifacts } = useAgent();
@@ -87,7 +87,7 @@ export function CommandPalette() {
         // Una vista embebida no tiene pestaña: se entra por su ruta para que quede
         // el breadcrumb y la tira resalte la pestaña por la que se llegó.
         run: () => {
-          const ruta = pathToView(views, v.id);
+          const ruta = pathToView(embedViews, v.id);
           if (ruta.length > 1) enterViewPath(ruta);
           else setActiveView(v.id);
         },
@@ -215,7 +215,7 @@ export function CommandPalette() {
     }
 
     return cmds;
-  }, [views, setActiveView, enterViewPath, createView, router, toggleSidebar, currentFileId, handleDownloadJson, artifacts, setSidebarOpen]);
+  }, [views, embedViews, setActiveView, enterViewPath, createView, router, toggleSidebar, currentFileId, handleDownloadJson, artifacts, setSidebarOpen]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

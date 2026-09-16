@@ -9,6 +9,8 @@ import {
   rootViewIds,
   rootAncestorOf,
   pathToView,
+  openTabIds,
+  viewAfterClosing,
   type EmbedMap,
 } from "@/lib/view-embeds";
 import type { GraphData } from "@/lib/types";
@@ -261,5 +263,60 @@ describe("originsOf (más orígenes)", () => {
 
   it("returns empty when nothing embeds the view", () => {
     expect(originsOf([view("A"), view("B")], "B")).toEqual([]);
+  });
+});
+
+// --- Pestañas virtuales (issue #351) ----------------------------------------
+
+describe("openTabIds", () => {
+  it("keeps an embedded view that the user opened", () => {
+    expect(openTabIds([view("A", ["B"]), view("B")], ["B"])).toEqual(["B"]);
+  });
+
+  it("drops a view that is a root again (criterio 6)", () => {
+    expect(openTabIds([view("A"), view("B")], ["B"])).toEqual([]);
+  });
+
+  it("drops a view that no longer exists (criterio 6)", () => {
+    expect(openTabIds([view("A", ["B"]), view("B")], ["B", "ghost"])).toEqual(["B"]);
+  });
+
+  it("drops duplicates and keeps the open order", () => {
+    const views = [view("A", ["B", "C"]), view("B"), view("C")];
+    expect(openTabIds(views, ["C", "B", "C"])).toEqual(["C", "B"]);
+  });
+
+  it("returns empty when nothing is open", () => {
+    expect(openTabIds([view("A", ["B"]), view("B")], [])).toEqual([]);
+  });
+});
+
+describe("viewAfterClosing", () => {
+  it("falls back to the parent the subprocess hangs from (criterio 4)", () => {
+    expect(viewAfterClosing([view("A", ["B"]), view("B")], ["B"], "B")).toBe("A");
+  });
+
+  it("falls back to another open tab when there is no parent", () => {
+    const views = [view("A", ["B"]), view("B"), view("C")];
+    expect(viewAfterClosing(views, ["C", "B"], "C")).toBe("B");
+  });
+
+  it("falls back to the first root when the view has no parent", () => {
+    const views = [view("R"), view("S")];
+    expect(viewAfterClosing(views, [], "S")).toBe("R");
+  });
+
+  it("prefers the parent over a root, even inside a cycle", () => {
+    const views = [view("R"), view("A", ["B"]), view("B", ["A"])];
+    expect(viewAfterClosing(views, [], "B")).toBe("A");
+  });
+
+  it("never returns the view being closed", () => {
+    const views = [view("A", ["B"]), view("B")];
+    expect(viewAfterClosing(views, ["B"], "B")).not.toBe("B");
+  });
+
+  it("returns null when there is no view left", () => {
+    expect(viewAfterClosing([], [], "B")).toBeNull();
   });
 });

@@ -7,7 +7,13 @@ import { useViews } from "@/context/ViewsContext";
 import { cn } from "@/lib/utils";
 import { MAX_CUSTOM_VIEWS, type DesignView } from "@/lib/views-types";
 import { NOTATION_LIST, getNotation, notationBadgeClass } from "@/lib/notations";
-import { childrenOf, originsOf, rootAncestorOf, rootViewIds } from "@/lib/view-embeds";
+import {
+  childrenOf,
+  originsOf,
+  rootAncestorOf,
+  rootViewIds,
+  type EmbedView,
+} from "@/lib/view-embeds";
 import { Input } from "@/components/ui/input";
 import {
   Image as ImageIcon,
@@ -21,6 +27,7 @@ import {
   Copy,
   GitGraph,
   Layers,
+  X,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -73,26 +80,28 @@ function NotationBadge({ view }: { view: DesignView }) {
 /**
  * Lista de subprocesos de `parentId`. Un subproceso con subprocesos propios abre
  * un submenú (un nivel por nivel del árbol). `path` es la ruta desde la pestaña
- * raíz: se pasa entera a `enterViewPath` para que el breadcrumb quede completo.
- * `seen` corta los ciclos: sin él, A↔B abriría submenús infinitos.
+ * raíz; sirve para cortar ciclos al bajar de nivel (`seen`): sin eso, A↔B abriría
+ * submenús infinitos. Abrir un subproceso le da su propia pestaña virtual.
  */
 function SubViewItems({
   views,
+  embedViews,
   path,
   seen,
-  onEnter,
+  onOpen,
   onRename,
   onDelete,
 }: {
   views: DesignView[];
+  embedViews: EmbedView[];
   path: string[];
   seen: string[];
-  onEnter: (path: string[]) => void;
+  onOpen: (id: string) => void;
   onRename: (v: DesignView) => void;
   onDelete: (v: DesignView) => void;
 }) {
   const parentId = path[path.length - 1];
-  const hijos = childrenOf(views, parentId).filter((id) => !seen.includes(id));
+  const hijos = childrenOf(embedViews, parentId).filter((id) => !seen.includes(id));
   return (
     <>
       {hijos.map((id) => {
@@ -100,7 +109,7 @@ function SubViewItems({
         if (!v) return null;
         const ruta = [...path, id];
         // De qué nodo del padre cuelga: dice POR DÓNDE se entra al subproceso.
-        const origen = originsOf(views, id).find((o) => o.parentViewId === parentId);
+        const origen = originsOf(embedViews, id).find((o) => o.parentViewId === parentId);
         const etiqueta = (
           <span className="flex min-w-0 items-center gap-1.5">
             <ViewIcon view={v} className="h-3.5 w-3.5 shrink-0" />
@@ -111,7 +120,7 @@ function SubViewItems({
             )}
           </span>
         );
-        const nietos = childrenOf(views, id).filter((x) => !ruta.includes(x));
+        const nietos = childrenOf(embedViews, id).filter((x) => !ruta.includes(x));
         // Submenú SIEMPRE: un subproceso ya no tiene pestaña, así que renombrarlo
         // o borrarlo sólo es posible desde aquí. Sus propios subprocesos cuelgan
         // al final, un nivel por nivel.
@@ -119,7 +128,7 @@ function SubViewItems({
           <DropdownMenuSub key={id}>
             <DropdownMenuSubTrigger>{etiqueta}</DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="w-60">
-              <DropdownMenuItem onClick={() => onEnter(ruta)}>
+              <DropdownMenuItem onClick={() => onOpen(id)}>
                 <Workflow className="mr-2 h-3.5 w-3.5" /> Abrir
               </DropdownMenuItem>
               {!v.builtin && (
@@ -139,9 +148,10 @@ function SubViewItems({
                 <div className="mt-1 border-t pt-1">
                   <SubViewItems
                     views={views}
+                    embedViews={embedViews}
                     path={ruta}
                     seen={[...seen, id]}
-                    onEnter={onEnter}
+                    onOpen={onOpen}
                     onRename={onRename}
                     onDelete={onDelete}
                   />
@@ -167,24 +177,35 @@ export function ViewsTabBar() {
     moveCustomView,
     canCreate,
     drillStack,
-    enterViewPath,
+    embedViews,
+    openViewIds,
+    openViewTab,
+    closeViewTab,
   } = useViews();
 
   // La tira muestra sólo vistas RAÍZ: un subproceso (vista embebida por `viewRef`)
   // no gasta pestaña, se llega a él desde el badge de su padre. Todo se deriva del
   // grafo, sin formato persistido nuevo.
-  const raices = React.useMemo(() => {
-    const ids = new Set(rootViewIds(views));
-    return views.filter((v) => ids.has(v.id));
-  }, [views]);
+  // La tira: primero las raíces, después los subprocesos abiertos como pestaña
+  // virtual (los que el usuario abrió y puede cerrar con la ✕).
+  const pestanas = React.useMemo(() => {
+    const ids = new Set(rootViewIds(embedViews));
+    const raices = views.filter((v) => ids.has(v.id)).map((v) => ({ view: v, virtual: false }));
+    const virtuales = openViewIds
+      .map((id) => views.find((v) => v.id === id))
+      .filter((v): v is DesignView => !!v)
+      .map((v) => ({ view: v, virtual: true }));
+    return [...raices, ...virtuales];
+  }, [views, embedViews, openViewIds]);
 
   // En drill-down la vista activa ya no está en la tira: se resalta la pestaña por
   // la que se entró. `drillStack[0]` es el camino REAL navegado y manda; el ancestro
   // calculado es sólo el respaldo (vista activada sin pasar por la tira).
-  const raizActiva = React.useMemo(
-    () => drillStack[0] ?? rootAncestorOf(views, activeViewId) ?? activeViewId,
-    [drillStack, views, activeViewId]
-  );
+  const raizActiva = React.useMemo(() => {
+    if (drillStack.length) return drillStack[0];
+    if (pestanas.some((p) => p.view.id === activeViewId)) return activeViewId;
+    return rootAncestorOf(embedViews, activeViewId) ?? activeViewId;
+  }, [drillStack, pestanas, embedViews, activeViewId]);
 
   // La pestaña activa siempre visible: al cambiar de vista (o al abrir el
   // proyecto) la tira se desplaza sola en vez de dejarla fuera de cuadro.
@@ -230,29 +251,29 @@ export function ViewsTabBar() {
         ref={tiraRef}
         className="flex min-w-0 flex-1 snap-x snap-mandatory items-center gap-1 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {raices.map((v) => {
+        {pestanas.map(({ view: v, virtual }) => {
           const active = v.id === raizActiva;
-          const hijos = childrenOf(views, v.id);
+          const hijos = childrenOf(embedViews, v.id);
           const editing = editingId === v.id;
           return (
             <div
               key={v.id}
               data-activa={active ? "true" : undefined}
-              draggable={!v.builtin && !editing}
-              onDragStart={() => !v.builtin && setDragId(v.id)}
+              draggable={!v.builtin && !virtual && !editing}
+              onDragStart={() => !v.builtin && !virtual && setDragId(v.id)}
               onDragEnd={() => {
                 setDragId(null);
                 setDropTargetId(null);
               }}
               onDragOver={(e) => {
-                if (dragId && !v.builtin && dragId !== v.id) {
+                if (dragId && !v.builtin && !virtual && dragId !== v.id) {
                   e.preventDefault();
                   setDropTargetId(v.id);
                 }
               }}
               onDrop={(e) => {
                 e.preventDefault();
-                if (dragId && !v.builtin && dragId !== v.id) moveCustomView(dragId, v.id);
+                if (dragId && !v.builtin && !virtual && dragId !== v.id) moveCustomView(dragId, v.id);
                 setDragId(null);
                 setDropTargetId(null);
               }}
@@ -260,9 +281,12 @@ export function ViewsTabBar() {
               className={cn(
                 "snap-start",
                 "group flex shrink-0 items-center gap-1 rounded-lg border py-1 pl-2.5 pr-1 text-xs transition-colors",
-                !v.builtin && "cursor-grab active:cursor-grabbing",
+                !v.builtin && !virtual && "cursor-grab active:cursor-grabbing",
                 dropTargetId === v.id && "ring-2 ring-primary/50",
                 dragId === v.id && "opacity-50",
+                // La virtual se lee como abierta-temporal: borde punteado, no es raíz.
+                virtual && !active && "border-dashed border-border/60",
+                virtual && active && "border-dashed",
                 active
                   ? "border-primary/40 bg-primary/10 text-foreground"
                   : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -300,6 +324,22 @@ export function ViewsTabBar() {
                 )}
               </button>
 
+              {/* Cerrar la pestaña virtual: la vista NO se borra, sigue embebida en su
+                  padre y se vuelve a abrir desde el badge de subprocesos. */}
+              {virtual && !editing && (
+                <button
+                  title={`Cerrar la pestaña de ${v.name}`}
+                  aria-label={`Cerrar ${v.name}`}
+                  className="rounded-md p-0.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeViewTab(v.id);
+                  }}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+
               {/* Subprocesos: cuántas vistas embebe esta, y a cuál entrar. */}
               {!editing && hijos.length > 0 && (
                 <DropdownMenu>
@@ -317,9 +357,10 @@ export function ViewsTabBar() {
                   <DropdownMenuContent align="start" className="w-60">
                     <SubViewItems
                       views={views}
+                      embedViews={embedViews}
                       path={[v.id]}
                       seen={[v.id]}
-                      onEnter={enterViewPath}
+                      onOpen={openViewTab}
                       onRename={(hijo) => {
                         setRenameDraft(hijo.name);
                         setPendingRename(hijo);

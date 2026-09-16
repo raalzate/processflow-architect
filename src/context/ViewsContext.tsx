@@ -37,6 +37,7 @@ import {
 import { DEFAULT_NOTATION_ID, INITIAL_NOTATION_ID, type NotationId } from "@/lib/notations";
 import { emptyGraphData } from "@/components/graph/designer/serialize";
 import type { GraphData } from "@/lib/types";
+import { openTabIds, viewAfterClosing, type EmbedView } from "@/lib/view-embeds";
 import { DEFAULT_MERMAID_CODE } from "@/lib/mermaid/templates";
 import type { ViewKind } from "@/lib/views-types";
 
@@ -51,6 +52,8 @@ interface PersistedViews {
   customViews: DesignView[];
   activeViewId: string;
   injectedViewIds: string[];
+  /** Subprocesos abiertos como pestaña virtual. Opcional: proyectos viejos no lo tienen. */
+  openViewIds?: string[];
 }
 
 function storageKey(fileId: string) {
@@ -64,7 +67,7 @@ function loadViews(fileId: string): PersistedViews {
   } catch {
     /* ignore */
   }
-  return { customViews: [], activeViewId: "design", injectedViewIds: [] };
+  return { customViews: [], activeViewId: "design", injectedViewIds: [], openViewIds: [] };
 }
 
 /**
@@ -88,6 +91,22 @@ export interface ViewsContextType {
   canInjectMore: boolean;
   /** Pila de vistas ancestro al entrar a subprocesos (para el breadcrumb). */
   drillStack: string[];
+  /**
+   * Las vistas con su grafo REAL, para razonar sobre subprocesos (`viewRef`).
+   * La built-in «Modelo» no guarda grafo propio —vive en el documento activo—, así
+   * que sin esto sus subprocesos serían invisibles para la jerarquía de la tira.
+   */
+  embedViews: EmbedView[];
+  /**
+   * Subprocesos abiertos como pestaña virtual: se pintan en la tira junto a las
+   * raíces hasta que el usuario las cierre. Ya saneadas (sin vistas borradas ni
+   * las que volvieron a ser raíz).
+   */
+  openViewIds: string[];
+  /** Abre el subproceso como pestaña virtual y lo activa. */
+  openViewTab: (id: string) => void;
+  /** Cierra la pestaña virtual; si era la activa, deja activa otra vista. */
+  closeViewTab: (id: string) => void;
 
   setActiveView: (id: string) => void;
   /** Entra a una vista embebida apilando la actual (drill-down). */
@@ -148,6 +167,7 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
   // Navegación en profundidad (subprocesos): ids de las vistas ancestro. No se
   // persiste: es estado de navegación efímero, no del documento.
   const [drillStack, setDrillStack] = useState<string[]>([]);
+  const [rawOpenViewIds, setRawOpenViewIds] = useState<string[]>([]);
 
   // Carga al cambiar de proyecto.
   useEffect(() => {
@@ -162,6 +182,7 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     setCustomViews(s.customViews ?? []);
     setActiveViewId(s.activeViewId ?? "design");
     setInjectedViewIds(s.injectedViewIds ?? []);
+    setRawOpenViewIds(s.openViewIds ?? []);
   }, [currentFileId]);
 
   // Persiste.
@@ -170,12 +191,17 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.setItem(
         storageKey(currentFileId),
-        JSON.stringify({ customViews, activeViewId, injectedViewIds } as PersistedViews)
+        JSON.stringify({
+          customViews,
+          activeViewId,
+          injectedViewIds,
+          openViewIds: rawOpenViewIds,
+        } as PersistedViews)
       );
     } catch {
       /* ignore quota */
     }
-  }, [currentFileId, customViews, activeViewId, injectedViewIds]);
+  }, [currentFileId, customViews, activeViewId, injectedViewIds, rawOpenViewIds]);
 
   // La notación de la vista built-in "Modelo" se deriva del documento activo
   // (graphData.notation), no del "ddd" cableado: así un proyecto BPMN se ve como
@@ -187,6 +213,41 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     );
     return [...builtins, ...customViews];
   }, [customViews, graphData?.notation]);
+  const embedViews = useMemo<EmbedView[]>(
+    () =>
+      views.map((v) => ({
+        id: v.id,
+        graph: v.id === "design" ? graphData ?? null : v.graph ?? null,
+        builtin: v.builtin,
+      })),
+    [views, graphData]
+  );
+  // Saneo contra el estado real: la lista se persiste y el grafo cambia por debajo.
+  const openViewIds = useMemo(
+    () => openTabIds(embedViews, rawOpenViewIds),
+    [embedViews, rawOpenViewIds]
+  );
+
+  const openViewTab = useCallback((id: string) => {
+    setRawOpenViewIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setDrillStack([]);
+    setActiveViewId(id);
+  }, []);
+
+  const closeViewTab = useCallback(
+    (id: string) => {
+      setRawOpenViewIds((prev) => prev.filter((x) => x !== id));
+      // Sólo si se cierra la vista que se está mirando: cerrar otra pestaña no
+      // debe sacar al usuario de donde está.
+      setActiveViewId((actual) => {
+        if (actual !== id) return actual;
+        setDrillStack([]);
+        return viewAfterClosing(embedViews, openViewIds, id) ?? "design";
+      });
+    },
+    [embedViews, openViewIds]
+  );
+
   const activeView = useMemo(
     () => views.find((v) => v.id === activeViewId),
     [views, activeViewId]
@@ -489,6 +550,10 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     canCreate,
     canInjectMore,
     drillStack,
+    embedViews,
+    openViewIds,
+    openViewTab,
+    closeViewTab,
     setActiveView,
     enterView,
     enterViewPath,
