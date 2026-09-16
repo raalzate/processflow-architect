@@ -7,6 +7,8 @@ import { useViews } from "@/context/ViewsContext";
 import { cn } from "@/lib/utils";
 import { MAX_CUSTOM_VIEWS, type DesignView } from "@/lib/views-types";
 import { NOTATION_LIST, getNotation, notationBadgeClass } from "@/lib/notations";
+import { childrenOf, originsOf, rootAncestorOf, rootViewIds } from "@/lib/view-embeds";
+import { Input } from "@/components/ui/input";
 import {
   Image as ImageIcon,
   Projector,
@@ -18,11 +20,15 @@ import {
   Trash2,
   Copy,
   GitGraph,
+  Layers,
 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -48,6 +54,107 @@ function ViewIcon({ view, className }: { view: DesignView; className?: string })
   return <Icon className={className} />;
 }
 
+/** Badge de notación: misma señal en la pestaña y en la lista de subprocesos. */
+function NotationBadge({ view }: { view: DesignView }) {
+  if (view.kind === "mermaid") return null;
+  return (
+    <span
+      className={cn(
+        "rounded-md px-1 text-2xs font-bold uppercase tracking-wide",
+        notationBadgeClass(view.notation)
+      )}
+      title={`Grupo: ${getNotation(view.notation).label}`}
+    >
+      {getNotation(view.notation).id.toUpperCase()}
+    </span>
+  );
+}
+
+/**
+ * Lista de subprocesos de `parentId`. Un subproceso con subprocesos propios abre
+ * un submenú (un nivel por nivel del árbol). `path` es la ruta desde la pestaña
+ * raíz: se pasa entera a `enterViewPath` para que el breadcrumb quede completo.
+ * `seen` corta los ciclos: sin él, A↔B abriría submenús infinitos.
+ */
+function SubViewItems({
+  views,
+  path,
+  seen,
+  onEnter,
+  onRename,
+  onDelete,
+}: {
+  views: DesignView[];
+  path: string[];
+  seen: string[];
+  onEnter: (path: string[]) => void;
+  onRename: (v: DesignView) => void;
+  onDelete: (v: DesignView) => void;
+}) {
+  const parentId = path[path.length - 1];
+  const hijos = childrenOf(views, parentId).filter((id) => !seen.includes(id));
+  return (
+    <>
+      {hijos.map((id) => {
+        const v = views.find((x) => x.id === id);
+        if (!v) return null;
+        const ruta = [...path, id];
+        // De qué nodo del padre cuelga: dice POR DÓNDE se entra al subproceso.
+        const origen = originsOf(views, id).find((o) => o.parentViewId === parentId);
+        const etiqueta = (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <ViewIcon view={v} className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{v.name}</span>
+            <NotationBadge view={v} />
+            {origen?.nodeName && (
+              <span className="truncate text-2xs text-muted-foreground">· {origen.nodeName}</span>
+            )}
+          </span>
+        );
+        const nietos = childrenOf(views, id).filter((x) => !ruta.includes(x));
+        // Submenú SIEMPRE: un subproceso ya no tiene pestaña, así que renombrarlo
+        // o borrarlo sólo es posible desde aquí. Sus propios subprocesos cuelgan
+        // al final, un nivel por nivel.
+        return (
+          <DropdownMenuSub key={id}>
+            <DropdownMenuSubTrigger>{etiqueta}</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-60">
+              <DropdownMenuItem onClick={() => onEnter(ruta)}>
+                <Workflow className="mr-2 h-3.5 w-3.5" /> Abrir
+              </DropdownMenuItem>
+              {!v.builtin && (
+                <>
+                  <DropdownMenuItem onClick={() => onRename(v)}>
+                    <Pencil className="mr-2 h-3.5 w-3.5" /> Renombrar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => onDelete(v)}
+                  >
+                    <Trash2 className="mr-2 h-3.5 w-3.5" /> Eliminar
+                  </DropdownMenuItem>
+                </>
+              )}
+              {nietos.length > 0 && (
+                <div className="mt-1 border-t pt-1">
+                  <SubViewItems
+                    views={views}
+                    path={ruta}
+                    seen={[...seen, id]}
+                    onEnter={onEnter}
+                    onRename={onRename}
+                    onDelete={onDelete}
+                  />
+                </div>
+              )}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        );
+      })}
+    </>
+  );
+}
+
 export function ViewsTabBar() {
   const {
     views,
@@ -59,7 +166,25 @@ export function ViewsTabBar() {
     deleteView,
     moveCustomView,
     canCreate,
+    drillStack,
+    enterViewPath,
   } = useViews();
+
+  // La tira muestra sólo vistas RAÍZ: un subproceso (vista embebida por `viewRef`)
+  // no gasta pestaña, se llega a él desde el badge de su padre. Todo se deriva del
+  // grafo, sin formato persistido nuevo.
+  const raices = React.useMemo(() => {
+    const ids = new Set(rootViewIds(views));
+    return views.filter((v) => ids.has(v.id));
+  }, [views]);
+
+  // En drill-down la vista activa ya no está en la tira: se resalta la pestaña por
+  // la que se entró. `drillStack[0]` es el camino REAL navegado y manda; el ancestro
+  // calculado es sólo el respaldo (vista activada sin pasar por la tira).
+  const raizActiva = React.useMemo(
+    () => drillStack[0] ?? rootAncestorOf(views, activeViewId) ?? activeViewId,
+    [drillStack, views, activeViewId]
+  );
 
   // La pestaña activa siempre visible: al cambiar de vista (o al abrir el
   // proyecto) la tira se desplaza sola en vez de dejarla fuera de cuadro.
@@ -67,11 +192,14 @@ export function ViewsTabBar() {
   React.useEffect(() => {
     const activa = tiraRef.current?.querySelector<HTMLElement>('[data-activa="true"]');
     activa?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [activeViewId, views.length]);
+  }, [activeViewId, raizActiva, views.length]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [pendingDelete, setPendingDelete] = useState<DesignView | null>(null);
+  // Renombrar un subproceso no puede usar el input inline: no tiene pestaña donde vivir.
+  const [pendingRename, setPendingRename] = useState<DesignView | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const editRef = useRef<HTMLInputElement>(null);
@@ -102,8 +230,9 @@ export function ViewsTabBar() {
         ref={tiraRef}
         className="flex min-w-0 flex-1 snap-x snap-mandatory items-center gap-1 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {views.map((v) => {
-          const active = v.id === activeViewId;
+        {raices.map((v) => {
+          const active = v.id === raizActiva;
+          const hijos = childrenOf(views, v.id);
           const editing = editingId === v.id;
           return (
             <div
@@ -166,20 +295,40 @@ export function ViewsTabBar() {
                         incluida la del MODELO del proyecto: es la que fija la paleta de todo
                         y, sin badge, un proyecto C4 parecía no tener su diagrama. Una vista
                         Mermaid es código libre y no tiene notación. */}
-                    {v.kind !== "mermaid" && (
-                      <span
-                        className={cn(
-                          "rounded-md px-1 text-2xs font-bold uppercase tracking-wide",
-                          notationBadgeClass(v.notation)
-                        )}
-                        title={`Grupo: ${getNotation(v.notation).label}`}
-                      >
-                        {(v.notation ?? "ddd").toUpperCase()}
-                      </span>
-                    )}
+                    <NotationBadge view={v} />
                   </span>
                 )}
               </button>
+
+              {/* Subprocesos: cuántas vistas embebe esta, y a cuál entrar. */}
+              {!editing && hijos.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      title={`${hijos.length} subproceso${hijos.length === 1 ? "" : "s"}`}
+                      aria-label={`Subprocesos de ${v.name}`}
+                      className="flex items-center gap-0.5 rounded-md px-1 py-0.5 text-2xs font-bold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Layers className="h-3 w-3" />
+                      {hijos.length}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-60">
+                    <SubViewItems
+                      views={views}
+                      path={[v.id]}
+                      seen={[v.id]}
+                      onEnter={enterViewPath}
+                      onRename={(hijo) => {
+                        setRenameDraft(hijo.name);
+                        setPendingRename(hijo);
+                      }}
+                      onDelete={(hijo) => setPendingDelete(hijo)}
+                    />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
 
               {/* Menú de la vista: duplicar (custom + "Modelo"), renombrar/eliminar (sólo custom) */}
               {!editing && (!v.builtin || v.id === "design") && (
@@ -258,6 +407,40 @@ export function ViewsTabBar() {
       <span className="shrink-0 border-l pl-2 text-2xs text-muted-foreground">
         Incluye vistas en el chat con <kbd className="rounded-md border bg-muted px-1">@</kbd>
       </span>
+
+      {/* Renombrar un subproceso (sin pestaña, sin input inline) */}
+      <AlertDialog
+        open={!!pendingRename}
+        onOpenChange={(o) => {
+          if (!o) setPendingRename(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Renombrar “{pendingRename?.name}”</AlertDialogTitle>
+            <AlertDialogDescription>
+              Es un subproceso: se llega a él desde la pestaña que lo embebe.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            autoFocus
+            value={renameDraft}
+            onChange={(e) => setRenameDraft(e.target.value)}
+            placeholder={pendingRename?.name}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingRename && renameDraft.trim()) renameView(pendingRename.id, renameDraft);
+                setPendingRename(null);
+              }}
+            >
+              Renombrar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Confirmación de borrado */}
       <AlertDialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>

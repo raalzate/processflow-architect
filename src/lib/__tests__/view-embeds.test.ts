@@ -3,6 +3,12 @@ import {
   collectViewRefs,
   buildEmbedMap,
   wouldCreateCycle,
+  buildParentMap,
+  childrenOf,
+  originsOf,
+  rootViewIds,
+  rootAncestorOf,
+  pathToView,
   type EmbedMap,
 } from "@/lib/view-embeds";
 import type { GraphData } from "@/lib/types";
@@ -108,5 +114,152 @@ describe("wouldCreateCycle", () => {
       ["X", new Set<string>()],
     ]);
     expect(wouldCreateCycle(m, "A", "X")).toBe(false);
+  });
+});
+
+// --- Jerarquía de la tira de pestañas (issue #349) ---------------------------
+
+/** Vista mínima con un grafo cuyos nodos embeben `refs`. */
+function view(id: string, refs: string[] = [], builtin = false) {
+  return { id, graph: refs.length ? graph({ big: refs }) : null, builtin };
+}
+
+describe("buildParentMap", () => {
+  it("maps each child to the views that embed it", () => {
+    const p = buildParentMap([view("A", ["B"]), view("B"), view("C", ["B"])]);
+    expect(p.get("B")).toEqual(new Set(["A", "C"]));
+    expect(p.get("A")).toBeUndefined();
+  });
+
+  it("ignores dangling viewRefs (target view no longer exists)", () => {
+    const p = buildParentMap([view("A", ["ghost"])]);
+    expect(p.size).toBe(0);
+  });
+
+  it("ignores a self reference", () => {
+    const p = buildParentMap([view("A", ["A"])]);
+    expect(p.size).toBe(0);
+  });
+});
+
+describe("childrenOf", () => {
+  it("returns direct children in views order", () => {
+    const views = [view("A", ["C", "B"]), view("B"), view("C")];
+    expect(childrenOf(views, "A")).toEqual(["B", "C"]);
+  });
+
+  it("returns empty for a leaf or unknown view", () => {
+    expect(childrenOf([view("A")], "A")).toEqual([]);
+    expect(childrenOf([view("A")], "zz")).toEqual([]);
+  });
+});
+
+describe("originsOf", () => {
+  it("reports the parent view and the node that embeds it", () => {
+    const views = [view("A", ["B"]), view("B")];
+    expect(originsOf(views, "B")).toEqual([
+      { parentViewId: "A", nodeId: "b0", nodeName: "b0", viewRef: "B" },
+    ]);
+  });
+});
+
+describe("rootViewIds", () => {
+  it("hides an embedded view from the strip (criterio 1)", () => {
+    expect(rootViewIds([view("A", ["B"]), view("B")])).toEqual(["A"]);
+  });
+
+  it("hides a view embedded from two parents, both keep it as child (criterio 4)", () => {
+    const views = [view("A", ["C"]), view("B", ["C"]), view("C")];
+    expect(rootViewIds(views)).toEqual(["A", "B"]);
+    expect(childrenOf(views, "A")).toEqual(["C"]);
+    expect(childrenOf(views, "B")).toEqual(["C"]);
+  });
+
+  it("brings the view back as root when the viewRef disappears (criterio 5)", () => {
+    expect(rootViewIds([view("A"), view("B")])).toEqual(["A", "B"]);
+  });
+
+  it("never leaves the strip empty on a cycle A↔B (criterio 6)", () => {
+    const roots = rootViewIds([view("A", ["B"]), view("B", ["A"])]);
+    expect(roots.length).toBeGreaterThan(0);
+    expect(roots).toEqual(["A"]);
+  });
+
+  it("keeps every view reachable: a cycle next to a root is promoted", () => {
+    const views = [view("R"), view("A", ["B"]), view("B", ["A"])];
+    expect(rootViewIds(views)).toEqual(["R", "A"]);
+  });
+
+  it("never hides a builtin view (criterio 7)", () => {
+    const views = [view("A", ["design"]), { ...view("design"), builtin: true }];
+    expect(rootViewIds(views)).toEqual(["A", "design"]);
+  });
+
+  it("keeps the views order", () => {
+    const views = [view("A"), view("B"), view("C")];
+    expect(rootViewIds(views)).toEqual(["A", "B", "C"]);
+  });
+});
+
+describe("rootAncestorOf", () => {
+  it("returns the view itself when it is a root", () => {
+    expect(rootAncestorOf([view("A", ["B"]), view("B")], "A")).toBe("A");
+  });
+
+  it("returns the root ancestor of a nested view (criterio 2 y 3)", () => {
+    const views = [view("A", ["B"]), view("B", ["C"]), view("C")];
+    expect(rootAncestorOf(views, "C")).toBe("A");
+  });
+
+  it("returns null for an unknown view", () => {
+    expect(rootAncestorOf([view("A")], "zz")).toBeNull();
+  });
+
+  it("does not hang on a cycle", () => {
+    const views = [view("R"), view("A", ["B"]), view("B", ["A"])];
+    expect(rootAncestorOf(views, "B")).toBe("A");
+  });
+});
+
+describe("pathToView", () => {
+  it("returns just the view when it is a root", () => {
+    expect(pathToView([view("A", ["B"]), view("B")], "A")).toEqual(["A"]);
+  });
+
+  it("returns the full drill path of a nested view (breadcrumb A › B › C)", () => {
+    const views = [view("A", ["B"]), view("B", ["C"]), view("C")];
+    expect(pathToView(views, "C")).toEqual(["A", "B", "C"]);
+  });
+
+  it("prefers the first root in views order when two parents embed it", () => {
+    const views = [view("A", ["C"]), view("B", ["C"]), view("C")];
+    expect(pathToView(views, "C")).toEqual(["A", "C"]);
+  });
+
+  it("returns empty for an unknown view", () => {
+    expect(pathToView([view("A")], "zz")).toEqual([]);
+  });
+
+  it("does not hang on a cycle", () => {
+    const views = [view("R"), view("A", ["B"]), view("B", ["A"])];
+    expect(pathToView(views, "B")).toEqual(["A", "B"]);
+  });
+});
+
+describe("originsOf (más orígenes)", () => {
+  it("reports one origin per parent view", () => {
+    const views = [view("A", ["C"]), view("B", ["C"]), view("C")];
+    expect(originsOf(views, "C").map((o) => o.parentViewId)).toEqual(["A", "B"]);
+  });
+
+  it("finds the embedding node inside an aggregate", () => {
+    const views = [{ id: "A", graph: graph({ agg: ["B"] }) }, view("B")];
+    expect(originsOf(views, "B")).toEqual([
+      { parentViewId: "A", nodeId: "a0", nodeName: "a0", viewRef: "B" },
+    ]);
+  });
+
+  it("returns empty when nothing embeds the view", () => {
+    expect(originsOf([view("A"), view("B")], "B")).toEqual([]);
   });
 });

@@ -92,6 +92,12 @@ export interface ViewsContextType {
   setActiveView: (id: string) => void;
   /** Entra a una vista embebida apilando la actual (drill-down). */
   enterView: (childId: string) => void;
+  /**
+   * Entra directo a una ruta de vistas `[raíz, …, destino]`: la tira de pestañas
+   * lista los subprocesos desde la pestaña raíz, así que se salta a un nivel
+   * profundo sin pasar por cada vista intermedia, pero con el breadcrumb completo.
+   */
+  enterViewPath: (path: string[]) => void;
   /** Salta a la posición `index` del breadcrumb [...drillStack, activa]. */
   goToDrill: (index: number) => void;
   createView: (opts?: { name?: string; description?: string; graph?: GraphData; notation?: NotationId; kind?: ViewKind; mermaidCode?: string; activate?: boolean }) => string | null;
@@ -206,6 +212,12 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     },
     [activeViewId]
   );
+
+  const enterViewPath = useCallback((path: string[]) => {
+    if (!path.length) return;
+    setDrillStack(path.slice(0, -1));
+    setActiveViewId(path[path.length - 1]);
+  }, []);
 
   const goToDrill = useCallback(
     (index: number) => {
@@ -479,6 +491,7 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     drillStack,
     setActiveView,
     enterView,
+    enterViewPath,
     goToDrill,
     createView,
     cloneView,
