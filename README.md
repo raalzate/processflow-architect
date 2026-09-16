@@ -18,6 +18,8 @@ Event Storming · DDD · BPMN · C4 · UML · agente ReAct local · exporta a Me
 ![Local first](https://img.shields.io/badge/offline-first-2ea44f)
 ![License](https://img.shields.io/badge/licencia-Apache%202.0-blue)
 
+**[Página del proyecto](https://raalzate.github.io/processflow-architect/)** — qué es, capturas y casos de uso · fuente en [`site/index.html`](site/index.html)
+
 </div>
 
 <div align="center">

@@ -37,3 +37,4 @@ ningún otro `.md`— apunte a la nada.
 | Archivo | Qué es |
 |---|---|
 | `docs/RELEASE.md` | empaquetado, firma y publicación |
+| `site/index.html` | la página pública del proyecto (GitHub Pages); la despliega `.github/workflows/pages.yml` |
