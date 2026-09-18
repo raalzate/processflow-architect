@@ -342,6 +342,98 @@ for (const [hook, name, payload, expected] of blocks) {
 }
 
 /**
+ * `.githooks/post-merge` en un repo git DE VERDAD: git NO dispara `post-commit`
+ * en el commit de merge, así que traer `main` a una rama dejaba el sello del
+ * índice apuntando al commit anterior y el gate entero se ponía rojo sin que
+ * nadie hubiera tocado código. Se prueba lo único que importa: después de un
+ * merge, el sello responde por HEAD.
+ */
+{
+  const hook = abs(".githooks/post-merge");
+  if (!fs.existsSync(hook)) bad("post-merge: el hook existe", "sin él, traer main pone el gate en rojo solo");
+
+  const merge = (archivoDeLaRama) => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-postmerge-"));
+    try {
+      const git = (...args) => spawnSync("git", args, { cwd: tmp, encoding: "utf8" });
+      git("init", "-q", "-b", "main");
+      git("config", "user.email", "selftest@example.com");
+      git("config", "user.name", "selftest");
+      // Sólo ESTE hook: apuntar a `.githooks/` entero traería el pre-commit del
+      // repo, que en un repo ajeno falla y aborta el merge — el caso quedaría
+      // verde sin probar nada (HEAD sin moverse coincide con el sello viejo).
+      const hooksDir = path.join(tmp, "hooks");
+      fs.mkdirSync(hooksDir);
+      fs.copyFileSync(hook, path.join(hooksDir, "post-merge"));
+      fs.chmodSync(path.join(hooksDir, "post-merge"), 0o755);
+      git("config", "core.hooksPath", hooksDir);
+      // `graphify` de mentira en el PATH: el hook sale temprano si no lo
+      // encuentra, y entonces el caso no probaría nada.
+      const bin = path.join(tmp, "bin");
+      fs.mkdirSync(bin);
+      fs.writeFileSync(path.join(bin, "graphify"), "#!/usr/bin/env bash\nexit 0\n");
+      fs.chmodSync(path.join(bin, "graphify"), 0o755);
+      fs.mkdirSync(path.join(tmp, "graphify-out"));
+      fs.writeFileSync(path.join(tmp, "graphify-out/graph.json"), "{}");
+
+      fs.writeFileSync(path.join(tmp, "base.md"), "# base\n");
+      git("add", "-A");
+      git("commit", "-q", "-m", "base");
+      git("checkout", "-q", "-b", "rama");
+      const dest = path.join(tmp, archivoDeLaRama);
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, "export const x = 1;\n");
+      git("add", "-A");
+      git("commit", "-q", "-m", "trabajo\n\nsin-issue: selftest");
+      git("checkout", "-q", "main");
+      // El sello queda apuntando a `main` ANTES del merge: es el estado que
+      // ponía el gate en rojo.
+      const antes = spawnSync("git", ["rev-parse", "HEAD"], { cwd: tmp, encoding: "utf8" }).stdout.trim();
+      fs.writeFileSync(path.join(tmp, "graphify-out/.indexed-head"), antes + "\n");
+      const res = spawnSync("git", ["merge", "--no-ff", "-m", "Merge branch 'rama'", "rama"], {
+        cwd: tmp,
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      });
+      const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: tmp, encoding: "utf8" }).stdout.trim();
+      const sello = fs.existsSync(path.join(tmp, "graphify-out/.indexed-head"))
+        ? fs.readFileSync(path.join(tmp, "graphify-out/.indexed-head"), "utf8").trim()
+        : "";
+      return { head, sello, antes, status: res.status };
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  };
+
+  const conCodigo = fs.existsSync(hook) ? merge("src/lib/nuevo.ts") : null;
+  if (!conCodigo) {
+    // Sin hook no hay nada más que medir; el fallo ya quedó reportado arriba.
+  } else
+  // Que el merge HAYA ocurrido es parte de la prueba: si falla, HEAD no se mueve
+  // y el sello viejo coincide por accidente — verde sin hook, que es lo peor.
+  if (conCodigo.status !== 0 || conCodigo.head === conCodigo.antes)
+    bad("post-merge: el caso hace un merge de verdad", `exit ${conCodigo.status}, HEAD no se movió`);
+  else if (conCodigo.sello === conCodigo.head) ok("post-merge: el merge deja el índice sellado para HEAD");
+  else
+    bad(
+      "post-merge: el merge deja el índice sellado para HEAD",
+      `sello=${conCodigo.sello.slice(0, 7) || "(vacío)"} HEAD=${conCodigo.head.slice(0, 7)}: el gate se pondría rojo tras traer main`
+    );
+
+  const sinCodigo = fs.existsSync(hook) ? merge("notas.txt") : null;
+  if (!sinCodigo) {
+    // idem
+  } else if (sinCodigo.status !== 0 || sinCodigo.head === sinCodigo.antes)
+    bad("post-merge: el caso sin código hace un merge de verdad", `exit ${sinCodigo.status}, HEAD no se movió`);
+  else if (sinCodigo.sello === sinCodigo.head) ok("post-merge: sin archivos indexables también sella");
+  else
+    bad(
+      "post-merge: sin archivos indexables también sella",
+      `sello=${sinCodigo.sello.slice(0, 7) || "(vacío)"} HEAD=${sinCodigo.head.slice(0, 7)}`
+    );
+}
+
+/**
  * Corre el lint sobre un archivo QUE NO EXISTE: la ruta elige las reglas y el
  * contenido viaja por stdin. Antes esto se probaba escribiendo temporales dentro
  * de `src/`; con `next dev` vivo, el watcher los veía aparecer y desaparecer y
