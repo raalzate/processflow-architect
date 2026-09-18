@@ -113,6 +113,9 @@ const TOOLS: { name: string; desc: string }[] = [
   { name: "export_to_app", desc: "Cargar el diagrama directo al lienzo (servidor de la app activo) o escribir un .json importable (modo stdio)." },
   { name: "export_as_view / export_mermaid_view", desc: "Sumar el diagrama (o código Mermaid) como pestaña del proyecto activo, con su propia notación. Sólo con la app conectada." },
   { name: "import_diagram", desc: "Cargar un .json exportado como diagrama editable (retomar un diseño previo)." },
+  { name: "add_view_element / update_view_element / remove_view_element", desc: "Editar el grafo de la vista ABIERTA sin reemplazar la pestaña: agregar, corregir o quitar UN elemento, nombrándolo como se llama en el lienzo. Sin «view», cae en la vista que estás mirando." },
+  { name: "add_view_edge / update_view_edge / remove_view_edge", desc: "Lo mismo con las relaciones: conectar, reetiquetar, invertir («invert») o borrar. Encuentra la relación aunque la nombres al revés de como está dibujada." },
+  { name: "set_view_graph", desc: "Reemplazar el contenido de una vista con un GraphData completo, conservando la posición que le diste a lo que ya estaba (se reconcilia por nombre). Es la puerta del modo creativo del constructor; un grafo sin elementos se rechaza." },
 ];
 
 const STEPS: { icon: React.ElementType; title: string; body: string }[] = [

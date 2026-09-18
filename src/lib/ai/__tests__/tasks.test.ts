@@ -8,6 +8,7 @@ import {
   linkLabelTask,
   bigPictureDescTask,
   orderLanesTask,
+  creativeDiagramTask,
 } from "@/lib/ai/tasks";
 import { DEFAULT_NOTATION_ID, notationTypes } from "@/lib/notations";
 
@@ -341,5 +342,45 @@ describe("orderLanesTask", () => {
   it("una respuesta basura deja el orden original", () => {
     expect(orderLanesTask.parse!("no sé", { bandas, resumen: "" })).toEqual(bandas);
     expect(orderLanesTask.parse!("", { bandas, resumen: "" })).toEqual(bandas);
+  });
+});
+
+describe("creativeDiagramTask · el diagrama entero en una inferencia (015, #337)", () => {
+  it("el prompt lleva el pedido, lo existente, los tipos de la notación y la convención", () => {
+    const { prompt, system } = creativeDiagramTask.buildPrompt!({
+      pedido: "un MVC de Spring Boot",
+      existente: 'flowchart LR\n  a["Web<br><i>Contenedor</i>"]',
+      notation: "c4",
+    });
+    expect(prompt).toContain("un MVC de Spring Boot");
+    expect(prompt).toContain('a["Web<br><i>Contenedor</i>"]');
+    expect(prompt).toContain("Persona");
+    expect(prompt).toContain("Límite de Sistema"); // los contenedores se nombran aparte
+    expect(prompt).toContain("<i>Tipo</i>");
+    expect(system).toContain("Mermaid");
+  });
+
+  it("dice que la vista está vacía cuando no hay nada, y suma los hallazgos del reintento", () => {
+    const vacio = creativeDiagramTask.buildPrompt!({ pedido: "x", notation: "c4" }).prompt;
+    expect(vacio).toContain("vacía");
+    const conHallazgos = creativeDiagramTask.buildPrompt!({
+      pedido: "x",
+      notation: "c4",
+      hallazgos: ['"Mongo": el tipo "Colección" no existe'],
+    }).prompt;
+    expect(conHallazgos).toContain("Colección");
+  });
+
+  it("extrae el flowchart del bloque, con o sin prosa alrededor", () => {
+    const conBloque = "Acá va:\n```mermaid\nflowchart LR\n  a-->b\n```\n¿Te sirve?";
+    expect(creativeDiagramTask.parse!(conBloque)).toBe("flowchart LR\n  a-->b");
+    expect(creativeDiagramTask.parse!("flowchart TD\n  a-->b")).toBe("flowchart TD\n  a-->b");
+    // Una respuesta sin diagrama no se convierte en un diagrama inventado.
+    expect(creativeDiagramTask.parse!("no sé hacer eso")).toBe("");
+  });
+
+  it("es estructurada: en híbrido va a la nube, en local sigue siendo local (§P4)", () => {
+    expect(creativeDiagramTask.structured).toBe(true);
+    expect(creativeDiagramTask.buildPrompt).toBeTypeOf("function");
   });
 });

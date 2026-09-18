@@ -17,10 +17,25 @@
  */
 
 import { resolveViewRef, vistaInexistente } from "./project-update";
+import type { ViewEdit } from "./view-edit";
+import { plano } from "./tipo-notacion";
+
+/**
+ * Una edición del grafo de una vista (feature 015, T3 #341). `view` es opcional
+ * a propósito: sin él la acción cae en la vista ABIERTA, que es lo que quiere
+ * decir el humano cuando pide «agregá un elemento acá». Antes esto no existía y
+ * todo lo que escribía el agente iba al workspace del MCP, no al lienzo (#332).
+ */
+export type ViewEditRequest = ViewEdit & { view?: string };
 
 export type AppActionRequest =
   | { kind: "delete-view"; name: string }
-  | { kind: "rename-view"; name: string; newName: string };
+  | { kind: "rename-view"; name: string; newName: string }
+  | ViewEditRequest;
+
+/** true → la petición edita el grafo de una vista (y no la vista como pestaña). */
+export const esEdicionDeVista = (r: AppActionRequest): r is ViewEditRequest =>
+  r.kind !== "delete-view" && r.kind !== "rename-view";
 
 export type AppActionResult = { ok: true; message: string } | { ok: false; error: string };
 
@@ -36,7 +51,7 @@ export interface VistaConocida {
  * motivo por el que no se hace nada. El renderer aplica; acá está la regla.
  */
 export function planAppAction(
-  request: AppActionRequest,
+  request: Extract<AppActionRequest, { kind: "delete-view" | "rename-view" }>,
   vistas: VistaConocida[]
 ): { ok: true; id: string; name: string } | { ok: false; error: string } {
   const ref = resolveViewRef(request.name, vistas);
@@ -73,4 +88,37 @@ export function describeAccion(
   return request.kind === "delete-view"
     ? `Vista "${nombre}" eliminada del proyecto activo. ${cola}`
     : `Vista "${nombre}" renombrada a "${(request as { newName: string }).newName.trim()}". ${cola}`;
+}
+
+/**
+ * A qué vista va una EDICIÓN del grafo. Sin `view` es la activa —el «acá» del
+ * humano— y con `view` es esa, resuelta por nombre. A diferencia de borrar o
+ * renombrar, acá la vista del sistema SÍ es un destino válido: el modelo del
+ * proyecto es una vista más para quien pide «agregá una caja».
+ */
+export function planViewEdit(
+  request: ViewEditRequest,
+  vistas: VistaConocida[],
+  activa?: { id: string; name: string; builtin?: boolean }
+): { ok: true; id: string; name: string; builtin: boolean } | { ok: false; error: string } {
+  const pedido = request.view?.trim();
+  if (!pedido) {
+    if (!activa) {
+      return {
+        ok: false,
+        error: "No hay una vista abierta en la app. Abrí una o pasá `view` con su nombre.",
+      };
+    }
+    return { ok: true, id: activa.id, name: activa.name, builtin: Boolean(activa.builtin) };
+  }
+  const candidatas = vistas.filter((v) => plano(v.name) === plano(pedido));
+  if (candidatas.length === 1) {
+    const v = candidatas[0];
+    return { ok: true, id: v.id, name: v.name, builtin: Boolean(v.builtin) };
+  }
+  if (candidatas.length > 1) {
+    return { ok: false, error: `Hay más de una vista llamada "${pedido}". Renombrá una antes de editarla.` };
+  }
+  const lista = vistas.map((v) => `"${v.name}"`).join(", ") || "(ninguna)";
+  return { ok: false, error: `No hay una vista llamada "${pedido}". Las que hay: ${lista}.` };
 }

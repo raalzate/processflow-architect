@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planAppAction, describeAccion } from "../app-actions";
+import { planViewEdit, planAppAction, describeAccion } from "../app-actions";
 
 const vistas = [
   { id: "design", name: "Modelo", builtin: true },
@@ -68,5 +68,41 @@ describe("describeAccion", () => {
     expect(describeAccion({ kind: "rename-view", name: "X", newName: " Y " }, "X", 3, 50)).toContain(
       'renombrada a "Y"'
     );
+  });
+});
+
+describe("planViewEdit · la edición cae en la vista correcta (015, #341)", () => {
+  const vistas = [
+    { id: "design", name: "Modelo", builtin: true },
+    { id: "v1", name: "Pagos", builtin: false },
+    { id: "v2", name: "Envíos", builtin: false },
+  ];
+
+  it("sin `view`, la acción cae en la vista ABIERTA", () => {
+    const r = planViewEdit({ kind: "add-element", name: "Ana", type: "Persona" }, vistas, vistas[1]);
+    expect(r).toMatchObject({ ok: true, id: "v1", name: "Pagos", builtin: false });
+  });
+
+  it("la vista del sistema es un destino válido para editar el grafo", () => {
+    const r = planViewEdit({ kind: "add-element", name: "Ana", type: "Persona" }, vistas, vistas[0]);
+    expect(r).toMatchObject({ ok: true, id: "design", builtin: true });
+  });
+
+  it("con `view`, resuelve por nombre sin distinguir mayúsculas ni acentos", () => {
+    expect(planViewEdit({ kind: "remove-element", name: "X", view: "envios" }, vistas, vistas[1])).toMatchObject({
+      ok: true,
+      id: "v2",
+    });
+  });
+
+  it("una vista que no existe se dice con las que hay", () => {
+    const r = planViewEdit({ kind: "remove-element", name: "X", view: "Compras" }, vistas, vistas[1]);
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toContain('"Pagos"');
+  });
+
+  it("sin vista abierta y sin `view`, no se adivina un destino", () => {
+    const r = planViewEdit({ kind: "add-element", name: "Ana", type: "Persona" }, vistas);
+    expect(r.ok).toBe(false);
   });
 });

@@ -101,9 +101,12 @@ export function toMermaid(model: DiagramModel): string {
 
   const lines: string[] = ["flowchart LR"];
 
-  // Un subgraph por contenedor, con sus hijos dentro.
+  // Un subgraph por contenedor, con sus hijos dentro. La etiqueta lleva el TIPO
+  // igual que la de un nodo: sin él, la vuelta (`fromMermaid`) tendría que
+  // deducirlo del dibujo, y el dibujo de un contenedor es el mismo para un
+  // Agregado, un Pool y un Límite de Sistema (§P6, #334).
   for (const c of containers) {
-    lines.push(`  subgraph ${safeId(c.id)}["${label(c.nombre)}"]`);
+    lines.push(`  subgraph ${safeId(c.id)}["${label(c.nombre)}<br><i>${label(c.tipo_elemento)}</i>"]`);
     for (const n of domain) {
       if (n.container === c.nombre) lines.push(`  ${declare(n)}`);
     }

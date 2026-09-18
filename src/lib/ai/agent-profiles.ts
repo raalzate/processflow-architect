@@ -55,9 +55,23 @@ export const BUILDER_TOOLS = {
     "update_element",
     "update_edge",
     "relayout_diagram",
+    // Sobre la VISTA del humano, no sobre el workspace del MCP (015, #336): es
+    // lo que hace que un cambio chico se vea en el lienzo al aplicarse.
+    "add_view_element",
+    "update_view_element",
+    "add_view_edge",
+    "update_view_edge",
+    "set_view_graph",
   ],
   /** Limpiar: lo que quita trabajo hecho. Todo esto pasa por confirmación humana. */
-  limpiar: ["remove_element", "remove_edge", "delete_view", "rename_view"],
+  limpiar: [
+    "remove_element",
+    "remove_edge",
+    "remove_view_element",
+    "remove_view_edge",
+    "delete_view",
+    "rename_view",
+  ],
   /** Cerrar: validar y dejarlo en el lienzo. */
   cerrar: ["validate_diagram", "export_as_view"],
 } as const;

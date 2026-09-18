@@ -16,7 +16,8 @@ import { describeAppState } from "@/lib/mcp/app-state";
 import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
 import { mergeProjectMeta, describeMetaAgregada } from "@/lib/mcp/project-meta";
 import { mergeProjectGraph, resolveViewRef } from "@/lib/mcp/project-update";
-import { planAppAction, describeAccion } from "@/lib/mcp/app-actions";
+import { planAppAction, planViewEdit, describeAccion, esEdicionDeVista } from "@/lib/mcp/app-actions";
+import { applyViewEdit } from "@/lib/mcp/view-edit";
 import { artifactBodyMarkdown } from "@/lib/artifacts/to-markdown";
 import { readStoredArtifacts } from "@/context/AgentContext";
 import { readStoredCustomViews } from "@/context/ViewsContext";
@@ -25,7 +26,7 @@ import { MAX_CUSTOM_VIEWS } from "@/lib/views-types";
 import { cn } from "@/lib/utils";
 import { useGraphContext } from "@/context/GraphContext";
 import type { GraphData } from "@/lib/types";
-import type { NotationId } from "@/lib/notations";
+import { DEFAULT_NOTATION_ID, type NotationId } from "@/lib/notations";
 import { useViews } from "@/context/ViewsContext";
 import { ComponentDesigner } from "@/components/graph/designer/ComponentDesigner";
 import { ViewsTabBar } from "@/components/views/ViewsTabBar";
@@ -99,7 +100,7 @@ const McpImportBridge = () => {
     allNodes,
     orgFilter,
   } = useGraphContext();
-  const { createView, views, updateViewGraph, setViewNotation, setActiveView, deleteView, renameView } =
+  const { createView, views, activeView, updateViewGraph, setViewNotation, setActiveView, deleteView, renameView } =
     useViews();
   const { toast } = useToast();
 
@@ -211,6 +212,42 @@ const McpImportBridge = () => {
           });
           return;
         }
+        // Editar el GRAFO de una vista (feature 015): el destino por defecto es
+        // la vista abierta, que es el «acá» del humano. El resultado se aplica
+        // en el momento, así que el lienzo lo muestra al aplicarse y no al
+        // final de la corrida (FR-009).
+        if (esEdicionDeVista(request)) {
+          const destino = planViewEdit(request, views, activeView ?? undefined);
+          if (!destino.ok) {
+            electron.mcpAppActionReply?.(id, { ok: false, error: destino.error });
+            return;
+          }
+          const vista = views.find((v) => v.id === destino.id);
+          const base = destino.id === "design" ? graphData : vista?.graph;
+          if (!base) {
+            electron.mcpAppActionReply?.(id, {
+              ok: false,
+              error: `La vista "${destino.name}" no tiene un grafo que editar.`,
+            });
+            return;
+          }
+          const notacion = (vista?.notation ?? base.notation ?? DEFAULT_NOTATION_ID) as NotationId;
+          const r = applyViewEdit(base, request, notacion);
+          if (!r.ok) {
+            electron.mcpAppActionReply?.(id, { ok: false, error: r.error });
+            return;
+          }
+          // La vista del sistema ES el documento del proyecto; una vista propia
+          // guarda su grafo aparte.
+          if (destino.id === "design") handleDesignUpdate(currentFileId, r.graph);
+          else updateViewGraph(destino.id, r.graph);
+          electron.mcpAppActionReply?.(id, {
+            ok: true,
+            message: `${r.message} (vista "${destino.name}")`,
+          });
+          return;
+        }
+
         const plan = planAppAction(request, views);
         if (!plan.ok) {
           electron.mcpAppActionReply?.(id, { ok: false, error: plan.error });
@@ -233,7 +270,7 @@ const McpImportBridge = () => {
       }
     });
     return off;
-  }, [currentFileId, views, deleteView, renameView]);
+  }, [currentFileId, views, activeView, graphData, handleDesignUpdate, updateViewGraph, deleteView, renameView]);
 
   useEffect(() => {
     const electron = typeof window !== "undefined" ? window.electronAPI : undefined;

@@ -10,8 +10,11 @@
  * No sustituye probar en la app —el modelo de verdad es impredecible— pero fija
  * que los frenos COOPERAN: cada uno se probó solo y, juntos, se mataban entre sí.
  */
-import { describe, it, expect } from "vitest";
-import { runBuilderAgent, answerBuilderAgent } from "@/lib/ai/builder-agent";
+import { describe, it, expect, vi } from "vitest";
+import { runBuilderAgent, answerBuilderAgent, resumeBuilderAgent } from "@/lib/ai/builder-agent";
+import { applyViewEdit } from "@/lib/mcp/view-edit";
+import { cuantosElementos } from "@/lib/ai/builder-creative";
+import type { GraphData } from "@/lib/types";
 import type { ToolSpec } from "@/lib/ai/builder-tools";
 import { MAX_BUILDER_STEPS } from "@/lib/ai/builder-run";
 import { NOTATION_IDS } from "@/lib/notations";
@@ -566,5 +569,267 @@ describe("humo: el tipo en otro idioma no mata la corrida (#331)", () => {
     expect(contexto).toMatch(/DEBE ser una escritura/);
     expect(mcp.estado.vistas).toEqual(["MVC C4"]);
     expect(r.reply).not.toMatch(/Me trabé/);
+  });
+});
+
+/**
+ * HUMO del constructor en DOS MODOS (015, #339).
+ *
+ * El MCP simulado de arriba separa workspace y lienzo, que es el mundo del modo
+ * ReAct. Acá el mundo es otro: las herramientas `*_view_*` escriben DIRECTO en
+ * el grafo de la vista abierta, así que el simulador aplica `applyViewEdit` de
+ * verdad. Lo que se fija es lo que la spec pide medir: una inferencia para un
+ * diagrama entero (SC-001), un turno para agregar un elemento a la vista abierta
+ * (SC-003) y una sola escritura, sin lecturas exploratorias, para invertir una
+ * flecha (SC-004).
+ */
+describe("humo: constructor en dos modos (015)", () => {
+  const TOOLS_VISTA: ToolSpec[] = [
+    { name: "get_app_state", description: "Estado de la app.", inputSchema: { type: "object", properties: {} } },
+    {
+      name: "add_view_element",
+      description: "Agrega un elemento a la vista abierta.",
+      inputSchema: {
+        type: "object",
+        properties: { name: { type: "string" }, type: { type: "string" }, view: { type: "string" } },
+        required: ["name", "type"],
+      },
+    },
+    {
+      name: "update_view_edge",
+      description: "Corrige una relación de la vista.",
+      inputSchema: {
+        type: "object",
+        properties: { from: { type: "string" }, to: { type: "string" }, invert: { type: "boolean" }, view: { type: "string" } },
+        required: ["from", "to"],
+      },
+    },
+    {
+      name: "set_view_graph",
+      description: "Reemplaza el grafo de la vista.",
+      inputSchema: {
+        type: "object",
+        properties: { graph: { type: "string" }, view: { type: "string" } },
+        required: ["graph"],
+      },
+    },
+  ];
+
+  const MERMAID_MVC = [
+    "```mermaid",
+    "flowchart LR",
+    '  subgraph app["Aplicación Spring Boot<br><i>Límite de Sistema</i>"]',
+    '    ctrl["Controlador<br><i>Componente</i>"]',
+    '    svc["Servicio<br><i>Componente</i>"]',
+    '    repo["Repositorio<br><i>Componente</i>"]',
+    "  end",
+    '  web["Navegador<br><i>Contenedor</i>"]',
+    '  db[("Base de Datos<br><i>Base de Datos</i>")]',
+    '  web -->|"usa"| ctrl',
+    '  ctrl -->|"llama"| svc',
+    '  svc -->|"consulta"| repo',
+    '  repo -->|"lee"| db',
+    "```",
+  ].join("\n");
+
+  const nodo = (id: string, nombre: string, tipo: string) =>
+    ({ id, nombre, tipo_elemento: tipo, estado_comparativo: "nuevo", x: 1, y: 2 }) as any;
+
+  const vistaConMvc = (): GraphData =>
+    ({
+      nombre_proyecto: "Modelo",
+      version: "1.0.0",
+      notation: "c4",
+      fecha_analisis: "2026-09-18",
+      big_picture: {
+        descripcion: "",
+        hotspots: [],
+        nodos: [nodo("ctrl", "Controlador", "Componente"), nodo("svc", "Servicio", "Componente")],
+        aristas: [{ fuente: "ctrl", destino: "svc", descripcion: "llama" }],
+      },
+      agregados: [],
+      read_models: [],
+      politicas_inter_agregados: [],
+      responsables: [],
+      notas: "",
+      transcript: "",
+    }) as any;
+
+  /** MCP simulado que escribe en el grafo de la vista, como la app de verdad. */
+  function mcpDeVista(inicial: GraphData | null) {
+    const estado = { graph: inicial };
+    const llamadas: string[] = [];
+    const callTool = async (name: string, args: Record<string, unknown>) => {
+      llamadas.push(name);
+      if (name === "get_app_state") {
+        const n = cuantosElementos(estado.graph);
+        return { ok: true, texto: `Proyecto activo: "Demo" (notación c4). Contenido: ${n} elemento(s). Sin vistas custom (cupo 50).` };
+      }
+      const base = estado.graph ?? ({
+        nombre_proyecto: "Modelo",
+        version: "1.0.0",
+        notation: "c4",
+        fecha_analisis: "2026-09-18",
+        big_picture: { descripcion: "", hotspots: [], nodos: [], aristas: [] },
+        agregados: [],
+        read_models: [],
+        politicas_inter_agregados: [],
+        responsables: [],
+        notas: "",
+        transcript: "",
+      } as any);
+      const edit =
+        name === "set_view_graph"
+          ? ({ kind: "set-graph", graph: JSON.parse(String(args.graph)) } as const)
+          : name === "add_view_element"
+            ? ({ kind: "add-element", name: String(args.name), type: String(args.type) } as const)
+            : name === "update_view_edge"
+              ? ({ kind: "update-edge", from: String(args.from), to: String(args.to), invert: Boolean(args.invert) } as const)
+              : null;
+      if (!edit) return { ok: false, texto: `Herramienta desconocida: ${name}` };
+      const r = applyViewEdit(base, edit, "c4");
+      if (!r.ok) return { ok: false, texto: r.error };
+      estado.graph = r.graph;
+      return { ok: true, texto: `✅ ${r.message}` };
+    };
+    return { estado, llamadas, callTool };
+  }
+
+  const baseVista = {
+    vistas: [{ id: "design", name: "Modelo", builtin: true }],
+    allow: TOOLS_VISTA.map((t) => t.name),
+    mode: "local" as const,
+    maxTokens: 4096,
+  };
+
+  it("SC-001 · «crear un MVC de Spring Boot en C4» termina en el lienzo con UNA inferencia", async () => {
+    const mcp = mcpDeVista(null);
+    const generarDiagrama = vi.fn().mockResolvedValue(MERMAID_MVC);
+    const generate = vi.fn().mockResolvedValue('{"final":"no debería hacer falta"}');
+
+    const r = await runBuilderAgent({
+      ...baseVista,
+      message: "crear un ejemplo MVC de un producto en Spring Boot",
+      vista: { nombre: "Modelo", notation: "c4", graph: null },
+      deps: { listTools: async () => TOOLS_VISTA, callTool: mcp.callTool, generate, generarDiagrama },
+    });
+
+    expect(generarDiagrama).toHaveBeenCalledTimes(1);
+    expect(generate).not.toHaveBeenCalled(); // ni un turno del bucle ReAct
+    // SC-002: un contenedor, cuatro elementos o más, tres relaciones o más, sin duplicados.
+    const g = mcp.estado.graph!;
+    expect(g.agregados?.length).toBe(1);
+    const nombres = [
+      ...(g.big_picture?.nodos ?? []),
+      ...(g.agregados ?? []).flatMap((a) => a.nodos ?? []),
+    ].map((n) => n.nombre);
+    expect(nombres.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(nombres).size).toBe(nombres.length);
+    expect(r.reply).toContain("relación(es)");
+    // El modo elegido queda en la traza (FR-001).
+    expect(r.steps.some((s) => s.type === "decision" && s.content.includes("creativo"))).toBe(true);
+  });
+
+  it("SC-003 · «agregá un elemento Persona llamado Cliente» cambia la vista abierta en un turno", async () => {
+    const mcp = mcpDeVista(vistaConMvc());
+    const generate = vi.fn();
+    const generarDiagrama = vi.fn();
+
+    const r = await runBuilderAgent({
+      ...baseVista,
+      message: "agregá un elemento Persona llamado Cliente",
+      vista: { nombre: "Modelo", notation: "c4", graph: mcp.estado.graph },
+      deps: { listTools: async () => TOOLS_VISTA, callTool: mcp.callTool, generate, generarDiagrama },
+    });
+
+    // Ni una inferencia: la llamada la resolvieron las consultas (FR-008).
+    expect(generate).not.toHaveBeenCalled();
+    expect(generarDiagrama).not.toHaveBeenCalled();
+    expect(mcp.llamadas.filter((l) => l === "add_view_element")).toHaveLength(1);
+    const nombres = (mcp.estado.graph?.big_picture?.nodos ?? []).map((n) => n.nombre);
+    expect(nombres).toContain("Cliente");
+    expect(r.state.cambios.some((c) => c.lienzo)).toBe(true);
+  });
+
+  it("SC-004 · «invertí la flecha entre Controlador y Servicio»: una escritura, ninguna lectura exploratoria", async () => {
+    const mcp = mcpDeVista(vistaConMvc());
+    const r = await runBuilderAgent({
+      ...baseVista,
+      message: "invertí la flecha entre Controlador y Servicio",
+      vista: { nombre: "Modelo", notation: "c4", graph: mcp.estado.graph },
+      deps: {
+        listTools: async () => TOOLS_VISTA,
+        callTool: mcp.callTool,
+        generate: vi.fn(),
+        generarDiagrama: vi.fn(),
+      },
+    });
+
+    expect(mcp.llamadas.filter((l) => l === "update_view_edge")).toHaveLength(1);
+    // La única otra llamada admisible es la verificación del cierre, que hace el arnés.
+    expect(mcp.llamadas.filter((l) => l !== "update_view_edge" && l !== "get_app_state")).toEqual([]);
+    expect(mcp.estado.graph?.big_picture?.aristas?.[0]).toMatchObject({ fuente: "svc", destino: "ctrl" });
+    expect(r.reply).toContain("invertida");
+  });
+
+  it("la misma caja no se agrega dos veces, aunque el pedido cambie un detalle", async () => {
+    const mcp = mcpDeVista(vistaConMvc());
+    const primera = await runBuilderAgent({
+      ...baseVista,
+      message: "agregá un elemento Persona llamado Cliente",
+      vista: { nombre: "Modelo", notation: "c4", graph: mcp.estado.graph },
+      deps: { listTools: async () => TOOLS_VISTA, callTool: mcp.callTool, generate: vi.fn(), generarDiagrama: vi.fn() },
+    });
+    expect(primera.state.cambios).toHaveLength(1);
+
+    // El mismo pedido con la vista YA actualizada: no se vuelve a agregar.
+    const generate = vi.fn().mockResolvedValue('{"final":"ya estaba"}');
+    await runBuilderAgent({
+      ...baseVista,
+      message: "agregá un elemento Persona llamado Cliente",
+      vista: { nombre: "Modelo", notation: "c4", graph: mcp.estado.graph },
+      deps: { listTools: async () => TOOLS_VISTA, callTool: mcp.callTool, generate, generarDiagrama: vi.fn() },
+    });
+    expect(mcp.llamadas.filter((l) => l === "add_view_element")).toHaveLength(1);
+    const clientes = (mcp.estado.graph?.big_picture?.nodos ?? []).filter((n) => n.nombre === "Cliente");
+    expect(clientes).toHaveLength(1);
+  });
+
+  it("un pedido ambiguo pregunta con opciones en vez de suponer (FR-010)", async () => {
+    const mcp = mcpDeVista(vistaConMvc());
+    const r = await runBuilderAgent({
+      ...baseVista,
+      message: "el checkout",
+      vista: { nombre: "Modelo", notation: "c4", graph: mcp.estado.graph },
+      deps: { listTools: async () => TOOLS_VISTA, callTool: mcp.callTool, generate: vi.fn(), generarDiagrama: vi.fn() },
+    });
+    expect(r.state.pregunta?.opciones.map((o) => o.id)).toEqual(["creativo", "editor"]);
+    expect(mcp.llamadas).toEqual([]);
+  });
+
+  it("publicar sobre una vista con contenido pide confirmación y, con el sí, publica (FR-012)", async () => {
+    const mcp = mcpDeVista(vistaConMvc());
+    const deps = {
+      listTools: async () => TOOLS_VISTA,
+      callTool: mcp.callTool,
+      generate: vi.fn(),
+      generarDiagrama: vi.fn().mockResolvedValue(MERMAID_MVC),
+    };
+    const input = {
+      ...baseVista,
+      message: "hacéme un diagrama C4 completo del MVC",
+      vista: { nombre: "Modelo", notation: "c4" as const, graph: mcp.estado.graph },
+      deps,
+    };
+
+    const pausa = await runBuilderAgent(input);
+    expect(pausa.pendiente?.call.tool).toBe("set_view_graph");
+    expect(mcp.llamadas.filter((l) => l === "set_view_graph")).toEqual([]);
+
+    const seguido = await resumeBuilderAgent(input, pausa.state, true);
+    expect(mcp.llamadas.filter((l) => l === "set_view_graph")).toHaveLength(1);
+    // Publicó sin volver a pedirle el diagrama al modelo.
+    expect(deps.generarDiagrama).toHaveBeenCalledTimes(1);
+    expect(seguido.state.cambios.some((c) => c.lienzo)).toBe(true);
   });
 });

@@ -45,7 +45,7 @@ import { safeGraphToToon } from "@/lib/ai/graph-toon";
 import { extractDocumentText } from "@/lib/ai/document-extract";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
 import { getGenerationConfig } from "@/lib/ai-config";
-import { DEFAULT_NOTATION_ID } from "@/lib/notations";
+import { DEFAULT_NOTATION_ID, type NotationId } from "@/lib/notations";
 import {
   archiveLineage,
   attachToLineage,
@@ -481,6 +481,16 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         message: mensaje,
         vistas: vistasConocidas,
         notation: (activeView?.notation ?? graphData?.notation) as string | undefined,
+        // La vista ABIERTA con su contenido: es lo que decide el modo de la
+        // corrida y el «acá» de los pedidos del humano (015). Sin esto el
+        // constructor vuelve al bucle ReAct de siempre.
+        vista: activeView
+          ? {
+              nombre: activeView.name,
+              notation: (activeView.notation ?? graphData?.notation ?? DEFAULT_NOTATION_ID) as NotationId,
+              graph: activeView.kind === "design" ? graphData : activeView.graph,
+            }
+          : undefined,
         allow: getAgentProfile("constructor").tools,
         mode: ajustes.mode,
         provider: ajustes.provider,
@@ -522,7 +532,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       // El lienzo pudo cambiar (export_as_view, delete_view): las vistas las
       // refresca el puente MCP del renderer, igual que con un cliente externo.
     },
-    [vistasConocidas, activeView?.notation, graphData?.notation]
+    [vistasConocidas, activeView, graphData]
   );
 
   /** La elección del humano: retoma la corrida guardada en el mensaje. */

@@ -51,11 +51,30 @@ import {
   type BuilderRunState,
 } from "./builder-run";
 import type { VistaConocida } from "../mcp/app-actions";
+import type { GraphData } from "../types";
+import type { NotationId } from "../notations";
+import { notationTypes } from "../notations";
+import { classifyIntent, opcionesDeModo, type Intencion } from "./builder-intent";
+import { planEditorCall } from "./builder-editor";
+import { runCreative, cuantosElementos, type CreativeResult } from "./builder-creative";
+import { creativeDiagramTask } from "./tasks";
+
+/** La vista que el humano está mirando: el «acá» de sus pedidos (015). */
+export interface VistaActiva {
+  nombre: string;
+  notation: NotationId;
+  graph?: GraphData | null;
+}
 
 export interface BuilderDeps {
   listTools: () => Promise<ToolSpec[]>;
   callTool: (name: string, args: Record<string, unknown>) => Promise<{ ok: boolean; texto: string }>;
   generate: (prompt: string, system: string, mode: AiMode, provider?: RemoteProvider, model?: string) => Promise<string>;
+  /** Pide el diagrama completo en Mermaid (modo creativo, 015). */
+  generarDiagrama: (
+    input: { pedido: string; existente?: string; notation?: string; hallazgos?: string[] },
+    ctx: { mode: AiMode; provider?: RemoteProvider; model?: string }
+  ) => Promise<string>;
 }
 
 export interface BuilderAgentInput {
@@ -67,6 +86,8 @@ export interface BuilderAgentInput {
   mode: AiMode;
   provider?: RemoteProvider;
   model?: string;
+  /** La vista abierta y su contenido (015): sin esto no hay modo creativo ni editor. */
+  vista?: VistaActiva;
   maxTokens?: number;
   history?: { role: string; content: string }[];
   onStep?: (step: AgentStep) => void;
@@ -98,6 +119,10 @@ export const defaultBuilderDeps: BuilderDeps = {
   },
   generate: async (prompt, system, mode, provider, model) => {
     const r = await route(builderTurnTask, { prompt, system }, { mode, provider, model });
+    return r.output;
+  },
+  generarDiagrama: async (input, ctx) => {
+    const r = await route(creativeDiagramTask, input, ctx);
     return r.output;
   },
 };
@@ -491,6 +516,134 @@ async function ejecutar(
   return applyObservation(state, call, obs);
 }
 
+/** Lo que el arnés sabe de la vista abierta cuando clasifica el pedido. */
+export function resumenDeVista(input: BuilderAgentInput) {
+  const notation = (input.vista?.notation ?? input.notation) as NotationId | undefined;
+  return {
+    elementos: cuantosElementos(input.vista?.graph),
+    tipos: notationTypes(notation, { includeContainers: true }),
+    nombre: input.vista?.nombre,
+  };
+}
+
+/**
+ * DESPACHO POR MODO (015, #339). Antes de gastar una sola inferencia en el bucle
+ * ReAct, se mira qué pide el humano:
+ *
+ *  - `creativo` → una inferencia devuelve el diagrama entero (`runCreative`).
+ *  - `editor`   → las consultas resuelven la llamada y se ejecuta UNA.
+ *  - `ambiguo`  → se pregunta con opciones; suponer es cómo el agente terminaba
+ *                 creando un diagrama nuevo cuando le pedían tocar el que había.
+ *
+ * Devuelve `null` cuando el atajo no aplica: ahí sigue el bucle de siempre. El
+ * modo elegido y por qué quedan en la traza (FR-001).
+ */
+export async function despachar(
+  input: BuilderAgentInput,
+  deps: BuilderDeps,
+  tools: ToolSpec[],
+  steps: AgentStep[],
+  paso: (s: AgentStep) => void,
+  forzado?: Intencion["modo"]
+): Promise<BuilderAgentResult | null> {
+  if (!input.vista) return null;
+  const intencion = classifyIntent(input.message, resumenDeVista(input));
+  const modo = forzado ?? intencion.modo;
+  paso({ type: "decision", content: `Modo ${modo}: ${intencion.motivo}` });
+
+  if (modo === "ambiguo") {
+    const texto = "¿Querés que proponga el diagrama completo o que cambie algo puntual de lo que ya está?";
+    return {
+      reply: texto,
+      steps,
+      state: askUser(startRun(), { texto, opciones: opcionesDeModo() }),
+    };
+  }
+
+  if (modo === "creativo") {
+    return creativo(input, deps, steps, paso);
+  }
+
+  const plan = planEditorCall(intencion, input.vista.graph, input.message, input.vista.nombre);
+  if (plan.kind === "sin-plan") {
+    // El atajo cubre lo frecuente; lo demás lo atiende el agente de siempre.
+    paso({ type: "observation", content: `Sin atajo determinista: ${plan.motivo}` });
+    return null;
+  }
+  if (plan.kind === "pregunta") {
+    paso({ type: "question", content: plan.texto });
+    return {
+      reply: plan.texto,
+      steps,
+      state: askUser(startRun(), { texto: plan.texto, opciones: plan.opciones }),
+    };
+  }
+
+  const veredicto = judgeCall(plan.call, { tools, vistas: input.vistas, notation: input.vista.notation });
+  if (veredicto.kind === "rechazar") {
+    paso({ type: "observation", content: veredicto.motivo });
+    return null;
+  }
+  if (veredicto.kind === "confirmar") {
+    const state = pendingConfirmation(startRun(), veredicto.call, veredicto.alcance);
+    paso({ type: "question", content: veredicto.alcance });
+    return {
+      reply: state.pregunta?.texto ?? veredicto.alcance,
+      steps,
+      state,
+      pendiente: { call: veredicto.call, alcance: veredicto.alcance },
+    };
+  }
+
+  const state = await ejecutar(veredicto.call, deps, startRun(), paso);
+  return { reply: await cierre(state, deps, input.allow), steps, state };
+}
+
+/** El modo creativo, con el MCP y el modelo puestos por `deps`. */
+async function creativo(
+  input: BuilderAgentInput,
+  deps: BuilderDeps,
+  steps: AgentStep[],
+  paso: (s: AgentStep) => void
+): Promise<BuilderAgentResult> {
+  const vista = input.vista!;
+  const r: CreativeResult = await runCreative(
+    { pedido: input.message, vista },
+    {
+      generar: (i) =>
+        deps.generarDiagrama(i, { mode: input.mode, provider: input.provider, model: input.model }),
+      aplicar: async (graph) =>
+        deps.callTool("set_view_graph", { graph: JSON.stringify(graph), view: vista.nombre }),
+      verificar: () => verificarLienzo(deps, input.allow),
+    }
+  );
+
+  if (r.kind === "confirmar") {
+    // Pisar una vista con contenido lo decide el humano (§P10, FR-012). La
+    // propuesta viaja en la llamada pendiente: si dice que sí, se publica sin
+    // volver a pedírsela al modelo.
+    const call: BuilderCall = {
+      tool: "set_view_graph",
+      args: { graph: JSON.stringify(r.graph), view: vista.nombre },
+    };
+    const state = pendingConfirmation(startRun(), call, r.texto);
+    paso({ type: "question", content: r.texto });
+    return { reply: state.pregunta?.texto ?? r.texto, steps, state, pendiente: { call, alcance: r.texto } };
+  }
+
+  if (r.kind === "error") {
+    paso({ type: "observation", content: r.reply });
+    return { reply: r.reply, steps, state: startRun() };
+  }
+
+  paso({ type: "action", tool: "set_view_graph", content: `Diagrama publicado en "${vista.nombre}".` });
+  const state = applyObservation(startRun(), { tool: "set_view_graph", args: { view: vista.nombre } }, {
+    ok: true,
+    texto: r.reply,
+  });
+  return { reply: r.reply, steps, state };
+}
+
 export async function runBuilderAgent(input: BuilderAgentInput): Promise<BuilderAgentResult> {
   const deps: BuilderDeps = { ...defaultBuilderDeps, ...input.deps };
   const steps: AgentStep[] = [];
@@ -504,6 +657,13 @@ export async function runBuilderAgent(input: BuilderAgentInput): Promise<Builder
       state: startRun(),
     };
   }
+  const paso = (s: AgentStep) => {
+    steps.push(s);
+    input.onStep?.(s);
+  };
+  const atajo = await despachar(input, deps, tools, steps, paso);
+  if (atajo) return atajo;
+
   return bucle(input, deps, tools, startRun(), steps);
 }
 
@@ -524,6 +684,11 @@ export async function resumeBuilderAgent(
       steps.push(s);
       input.onStep?.(s);
     });
+    // Publicar el diagrama del modo creativo TERMINA la tarea: seguir el bucle
+    // sería pedirle al modelo un turno para decir que ya está (015).
+    if (pedida.tool === "set_view_graph") {
+      return { reply: await cierre(siguiente, deps, input.allow), steps, state: siguiente };
+    }
   }
   // Un "no" no cancela la corrida: el agente puede seguir por otro camino. Lo que
   // no puede es volver a intentar lo mismo, y eso lo ve en la traza.
@@ -562,6 +727,11 @@ export async function answerBuilderAgent(
   // pregunta al modelo —no le aporta nada saber que el humano le dio más cuerda—.
   if (eleccion.id === "seguir") {
     return bucle(input, deps, tools, extendRun(state), steps);
+  }
+  // El humano eligió el modo: se despacha con ese, sin volver a preguntarlo (015).
+  if (eleccion.id === "creativo" || eleccion.id === "editor") {
+    const atajo = await despachar(input, deps, tools, steps, paso, eleccion.id);
+    if (atajo) return atajo;
   }
   // La elección viaja en el pedido: es la respuesta a lo que el agente preguntó.
   const conRespuesta = {

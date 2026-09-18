@@ -1797,3 +1797,71 @@ describe("ninguna herramienta prometida puede faltar (#286)", () => {
     expect(tools.get("add_fragment")!.def.description).toMatch(/loop/);
   });
 });
+
+describe("registerProcessflowTools · herramientas que editan la vista abierta (015, #336)", () => {
+  const conApp = () => {
+    const { server, tools } = fakeServer();
+    const pedidos: any[] = [];
+    registerProcessflowTools(server, {
+      workspace: "/tmp/x",
+      actOnApp: async (request) => {
+        pedidos.push(request);
+        return { ok: true, message: "hecho" };
+      },
+    });
+    return { tools, pedidos };
+  };
+
+  it("no se registran sin `actOnApp`: sin app no hay vista que editar", () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: "/tmp/x" });
+    expect(tools.has("add_view_element")).toBe(false);
+    expect(tools.has("set_view_graph")).toBe(false);
+  });
+
+  it("cada herramienta traduce sus argumentos a la acción de la app", async () => {
+    const { tools, pedidos } = conApp();
+
+    await tools.get("add_view_element")!.handler({ name: "Ana", type: "Persona", view: "Pagos" });
+    await tools.get("update_view_element")!.handler({ name: "Ana", newName: "Ana Gómez" });
+    await tools.get("remove_view_element")!.handler({ name: "Ana" });
+    await tools.get("add_view_edge")!.handler({ from: "Ana", to: "Web", label: "usa" });
+    await tools.get("update_view_edge")!.handler({ from: "Ana", to: "Web", invert: true });
+    await tools.get("remove_view_edge")!.handler({ from: "Ana", to: "Web" });
+
+    expect(pedidos.map((p) => p.kind)).toEqual([
+      "add-element",
+      "update-element",
+      "remove-element",
+      "add-edge",
+      "update-edge",
+      "remove-edge",
+    ]);
+    expect(pedidos[0]).toMatchObject({ name: "Ana", type: "Persona", view: "Pagos" });
+    // Sin `view`, la acción no nombra vista: el destino lo decide la app (la abierta).
+    expect(pedidos[1].view).toBeUndefined();
+    expect(pedidos[4]).toMatchObject({ invert: true });
+  });
+
+  it("`set_view_graph` recibe el grafo como JSON y rechaza el que no lo es", async () => {
+    const { tools, pedidos } = conApp();
+    const ok = await tools.get("set_view_graph")!.handler({ graph: '{"nombre_proyecto":"P"}' });
+    expect(ok.isError).toBeUndefined();
+    expect(pedidos[0]).toMatchObject({ kind: "set-graph", graph: { nombre_proyecto: "P" } });
+
+    const mal = await tools.get("set_view_graph")!.handler({ graph: "{no es json" });
+    expect(mal.isError).toBe(true);
+    expect(mal.content[0].text).toContain("JSON");
+  });
+
+  it("el error de la app vuelve como error de la herramienta, no como éxito", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: "/tmp/x",
+      actOnApp: async () => ({ ok: false, error: "No hay una vista abierta." }),
+    });
+    const res = await tools.get("add_view_element")!.handler({ name: "Ana", type: "Persona" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("No hay una vista abierta.");
+  });
+});
