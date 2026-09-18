@@ -29,6 +29,18 @@ import { resolveArtifactRequest } from "@/lib/artifacts/request";
 import { editedArtifactPayload } from "@/lib/artifacts/editing";
 import type { Catalog } from "@/lib/ai/agent-retrieval";
 import { unknownPlanSources, describeStep } from "@/lib/ai/agent-run";
+import {
+  DEFAULT_AGENT_ID,
+  avisoAgenteEquivocado,
+  getAgentProfile,
+  pideEscritura,
+  readAgentId,
+  saveAgentId,
+  type AgentId,
+} from "@/lib/ai/agent-profiles";
+import { runBuilderAgent, answerBuilderAgent } from "@/lib/ai/builder-agent";
+import type { BuilderRunState } from "@/lib/ai/builder-run";
+import { loadAiSettings, modelFor } from "@/lib/ai/remote-settings";
 import { safeGraphToToon } from "@/lib/ai/graph-toon";
 import { extractDocumentText } from "@/lib/ai/document-extract";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
@@ -153,9 +165,14 @@ export interface AgentContextType {
   busy: boolean;
   contextArtifactIds: string[];
   attachments: AgentDocument[];
+  /** Agente activo del panel: analista (lee) o constructor (escribe). */
+  agentId: AgentId;
+  setAgentId: (id: AgentId) => void;
 
   /** `requestedKind`: artefacto elegido en el menú «+» (salta el gate de intención). */
   sendMessage: (text: string, requestedKind?: string) => Promise<void>;
+  /** Elige una opción de la pregunta del constructor y retoma la corrida (#321). */
+  answerBuilderQuestion: (messageId: string, opcionId: string) => Promise<void>;
   /** Reanuda la corrida del mensaje con la decisión del humano (spec 005). */
   resumeRun: (messageId: string, decision: ResumeDecision) => Promise<void>;
   /** Descarta una corrida en espera sin generar nada. */
@@ -206,6 +223,24 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [contextArtifactIds, setContextArtifactIds] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<AgentDocument[]>([]);
+  // Qué agente atiende el chat. Vive por proyecto: el permiso de escribir no se
+  // hereda al abrir otro modelo.
+  const [agentId, setAgentIdState] = useState<AgentId>(DEFAULT_AGENT_ID);
+
+  const setAgentId = useCallback(
+    (id: AgentId) => {
+      setAgentIdState(id);
+      if (typeof window !== "undefined" && currentFileId) {
+        saveAgentId(window.localStorage, currentFileId, id);
+      }
+    },
+    [currentFileId]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setAgentIdState(currentFileId ? readAgentId(window.localStorage, currentFileId) : DEFAULT_AGENT_ID);
+  }, [currentFileId]);
 
   const addAttachments = useCallback((docs: AgentDocument[]) => {
     setAttachments((prev) => {
@@ -427,6 +462,90 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     releaseLitertContext();
   }, []);
 
+  /** Vistas tal como las conoce el MCP para resolver una acción sobre el proyecto. */
+  const vistasConocidas = useMemo(
+    () => views.map((v) => ({ id: v.id, name: v.name, builtin: v.builtin })),
+    [views]
+  );
+
+  /**
+   * Corrida del agente constructor: el bucle vive en `builder-agent.ts` y acá
+   * sólo se le da el contexto de la app y se vuelca la traza en el mensaje. Si
+   * la corrida se detiene en una confirmación, el estado queda EN el mensaje:
+   * así el sí/no del humano retoma exactamente donde quedó.
+   */
+  const correrConstructor = useCallback(
+    async (mensaje: string, assistantId: string, previo?: { estado: BuilderRunState; opcionId: string }) => {
+      const ajustes = loadAiSettings();
+      const entrada = {
+        message: mensaje,
+        vistas: vistasConocidas,
+        notation: (activeView?.notation ?? graphData?.notation) as string | undefined,
+        allow: getAgentProfile("constructor").tools,
+        mode: ajustes.mode,
+        provider: ajustes.provider,
+        model: modelFor(ajustes, ajustes.provider),
+        maxTokens: getGenerationConfig().maxTokens,
+        onStep: (step: any) =>
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, steps: [...(m.steps ?? []), step], content: describeStep(step) }
+                : m
+            )
+          ),
+      };
+
+      const r = previo
+        ? await answerBuilderAgent(entrada, previo.estado, previo.opcionId)
+        : await runBuilderAgent(entrada);
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? {
+                ...m,
+                content: r.reply,
+                steps: [...(m.steps ?? []), ...r.steps.slice((m.steps ?? []).length)],
+                builderRun: r.state,
+                builderQuestion: r.state.pregunta
+                  ? {
+                      texto: r.state.pregunta.texto,
+                      opciones: r.state.pregunta.opciones,
+                      destructiva: Boolean(r.state.pregunta.call),
+                    }
+                  : undefined,
+              }
+            : m
+        )
+      );
+      // El lienzo pudo cambiar (export_as_view, delete_view): las vistas las
+      // refresca el puente MCP del renderer, igual que con un cliente externo.
+    },
+    [vistasConocidas, activeView?.notation, graphData?.notation]
+  );
+
+  /** La elección del humano: retoma la corrida guardada en el mensaje. */
+  const answerBuilderQuestion = useCallback(
+    async (messageId: string, opcionId: string) => {
+      const mensaje = messages.find((m) => m.id === messageId);
+      const estado = mensaje?.builderRun as BuilderRunState | undefined;
+      if (!estado || busy) return;
+      const pedidoOriginal =
+        [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+      setBusy(true);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, builderQuestion: undefined } : m))
+      );
+      try {
+        await correrConstructor(pedidoOriginal, messageId, { estado, opcionId });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [messages, busy, correrConstructor]
+  );
+
   const sendMessage = useCallback(
     async (text: string, requestedKind?: string) => {
       const trimmed = text.trim();
@@ -443,6 +562,43 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           title: "No disponible",
           description: "El agente sólo está disponible en la app de escritorio.",
         });
+        return;
+      }
+
+      // El analista NO escribe: pedirle un cambio y que conteste con un documento
+      // que lo describe es peor que negarse, porque parece que pasó algo.
+      if (agentId === "analista" && pideEscritura(trimmed)) {
+        setMessages((prev) => [
+          ...prev,
+          { id: uid(), role: "user", content: trimmed, createdAt: nowIso() },
+          { id: uid(), role: "assistant", content: avisoAgenteEquivocado(), createdAt: nowIso() },
+        ]);
+        return;
+      }
+
+      // Agente CONSTRUCTOR: otro bucle, otras herramientas (las del MCP).
+      if (agentId === "constructor") {
+        const userId = uid();
+        const assistantId = uid();
+        setMessages((prev) => [
+          ...prev,
+          { id: userId, role: "user", content: trimmed, createdAt: nowIso() },
+          { id: assistantId, role: "assistant", content: "", createdAt: nowIso() },
+        ]);
+        setBusy(true);
+        try {
+          await correrConstructor(trimmed, assistantId);
+        } catch (e: any) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, content: `No pude completar la construcción: ${e?.message ?? e}`, error: true }
+                : m
+            )
+          );
+        } finally {
+          setBusy(false);
+        }
         return;
       }
 
@@ -636,6 +792,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       catalog,
       toast,
       updateTokenUsage,
+      // Sin estas dos, el callback queda con el agente que había al montar: el
+      // selector decía «Constructor» y contestaba el analista (closure viejo).
+      agentId,
+      correrConstructor,
     ]
   );
 
@@ -796,7 +956,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     busy,
     contextArtifactIds,
     attachments,
+    agentId,
+    setAgentId,
     sendMessage,
+    answerBuilderQuestion,
     resumeRun,
     cancelRun,
     historyOf,

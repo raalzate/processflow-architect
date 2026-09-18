@@ -1,0 +1,577 @@
+/**
+ * @fileOverview Bucle del agente CONSTRUCTOR. 014 (#308).
+ *
+ * El analista razona sobre el modelo; éste lo CAMBIA. El bucle es el mismo ReAct
+ * de siempre —una acción por turno— pero con dos diferencias que importan:
+ *
+ *  1. Las herramientas no las inventa el agente: son las del MCP de Processflow,
+ *     ejecutadas por el transporte EN MEMORIA (el mismo que usa el playground de
+ *     `/mcp`), así que no hace falta encender el servidor HTTP ni abrir un puerto.
+ *  2. Nada destructivo se ejecuta sin el sí del humano: `judgeCall` devuelve
+ *     `confirmar` y la corrida se detiene ahí, con su estado serializable, hasta
+ *     que alguien responda (§P10).
+ *
+ * Todo lo que decide vive en `builder-tools.ts` y `builder-run.ts` (puro, con
+ * test). Acá está lo que no se puede probar sin Electron: llamar al MCP y al
+ * modelo. Por eso ambas cosas entran por `deps`, y los tests las sustituyen.
+ */
+
+import type { AgentStep } from "../agent-types";
+import type { AiMode, RemoteProvider } from "./remote-settings";
+import { route } from "./router";
+import { builderTurnTask } from "./tasks";
+import { avisoPedidoGrande } from "./agent-engine";
+import { budgetFromWindow } from "./agent-run";
+import {
+  buildToolMenu,
+  judgeCall,
+  ordenDeConstruir,
+  parseBuilderAction,
+  type BuilderCall,
+  type ToolSpec,
+} from "./builder-tools";
+import {
+  answerUser,
+  applyObservation,
+  askUser,
+  cancelRun,
+  extendRun,
+  preguntaDeContinuar,
+  pendingConfirmation,
+  resolveConfirmation,
+  runFinished,
+  startRun,
+  pistaDeHerramienta,
+  relecturaEsteril,
+  ultimoErrorReal,
+  summarizeRun,
+  yaEjecutada,
+  yaRespondida,
+  type BuilderOption,
+  type BuilderRunState,
+} from "./builder-run";
+import type { VistaConocida } from "../mcp/app-actions";
+
+export interface BuilderDeps {
+  listTools: () => Promise<ToolSpec[]>;
+  callTool: (name: string, args: Record<string, unknown>) => Promise<{ ok: boolean; texto: string }>;
+  generate: (prompt: string, system: string, mode: AiMode, provider?: RemoteProvider, model?: string) => Promise<string>;
+}
+
+export interface BuilderAgentInput {
+  message: string;
+  vistas: VistaConocida[];
+  notation?: string;
+  /** Repertorio permitido (ids del perfil). */
+  allow: string[];
+  mode: AiMode;
+  provider?: RemoteProvider;
+  model?: string;
+  maxTokens?: number;
+  history?: { role: string; content: string }[];
+  onStep?: (step: AgentStep) => void;
+  deps?: Partial<BuilderDeps>;
+}
+
+export interface BuilderAgentResult {
+  reply: string;
+  steps: AgentStep[];
+  state: BuilderRunState;
+  /** Presente cuando la pausa es la confirmación de una acción destructiva. */
+  pendiente?: { call: BuilderCall; alcance: string };
+}
+
+const electron = (): any =>
+  typeof window !== "undefined" ? (window as any).electronAPI : undefined;
+
+/** Herramientas y ejecución REALES: el transporte en memoria del proceso main. */
+export const defaultBuilderDeps: BuilderDeps = {
+  listTools: async () => {
+    const api = electron();
+    if (!api?.mcpPlaygroundListTools) throw new Error("El MCP sólo está disponible en la app de escritorio.");
+    return (await api.mcpPlaygroundListTools()) as ToolSpec[];
+  },
+  callTool: async (name, args) => {
+    const api = electron();
+    const r = await api.mcpPlaygroundCall(name, args);
+    return { ok: Boolean(r?.ok) && !r?.isError, texto: (r?.blocks ?? []).join("\n") };
+  },
+  generate: async (prompt, system, mode, provider, model) => {
+    const r = await route(builderTurnTask, { prompt, system }, { mode, provider, model });
+    return r.output;
+  },
+};
+
+const SYSTEM = [
+  "Sos el agente CONSTRUCTOR de Processflow Architect.",
+  "Construís y modificás el modelo del usuario llamando herramientas, de a UNA por turno.",
+  'Respondé SIEMPRE con UN objeto JSON: {"tool":"<nombre>","args":{…}} para actuar,',
+  'o {"pregunta":"<qué necesitás saber>","opciones":["…","…"]} cuando el pedido sea ambiguo',
+  "—preguntá con opciones concretas en vez de suponer—,",
+  'o {"final":"<qué hiciste, en español>"} cuando la tarea esté terminada.',
+  "Nunca inventes herramientas ni argumentos: usá sólo los del menú.",
+  "Antes de construir, orientate (get_app_state / list_views). Antes de cerrar, validá y exportá.",
+  "OJO: el diagrama que construís vive en el workspace del MCP, NO en el proyecto de la app.",
+  "get_app_state seguirá diciendo 0 elementos mientras trabajás: eso es normal, no es que se haya perdido.",
+  "Usá get_diagram para verlo y export_as_view UNA vez al final para dejarlo en el lienzo del humano.",
+].join(" ");
+
+/** Prompt del turno: menú, pedido, y lo observado hasta ahora. */
+export function buildBuilderPrompt(
+  input: Pick<BuilderAgentInput, "message" | "notation">,
+  menu: string,
+  state: BuilderRunState,
+  /** Cuántas observaciones se re-inyectan y cuánto de cada una. */
+  recorte: { observaciones: number; porObservacion: number } = { observaciones: 6, porObservacion: 400 }
+): string {
+  const observado = state.pasos
+    .slice(-recorte.observaciones)
+    .map(
+      (p) =>
+        `- ${p.tool}(${JSON.stringify(p.args)}) → ${p.ok ? "OK" : "ERROR"}: ${p.texto.slice(0, recorte.porObservacion)}`
+    )
+    .join("\n");
+  // Las decisiones del humano NO se recortan nunca: son lo único del contexto
+  // que el agente no puede volver a averiguar solo, y perderlas lo dejaba
+  // preguntando lo mismo en círculos (#324).
+  const decididas = state.decisiones.length
+    ? `YA LO DECIDIÓ EL HUMANO (no vuelvas a preguntarlo):\n${state.decisiones
+        .map((d) => `- ${d.pregunta} → ${d.eleccion}`)
+        .join("\n")}`
+    : "";
+  // Lo YA HECHO tampoco se recorta: sin esto el modelo local vuelve a crear el
+  // diagrama que acaba de crear, porque su evidencia era una observación vieja
+  // que el recorte se llevó (#325).
+  const hecho = state.cambios.length
+    ? `YA HECHO en esta corrida (no lo repitas):\n${state.cambios.map((c) => `- ${c.texto}`).join("\n")}`
+    : "";
+  // Dónde vive el trabajo. Sin esto el modelo consultaba `get_app_state`, veía el
+  // proyecto vacío y volvía a crear el diagrama desde cero (#327).
+  const enCurso = state.diagrama
+    ? `DIAGRAMA EN CURSO: "${state.diagrama.nombre}" (id ${state.diagrama.id}), ya fijado — NO crees otro.\n` +
+      "Vive en el workspace del MCP: `get_app_state` y `get_view` miran el proyecto de la app y NO lo muestran. " +
+      "Para ver lo construido usá `get_diagram`; para que el humano lo vea, terminá con `export_as_view`."
+    : "";
+  return [
+    `PEDIDO DEL USUARIO:\n${input.message}`,
+    decididas,
+    enCurso,
+    hecho,
+    input.notation ? `NOTACIÓN DE LA VISTA EN CURSO: ${input.notation}` : "",
+    `HERRAMIENTAS DISPONIBLES:\n${menu}`,
+    observado ? `LO QUE YA HICISTE:\n${observado}` : "Todavía no hiciste nada.",
+    `Pasos restantes: ${state.restantes}.`,
+    'Tu próximo turno: UN objeto JSON, nada más.',
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
+ * El prompt más completo que ENTRA en la ventana del motor. Antes se armaba uno
+ * solo y, si no entraba, la corrida se abortaba con un aviso —en la app eso pasó
+ * al décimo paso, tirando todo lo hecho (#308). Un presupuesto ajustado recorta
+ * el contexto; recién cuando ni la versión mínima entra, no hay nada que hacer.
+ */
+export function promptQueEntra(
+  input: Pick<BuilderAgentInput, "message" | "notation" | "allow">,
+  tools: ToolSpec[],
+  state: BuilderRunState,
+  presupuesto: number
+): string | null {
+  const completo = buildToolMenu(tools, input.allow);
+  const compacto = buildToolMenu(tools, input.allow, { compacto: true });
+  const intentos: [string, { observaciones: number; porObservacion: number }][] = [
+    [completo, { observaciones: 6, porObservacion: 400 }],
+    [completo, { observaciones: 3, porObservacion: 200 }],
+    [compacto, { observaciones: 3, porObservacion: 200 }],
+    [compacto, { observaciones: 1, porObservacion: 120 }],
+    [compacto, { observaciones: 0, porObservacion: 0 }],
+  ];
+  for (const [menu, recorte] of intentos) {
+    const p = buildBuilderPrompt(input, menu, state, recorte);
+    if (p.length <= presupuesto) return p;
+  }
+  return null;
+}
+
+/**
+ * ¿El turno es una PREGUNTA al humano? El modelo la escribe con opciones; acá se
+ * normalizan a `BuilderOption` (id estable, label legible). Una pregunta sin
+ * opciones no es una pausa útil —deja al humano escribiendo prosa otra vez—, así
+ * que se ignora y el bucle sigue.
+ */
+export function preguntaDelTurno(raw: string): { texto: string; opciones: BuilderOption[] } | null {
+  let obj: any = null;
+  try {
+    const start = raw.indexOf("{");
+    if (start < 0) return null;
+    obj = JSON.parse(raw.slice(start, raw.lastIndexOf("}") + 1));
+  } catch {
+    return null;
+  }
+  const texto = obj?.pregunta ?? obj?.question;
+  const crudas = obj?.opciones ?? obj?.options;
+  if (typeof texto !== "string" || !texto.trim() || !Array.isArray(crudas) || crudas.length < 2) {
+    return null;
+  }
+  const opciones = crudas
+    .map((o: unknown, i: number) =>
+      typeof o === "string"
+        ? { id: `op${i + 1}`, label: o.trim() }
+        : { id: String((o as any)?.id ?? `op${i + 1}`), label: String((o as any)?.label ?? "").trim() }
+    )
+    .filter((o) => o.label);
+  return opciones.length >= 2 ? { texto: texto.trim(), opciones } : null;
+}
+
+/** Las salidas que se le ofrecen al humano cuando el motor local no da para más. */
+export function opcionesDePresupuesto(): BuilderOption[] {
+  return [
+    { id: "partir", label: "Partirlo en pasos", detalle: "Trabajo una vista por vez, con lo que ya sé." },
+    {
+      id: "ajustes",
+      label: "Abrir Ajustes de IA",
+      accion: "abrir-ajustes-ia",
+      detalle: "Configurar un proveedor remoto para pedidos grandes.",
+    },
+    { id: "cancelar", label: "Cancelar", accion: "cancelar" },
+  ];
+}
+
+/** ¿El modelo dio por terminada la tarea? */
+function textoFinal(raw: string): string | null {
+  const m = raw.match(/"final"\s*:\s*"([\s\S]*?)"\s*[},]/);
+  return m ? m[1].replace(/\\n/g, "\n").trim() : null;
+}
+
+async function bucle(
+  input: BuilderAgentInput,
+  deps: BuilderDeps,
+  tools: ToolSpec[],
+  estadoInicial: BuilderRunState,
+  steps: AgentStep[]
+): Promise<BuilderAgentResult> {
+  // Sólo el motor local tiene una ventana chica que respetar; la nube se maneja
+  // con su propio límite y no hace falta mutilarle el contexto.
+  const presupuesto = input.mode === "local" ? budgetFromWindow(input.maxTokens) : Infinity;
+  let state = estadoInicial;
+  const paso = (s: AgentStep) => {
+    steps.push(s);
+    input.onStep?.(s);
+  };
+
+  while (!runFinished(state)) {
+    const prompt = promptQueEntra(input, tools, state, presupuesto);
+    if (prompt === null) {
+      // Ni el menú compacto sin observaciones entra. Antes esto era un párrafo
+      // sin salida; ahora es una pregunta: las dos cosas que el aviso sugería
+      // son botones, y el humano decide sin reescribir el pedido (#321).
+      const conPregunta = askUser(state, { texto: avisoPedidoGrande(), opciones: opcionesDePresupuesto() });
+      paso({ type: "question", content: avisoPedidoGrande() });
+      return {
+        reply: [avisoPedidoGrande(), summarizeRun(state)].join("\n\n"),
+        steps,
+        state: conPregunta,
+      };
+    }
+
+    let raw: string;
+    try {
+      raw = await deps.generate(prompt, SYSTEM, input.mode, input.provider, input.model);
+    } catch (e: any) {
+      return { reply: `No pude pensar el próximo paso: ${e?.message ?? e}`, steps, state };
+    }
+
+    const consulta = preguntaDelTurno(raw);
+    if (consulta) {
+      const decidido = yaRespondida(state, consulta.texto);
+      if (decidido) {
+        // Volver a frenar al humano por algo que ya contestó es el bucle de
+        // #324: se le devuelve su propia decisión y la corrida sigue.
+        const recordatorio = `Ya lo respondió el humano: ${decidido}. Seguí con eso, no vuelvas a preguntarlo.`;
+        paso({ type: "observation", content: recordatorio });
+        state = applyObservation(state, { tool: "(pregunta repetida)", args: {} }, { ok: false, texto: recordatorio });
+        continue;
+      }
+      paso({ type: "question", content: consulta.texto });
+      return { reply: consulta.texto, steps, state: askUser(state, consulta) };
+    }
+
+    const fin = textoFinal(raw);
+    if (fin) {
+      return { reply: await cierre(state, deps, input.allow, fin), steps, state };
+    }
+
+    const parsed = parseBuilderAction(raw, input.allow);
+    if ("error" in parsed) {
+      // El error vuelve al modelo como observación: es corregible y no toca el modelo.
+      paso({ type: "observation", content: parsed.error });
+      state = applyObservation(state, { tool: "(inválida)", args: {} }, { ok: false, texto: parsed.error });
+      continue;
+    }
+
+    const veredicto = judgeCall(parsed.call, {
+      tools,
+      vistas: input.vistas,
+      notation: input.notation,
+      // El diagrama en curso manda: su notación es la que valida los tipos, y su
+      // nombre el que nombra la vista al publicar (#331).
+      diagrama: state.diagrama,
+    });
+
+    if (veredicto.kind === "rechazar") {
+      paso({ type: "observation", content: veredicto.motivo });
+      state = applyObservation(state, parsed.call, { ok: false, texto: veredicto.motivo });
+      continue;
+    }
+
+    if (veredicto.kind === "ejecutar" && veredicto.call.tool === "create_diagram" && state.diagrama) {
+      // Crear otro diagrama es la forma en que el modelo "resolvía" no ver su
+      // trabajo en `get_app_state`: quedaban tres a medias y ninguno publicado.
+      const recordatorio =
+        `Ya tenés el diagrama "${state.diagrama.nombre}" (id ${state.diagrama.id}) fijado y con contenido. ` +
+        "No crees otro: seguí con add_container/add_node/add_edge y publicá con export_as_view.";
+      paso({ type: "observation", content: recordatorio });
+      state = applyObservation(
+        state,
+        { tool: "(create repetido)", args: {} },
+        { ok: false, texto: recordatorio },
+        { neutra: true }
+      );
+      continue;
+    }
+
+    if (veredicto.kind === "ejecutar") {
+      // Releer algo que no pudo cambiar no es orientarse: es girar. Se le devuelve
+      // el resultado que ya tenía, sin gastar el viaje al MCP (#326).
+      const anterior = relecturaEsteril(state, veredicto.call);
+      if (anterior !== undefined) {
+        // Devolverle el texto que ya tiene no le sirve de nada: si releía era
+        // porque algo le falló, y lo que necesita es QUÉ HACER con el error
+        // (#328). La primera vez es neutra: corregirse no es girar.
+        // Sólo errores del MCP: citar los pasos del arnés hacía que el mensaje se
+        // anidara sobre sí mismo y creciera en cada vuelta (#330).
+        const ultimoError = ultimoErrorReal(state);
+        // El aviso suave se da UNA vez. Repetirlo palabra por palabra no cambia
+        // lo que hace el modelo —tres frenos idénticos y la corrida muerta con
+        // el diagrama vacío (#331)—: a la segunda se le dice qué herramienta usar
+        // y con qué tipos, que es lo único que le falta para escribir.
+        const notacion = state.diagrama?.notacion ?? input.notation;
+        // Los frenos de relectura se cuentan sobre TODA la corrida, no sobre la
+        // racha: `bloqueos` lo resetea cualquier rechazo, y la traza real alterna
+        // freno → rechazo → freno → rechazo, así que la escalada no llegaba a
+        // dispararse nunca y el modelo recibía el mismo texto hasta morir (#331).
+        const frenosPrevios = state.pasos.filter((p) => p.tool === "(relectura)").length;
+        const recordatorio = (
+          frenosPrevios >= 1
+            ? [
+                // Sin afirmar CUÁNTAS veces: `bloqueos` lo comparten los otros
+                // frenos del bucle, y decirle un número falso es darle un dato
+                // que no le consta.
+                `${veredicto.call.tool} ya no te va a decir nada nuevo, y avisártelo suave no alcanzó.`,
+                ordenDeConstruir(notacion),
+              ]
+            : [
+                `Ya leíste ${veredicto.call.tool} y nada de lo que hiciste después pudo cambiarlo.`,
+                ultimoError ? `Tu último error fue: ${ultimoError.slice(0, 300)}` : "",
+                "Actuá con lo que ya sabés: agregá, corregí o exportá. No vuelvas a leer.",
+              ]
+        )
+          .filter(Boolean)
+          .join(" ");
+        paso({ type: "observation", content: recordatorio });
+        state = applyObservation(
+          state,
+          { tool: "(relectura)", args: {} },
+          { ok: false, texto: recordatorio },
+          { neutra: true }
+        );
+        continue;
+      }
+    }
+
+    if (veredicto.kind === "ejecutar" && yaEjecutada(state, veredicto.call)) {
+      // El modelo olvidó que ya lo hizo: que olvide es esperable, que la app le
+      // crea y lo ejecute de nuevo, no (#325).
+      const recordatorio = `Eso ya lo hiciste en esta corrida: ${veredicto.call.tool}. Seguí con lo que falta.`;
+      paso({ type: "observation", content: recordatorio });
+      state = applyObservation(
+        state,
+        { tool: "(repetida)", args: {} },
+        { ok: false, texto: recordatorio },
+        { neutra: true }
+      );
+      continue;
+    }
+
+    if (veredicto.kind === "confirmar") {
+      state = pendingConfirmation(state, veredicto.call, veredicto.alcance);
+      paso({ type: "question", content: veredicto.alcance });
+      return {
+        reply: state.pregunta?.texto ?? veredicto.alcance,
+        steps,
+        state,
+        pendiente: { call: veredicto.call, alcance: veredicto.alcance },
+      };
+    }
+
+    state = await ejecutar(veredicto.call, deps, state, paso);
+  }
+
+  // Se acabó el tope, pero no el trabajo: en vez de cerrar y obligar a repetir
+  // el pedido desde cero, se pregunta con el avance a la vista (#322). Una
+  // corrida cancelada por el humano no vuelve a molestar.
+  if (!state.cancelada && state.restantes <= 0) {
+    const pregunta = preguntaDeContinuar(state);
+    paso({ type: "question", content: pregunta.texto });
+    return { reply: [summarizeRun(state), "¿Sigo?"].join("\n\n"), steps, state: askUser(state, pregunta) };
+  }
+
+  return { reply: await cierre(state, deps, input.allow), steps, state };
+}
+
+/** El cierre del agente: su resumen + la comprobación contra la app (#329). */
+async function cierre(
+  state: BuilderRunState,
+  deps: BuilderDeps,
+  allow: string[],
+  encabezado?: string
+): Promise<string> {
+  const verificacion = state.pasos.length ? await verificarLienzo(deps, allow) : undefined;
+  return [encabezado, summarizeRun(state), verificacion].filter(Boolean).join("\n\n");
+}
+
+/**
+ * COMPROBACIÓN final contra la app. El agente reportaba su propio log de llamadas
+ * —«cambios aplicados»— con el lienzo del humano vacío (#329). Esto pregunta cómo
+ * quedó de verdad y lo pega al cierre: la evidencia gana sobre la palabra del
+ * modelo. La hace el arnés, no el modelo, así que no gasta pasos ni se puede
+ * "olvidar" de hacerla.
+ */
+export async function verificarLienzo(
+  deps: BuilderDeps,
+  allow: string[]
+): Promise<string | undefined> {
+  if (!allow.includes("get_app_state")) return undefined;
+  try {
+    const r = await deps.callTool("get_app_state", {});
+    if (!r.ok) return undefined;
+    // Del retrato de la app sólo interesa lo que el humano puede contrastar
+    // mirando su pantalla: cuánto hay y qué vistas existen.
+    const contenido = /Contenido:[^.]*\./.exec(r.texto)?.[0]?.trim();
+    const vistas = /(Vistas custom:[^.]*\.|Sin vistas custom[^.]*\.)/.exec(r.texto)?.[0]?.trim();
+    const partes = [contenido, vistas].filter(Boolean).join(" ");
+    return partes ? `Verificado en la app — ${partes}` : undefined;
+  } catch {
+    // Si la comprobación falla, se calla: prometer una verificación que no se
+    // hizo sería exactamente el problema que esto viene a arreglar.
+    return undefined;
+  }
+}
+
+async function ejecutar(
+  call: BuilderCall,
+  deps: BuilderDeps,
+  state: BuilderRunState,
+  paso: (s: AgentStep) => void
+): Promise<BuilderRunState> {
+  paso({ type: "action", tool: call.tool, content: `${call.tool}(${JSON.stringify(call.args)})` });
+  let obs: { ok: boolean; texto: string };
+  try {
+    obs = await deps.callTool(call.tool, call.args);
+  } catch (e: any) {
+    obs = { ok: false, texto: String(e?.message ?? e) };
+  }
+  // Un rechazo por tipo (contenedor vs elemento) trae los tipos válidos pero no
+  // la herramienta correcta: se la agregamos, que es lo único que le falta (#328).
+  const pista = obs.ok ? undefined : pistaDeHerramienta(call, obs.texto);
+  if (pista) obs = { ...obs, texto: `${obs.texto}\n${pista}` };
+  paso({ type: "observation", content: obs.texto.slice(0, 600) });
+  return applyObservation(state, call, obs);
+}
+
+export async function runBuilderAgent(input: BuilderAgentInput): Promise<BuilderAgentResult> {
+  const deps: BuilderDeps = { ...defaultBuilderDeps, ...input.deps };
+  const steps: AgentStep[] = [];
+  let tools: ToolSpec[];
+  try {
+    tools = await deps.listTools();
+  } catch (e: any) {
+    return {
+      reply: `No pude hablar con el MCP de la app: ${e?.message ?? e}`,
+      steps,
+      state: startRun(),
+    };
+  }
+  return bucle(input, deps, tools, startRun(), steps);
+}
+
+/** Retoma una corrida detenida en una confirmación, con la respuesta del humano. */
+export async function resumeBuilderAgent(
+  input: BuilderAgentInput,
+  estado: BuilderRunState,
+  aceptada: boolean
+): Promise<BuilderAgentResult> {
+  const deps: BuilderDeps = { ...defaultBuilderDeps, ...input.deps };
+  const steps: AgentStep[] = [];
+  const tools = await deps.listTools();
+  const { state, ejecutar: pedida } = resolveConfirmation(estado, aceptada);
+
+  let siguiente = state;
+  if (pedida) {
+    siguiente = await ejecutar(pedida, deps, state, (s) => {
+      steps.push(s);
+      input.onStep?.(s);
+    });
+  }
+  // Un "no" no cancela la corrida: el agente puede seguir por otro camino. Lo que
+  // no puede es volver a intentar lo mismo, y eso lo ve en la traza.
+  return bucle(input, deps, tools, siguiente, steps);
+}
+
+/**
+ * La respuesta del humano a una pregunta con opciones. Si la pregunta era la
+ * confirmación de un destructivo, «sí» ejecuta la llamada guardada; si era una
+ * pregunta cualquiera, la elección entra como contexto del próximo turno.
+ */
+export async function answerBuilderAgent(
+  input: BuilderAgentInput,
+  estado: BuilderRunState,
+  opcionId: string
+): Promise<BuilderAgentResult> {
+  const pregunta = estado.pregunta;
+  if (pregunta?.call) return resumeBuilderAgent(input, estado, opcionId === "si");
+
+  const deps: BuilderDeps = { ...defaultBuilderDeps, ...input.deps };
+  const steps: AgentStep[] = [];
+  const { state, eleccion } = answerUser(estado, opcionId);
+  // Opción inventada o pregunta ya respondida: no se sigue a ciegas.
+  if (!eleccion) return { reply: pregunta?.texto ?? summarizeRun(state), steps, state };
+
+  const paso = (s: AgentStep) => {
+    steps.push(s);
+    input.onStep?.(s);
+  };
+  paso({ type: "decision", content: eleccion.label });
+  if (state.cancelada) return { reply: summarizeRun(state), steps, state };
+
+  const tools = await deps.listTools();
+
+  // «Seguir»: la misma corrida con el presupuesto renovado. No se le reinyecta la
+  // pregunta al modelo —no le aporta nada saber que el humano le dio más cuerda—.
+  if (eleccion.id === "seguir") {
+    return bucle(input, deps, tools, extendRun(state), steps);
+  }
+  // La elección viaja en el pedido: es la respuesta a lo que el agente preguntó.
+  const conRespuesta = {
+    ...input,
+    message: `${input.message}\n\n[Respuesta del humano a «${pregunta?.texto ?? ""}»: ${eleccion.label}]`,
+  };
+  return bucle(conRespuesta, deps, tools, state, steps);
+}
+
+/** Cancelación explícita desde el chat. */
+export function abortBuilderRun(state: BuilderRunState): BuilderRunState {
+  return cancelRun(state);
+}
