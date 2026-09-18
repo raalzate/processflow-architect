@@ -1366,8 +1366,14 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       const model = await loadModel(diagramId);
       try {
         const spec = getElementSpec(model, id);
-        if (!spec) return text(`El elemento "${id}" todavía no tiene especificación.`);
-        return text(JSON.stringify(spec, null, 2));
+        // El ÍNDICE del material va siempre, con spec o sin ella: sin él, el
+        // agente externo no sabe que hay algo que pedir y construye contra la
+        // descripción. El contenido no sale de acá (read_element_doc).
+        const idx = docsIndex(model, id);
+        const adjuntos = idx.includes("no tiene material") ? "" : `\n\nAdjuntos (pedilos con read_element_doc):\n${idx}`;
+        if (!spec)
+          return text(`El elemento "${id}" todavía no tiene especificación.${adjuntos}`);
+        return text(`${JSON.stringify(spec, null, 2)}${adjuntos}`);
       } catch (e: any) {
         return fail(e.message);
       }

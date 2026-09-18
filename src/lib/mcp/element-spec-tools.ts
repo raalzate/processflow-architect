@@ -12,6 +12,8 @@
  */
 
 import { isSpecEmpty, patchSpec, sanitizeSpec, specToMarkdown, type ElementSpec } from "../element-spec";
+import { claveCanonica } from "../element-properties";
+import { isDeployableType } from "../notations";
 import type { DiagramModel } from "./diagram-builder";
 
 /** Ids de los elementos, para el mensaje de error de un id que no existe. */
@@ -111,12 +113,21 @@ export interface SpecEstado {
   criteriosSinNumero: string[];
   /** Requisitos que nombran una tecnología (dicen el CÓMO, no el QUÉ). */
   requisitosConTecnologia: { texto: string; tecnologias: string[] }[];
+  /**
+   * Elemento DESPLEGABLE (tiene código) sin material adjunto ni URL de contrato:
+   * quien lo construya no tiene contra qué hacerlo. Informa, no bloquea — un
+   * boceto tiene derecho a no tener contrato todavía. Quién es desplegable lo
+   * dice `notations.ts` (§P6), no una lista de tipos escrita acá.
+   */
+  sinMaterial: boolean;
 }
 
 export interface SpecReport {
   estados: SpecEstado[];
   /** Nombres sin spec, para el resumen. */
   sinSpec: string[];
+  /** Nombres de los desplegables sin material con el que construirlos. */
+  sinMaterial: string[];
   markdown: string;
 }
 
@@ -144,15 +155,31 @@ export function specReport(model: DiagramModel): SpecReport {
       requisitosConTecnologia: requisitos
         .map((r) => ({ texto: r.texto.trim(), tecnologias: tecnologiasEn(r.texto) }))
         .filter((r) => r.tecnologias.length > 0),
+      sinMaterial:
+        isDeployableType(n.tipo_elemento ?? "") &&
+        !n.adjuntos?.length &&
+        // Una URL de contrato cuenta como material: el agente externo puede
+        // abrirla. Lo que no cuenta es el silencio.
+        !(n.metadata ?? []).some((m) => {
+          const k = claveCanonica(m.clave);
+          return (k === "endpoint" || k === "wiki") && !!m.valor?.trim();
+        }),
     };
   });
 
   const sinSpec = estados.filter((e) => !e.tiene).map((e) => e.nombre);
+  const sinMaterial = estados.filter((e) => e.sinMaterial).map((e) => e.nombre);
   const conSpec = estados.filter((e) => e.tiene);
 
   const lineas: string[] = [`# Especificaciones — ${model.meta.nombre_proyecto}`];
   lineas.push(`${conSpec.length} de ${estados.length} elemento(s) con especificación.`);
   if (sinSpec.length) lineas.push(`**Sin especificación:** ${sinSpec.join(", ")}.`);
+  if (sinMaterial.length)
+    lineas.push(
+      `**Sin material con el que construir** (ni adjunto ni URL de contrato): ${sinMaterial.join(
+        ", "
+      )}. Adjuntá el contrato con attach_element_doc.`
+    );
 
   for (const e of conSpec) {
     const faltas: string[] = [];
@@ -183,5 +210,5 @@ export function specReport(model: DiagramModel): SpecReport {
   if (conSpec.length && completas.length === conSpec.length)
     lineas.push("_Las especificaciones que hay están completas._");
 
-  return { estados, sinSpec, markdown: lineas.join("\n") };
+  return { estados, sinSpec, sinMaterial, markdown: lineas.join("\n") };
 }

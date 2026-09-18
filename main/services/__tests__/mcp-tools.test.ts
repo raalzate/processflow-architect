@@ -1991,6 +1991,42 @@ describe("adjuntos de una caja por MCP", () => {
     expect(nada.content[0].text).toMatch(/Ninguna coincidencia/);
   });
 
+  it("get_element_spec trae el ÍNDICE del material y NUNCA su contenido (#365)", async () => {
+    const tools = toolsDe();
+    const id = await diagramaConCaja(tools);
+    await tools.get("attach_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "pagos.yaml",
+      text: "openapi: 3.0.0\nsecreto-del-contrato: si",
+    });
+    const nodo = /\((c4-[^)]+|[a-z0-9-]+)\)/;
+    const idx = (await tools.get("list_element_docs")!.handler({ diagramId: id })).content[0].text;
+    const elementId = nodo.exec(idx)![1];
+
+    const res = await tools.get("get_element_spec")!.handler({ diagramId: id, id: elementId });
+    expect(res.content[0].text).toContain("pagos.yaml");
+    expect(res.content[0].text).toContain("read_element_doc");
+    expect(res.content[0].text).not.toContain("secreto-del-contrato");
+  });
+
+  it("review_specs marca el desplegable sin material, sin bloquear (#365)", async () => {
+    const tools = toolsDe();
+    const id = await diagramaConCaja(tools);
+    const antes = (await tools.get("review_specs")!.handler({ diagramId: id })).content[0].text;
+    expect(antes).toMatch(/Sin material con el que construir/i);
+    expect(antes).toContain("Enrollment API");
+
+    await tools.get("attach_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "pagos.yaml",
+      text: "openapi: 3.0.0",
+    });
+    const despues = (await tools.get("review_specs")!.handler({ diagramId: id })).content[0].text;
+    expect(despues).not.toMatch(/Sin material con el que construir/i);
+  });
+
   it("el material sobrevive el export: viaja dentro del proyecto", async () => {
     const tools = toolsDe();
     const id = await diagramaConCaja(tools);
