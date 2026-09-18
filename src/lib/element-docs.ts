@@ -332,6 +332,53 @@ export function docsParaGuardar(valor: unknown): ElementDoc[] | undefined {
   return docs.length ? docs : undefined;
 }
 
+/**
+ * Une los adjuntos de una caja que se fusiona con otra(s). Por NOMBRE, y en
+ * conflicto gana el más reciente (`addedAt`); el que pierde NO se descarta: se
+ * conserva renombrado. Perder material al fusionar dos modelos es perder el
+ * contrato contra el que alguien iba a construir, y hacerlo en silencio es
+ * peor que quedarse con dos versiones.
+ */
+export function mergeElementDocs(
+  principal: readonly ElementDoc[] | undefined,
+  secundarias: readonly (readonly ElementDoc[] | undefined)[]
+): ElementDoc[] | undefined {
+  const salida: ElementDoc[] = (principal ?? []).map((d) => ({ ...d }));
+  const indice = new Map(salida.map((d, i) => [d.nombre.toLowerCase(), i]));
+
+  const nombreLibre = (base: string): string => {
+    const ext = /\.[A-Za-z0-9]+$/.exec(base)?.[0] ?? "";
+    const raiz = ext ? base.slice(0, -ext.length) : base;
+    for (let i = 1; ; i++) {
+      const cand = `${raiz} (${i})${ext}`;
+      if (!indice.has(cand.toLowerCase())) return cand;
+    }
+  };
+
+  for (const lista of secundarias) {
+    for (const bruto of lista ?? []) {
+      if (salida.length >= MAX_DOCS_POR_CAJA) return salida;
+      const doc = { ...bruto };
+      const i = indice.get(doc.nombre.toLowerCase());
+      if (i === undefined) {
+        indice.set(doc.nombre.toLowerCase(), salida.length);
+        salida.push(doc);
+        continue;
+      }
+      const actual = salida[i];
+      if (actual.texto === doc.texto) continue; // el mismo material, no hay conflicto
+      // Gana el más reciente; el otro sobrevive con nombre propio.
+      const gana = Date.parse(doc.addedAt) > Date.parse(actual.addedAt) ? doc : actual;
+      const pierde = gana === doc ? actual : doc;
+      const renombrado = { ...pierde, nombre: nombreLibre(pierde.nombre) };
+      salida[i] = gana;
+      indice.set(renombrado.nombre.toLowerCase(), salida.length);
+      salida.push(renombrado);
+    }
+  }
+  return salida.length ? salida : undefined;
+}
+
 /** Bytes de binario que de verdad viajan dentro del proyecto. */
 export function binarioUsado(docs: readonly ElementDoc[]): number {
   return docs.reduce((n, d) => n + (d.binario ? d.bytes : 0), 0);

@@ -9,6 +9,7 @@ import {
   detectarTipoDoc,
   formatDocsIndex,
   binarioUsado,
+  mergeElementDocs,
   MAX_BINARIO_BYTES,
   MAX_BINARIO_PROYECTO,
   MAX_DOCS_POR_CAJA,
@@ -253,5 +254,45 @@ describe("removeElementDoc y el presupuesto de binario del proyecto", () => {
     ];
     expect(binarioUsado(docs)).toBe(100);
     expect(MAX_BINARIO_PROYECTO).toBeGreaterThan(MAX_BINARIO_BYTES);
+  });
+});
+
+describe("mergeElementDocs — fusionar dos cajas no pierde material (#363)", () => {
+  const conFecha = (nombre: string, texto: string, addedAt: string) =>
+    doc({ nombre, texto, addedAt });
+
+  it("los nombres que no chocan se suman", () => {
+    const out = mergeElementDocs([conFecha("a.md", "A", "2026-01-01T00:00:00.000Z")], [
+      [conFecha("b.md", "B", "2026-01-02T00:00:00.000Z")],
+    ])!;
+    expect(out.map((d) => d.nombre)).toEqual(["a.md", "b.md"]);
+  });
+
+  it("en conflicto gana el más reciente y el otro se conserva RENOMBRADO", () => {
+    const out = mergeElementDocs([conFecha("c.yaml", "viejo", "2026-01-01T00:00:00.000Z")], [
+      [conFecha("c.yaml", "nuevo", "2026-06-01T00:00:00.000Z")],
+    ])!;
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({ nombre: "c.yaml", texto: "nuevo" });
+    expect(out[1]).toMatchObject({ nombre: "c (1).yaml", texto: "viejo" });
+  });
+
+  it("el mismo material con el mismo nombre no se duplica", () => {
+    const out = mergeElementDocs([conFecha("c.yaml", "igual", "2026-01-01T00:00:00.000Z")], [
+      [conFecha("c.yaml", "igual", "2026-06-01T00:00:00.000Z")],
+    ])!;
+    expect(out).toHaveLength(1);
+  });
+
+  it("respeta el tope por caja al fusionar", () => {
+    const diez = Array.from({ length: MAX_DOCS_POR_CAJA }, (_, i) =>
+      conFecha(`d${i}.md`, `x${i}`, "2026-01-01T00:00:00.000Z")
+    );
+    const out = mergeElementDocs(diez, [[conFecha("extra.md", "y", "2026-06-01T00:00:00.000Z")]])!;
+    expect(out).toHaveLength(MAX_DOCS_POR_CAJA);
+  });
+
+  it("dos cajas sin adjuntos no ganan una lista vacía", () => {
+    expect(mergeElementDocs(undefined, [undefined, []])).toBeUndefined();
   });
 });
