@@ -105,6 +105,14 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAi } from "@/hooks/useAi";
 import { orderLanesTask } from "@/lib/ai/tasks";
+import {
+  anotarSugerencia,
+  olvidarSugerencia,
+  tieneRevert,
+  valorPrevio,
+  SIN_PREVIOS,
+  type PreviosIA,
+} from "@/lib/ai/suggestion-undo";
 import { arrangeGraphData, laneNames, laneSummary } from "@/lib/mcp/arrange";
 import {
   DEFAULT_DENSITY,
@@ -763,6 +771,10 @@ const EditNodeDialog: React.FC<{
   // Nunca se escribe solo: pisar lo que el usuario redactó a mano sería el peor
   // resultado posible de un botón de sugerencia.
   const [specPropuesta, setSpecPropuesta] = useState<ElementSpec | null>(null);
+  // Lo que había en cada campo ANTES de que la IA escribiera (#352). Es la
+  // única vuelta atrás que funciona con la ficha abierta: el ⌘Z del lienzo se
+  // corta cuando el foco está en un input y el autoguardado repone el borrador.
+  const [previos, setPrevios] = useState<PreviosIA>(SIN_PREVIOS);
   /**
    * Ancho de la ficha (#187). Arranca en lo que el usuario dejó elegido: una
    * ficha que vuelve a los 448 px en cada sesión obliga a re-ensancharla cada
@@ -813,6 +825,8 @@ const EditNodeDialog: React.FC<{
     nodeRef.current = node;
     originalRef.current = node ? { ...node } : null;
     setDraft(node ? { ...node } : null);
+    // Otro elemento: lo anotado era de la caja anterior y ya no aplica.
+    setPrevios(SIN_PREVIOS);
   }, [node, flush]);
   useEffect(() => {
     if (!draft || !originalRef.current || draft.id !== originalRef.current.id) return;
@@ -849,17 +863,26 @@ const EditNodeDialog: React.FC<{
         referencia,
         notation,
       });
-      if (text) setDraft((d) => (d ? { ...d, descripcion: text } : d));
+      if (text) {
+        setPrevios((p) => anotarSugerencia(p, "desc", draft.descripcion, text));
+        setDraft((d) => (d ? { ...d, descripcion: text } : d));
+      }
     });
   const suggestName = () =>
     withField("name", async () => {
       const text = await run(suggestNameTask, { tipo: draft.tipo_elemento, descripcion: draft.descripcion, referencia, notation });
-      if (text) setDraft((d) => (d ? { ...d, nombre: text } : d));
+      if (text) {
+        setPrevios((p) => anotarSugerencia(p, "name", draft.nombre, text));
+        setDraft((d) => (d ? { ...d, nombre: text } : d));
+      }
     });
   const suggestType = () =>
     withField("type", async () => {
       const t = await run(classifyTypeTask, { nombre: draft.nombre, descripcion: draft.descripcion, referencia, notation });
-      if (t) setDraft((d) => (d ? { ...d, tipo_elemento: t as DesignerNode["tipo_elemento"] } : d));
+      if (t) {
+        setPrevios((p) => anotarSugerencia(p, "type", draft.tipo_elemento, t));
+        setDraft((d) => (d ? { ...d, tipo_elemento: t as DesignerNode["tipo_elemento"] } : d));
+      }
     });
   const suggestTags = () =>
     withField("tags", async () => {
@@ -869,7 +892,10 @@ const EditNodeDialog: React.FC<{
         descripcion: draft.descripcion,
         referencia,
       });
-      if (tags && tags.length) setDraft((d) => (d ? { ...d, tags_tecnologia: tags } : d));
+      if (tags && tags.length) {
+        setPrevios((p) => anotarSugerencia(p, "tags", draft.tags_tecnologia, tags));
+        setDraft((d) => (d ? { ...d, tags_tecnologia: tags } : d));
+      }
     });
   const suggestNext = () =>
     withField("next", async () => {
@@ -933,6 +959,33 @@ const EditNodeDialog: React.FC<{
       }
     />
   );
+
+  /**
+   * «Deshacer sugerencia» (#352): aparece pegado al ✨ sólo si esa sugerencia
+   * pisó algo, y devuelve el campo a lo que había. Se va al primer tecleo del
+   * humano en ese campo: desde ahí el texto es suyo y restaurar sería el bug al
+   * revés. Como escribe en el borrador, el autoguardado se lleva la vuelta
+   * atrás igual que se llevó la sugerencia.
+   */
+  const RevertBtn = ({ field, aplicar }: { field: string; aplicar: (valor: any) => void }) => {
+    if (!tieneRevert(previos, field)) return null;
+    return (
+      <IconAction
+        type="button"
+        variant="ghost"
+        className="h-7 w-7"
+        onClick={() => {
+          aplicar(valorPrevio(previos, field));
+          setPrevios((p) => olvidarSugerencia(p, field));
+        }}
+        label="Deshacer la sugerencia: vuelve a lo que había antes"
+        icon={<Undo2 className="w-4 h-4" />}
+      />
+    );
+  };
+
+  /** Editar a mano vale por aceptación: deja de ofrecerse la vuelta atrás. */
+  const tocado = (field: string) => setPrevios((p) => olvidarSugerencia(p, field));
 
   return (
     // Inspector LATERAL (no modal): sin overlay y con modal={false}, el lienzo
@@ -1006,23 +1059,35 @@ const EditNodeDialog: React.FC<{
           <div>
             <div className="flex items-center justify-between">
               <Label htmlFor="node-name">Nombre</Label>
-              <SugBtn field="name" onClick={suggestName} disabled={!draft.descripcion?.trim()} />
+              <div className="flex items-center gap-1">
+                <RevertBtn field="name" aplicar={(v) => setDraft((d) => (d ? { ...d, nombre: v } : d))} />
+                <SugBtn field="name" onClick={suggestName} disabled={!draft.descripcion?.trim()} />
+              </div>
             </div>
             <Input
               id="node-name"
               value={draft.nombre}
-              onChange={(e) => setDraft({ ...draft, nombre: e.target.value })}
+              onChange={(e) => {
+                tocado("name");
+                setDraft({ ...draft, nombre: e.target.value });
+              }}
             />
           </div>
           <div>
             <div className="flex items-center justify-between">
               <Label htmlFor="node-desc">Descripción</Label>
-              <SugBtn field="desc" onClick={suggestDesc} disabled={!draft.nombre.trim()} />
+              <div className="flex items-center gap-1">
+                <RevertBtn field="desc" aplicar={(v) => setDraft((d) => (d ? { ...d, descripcion: v } : d))} />
+                <SugBtn field="desc" onClick={suggestDesc} disabled={!draft.nombre.trim()} />
+              </div>
             </div>
             <Textarea
               id="node-desc"
               value={draft.descripcion || ""}
-              onChange={(e) => setDraft({ ...draft, descripcion: e.target.value })}
+              onChange={(e) => {
+                tocado("desc");
+                setDraft({ ...draft, descripcion: e.target.value });
+              }}
               className="min-h-[180px]"
             />
             <FuenteCitada descripcion={draft.descripcion} docs={sourceDocs} />
@@ -1034,11 +1099,20 @@ const EditNodeDialog: React.FC<{
           <div>
             <div className="flex items-center justify-between">
               <Label>Tipo de elemento</Label>
-              <SugBtn field="type" onClick={suggestType} disabled={!draft.nombre.trim()} />
+              <div className="flex items-center gap-1">
+                <RevertBtn
+                  field="type"
+                  aplicar={(v) => setDraft((d) => (d ? { ...d, tipo_elemento: v } : d))}
+                />
+                <SugBtn field="type" onClick={suggestType} disabled={!draft.nombre.trim()} />
+              </div>
             </div>
             <Select
               value={draft.tipo_elemento}
-              onValueChange={(v) => setDraft({ ...draft, tipo_elemento: v as DesignerNode["tipo_elemento"] })}
+              onValueChange={(v) => {
+                tocado("type");
+                setDraft({ ...draft, tipo_elemento: v as DesignerNode["tipo_elemento"] });
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -1189,8 +1263,15 @@ const EditNodeDialog: React.FC<{
           </div>
           <TagsField
             value={draft.tags_tecnologia}
-            onChange={(tags) => setDraft((d) => (d ? { ...d, tags_tecnologia: tags } : d))}
+            onChange={(tags) => {
+              tocado("tags");
+              setDraft((d) => (d ? { ...d, tags_tecnologia: tags } : d));
+            }}
           >
+            <RevertBtn
+              field="tags"
+              aplicar={(v) => setDraft((d) => (d ? { ...d, tags_tecnologia: v } : d))}
+            />
             <SugBtn field="tags" onClick={suggestTags} disabled={!draft.nombre.trim()} />
           </TagsField>
           <ColorField
@@ -1366,6 +1447,8 @@ const EditLinkDialog: React.FC<{
     );
   }, [nodes, link]);
   const { run, busy } = useAi();
+  // Lo que había en la etiqueta antes de la sugerencia (#352).
+  const [previos, setPrevios] = useState<PreviosIA>(SIN_PREVIOS);
   // Autoguardado con el mismo criterio que el inspector de nodos: rebote de
   // 400 ms, se vacía al cerrar o al saltar a otro enlace, y se guarda el DIFF
   // (el trazado —puntas, quiebres, etiqueta— lo edita el LIENZO mientras la
@@ -1392,6 +1475,7 @@ const EditLinkDialog: React.FC<{
     linkRef.current = link;
     originalRef.current = link ? { ...link } : null;
     setDraft(link ? { ...link } : null);
+    setPrevios(SIN_PREVIOS);
   }, [link, flush]);
   useEffect(() => {
     if (!draft || !originalRef.current || draft.id !== originalRef.current.id) return;
@@ -1405,6 +1489,7 @@ const EditLinkDialog: React.FC<{
     const s = nodes.get(draft.sourceId);
     const t = nodes.get(draft.targetId);
     if (!s || !t) return;
+    const anterior = draft.descripcion;
     const text = await run(linkLabelTask, {
       sourceName: s.nombre,
       sourceType: s.tipo_elemento,
@@ -1413,7 +1498,10 @@ const EditLinkDialog: React.FC<{
       referencia,
       notation,
     });
-    if (text) setDraft((d) => (d ? { ...d, descripcion: text } : d));
+    if (text) {
+      setPrevios((p) => anotarSugerencia(p, "label", anterior, text));
+      setDraft((d) => (d ? { ...d, descripcion: text } : d));
+    }
   };
 
   return (
@@ -1430,6 +1518,21 @@ const EditLinkDialog: React.FC<{
         <div className="py-4">
           <div className="flex items-center justify-between">
             <Label htmlFor="link-desc">Descripción</Label>
+            {/* Vuelta atrás de la sugerencia (#352): mismo trato que en la ficha. */}
+            {tieneRevert(previos, "label") && (
+              <IconAction
+                type="button"
+                variant="ghost"
+                className="ml-auto mr-1 h-7 w-7"
+                onClick={() => {
+                  const v = valorPrevio(previos, "label") as string;
+                  setDraft((d) => (d ? { ...d, descripcion: v } : d));
+                  setPrevios((p) => olvidarSugerencia(p, "label"));
+                }}
+                label="Deshacer la sugerencia: vuelve a lo que había antes"
+                icon={<Undo2 className="w-4 h-4" />}
+              />
+            )}
             <IconAction
               type="button"
               variant="ghost"
@@ -1443,7 +1546,10 @@ const EditLinkDialog: React.FC<{
           <Input
             id="link-desc"
             value={draft.descripcion}
-            onChange={(e) => setDraft({ ...draft, descripcion: e.target.value })}
+            onChange={(e) => {
+              setPrevios((p) => olvidarSugerencia(p, "label"));
+              setDraft({ ...draft, descripcion: e.target.value });
+            }}
             placeholder="Ej: invoca, publica, valida"
           />
           <div className="mt-4">
@@ -1678,13 +1784,22 @@ const MetadataDialog: React.FC<{
 }> = ({ open, onOpenChange, meta, summary, notation, onSave }) => {
   const [draft, setDraft] = useState<DesignerMeta>(meta);
   const { run, busy } = useAi();
+  // Vuelta atrás de la sugerencia del Big Picture (#352).
+  const [previos, setPrevios] = useState<PreviosIA>(SIN_PREVIOS);
   useEffect(() => {
-    if (open) setDraft(meta);
+    if (open) {
+      setDraft(meta);
+      setPrevios(SIN_PREVIOS);
+    }
   }, [open, meta]);
 
   const suggestBigPicture = async () => {
+    const anterior = draft.bigPictureDescripcion;
     const text = await run(bigPictureDescTask, { resumen: summary, notation });
-    if (text) setDraft((d) => ({ ...d, bigPictureDescripcion: text }));
+    if (text) {
+      setPrevios((p) => anotarSugerencia(p, "bigpicture", anterior, text));
+      setDraft((d) => ({ ...d, bigPictureDescripcion: text }));
+    }
   };
 
   const updateRm = (i: number, patch: Partial<ReadModel>) =>
@@ -1730,6 +1845,20 @@ const MetadataDialog: React.FC<{
           <div>
             <div className="flex items-center justify-between">
               <Label>Descripción del Big Picture</Label>
+              {tieneRevert(previos, "bigpicture") && (
+                <IconAction
+                  type="button"
+                  variant="ghost"
+                  className="ml-auto mr-1 h-7 w-7"
+                  onClick={() => {
+                    const v = valorPrevio(previos, "bigpicture") as string;
+                    setDraft((d) => ({ ...d, bigPictureDescripcion: v }));
+                    setPrevios((p) => olvidarSugerencia(p, "bigpicture"));
+                  }}
+                  label="Deshacer la sugerencia: vuelve a lo que había antes"
+                  icon={<Undo2 className="w-4 h-4" />}
+                />
+              )}
               <IconAction
                 type="button"
                 variant="ghost"
@@ -1742,7 +1871,10 @@ const MetadataDialog: React.FC<{
             </div>
             <Textarea
               value={draft.bigPictureDescripcion}
-              onChange={(e) => setDraft({ ...draft, bigPictureDescripcion: e.target.value })}
+              onChange={(e) => {
+                setPrevios((p) => olvidarSugerencia(p, "bigpicture"));
+                setDraft({ ...draft, bigPictureDescripcion: e.target.value });
+              }}
             />
           </div>
 
