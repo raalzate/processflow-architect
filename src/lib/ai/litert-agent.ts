@@ -21,7 +21,7 @@ import {
   diagramDefinitions,
 } from "@/lib/artifacts/registry";
 import { artifactRequestDirective, resolveArtifactRequest } from "@/lib/artifacts/request";
-import type { AgentRunState, AgentStep } from "@/lib/agent-types";
+import type { AgentHint, AgentRunState, AgentStep } from "@/lib/agent-types";
 import { formatInventory, listViews, sourceInventory, type Catalog } from "./agent-retrieval";
 import {
   applyToolCall,
@@ -46,6 +46,7 @@ import {
   validateCitations,
   READ_TOOLS,
   RUN_BUDGET,
+  MAX_RECHAZOS_POR_COBERTURA,
   type ToolCall,
 } from "./agent-run";
 
@@ -57,6 +58,9 @@ export interface AgentArtifactOut {
 }
 /** Paso de la traza. Los tipos los declara `AgentStepSchema` (agent-types). */
 export type AgentStepOut = AgentStep;
+
+export type { AgentHint };
+
 export interface LitertAgentResult {
   reply: string;
   artifacts: AgentArtifactOut[];
@@ -67,6 +71,8 @@ export interface LitertAgentResult {
    * `resumeLitertAgent`. Ausente = el turno cerró como siempre.
    */
   run?: AgentRunState;
+  /** Causa accionable del cierre en vacío. Ausente = no hay nada que ofrecer. */
+  hint?: AgentHint;
 }
 
 export interface LitertAgentInput {
@@ -255,8 +261,12 @@ export function salvageReply(raw: string, parsed: unknown): string {
   const campo = obj ? campoDeRespuesta(obj) : null;
   const fuera = prosaFueraDelJson(raw);
   const partes = [campo, fuera && fuera !== campo ? fuera : ""].filter(Boolean) as string[];
-  // Nada rescatable (JSON sin texto y sin prosa): el crudo es mejor que el vacío.
-  return partes.join("\n\n").trim() || raw.trim();
+  const rescatado = partes.join("\n\n").trim();
+  if (rescatado) return rescatado;
+  // Nada rescatable. El crudo es mejor que el vacío SÓLO si no es protocolo: un
+  // `{"final":""}` se imprimía tal cual en el chat (#358). Vacío deja que el
+  // cierre del bucle cuente lo que de verdad pasó.
+  return looksLikeProtocol(raw) ? "" : raw.trim();
 }
 
 /**
@@ -565,8 +575,21 @@ async function genDiagram(
   return sanitizeMermaid(stripFence(raw));
 }
 
-/** Menú de "kinds" disponibles (del registro) para que el agente elija. */
-function toolMenu(): string {
+/**
+ * Menú de "kinds" disponibles (del registro) para que el agente elija. El
+ * catálogo entero ronda los 3 300 caracteres: con una ventana de 4 096 tokens
+ * eso es casi un cuarto del aire de la corrida. Cuando el humano YA eligió el
+ * artefacto en el menú «+», el resto del catálogo es peso muerto y se omite
+ * (#358).
+ */
+function toolMenu(requestedKind?: string): string {
+  const pedido = resolveArtifactRequest(requestedKind);
+  if (pedido) {
+    return (
+      `\n\nKind del artefacto pedido (es el único que corresponde): ` +
+      `${pedido.kind} — ${pedido.label}, con "${pedido.tool}".`
+    );
+  }
   const docs = documentDefinitions()
     .map((d) => `  • ${d.kind} — ${d.description}`)
     .join("\n");
@@ -703,7 +726,7 @@ Herramientas (action / args):
 - "generate_document" {"kind":"<kind>","title":"...","instructions":"qué contener"} — documento Markdown.
 - "generate_diagram" {"kind":"<kind>","title":"...","instructions":"qué representar"} — diagrama Mermaid.
 Elige el "kind" del menú según lo que pida el usuario (drivers, propuesta, roadmap, ADR, mapa de contexto, C4, etc.).
-${toolMenu()}
+${toolMenu(input.requestedKind)}
 
 Dentro de los textos del JSON NO uses comillas dobles (usá 'simples'): una comilla sin escapar rompe el turno.
 Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."} SIN herramientas. Tras cada acción recibirás una "Observación"; encadena lo necesario y cierra con {"final":"..."}.${ctx}`;
@@ -912,7 +935,7 @@ export async function resumeLitertAgent(
 }
 
 /** Menú de herramientas del bucle explorador (lectura + generación). */
-function exploreToolMenu(cat: Catalog, invMax = 1200): string {
+function exploreToolMenu(cat: Catalog, invMax = 1200, requestedKind?: string): string {
   return `Herramientas de LECTURA (usalas antes de generar; el contexto NO viene dado):
 - "read_views" {"names":["<vista>","<vista>","<vista>"]} — lee HASTA 3 VISTAS DE UNA VEZ. Es la que conviene: cada turno tuyo tarda, leer de a una cuesta minutos.
 - "read_view" {"name":"<nombre exacto>"} — una sola vista.
@@ -924,7 +947,7 @@ function exploreToolMenu(cat: Catalog, invMax = 1200): string {
 Herramientas de GENERACIÓN (sólo con el plan aprobado):
 - "generate_document" {"kind":"<kind>","title":"...","instructions":"qué contener"}
 - "generate_diagram" {"kind":"<kind>","title":"...","instructions":"qué representar"}
-${toolMenu()}
+${toolMenu(requestedKind)}
 
 Inventario inicial:
 ${clamp(formatInventory(listViews(cat)), invMax)}${
@@ -1036,7 +1059,7 @@ En CADA turno respondés con UN ÚNICO objeto JSON, sin texto fuera de él y sin
 Reglas: el campo thought va en UNA frase corta (máximo 15 palabras): lo que escribís de más son segundos de espera para el humano. Ya tenés el inventario abajo, así que empezá leyendo en lote lo que te sirva. Un proyecto suele tener vistas de VARIAS notaciones (DDD, BPMN, C4, UML) y cada una aporta algo distinto: mirá el inventario completo y no planifiques con la primera vista que abriste. Si descartás vistas, decí en el plan por qué. No inventes nombres de vistas (usá los del inventario); no repitas una pregunta ya respondida; cuando te digan que no hay presupuesto, consolidá con lo anotado.
 IMPORTANTE sobre el JSON: dentro de los textos NO uses comillas dobles (usá 'simples' si necesitás citar). Una comilla sin escapar rompe el turno.
 
-${exploreToolMenu(cat, invMax)}${clamp(ctx, ctxMax)}${memoryBlock(state, Math.round(techo * 0.5))}`;
+${exploreToolMenu(cat, invMax, input.requestedKind)}${clamp(ctx, ctxMax)}${memoryBlock(state, Math.round(techo * 0.5))}`;
 
   const convo = await createLitertConversation(input.modelFile, system);
   const NEXT = `\n\nResponde con el JSON del próximo paso.`;
@@ -1044,6 +1067,8 @@ ${exploreToolMenu(cat, invMax)}${clamp(ctx, ctxMax)}${memoryBlock(state, Math.ro
   let reply = "";
   /** Turnos con JSON inválido: a la tercera se corta con un mensaje humano. */
   let malformados = 0;
+  /** La ventana del motor se llenó: no es culpa del pedido y tiene arreglo. */
+  let desborde = false;
 
   const generar = async (action: string, a: any): Promise<void> => {
     const tipo = action === "generate_diagram" ? "diagram" : "document";
@@ -1104,6 +1129,7 @@ ${exploreToolMenu(cat, invMax)}${clamp(ctx, ctxMax)}${memoryBlock(state, Math.ro
       if (!esDesbordeDeVentana(e)) throw e;
       paso({ type: "observation", content: "Se llenó la ventana del modelo: consolido con lo leído." });
       state = { ...state, budgetLeft: 0 };
+      desborde = true;
       break;
     }
     const parsed = parseJson(raw) ?? repairProtocolJson(raw);
@@ -1292,14 +1318,70 @@ ${exploreToolMenu(cat, invMax)}${clamp(ctx, ctxMax)}${memoryBlock(state, Math.ro
   // El turno de cierre es lo primero que degenera en un modelo chico. Si salió
   // basura, se descarta y se cuenta lo que realmente pasó: el artefacto ya está
   // en el lienzo y el humano necesita saber de dónde salió, no ver el descarte.
+  let hint: AgentHint | undefined;
   if (!reply || looksDegenerate(reply)) {
     const vistas = state.read.length ? ` leyendo ${state.read.join(", ")}` : "";
-    reply = artifacts.length
-      ? `Listo: «${artifacts[artifacts.length - 1].title}» está en el lienzo${vistas}.`
-      : state.budgetLeft <= 0 && !state.read.length
-        ? "Se llenó la ventana del modelo antes de poder leer nada. Subí «Máx. tokens» en Ajustes → Modelo de IA, o pedí el artefacto sobre menos vistas."
-        : "No llegué a generar nada: probá pidiéndolo de nuevo con más detalle.";
+    if (artifacts.length) {
+      reply = `Listo: «${artifacts[artifacts.length - 1].title}» está en el lienzo${vistas}.`;
+    } else if (desborde || (state.budgetLeft <= 0 && !state.read.length)) {
+      // Problema de VENTANA, no del pedido: se nombra lo que se alcanzó a leer y
+      // se dice qué mover. La UI convierte esto en un botón (#358). El
+      // presupuesto de lectura agotado NO entra acá: `budgetLeft` es `RUN_BUDGET`
+      // (agent-run.ts), no la ventana del motor, y ampliar «Máx. tokens» no lo
+      // mueve — ofrecer ese botón manda al humano a repetir una corrida que va a
+      // morir igual.
+      hint = "ventana-corta";
+      const leido = state.read.length
+        ? ` Alcancé a leer ${state.read.join(", ")}.`
+        : " No alcancé a leer ninguna vista.";
+      reply = `Se llenó la ventana del modelo antes de terminar.${leido} Ampliá «Máx. tokens» en Ajustes → Modelo de IA (o pedí el artefacto sobre menos vistas) y volvé a pedirlo.`;
+    } else if (!isCancelled(state) && needsPlan(state)) {
+      // Se acabaron los turnos sin que el modelo escribiera un plan válido. Tirar
+      // lo leído es lo peor que se puede hacer: se arma el plan con eso y decide
+      // el humano, igual que en la rama de JSON roto.
+      const rescate = fallbackPlan(state, {
+        artifactKind: state.plan?.artifactKind ?? input.requestedKind,
+      });
+      // El rescate no vuelve a discutirse por cobertura: no quedan turnos para leer.
+      const r = rescate
+        ? registerPlan({ ...state, planRejections: MAX_RECHAZOS_POR_COBERTURA }, rescate, cat)
+        : null;
+      if (r && !r.observation) {
+        state = r.state;
+        paso({
+          type: "plan",
+          content: state.plan!.sections.map((sec) => `${sec.title} ← ${sec.sources.join(", ")}`).join(" · "),
+        });
+        await convo.close();
+        return {
+          reply: `Me quedé sin turnos antes de que el modelo escribiera un plan. Armé uno con lo que leí (${state.read.join(
+            ", "
+          )}): revisalo y aprobalo para que genere el artefacto.`,
+          artifacts,
+          steps,
+          run: state,
+        };
+      }
+      // Sin plan rescatable: si además no se leyó nada, el modelo no llegó a
+      // ninguna parte y la ventana es lo único que el humano puede mover.
+      hint = "ventana-corta";
+      reply = state.read.length
+        ? `Me quedé sin turnos sin un plan utilizable, aunque leí ${state.read.join(
+            ", "
+          )}. Ampliá «Máx. tokens» en Ajustes → Modelo de IA y volvé a pedirlo, o pedilo sobre menos vistas.`
+        : "Me quedé sin turnos y el modelo no llegó a leer nada del proyecto. Ampliá «Máx. tokens» en Ajustes → Modelo de IA y volvé a pedirlo, o pedilo con más detalle.";
+    } else if (state.budgetLeft <= 0) {
+      // Presupuesto de LECTURA agotado con material leído y plan aprobado: la
+      // red de seguridad de arriba ya intentó generar con eso y no salió. Lo que
+      // el humano puede mover acá es el ALCANCE, no la ventana: por eso no hay
+      // `hint` y no se ofrece el botón de ampliar.
+      reply = `Gasté todo el presupuesto de lectura en ${state.read.join(
+        ", "
+      )} y no llegué a armar el artefacto. Pedilo sobre menos vistas —una sola alcanza para empezar— y va a rendir más.`;
+    } else {
+      reply = "No llegué a generar nada: probá pidiéndolo de nuevo con más detalle.";
+    }
   }
   await convo.close(); // libera el slot de contexto del engine
-  return { reply, artifacts, steps, run: { ...state, pause: undefined } };
+  return { reply, artifacts, steps, run: { ...state, pause: undefined }, hint };
 }

@@ -4,6 +4,8 @@ import {
   DEFAULT_GEN_CONFIG,
   getGenerationConfig,
   setGenerationConfig,
+  nextWindow,
+  WINDOW_MAX,
 } from "@/lib/ai-config";
 
 function makeLocalStorage(initial: Record<string, string> = {}) {
@@ -63,5 +65,22 @@ describe("ai-config · GenerationConfig", () => {
       GEN_CONFIG_STORAGE,
       JSON.stringify({ maxTokens: 1024, systemPrompt: "hola" })
     );
+  });
+});
+
+describe("ai-config · ampliar la ventana (#358)", () => {
+  it("el siguiente escalón duplica la ventana", () => {
+    expect(nextWindow(4096)).toBe(8192);
+    expect(nextWindow(2048)).toBe(4096);
+  });
+
+  it("nunca pasa del tope del motor", () => {
+    expect(nextWindow(6000)).toBe(WINDOW_MAX);
+    expect(nextWindow(WINDOW_MAX)).toBeNull();
+    expect(nextWindow(99999)).toBeNull();
+  });
+
+  it("sin valor asume el default (la ventana que el usuario no tocó)", () => {
+    expect(nextWindow(undefined)).toBe(8192);
   });
 });

@@ -24,7 +24,7 @@ import {
   resolveNotations,
   type ResumeDecision,
 } from "@/lib/ai/litert-agent";
-import { releaseLitertContext } from "@/lib/ai/litert-engine";
+import { releaseLitertContext, resetLitertEngine } from "@/lib/ai/litert-engine";
 import { resolveArtifactRequest } from "@/lib/artifacts/request";
 import { editedArtifactPayload } from "@/lib/artifacts/editing";
 import type { Catalog } from "@/lib/ai/agent-retrieval";
@@ -44,7 +44,8 @@ import { loadAiSettings, modelFor } from "@/lib/ai/remote-settings";
 import { safeGraphToToon } from "@/lib/ai/graph-toon";
 import { extractDocumentText } from "@/lib/ai/document-extract";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
-import { getGenerationConfig } from "@/lib/ai-config";
+import { getGenerationConfig, setGenerationConfig } from "@/lib/ai-config";
+import { offerWiderWindow } from "@/lib/ai/window-retry";
 import { DEFAULT_NOTATION_ID, type NotationId } from "@/lib/notations";
 import {
   archiveLineage,
@@ -175,6 +176,12 @@ export interface AgentContextType {
   answerBuilderQuestion: (messageId: string, opcionId: string) => Promise<void>;
   /** Reanuda la corrida del mensaje con la decisión del humano (spec 005). */
   resumeRun: (messageId: string, decision: ResumeDecision) => Promise<void>;
+  /**
+   * Amplía la ventana del modelo y reenvía el mismo pedido. Es el botón del
+   * mensaje que se quedó sin ventana: el usuario no tiene por qué saber que el
+   * slider «Máx. tokens» existe (#358).
+   */
+  retryWithWiderWindow: (messageId: string) => Promise<void>;
   /** Descarta una corrida en espera sin generar nada. */
   cancelRun: (messageId: string) => void;
   /** Revisiones de un artefacto, ascendente (histórico del linaje). */
@@ -758,6 +765,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
                   // Con `pause`, este mensaje ES la corrida esperando al humano
                   // (plan por aprobar o pregunta por responder).
                   run: data.run?.pause ? data.run : undefined,
+                  // Cierre en vacío con arreglo conocido: el mensaje se lleva la
+                  // causa y el pedido original para poder reintentar de un clic.
+                  hint: data.hint,
+                  retry: data.hint ? { text: trimmed, requestedKind } : undefined,
                 }
               : m
           )
@@ -955,6 +966,26 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const retryWithWiderWindow = useCallback(
+    async (messageId: string) => {
+      if (busy) return;
+      const mensaje = messages.find((m) => m.id === messageId);
+      const pedido = mensaje?.retry;
+      const oferta = offerWiderWindow(mensaje?.hint, getGenerationConfig().maxTokens);
+      if (!pedido || !oferta) return;
+      setGenerationConfig({ ...getGenerationConfig(), maxTokens: oferta.next });
+      // El engine lee `maxNumTokens` al crearse: sin recrearlo, el reintento
+      // volvería a correr con la ventana vieja.
+      resetLitertEngine();
+      // El botón no se ofrece dos veces sobre el mismo mensaje.
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, hint: undefined, retry: undefined } : m))
+      );
+      await sendMessage(pedido.text, pedido.requestedKind);
+    },
+    [busy, messages, sendMessage]
+  );
+
   const value: AgentContextType = {
     versions,
     activeVersionId,
@@ -971,6 +1002,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     sendMessage,
     answerBuilderQuestion,
     resumeRun,
+    retryWithWiderWindow,
     cancelRun,
     historyOf,
     restoreArtifactRevision,

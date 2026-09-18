@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Cloud, Cpu, CircleSlash } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadAiSettings, type KeyStatus } from "@/lib/ai/remote-settings";
-import { describeEngine } from "@/lib/ai/provenance";
+import { describeEngine, describeAgentEngine } from "@/lib/ai/provenance";
 import { estadoIaLocal } from "@/lib/ai/local-capability";
 
 /**
@@ -16,7 +16,17 @@ import { estadoIaLocal } from "@/lib/ai/local-capability";
  * main (getAiKeyStatus): así el badge NO miente "nube" cuando falta la llave y la
  * petición caería en realidad al respaldo local.
  */
-export function AiProvenanceBadge({ className }: { className?: string }) {
+export function AiProvenanceBadge({
+  className,
+  /**
+   * El badge del CHAT DEL AGENTE: `runLitertAgent` no pasa por el router, así que
+   * ahí la procedencia es local aunque haya llave y modo nube configurados (#358).
+   */
+  agente = false,
+}: {
+  className?: string;
+  agente?: boolean;
+}) {
   const [keys, setKeys] = useState<KeyStatus | undefined>(undefined);
   // Recarga al montar y cuando la ventana recupera el foco (el usuario pudo
   // cambiar el modo o la llave en Ajustes en otra pestaña/ventana).
@@ -36,7 +46,8 @@ export function AiProvenanceBadge({ className }: { className?: string }) {
 
   // El estado del motor local entra en la descripción: en un equipo sin WebGPU
   // el badge no puede decir «IA local» (#202).
-  const engine = describeEngine(loadAiSettings(), keys, { estadoLocal: estadoIaLocal() });
+  const describir = agente ? describeAgentEngine : describeEngine;
+  const engine = describir(loadAiSettings(), keys, { estadoLocal: estadoIaLocal() });
   const Icon = !engine.available ? CircleSlash : engine.isLocal ? Cpu : Cloud;
 
   return (

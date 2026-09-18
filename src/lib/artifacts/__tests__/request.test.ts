@@ -45,6 +45,16 @@ describe("artifactRequestDirective", () => {
     expect(out).toContain("Instrucciones del usuario: Identifica riesgos y restricciones");
   });
 
+  it("la orden lleva el ORDEN del bucle: leer → plan → generar (#358)", () => {
+    // El «generalo ya» chocaba con «plan primero» y la corrida moría sin
+    // artefacto. Si esta línea vuelve a pedir la generación directa, el bug
+    // vuelve sin que nada se ponga rojo.
+    const req = resolveArtifactRequest("constraints")!;
+    const out = artifactRequestDirective(req, "");
+    expect(out).toMatch(/proponé el plan/i);
+    expect(out.indexOf("plan")).toBeLessThan(out.indexOf('"generate_document"'));
+  });
+
   it("sin texto del usuario, la orden sola alcanza", () => {
     const req = resolveArtifactRequest("drivers")!;
     const out = artifactRequestDirective(req, "   ");
