@@ -140,6 +140,27 @@ recortan al dibujar.
 | `delete_view` **app** | elimina una pestaña por nombre exacto. Destructiva y estrecha a propósito: nunca por coincidencia parcial, nunca varias, nunca una vista del sistema. |
 | `rename_view` **app** | renombra una pestaña — la alternativa no destructiva a borrar y volver a subir. |
 
+### 5c · Editar la vista abierta (feature 015)
+
+Las herramientas de arriba mueven **pestañas**; éstas cambian **lo que hay dentro** de una,
+sin reemplazarla. Existen porque «agregá un elemento en la vista actual» no era una acción
+posible: todo lo que escribía un agente vivía en el workspace del MCP y la única puerta al
+lienzo era `export_as_view`, que pisa la pestaña entera (#332).
+
+| Herramienta | Qué hace |
+|---|---|
+| `add_view_element` **app** | agrega UN elemento al grafo de una vista. El tipo se valida contra la notación de esa vista (§P6). |
+| `update_view_element` **app** | cambia nombre, tipo, descripción o contenedor de un elemento, resuelto por NOMBRE. Dos homónimos ⇒ no elige: lo dice. |
+| `remove_view_element` **app** | quita un elemento y las relaciones que lo tocan. Destructiva: pasa por confirmación del humano. |
+| `add_view_edge` / `update_view_edge` / `remove_view_edge` **app** | relaciones entre elementos nombrados. `invert: true` da vuelta la flecha; la relación se encuentra aunque se nombre al revés de como está dibujada. |
+| `set_view_graph` **app** | reemplaza el contenido de una vista con un `GraphData` completo. Reconcilia por nombre para conservar la posición de lo que ya estaba, y **rechaza un grafo vacío** (§P8). |
+
+Sin `view`, todas caen en la vista **abierta**: es el «acá» del humano. La regla de a qué
+vista va vive en `planViewEdit` (`src/lib/mcp/app-actions.ts`) y la operación sobre el grafo
+en `applyViewEdit` (`src/lib/mcp/view-edit.ts`), que hace la ida y vuelta por `DiagramModel`
+y **reaplica** lo que esa conversión no lleva: la geometría que el humano movió, el `viewRef`
+del drill-down y los quiebres y anclas que dibujó a mano (#344).
+
 ### 5b · Configuración del servidor
 
 Además del workspace, el servidor acepta dos defaults para no repetir lo mismo en cada llamada:

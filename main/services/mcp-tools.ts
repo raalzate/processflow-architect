@@ -2519,6 +2519,138 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     );
   }
 
+  // Editar el grafo de una VISTA del proyecto, sin reemplazar la pestaña entera
+  // (feature 015, #336). Hasta acá la única puerta al lienzo era export_as_view:
+  // «agregá un elemento en la vista actual» no existía como acción y lo que el
+  // agente escribía moría en el workspace del MCP (#332). Sin `view`, el destino
+  // es la vista ABIERTA.
+  if (opts.actOnApp) {
+    const vista = { view: z.string().optional().describe("Nombre de la vista; sin esto, la vista ABIERTA en la app.") };
+    const editar = async (request: AppActionRequest) => {
+      const r = await opts.actOnApp!(request);
+      return r.ok ? text(`✅ ${r.message}`) : fail(r.error);
+    };
+
+    server.registerTool(
+      "add_view_element",
+      {
+        title: "Agregar un elemento a una vista",
+        description:
+          "Agrega UN elemento al grafo de una vista del proyecto ACTIVO y el lienzo lo muestra al aplicarse. El tipo se valida contra la notación de esa vista (usá describe_notation si no la sabés). Distinto de add_node, que opera sobre el diagrama del workspace del MCP: esto toca lo que el humano está mirando.",
+        inputSchema: {
+          name: z.string().describe("Nombre del elemento."),
+          type: z.string().describe("Tipo de la notación de la vista."),
+          container: z.string().optional().describe("Nombre del contenedor donde va (vacío = suelto)."),
+          description: z.string().optional(),
+          ...vista,
+        },
+      },
+      async ({ name, type, container, description, view }) =>
+        editar({ kind: "add-element", name, type, container, description, view })
+    );
+
+    server.registerTool(
+      "update_view_element",
+      {
+        title: "Corregir un elemento de una vista",
+        description:
+          "Cambia el nombre, el tipo, la descripción o el contenedor de UN elemento de una vista, nombrándolo como se llama en el lienzo. Si hay dos elementos con ese nombre no elige por vos: te lo dice para que preguntes cuál.",
+        inputSchema: {
+          name: z.string().describe("Nombre actual del elemento."),
+          newName: z.string().optional(),
+          type: z.string().optional(),
+          description: z.string().optional(),
+          container: z.string().optional(),
+          ...vista,
+        },
+      },
+      async ({ name, newName, type, description, container, view }) =>
+        editar({ kind: "update-element", name, newName, type, description, container, view })
+    );
+
+    server.registerTool(
+      "remove_view_element",
+      {
+        title: "Eliminar un elemento de una vista",
+        description:
+          "Quita UN elemento del grafo de una vista, con las relaciones que lo tocan. Es destructivo sobre el trabajo del humano: nombre exacto, uno por vez.",
+        inputSchema: { name: z.string().describe("Nombre del elemento."), ...vista },
+      },
+      async ({ name, view }) => editar({ kind: "remove-element", name, view })
+    );
+
+    server.registerTool(
+      "add_view_edge",
+      {
+        title: "Relacionar dos elementos de una vista",
+        description:
+          "Conecta dos elementos de una vista NOMBRÁNDOLOS (no por id). La etiqueta explica la relación: en C4 una flecha sin explicar no dice nada.",
+        inputSchema: {
+          from: z.string().describe("Nombre del elemento origen."),
+          to: z.string().describe("Nombre del elemento destino."),
+          label: z.string().optional(),
+          dashed: z.boolean().optional().describe("true → línea punteada."),
+          arrow: z.enum(["end", "both", "none"]).optional(),
+          ...vista,
+        },
+      },
+      async ({ from, to, label, dashed, arrow, view }) =>
+        editar({ kind: "add-edge", from, to, label, dashed, arrow, view })
+    );
+
+    server.registerTool(
+      "update_view_edge",
+      {
+        title: "Corregir una relación de una vista",
+        description:
+          "Cambia la etiqueta, el estilo o la DIRECCIÓN de una relación entre dos elementos de una vista. Encuentra la relación aunque la nombres al revés de como está dibujada; `invert: true` es el «invertí esa flecha».",
+        inputSchema: {
+          from: z.string(),
+          to: z.string(),
+          label: z.string().optional(),
+          dashed: z.boolean().optional(),
+          arrow: z.enum(["end", "both", "none"]).optional(),
+          invert: z.boolean().optional().describe("true → da vuelta la relación."),
+          ...vista,
+        },
+      },
+      async ({ from, to, label, dashed, arrow, invert, view }) =>
+        editar({ kind: "update-edge", from, to, label, dashed, arrow, invert, view })
+    );
+
+    server.registerTool(
+      "remove_view_edge",
+      {
+        title: "Eliminar una relación de una vista",
+        description: "Quita la relación entre dos elementos de una vista, sin tocar los elementos.",
+        inputSchema: { from: z.string(), to: z.string(), ...vista },
+      },
+      async ({ from, to, view }) => editar({ kind: "remove-edge", from, to, view })
+    );
+
+    server.registerTool(
+      "set_view_graph",
+      {
+        title: "Reemplazar el grafo de una vista",
+        description:
+          "Reemplaza el CONTENIDO de una vista con un GraphData completo, conservando la posición que el humano le dio a lo que ya estaba (se reconcilia por nombre). Es la puerta del modo creativo: un diagrama entero de una sola vez. Un grafo sin elementos se rechaza — el lienzo no queda en blanco.",
+        inputSchema: {
+          graph: z.string().describe("GraphData completo en JSON."),
+          ...vista,
+        },
+      },
+      async ({ graph, view }) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(graph);
+        } catch (e: any) {
+          return fail(`El grafo no es JSON válido: ${String(e?.message ?? e)}`);
+        }
+        return editar({ kind: "set-graph", graph: parsed as any, view });
+      }
+    );
+  }
+
   if (opts.exportMermaidToApp) {
     server.registerTool(
       "export_mermaid_view",

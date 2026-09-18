@@ -91,6 +91,21 @@ componente / hook (useAi)
   **en memoria** (`mcpPlaygroundCall`) sin necesidad de encender el servidor HTTP. Lo
   destructivo NUNCA se ejecuta sin el sí del humano (§P10). El turno del modelo es la
   `AiTask` `builder-turn`, así que respeta el modo de IA vigente sin política propia (§P5).
+- **`builder-intent.ts` / `builder-creative.ts` / `builder-editor.ts`** — los **dos modos**
+  del constructor (feature 015). El bucle ReAct encadenaba una llamada por turno y con el
+  motor local eso no alcanza para crear un diagrama (63 pasos y lienzo vacío, medido):
+  - `builder-intent.ts` clasifica el pedido —`creativo` · `editor` · `ambiguo`— mirando el
+    **verbo**, sin gastar una inferencia. El modo elegido y su motivo van a la traza.
+  - `builder-creative.ts` resuelve «hacéme un diagrama de X» en **una** inferencia: le
+    muestra al modelo lo que ya hay en **Mermaid**, recibe el Mermaid completo y lo
+    convierte con `fromMermaid`. Un solo reintento con los hallazgos; nunca publica un
+    grafo vacío, y pisar una vista con contenido lo decide el humano (§P8, §P10).
+  - `builder-editor.ts` resuelve «agregá X» / «invertí esa flecha» con las consultas
+    deterministas de `builder-queries.ts` y UNA llamada `*_view_*`; si el pedido no alcanza
+    (dos homónimos, ninguna coincidencia) pregunta con opciones en vez de elegir.
+  La convención del Mermaid es que **el tipo viaja explícito** —`id["Nombre<br><i>Tipo</i>"]`,
+  y un contenedor es un `subgraph` con la misma etiqueta—: la silueta no identifica el tipo
+  (doce tipos DDD son elipses), así que deducirlo del dibujo violaría §P6 el primer día.
 - **`agent-run.ts`** — estado puro de una corrida del agente: lecturas, notas, plan,
   preguntas al humano, cobertura y citas. Incluye `fallbackPlan`, el plan de rescate con
   lo ya leído para cuando el modelo no logra redactar uno válido.

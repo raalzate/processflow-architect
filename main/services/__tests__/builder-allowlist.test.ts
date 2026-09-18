@@ -57,6 +57,26 @@ describe("repertorio del constructor vs. registro MCP", () => {
     }
   });
 
+  it("las herramientas que editan la vista abierta existen en modo app (015, #336)", () => {
+    // Son la puerta al lienzo del humano: sin ellas el agente vuelve a escribir
+    // sólo en el workspace del MCP, que es el defecto que abrió la feature.
+    for (const t of [
+      "add_view_element",
+      "update_view_element",
+      "remove_view_element",
+      "add_view_edge",
+      "update_view_edge",
+      "remove_view_edge",
+      "set_view_graph",
+    ]) {
+      expect(registradas.has(t), `falta ${t}`).toBe(true);
+    }
+  });
+
+  it("fuera del modo app esas herramientas no existen (no hay lienzo que tocar)", () => {
+    expect(nombresRegistrados(false).has("add_view_element")).toBe(false);
+  });
+
   it("el analista no lleva ninguna herramienta de escritura", () => {
     expect(getAgentProfile("analista").tools).toEqual([]);
   });

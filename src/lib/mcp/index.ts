@@ -9,3 +9,4 @@
 export * from "./catalog";
 export * from "./diagram-builder";
 export * from "./to-mermaid";
+export * from "./from-mermaid";

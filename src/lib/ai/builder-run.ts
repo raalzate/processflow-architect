@@ -119,7 +119,21 @@ export const MAX_BLOQUEOS = 3;
  * en el workspace del MCP: son trabajo, pero no son un cambio del modelo del
  * humano hasta que se publican (#329).
  */
-const TOCAN_EL_LIENZO = new Set(["export_as_view", "export_to_app", "delete_view", "rename_view"]);
+const TOCAN_EL_LIENZO = new Set([
+  "export_as_view",
+  "export_to_app",
+  "delete_view",
+  "rename_view",
+  // El modo editor escribe DIRECTO en la vista abierta: eso el humano lo ve al
+  // aplicarse, no al publicar (015, FR-009).
+  "add_view_element",
+  "update_view_element",
+  "remove_view_element",
+  "add_view_edge",
+  "update_view_edge",
+  "remove_view_edge",
+  "set_view_graph",
+]);
 
 /** Herramientas que cambian el modelo (las demás sólo miran). */
 const ESCRIBEN = new Set([
@@ -135,6 +149,13 @@ const ESCRIBEN = new Set([
   "delete_view",
   "rename_view",
   "export_as_view",
+  "add_view_element",
+  "update_view_element",
+  "remove_view_element",
+  "add_view_edge",
+  "update_view_edge",
+  "remove_view_edge",
+  "set_view_graph",
 ]);
 
 /**
@@ -234,6 +255,25 @@ function frase(call: BuilderCall, diagramaNombre?: string): string {
       return `Diagrama "${nombre}" creado.`;
     case "relayout_diagram":
       return "Diagrama reacomodado.";
+    // Modo editor (015): el efecto está en la vista del humano, no en el workspace.
+    case "add_view_element":
+      return `Elemento "${nombre}" agregado a la vista${call.args.type ? ` (${String(call.args.type)})` : ""}.`;
+    case "update_view_element":
+      return `Elemento "${nombre}" modificado en la vista.`;
+    case "remove_view_element":
+      return `Elemento "${nombre}" eliminado de la vista.`;
+    case "add_view_edge":
+      return `Relación ${String(call.args.from ?? "?")} → ${String(call.args.to ?? "?")} agregada a la vista.`;
+    case "update_view_edge":
+      // Invertir es lo que más se pide y lo que más se malinterpreta: el cierre
+      // lo nombra con la palabra del humano, no con un «modificada» genérico.
+      return call.args.invert
+        ? `Relación ${String(call.args.from ?? "?")} → ${String(call.args.to ?? "?")} invertida en la vista.`
+        : `Relación ${String(call.args.from ?? "?")} → ${String(call.args.to ?? "?")} modificada en la vista.`;
+    case "remove_view_edge":
+      return `Relación ${String(call.args.from ?? "?")} → ${String(call.args.to ?? "?")} eliminada de la vista.`;
+    case "set_view_graph":
+      return "Diagrama publicado en la vista.";
     default:
       return `${call.tool} aplicado.`;
   }
@@ -295,6 +335,23 @@ const REPETIBLES = new Set([
   "relayout_diagram",
 ]);
 
+/**
+ * IDENTIDAD de lo que una llamada toca: la herramienta y la caja (o el par de
+ * cajas) sobre la que actúa. La huella completa no sirve para esto: «agregá Ana»
+ * y «agregá Ana con descripción» son argumentos distintos y la MISMA caja, así
+ * que el modelo local la agregaba dos veces cambiando un detalle (015, T10).
+ * Devuelve `undefined` cuando la llamada no nombra un objetivo.
+ */
+function identidad(call: BuilderCall): string | undefined {
+  const texto = (v: unknown) => (typeof v === "string" ? v.trim().toLowerCase() : "");
+  const nombre = texto(call.args.name ?? call.args.nombre ?? call.args.id);
+  const desde = texto(call.args.from ?? call.args.fuente);
+  const hasta = texto(call.args.to ?? call.args.destino);
+  if (desde && hasta) return `${call.tool}:${desde}→${hasta}`;
+  if (nombre) return `${call.tool}:${nombre}`;
+  return undefined;
+}
+
 /** Huella de una llamada: herramienta + argumentos, sin que el orden la disfrace. */
 function huella(call: BuilderCall): string {
   const args = Object.keys(call.args)
@@ -324,7 +381,12 @@ export function relecturaEsteril(state: BuilderRunState, call: BuilderCall): str
 export function yaEjecutada(state: BuilderRunState, call: BuilderCall): boolean {
   if (REPETIBLES.has(call.tool)) return false;
   const h = huella(call);
-  return state.pasos.some((p) => p.ok && huella({ tool: p.tool, args: p.args }) === h);
+  if (state.pasos.some((p) => p.ok && huella({ tool: p.tool, args: p.args }) === h)) return true;
+  // Por identidad: la misma caja con otro detalle sigue siendo la misma caja.
+  const id = identidad(call);
+  return Boolean(
+    id && state.pasos.some((p) => p.ok && identidad({ tool: p.tool, args: p.args }) === id)
+  );
 }
 
 /**
