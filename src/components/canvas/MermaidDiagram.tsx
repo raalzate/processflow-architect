@@ -7,6 +7,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
+import { MERMAID_INIT_CONFIG } from "@/lib/mermaid/render-config";
+
 let mermaidInitialized = false;
 let mermaidModule: any = null;
 
@@ -15,22 +17,7 @@ async function getMermaid() {
     mermaidModule = (await import("mermaid")).default;
   }
   if (!mermaidInitialized) {
-    mermaidModule.initialize({
-      startOnLoad: false,
-      theme: "neutral",
-      securityLevel: "strict",
-      flowchart: { useMaxWidth: true, htmlLabels: true },
-      // Diagramas de secuencia: márgenes cómodos, actores espejados abajo y
-      // ancho adaptable para que no se aplaste con pocos participantes.
-      sequence: {
-        useMaxWidth: true,
-        mirrorActors: true,
-        showSequenceNumbers: false,
-        wrap: true,
-        actorMargin: 60,
-        boxMargin: 12,
-      },
-    });
+    mermaidModule.initialize(MERMAID_INIT_CONFIG);
     mermaidInitialized = true;
   }
   return mermaidModule;

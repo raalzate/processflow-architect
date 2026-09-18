@@ -1,0 +1,379 @@
+/*
+  Hoja de la página pública. Está aparte del HTML porque ya no es un archivo corto:
+  el navegador la cachea y el HTML se lee sin bajar 400 líneas de CSS antes del texto.
+
+  Paleta: los mismos tonos que la app (src/app/globals.css) —blanco-azulado, tinta
+  slate, azul frío como primario— más el naranja del post-it de evento como único
+  acento. Los cinco colores de notación son los de src/lib/notations.ts.
+*/
+:root {
+  --papel: #F4F6F9;
+  --papel-hondo: #E9EDF3;
+  --superficie: #FFFFFF;
+  --tinta: #171B22;
+  --tinta-suave: #5A6472;
+  --borde: #DCE2EA;
+  --borde-suave: #E8ECF2;
+  --azul: #35558C;
+  --azul-hondo: #27406B;
+  --azul-suave: #E3EAF6;
+  --sobre-azul: #FFFFFF;
+  --acento: #D2490A;
+  --acento-suave: #FBE7DA;
+  --verde: #0F7B4F;
+  --ddd: #C2410C;
+  --bpmn: #0369A1;
+  --c4: #1D4ED8;
+  --uml: #6D28D9;
+  --mer: #047857;
+  --radio: 16px;
+  --radio-chico: 10px;
+  --medida: 36rem;
+  --sombra: 0 24px 60px -32px rgba(23, 27, 34, .45);
+  --sombra-suave: 0 1px 2px rgba(23, 27, 34, .05), 0 12px 28px -24px rgba(23, 27, 34, .5);
+}
+
+/* Tres estados de tema: sin marca (sistema) y las dos elecciones explícitas. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papel: #14181E;
+    --papel-hondo: #1A1F27;
+    --superficie: #1E242C;
+    --tinta: #E8EBEF;
+    --tinta-suave: #9AA4B2;
+    --borde: #2D343E;
+    --borde-suave: #262C35;
+    --azul: #7FA3DC;
+    --azul-hondo: #A6C1EC;
+    --azul-suave: rgba(60, 84, 124, .28);
+    --sobre-azul: #10151C;
+    --acento: #FF8A46;
+    --acento-suave: rgba(74, 41, 22, .75);
+    --verde: #6EE7B7;
+    --ddd: #FDBA74; --bpmn: #7DD3FC; --c4: #93B4FD; --uml: #C4B5FD; --mer: #6EE7B7;
+    --sombra: 0 24px 60px -30px #000;
+    --sombra-suave: 0 1px 2px rgba(0,0,0,.5), 0 12px 28px -22px #000;
+  }
+}
+:root[data-theme="dark"] {
+  --sobre-azul: #10151C;
+  --papel: #14181E;
+  --papel-hondo: #1A1F27;
+  --superficie: #1E242C;
+  --tinta: #E8EBEF;
+  --tinta-suave: #9AA4B2;
+  --borde: #2D343E;
+  --borde-suave: #262C35;
+  --azul: #7FA3DC;
+  --azul-hondo: #A6C1EC;
+  --azul-suave: rgba(60, 84, 124, .28);
+  --acento: #FF8A46;
+  --acento-suave: rgba(74, 41, 22, .75);
+  --verde: #6EE7B7;
+  --ddd: #FDBA74; --bpmn: #7DD3FC; --c4: #93B4FD; --uml: #C4B5FD; --mer: #6EE7B7;
+  --sombra: 0 24px 60px -30px #000;
+  --sombra-suave: 0 1px 2px rgba(0,0,0,.5), 0 12px 28px -22px #000;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { animation: none !important; transition: none !important; }
+}
+
+body {
+  margin: 0;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--papel);
+  color: var(--tinta);
+  font-family: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: "Bricolage Grotesque", "Instrument Sans", sans-serif;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  line-height: 1.08;
+  text-wrap: balance;
+  margin: 0;
+}
+
+a { color: var(--azul-hondo); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--azul); outline-offset: 3px; }
+
+/* `height: auto` no es decorativo: las capturas traen width/height en el HTML —para
+   reservar el espacio y no saltar al cargar— y sin esto el alto del atributo gana
+   cuando el ancho se limita, que es lo que las achata. */
+img { max-width: 100%; height: auto; display: block; }
+
+code, .mono {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+code {
+  font-size: .86em;
+  background: var(--superficie);
+  border: 1px solid var(--borde-suave);
+  border-radius: 6px;
+  padding: .1em .35em;
+}
+
+.envoltura { width: min(1120px, 100% - 2.5rem); margin-inline: auto; }
+section { padding-block: clamp(3rem, 6vw, 5rem); scroll-margin-top: 5rem; }
+.papel-hondo { background: var(--papel-hondo); border-block: 1px solid var(--borde-suave); }
+
+.seccion-titulo { font-size: clamp(1.9rem, 1.3rem + 2.2vw, 2.9rem); max-width: 22ch; }
+.seccion-texto { color: var(--tinta-suave); max-width: var(--medida); margin-top: 1rem; }
+.rotulo {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .7rem; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--acento); margin: 0 0 .8rem;
+}
+
+/* ---------- barra ---------- */
+.barra {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--papel) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--borde-suave);
+}
+.barra .envoltura { display: flex; align-items: center; gap: 1.25rem; padding-block: .8rem; }
+.marca {
+  display: inline-flex; align-items: center; gap: .6rem;
+  font-family: "Bricolage Grotesque", sans-serif; font-weight: 700;
+  font-size: 1.15rem; letter-spacing: -.03em;
+  text-decoration: none; color: var(--tinta);
+}
+.marca img { width: 30px; height: 30px; border-radius: 8px; }
+.marca span { color: var(--acento); }
+.barra nav { margin-left: auto; display: flex; align-items: center; gap: 1.3rem; font-size: .95rem; }
+.barra nav a { color: var(--tinta-suave); text-decoration: none; }
+.barra nav a:hover { color: var(--azul-hondo); }
+.barra .boton { padding: .5rem 1rem; font-size: .9rem; }
+/* `.barra nav a` gana por especificidad al color del botón: el CTA de la barra
+   quedaba con el gris de los enlaces sobre el azul. Se le devuelve el suyo. */
+.barra nav a.boton-primario { color: var(--sobre-azul); }
+@media (max-width: 860px) { .barra nav a:not(.boton) { display: none; } }
+
+/* ---------- botones ---------- */
+.boton {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  padding: .85rem 1.5rem; border-radius: var(--radio-chico);
+  border: 1px solid transparent; font: inherit; font-weight: 600;
+  text-decoration: none; text-align: center;
+  transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+}
+.boton-primario { background: var(--azul); color: var(--sobre-azul); }
+.boton-primario:hover { background: var(--azul-hondo); transform: translateY(-1px); }
+.boton-plano { background: var(--superficie); border-color: var(--borde); color: var(--tinta); }
+.boton-plano:hover { border-color: var(--azul); transform: translateY(-1px); }
+
+/* ---------- portada ---------- */
+.portada { padding-block: clamp(2.5rem, 6vw, 4.5rem) 2rem; }
+.portada-rejilla {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: clamp(2rem, 5vw, 3.5rem); align-items: center;
+}
+@media (max-width: 980px) { .portada-rejilla { grid-template-columns: 1fr; } }
+
+.sello {
+  display: inline-flex; align-items: center; gap: .55rem;
+  background: var(--acento-suave); color: var(--acento);
+  border-radius: 999px; padding: .35rem .9rem;
+  font-size: .82rem; font-weight: 600; margin: 0;
+}
+.punto { width: 7px; height: 7px; border-radius: 50%; background: var(--acento); }
+
+.portada h1 { font-size: clamp(2.5rem, 1.5rem + 4.2vw, 4.1rem); margin-block: 1.2rem 1rem; }
+.portada h1 em { font-style: normal; color: var(--acento); }
+.entradilla { font-size: 1.14rem; color: var(--tinta-suave); max-width: var(--medida); margin-bottom: 1.7rem; }
+.acciones { display: flex; flex-wrap: wrap; gap: .75rem; }
+.nota-descarga { margin-top: .9rem; font-size: .88rem; color: var(--tinta-suave); }
+
+/* marco de ventana: la captura se lee como una app, no como una imagen suelta */
+.marco {
+  display: block; text-decoration: none;
+  border: 1px solid var(--borde); border-radius: var(--radio);
+  background: var(--superficie); overflow: hidden; box-shadow: var(--sombra);
+}
+a.marco:hover { border-color: var(--azul); }
+.marco-cabecera {
+  display: flex; gap: .4rem; padding: .7rem .9rem;
+  border-bottom: 1px solid var(--borde-suave);
+  background: color-mix(in srgb, var(--papel-hondo) 70%, var(--superficie));
+}
+.marco-cabecera i { width: 10px; height: 10px; border-radius: 50%; background: var(--borde); }
+
+/* ---------- cinta de cifras ---------- */
+.cifras {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px; background: var(--borde-suave);
+  border: 1px solid var(--borde-suave); border-radius: var(--radio); overflow: hidden;
+}
+.cifra { background: var(--superficie); padding: 1.2rem 1.3rem; min-width: 0; }
+.cifra b {
+  display: block; font-family: "Bricolage Grotesque", sans-serif;
+  font-size: 1.7rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.1;
+}
+.cifra span { font-size: .9rem; color: var(--tinta-suave); }
+
+/* ---------- las cinco notaciones ---------- */
+.notaciones { display: grid; gap: .9rem; margin-top: 2.5rem; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.notacion {
+  min-width: 0;
+  background: var(--superficie); border: 1px solid var(--borde-suave);
+  border-top: 3px solid var(--n); border-radius: var(--radio-chico);
+  padding: 1.1rem 1.2rem;
+}
+.notacion b { display: block; font-family: "IBM Plex Mono", monospace; font-size: .8rem; letter-spacing: .1em; color: var(--n); margin-bottom: .5rem; }
+.notacion span { font-size: .95rem; color: var(--tinta-suave); }
+
+/* ---------- pasos ---------- */
+.pasos { counter-reset: paso; margin-top: 2.5rem; display: grid; gap: 1.6rem; }
+@media (min-width: 860px) { .pasos { grid-template-columns: repeat(4, 1fr); gap: 1.8rem; } }
+/* `min-width: 0` en los hijos de una rejilla: sin él, un <pre> con una línea larga
+   —el git clone— estira su columna y se lleva la página entera al scroll horizontal. */
+.paso { border-top: 2px solid var(--azul); padding-top: 1rem; min-width: 0; }
+.paso::before {
+  counter-increment: paso; content: "Paso " counter(paso);
+  font-family: "IBM Plex Mono", monospace; font-size: .72rem; letter-spacing: .12em; color: var(--azul);
+}
+.paso h3 { font-size: 1.22rem; margin-block: .5rem .4rem; }
+.paso p { margin: 0; color: var(--tinta-suave); font-size: .97rem; }
+.paso pre { margin-top: .9rem; }
+
+pre {
+  margin: 0; padding: .9rem 1rem; overflow-x: auto;
+  background: var(--superficie); border: 1px solid var(--borde-suave); border-radius: var(--radio-chico);
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .8rem; line-height: 1.6; color: var(--tinta);
+}
+pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+
+/* ---------- vitrina de capturas ---------- */
+.vitrina { display: grid; gap: 3rem; margin-top: 3rem; }
+.toma { display: grid; gap: 1.5rem; align-items: center; margin: 0; }
+.toma > * { min-width: 0; }
+@media (min-width: 900px) {
+  .toma { grid-template-columns: 1fr 1.35fr; gap: 3rem; }
+  /* Al invertir se invierten también las columnas: si no, la captura cae en la
+     columna angosta y se ve más chica que las de las filas pares. */
+  .toma.invertida { grid-template-columns: 1.35fr 1fr; }
+  .toma.invertida > figcaption { order: 2; }
+  .toma.invertida > .marco { order: 1; }
+}
+.toma figcaption h3 { font-size: 1.45rem; margin-bottom: .6rem; }
+.toma figcaption p { color: var(--tinta-suave); margin: 0; }
+.toma .detalle {
+  margin-top: .9rem; font-size: .9rem; color: var(--tinta-suave);
+  border-left: 2px solid var(--borde); padding-left: .8rem;
+}
+.ampliar { display: inline-block; margin-top: .9rem; font-size: .85rem; }
+
+/* ---------- privacidad ---------- */
+.privacidad { background: var(--azul-suave); border-block: 1px solid var(--borde); }
+.privacidad .envoltura { display: grid; gap: 2rem; }
+@media (min-width: 900px) { .privacidad .envoltura { grid-template-columns: 1.05fr 1fr; gap: 4rem; align-items: center; } }
+.hechos { list-style: none; margin: 1.8rem 0 0; padding: 0; display: grid; gap: 1rem; }
+.hechos li { display: grid; grid-template-columns: 1.5rem 1fr; gap: .6rem; }
+.hechos b { display: block; }
+.hechos span { color: var(--tinta-suave); font-size: .96rem; }
+.tilde { color: var(--verde); font-weight: 700; }
+
+/* ---------- ventajas ---------- */
+.ventajas { margin-top: 2.5rem; display: grid; gap: 1.6rem 3rem; }
+@media (min-width: 780px) { .ventajas { grid-template-columns: repeat(2, 1fr); } }
+.ventaja { border-top: 1px solid var(--borde); padding-top: 1rem; }
+.ventaja .clave {
+  font-family: "IBM Plex Mono", monospace; font-size: .68rem;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--acento);
+}
+.ventaja h3 { font-size: 1.12rem; margin-block: .35rem .35rem; }
+.ventaja p { margin: 0; color: var(--tinta-suave); font-size: .96rem; }
+
+/* ---------- casos de uso ---------- */
+.casos { display: grid; gap: 1.2rem; margin-top: 2.5rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.caso {
+  min-width: 0;
+  background: var(--superficie); border: 1px solid var(--borde-suave);
+  border-top: 3px solid var(--caso, var(--acento)); border-radius: var(--radio);
+  padding: 1.4rem; display: flex; flex-direction: column; gap: .75rem;
+  box-shadow: var(--sombra-suave);
+  transition: transform .15s ease, border-color .15s ease;
+}
+.caso:hover { transform: translateY(-2px); }
+.caso .quien {
+  margin: 0; font-family: "IBM Plex Mono", monospace; font-size: .66rem;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--caso, var(--acento));
+}
+.caso h3 { font-size: 1.18rem; }
+.caso p { margin: 0; color: var(--tinta-suave); font-size: .95rem; }
+.caso dl { margin: auto 0 0; display: grid; grid-template-columns: 4.2rem 1fr; gap: .35rem .9rem; font-size: .88rem; padding-top: .6rem; border-top: 1px solid var(--borde-suave); }
+.caso dt { font-family: "IBM Plex Mono", monospace; font-size: .63rem; letter-spacing: .1em; text-transform: uppercase; color: var(--tinta-suave); padding-top: .25rem; }
+.caso dd { margin: 0; color: var(--tinta-suave); }
+
+/* ---------- tabla ---------- */
+.tabla-scroll { max-width: 100%; overflow-x: auto; margin-top: 2rem; border: 1px solid var(--borde-suave); border-radius: var(--radio); background: var(--superficie); }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: .95rem; }
+th, td { text-align: left; padding: .85rem 1.1rem; border-bottom: 1px solid var(--borde-suave); vertical-align: top; }
+thead th { font-family: "IBM Plex Mono", monospace; font-size: .66rem; letter-spacing: .12em; text-transform: uppercase; color: var(--tinta-suave); font-weight: 400; }
+tbody tr:last-child td { border-bottom: 0; }
+td.nota { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; color: var(--n, var(--tinta)); white-space: nowrap; }
+.aparte {
+  margin-top: 1.6rem; padding: 1rem 1.1rem; border-left: 3px solid var(--acento);
+  background: var(--acento-suave); border-radius: 0 var(--radio-chico) var(--radio-chico) 0;
+  font-size: .95rem;
+}
+
+/* ---------- descarga ---------- */
+.descarga { text-align: center; }
+.descarga .seccion-titulo, .descarga .seccion-texto { margin-inline: auto; }
+.plataformas {
+  margin-top: 2.5rem; display: grid; gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); text-align: left;
+}
+.plataforma {
+  min-width: 0;
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio);
+  padding: 1.4rem; display: flex; flex-direction: column; gap: .4rem;
+}
+.plataforma h3 { font-size: 1.12rem; }
+.plataforma p { margin: 0; color: var(--tinta-suave); font-size: .92rem; }
+.plataforma .boton { margin-top: auto; }
+.plataforma .peso {
+  margin-top: .6rem; font-family: "IBM Plex Mono", monospace;
+  font-size: .72rem; color: var(--tinta-suave); word-break: break-all;
+}
+/* La tarjeta del sistema desde el que se mira la página. */
+.plataforma.tuya { border-color: var(--azul); box-shadow: 0 0 0 3px var(--azul-suave); }
+.version { margin-top: 1.6rem; font-size: .95rem; color: var(--tinta-suave); }
+.requisitos { margin-top: 1.6rem; font-size: .88rem; color: var(--tinta-suave); max-width: 48rem; margin-inline: auto; text-align: left; }
+
+/* ---------- patrocinio ---------- */
+.patrocinio { background: var(--papel); border-bottom: 1px solid var(--borde-suave); padding-block: clamp(2.5rem, 4vw, 3.5rem); }
+.patrocinio .envoltura { display: grid; gap: 2rem; align-items: center; }
+@media (min-width: 860px) { .patrocinio .envoltura { grid-template-columns: 1.3fr 1fr; gap: 3.5rem; } }
+/* El logo va sobre blanco en los dos temas: es marca ajena y no se retoca ni se
+   invierte para que encaje con el fondo. La chapa blanca es el fondo que pide. */
+.chapa-sponsor {
+  display: grid; place-items: center; justify-self: start;
+  background: #FFFFFF; border: 1px solid var(--borde); border-radius: var(--radio);
+  padding: 1.8rem 2.2rem; box-shadow: var(--sombra-suave);
+  transition: border-color .15s ease, transform .15s ease;
+}
+.chapa-sponsor:hover { border-color: var(--acento); transform: translateY(-2px); }
+.chapa-sponsor img { width: 240px; max-width: 100%; }
+/* El primer párrafo lleva el mensaje: sin titular, es él quien tiene que pesar. */
+.texto-patrocinio { font-size: 1.14rem; color: var(--tinta); margin-top: 0; }
+.texto-patrocinio strong { font-weight: 600; }
+@media (min-width: 860px) { .chapa-sponsor { justify-self: center; } }
+
+/* ---------- pie ---------- */
+footer { border-top: 1px solid var(--borde); padding-block: 2.5rem 3.5rem; font-size: .9rem; color: var(--tinta-suave); }
+footer .envoltura { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: center; }
+footer nav { margin-left: auto; display: flex; gap: 1.2rem; flex-wrap: wrap; }
+.pie-sponsor a { font-weight: 600; }
