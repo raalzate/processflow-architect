@@ -36,6 +36,10 @@ const NOISE_KEYS = new Set<string>([
   // miles de caracteres y la ventana del motor local son 4 096 tokens; el agente
   // los lee por trozos con `read_source` (feature 012).
   "source_docs",
+  // Material adjunto a una caja: mismo motivo, un contrato OpenAPI solo se come
+  // la ventana entera. El digest sólo lo MARCA ({docs:N}) y el agente lo pide
+  // con `read_element_doc` (feature 016).
+  "adjuntos",
 ]);
 
 const INDENT = "  ";

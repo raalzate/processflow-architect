@@ -19,6 +19,7 @@ import {
   formatSpec,
   fichaHints,
   readSource,
+  readElementDoc,
   sourceInventory,
   VIEW_READ_MAX,
   type Catalog,
@@ -486,5 +487,108 @@ describe("documentos fuente · la cita deja de ser un puntero colgante", () => {
     expect(inv).toContain("docs/pagos.md");
     expect(inv).not.toContain("tarjeta");
     expect(sourceInventory(catalogo())).toBe("");
+  });
+});
+
+
+/* -------------------------------------------------------------------------- */
+/* Material adjunto: se MARCA, no se inyecta (#367)                            */
+/* -------------------------------------------------------------------------- */
+
+describe("adjuntos · el agente ve la marca, nunca el contenido", () => {
+  const CONTRATO = "openapi: 3.0.0\nsecreto-del-contrato: " + "x".repeat(60_000);
+
+  const nodoConDocs = () =>
+    ({
+      id: "api",
+      nombre: "Enrollment API",
+      tipo_elemento: "Contenedor",
+      descripcion: "",
+      estado_comparativo: "nuevo",
+      adjuntos: [
+        {
+          nombre: "pagos.yaml",
+          tipo: "openapi",
+          texto: CONTRATO,
+          bytes: CONTRATO.length,
+          addedAt: "2026-09-18T00:00:00.000Z",
+        },
+      ],
+    }) as any;
+
+  const catalogo = (docs?: boolean) =>
+    ({
+      docs,
+      views: [
+        {
+          name: "C4",
+          notation: "c4",
+          kind: "graph" as const,
+          graph: {
+            nombre_proyecto: "P",
+            version: "1.0.0",
+            fecha_analisis: "2026-09-18",
+            big_picture: { descripcion: "", hotspots: [], nodos: [nodoConDocs()], aristas: [] },
+            agregados: [],
+          },
+        },
+      ],
+    }) as any;
+
+  it("el digest marca {docs:N} y NO trae un byte del adjunto (SC-002)", () => {
+    const r = readView(catalogo(), "C4", 6000);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.text).toContain("{docs:1}");
+    expect(r.text).not.toContain("secreto-del-contrato");
+    // La marca cuesta ~9 caracteres por caja: es todo lo que crece el contexto.
+    expect(r.text.length).toBeLessThan(1_000);
+  });
+
+  it("la ficha trae el ÍNDICE del material, no su texto", () => {
+    const r = readElement(catalogo(), "Enrollment API", 6000);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.text).toContain("pagos.yaml");
+    expect(r.text).toContain("openapi");
+    expect(r.text).not.toContain("secreto-del-contrato");
+  });
+
+  it("read_element_doc es la ÚNICA puerta del contenido, y descuenta presupuesto", () => {
+    const r = readElementDoc(catalogo(), "Enrollment API", "pagos.yaml", 6000, 1, 1);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.text).toContain("openapi: 3.0.0");
+    expect(r.cost).toBeGreaterThan(0);
+    // Lo leído queda ATRIBUIDO: la traza dice de dónde salió lo que afirme.
+    expect(r.note.source.name).toContain("pagos.yaml");
+    expect(r.note.facts.join(" ")).toContain("Enrollment API");
+  });
+
+  it("sin presupuesto no lee, y lo dice", () => {
+    const r = readElementDoc(catalogo(), "Enrollment API", "pagos.yaml", 0);
+    expect(r.ok).toBe(false);
+  });
+
+  it("una caja sin material dice que no hay nada, no devuelve vacío", () => {
+    const cat = catalogo();
+    delete cat.views[0].graph.big_picture.nodos[0].adjuntos;
+    const r = readElementDoc(cat, "Enrollment API", "x.yaml", 6000);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/no tiene material/i);
+  });
+
+  it("con «Adjuntos al agente: nunca» no se marca ni se lee", () => {
+    const cat = catalogo(false);
+    const vista = readView(cat, "C4", 6000);
+    expect(vista.ok).toBe(true);
+    if (vista.ok) expect(vista.text).not.toContain("docs:");
+
+    const ficha = readElement(cat, "Enrollment API", 6000);
+    expect(ficha.ok).toBe(true);
+    if (ficha.ok) expect(ficha.text).not.toContain("pagos.yaml");
+
+    const doc = readElementDoc(cat, "Enrollment API", "pagos.yaml", 6000);
+    expect(doc.ok).toBe(false);
   });
 });

@@ -317,6 +317,11 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       // existir (no entran en la ventana), el agente los lee por trozos con
       // `read_source` y con ellos resuelve la cita de una caja (feature 012).
       sources: graphData?.source_docs ?? [],
+      // El material adjunto a una caja NUNCA se inyecta: el digest sólo lo
+      // marca `{docs:N}` y el agente lo pide con `read_element_doc`. Con
+      // «Adjuntos al agente: nunca» en Ajustes no se marca ni se ofrece
+      // (feature 016).
+      docs: getGenerationConfig().adjuntos !== "nunca",
     };
   }, [views, injectedViews, graphData]);
 

@@ -379,3 +379,36 @@ describe("documentos fuente · no entran al contexto por existir (feature 012)",
     expect(toon).not.toContain("source_docs");
   });
 });
+
+
+describe("adjuntos · el material de una caja no entra en el TOON (#367)", () => {
+  it("se poda como `source_docs`: viaja con el proyecto, no al contexto", () => {
+    const grafo = {
+      nombre_proyecto: "P",
+      big_picture: {
+        nodos: [
+          {
+            id: "api",
+            nombre: "API",
+            tipo_elemento: "Contenedor",
+            adjuntos: [
+              {
+                nombre: "pagos.yaml",
+                tipo: "openapi",
+                texto: "secreto-del-contrato",
+                bytes: 20,
+                addedAt: "2026-09-18T00:00:00.000Z",
+              },
+            ],
+          },
+        ],
+        aristas: [],
+      },
+      agregados: [],
+    } as any;
+    const toon = graphToToon(grafo);
+    expect(toon).toContain("API");
+    expect(toon).not.toContain("secreto-del-contrato");
+    expect(toon).not.toContain("pagos.yaml");
+  });
+});
