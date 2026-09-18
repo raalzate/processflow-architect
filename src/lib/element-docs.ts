@@ -322,6 +322,16 @@ export function formatDocsIndex(docs: readonly ElementDoc[]): string {
     .join("\n");
 }
 
+/**
+ * Lo que se GUARDA en el modelo: la lista saneada, o `undefined` si no hay
+ * nada. Un array vacío le agregaría un campo a cada nodo de cada proyecto ya
+ * guardado con sólo abrir la ficha, que es la misma regla que `sanitizeSpec`.
+ */
+export function docsParaGuardar(valor: unknown): ElementDoc[] | undefined {
+  const docs = sanitizeElementDocs(valor);
+  return docs.length ? docs : undefined;
+}
+
 /** Bytes de binario que de verdad viajan dentro del proyecto. */
 export function binarioUsado(docs: readonly ElementDoc[]): number {
   return docs.reduce((n, d) => n + (d.binario ? d.bytes : 0), 0);

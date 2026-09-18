@@ -22,6 +22,7 @@ import { type SequenceMessageKind } from "@/lib/sequence/messages";
 import { type FragmentOp, type FragmentPart } from "@/lib/sequence/fragments";
 import { normalizarLista, type ElementMetadata } from "@/lib/element-metadata";
 import { sanitizeSpec, type ElementSpec } from "@/lib/element-spec";
+import { docsParaGuardar, type ElementDoc } from "@/lib/element-docs";
 import { normalizarColumnas, type TableColumn } from "@/lib/mer/table-box";
 import {
   isNotationContainer,
@@ -61,6 +62,11 @@ export interface DesignerNode {
    * Ver `src/lib/element-spec.ts`.
    */
   spec?: ElementSpec;
+  /**
+   * Material adjunto de la caja (contrato, PDF, ejemplo). Vale igual para un
+   * nodo y para un CONTENEDOR. Ver `src/lib/element-docs.ts`.
+   */
+  adjuntos?: ElementDoc[];
   /**
    * Columnas de la tabla (MER físico). De ellas salen los compartimentos
    * «column»/«FK»/«index»/«PK» de la caja y su alto — ver `mer/table-box.ts`.
@@ -177,6 +183,7 @@ export function canvasToGraphData(
       // Una spec vacía no viaja: se guarda `undefined` para no agregarle un
       // objeto a cada contenedor del archivo (ver `isSpecEmpty`).
       spec: sanitizeSpec(c.spec),
+      adjuntos: docsParaGuardar(c.adjuntos),
       // El contenedor también declara si ya existe o es nuevo: se conserva o el
       // ida y vuelta por el lienzo lo devuelve a "nuevo".
       estado_comparativo: c.estado_comparativo,
@@ -276,6 +283,7 @@ function toDomainNode(n: DesignerNode): Omit<GraphNode, "agregado"> {
     borderColor: n.borderColor,
     metadata: n.metadata,
     spec: sanitizeSpec(n.spec),
+    adjuntos: docsParaGuardar(n.adjuntos),
     // Sin columnas no viaja el campo: un proyecto que no es un MER no cambia de
     // forma al pasar por el lienzo.
     columnas: n.columnas?.length ? n.columnas : undefined,
@@ -336,6 +344,7 @@ export function graphDataToCanvas(content: GraphData | null | undefined): {
       // (descarta lo inválido, deduplica por clave) en vez de confiar.
       metadata: normalizarLista((agg as any).metadata),
       spec: sanitizeSpec((agg as any).spec),
+      adjuntos: docsParaGuardar((agg as any).adjuntos),
       x: pos.x,
       y: pos.y,
       width: w,
@@ -398,6 +407,7 @@ function hydrateNode(
     borderColor: n.borderColor,
     metadata: normalizarLista(n.metadata),
     spec: sanitizeSpec(n.spec),
+    adjuntos: docsParaGuardar((n as { adjuntos?: unknown }).adjuntos),
     // Lo que viene del archivo o de un agente se normaliza: nombres recortados,
     // repetidas fuera y el tope respetado (`normalizarColumnas`).
     columnas: normalizarColumnas((n as { columnas?: unknown }).columnas),
