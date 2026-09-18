@@ -231,3 +231,89 @@ describe("specReport · lo que no se puede medir se reporta", () => {
     expect(criterioEsMedible("que sea rápido")).toBe(false);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Material con el que construir (feature 016, revisión de #370)               */
+/* -------------------------------------------------------------------------- */
+
+describe("specReport · sinMaterial", () => {
+  const conNodos = (nodes: any[]): DiagramModel => ({
+    meta: { nombre_proyecto: "Pagos", notation: "c4", fecha_analisis: "2026-09-18" } as never,
+    nodes,
+    edges: [],
+  });
+
+  it("marca el DESPLEGABLE sin adjuntos ni URL de contrato", () => {
+    const r = specReport(conNodos([{ id: "api", nombre: "API", tipo_elemento: "Contenedor" }]));
+    expect(r.sinMaterial).toEqual(["API"]);
+    expect(r.markdown).toMatch(/Sin material con el que construir/);
+  });
+
+  it("un tipo que NO se despliega nunca se marca: no tiene código que escribir", () => {
+    const r = specReport(conNodos([{ id: "p", nombre: "Persona", tipo_elemento: "Persona" }]));
+    expect(r.sinMaterial).toEqual([]);
+  });
+
+  it("una URL de contrato (endpoint/wiki) cuenta como material", () => {
+    const conEndpoint = specReport(
+      conNodos([
+        {
+          id: "api",
+          nombre: "API",
+          tipo_elemento: "Contenedor",
+          metadata: [{ clave: "endpoint", valor: "https://acme.test/pagos" }],
+        },
+      ])
+    );
+    expect(conEndpoint.sinMaterial).toEqual([]);
+
+    // Un alias de la canónica vale igual: `claveCanonica` los resuelve.
+    const conAlias = specReport(
+      conNodos([
+        {
+          id: "api",
+          nombre: "API",
+          tipo_elemento: "Contenedor",
+          metadata: [{ clave: "docs", valor: "https://wiki.acme.test/pagos" }],
+        },
+      ])
+    );
+    expect(conAlias.sinMaterial).toEqual([]);
+  });
+
+  it("una propiedad vacía no cuenta: el silencio no es material", () => {
+    const r = specReport(
+      conNodos([
+        {
+          id: "api",
+          nombre: "API",
+          tipo_elemento: "Contenedor",
+          metadata: [{ clave: "endpoint", valor: "   " }],
+        },
+      ])
+    );
+    expect(r.sinMaterial).toEqual(["API"]);
+  });
+
+  it("con un adjunto deja de marcarse", () => {
+    const r = specReport(
+      conNodos([
+        {
+          id: "api",
+          nombre: "API",
+          tipo_elemento: "Contenedor",
+          adjuntos: [
+            {
+              nombre: "pagos.yaml",
+              tipo: "openapi",
+              texto: "openapi: 3.0.0",
+              bytes: 14,
+              addedAt: "2026-09-18T00:00:00.000Z",
+            },
+          ],
+        },
+      ])
+    );
+    expect(r.sinMaterial).toEqual([]);
+  });
+});

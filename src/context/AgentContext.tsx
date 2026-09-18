@@ -44,7 +44,7 @@ import { loadAiSettings, modelFor } from "@/lib/ai/remote-settings";
 import { safeGraphToToon } from "@/lib/ai/graph-toon";
 import { extractDocumentText } from "@/lib/ai/document-extract";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
-import { getGenerationConfig } from "@/lib/ai-config";
+import { getGenerationConfig, GEN_CONFIG_EVENT } from "@/lib/ai-config";
 import { DEFAULT_NOTATION_ID, type NotationId } from "@/lib/notations";
 import {
   archiveLineage,
@@ -302,6 +302,23 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
    * vista «Modelo» aporta el grafo del proyecto; `pinned` marca lo que el humano
    * ya inyectó a mano para que no se relea.
    */
+  // Ajustes → «Adjuntos al agente». Es ESTADO y no una lectura dentro del memo:
+  // leerlo ahí lo congelaba hasta que cambiara una vista, así que apagar el
+  // acceso al material no se aplicaba en la sesión en curso (revisión de #370).
+  const [adjuntosPermitidos, setAdjuntosPermitidos] = useState(
+    () => getGenerationConfig().adjuntos !== "nunca"
+  );
+  useEffect(() => {
+    const sync = () => setAdjuntosPermitidos(getGenerationConfig().adjuntos !== "nunca");
+    window.addEventListener(GEN_CONFIG_EVENT, sync);
+    // `storage` cubre el cambio hecho en OTRA ventana de la app.
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(GEN_CONFIG_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
   const catalog: Catalog = useMemo(() => {
     const pineadas = new Set(injectedViews.map((v) => v.id));
     return {
@@ -321,9 +338,9 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       // marca `{docs:N}` y el agente lo pide con `read_element_doc`. Con
       // «Adjuntos al agente: nunca» en Ajustes no se marca ni se ofrece
       // (feature 016).
-      docs: getGenerationConfig().adjuntos !== "nunca",
+      docs: adjuntosPermitidos,
     };
-  }, [views, injectedViews, graphData]);
+  }, [views, injectedViews, graphData, adjuntosPermitidos]);
 
   const versionArtifacts = useMemo(
     () => artifacts.filter((a) => a.versionId === activeVersionId),

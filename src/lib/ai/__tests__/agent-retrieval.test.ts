@@ -578,6 +578,18 @@ describe("adjuntos · el agente ve la marca, nunca el contenido", () => {
     if (!r.ok) expect(r.error).toMatch(/no tiene material/i);
   });
 
+  it("la BÚSQUEDA también respeta «nunca» (revisión #370)", () => {
+    // Con el ajuste apagado, un hit marcado {docs:N} invita al modelo a pedir
+    // el adjunto: se come un turno entero de la ventana para recibir un no.
+    const conMarca = searchModel(catalogo(), "Enrollment");
+    expect(conMarca.ok).toBe(true);
+    if (conMarca.ok) expect(conMarca.text).toContain("docs:1");
+
+    const sinMarca = searchModel(catalogo(false), "Enrollment");
+    expect(sinMarca.ok).toBe(true);
+    if (sinMarca.ok) expect(sinMarca.text).not.toContain("docs:");
+  });
+
   it("con «Adjuntos al agente: nunca» no se marca ni se lee", () => {
     const cat = catalogo(false);
     const vista = readView(cat, "C4", 6000);

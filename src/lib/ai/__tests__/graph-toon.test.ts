@@ -382,6 +382,36 @@ describe("documentos fuente · no entran al contexto por existir (feature 012)",
 
 
 describe("adjuntos · el material de una caja no entra en el TOON (#367)", () => {
+  it("tampoco por el fallback: un grafo que rompe el TOON se poda igual", () => {
+    // `safeGraphToToon` degrada a JSON ante un grafo raro. Sin podar, ese camino
+    // mete el contrato entero en la ventana justo cuando algo ya salió mal.
+    const ciclico: any = {
+      nombre_proyecto: "P",
+      big_picture: {
+        nodos: [
+          {
+            id: "api",
+            nombre: "API",
+            adjuntos: [
+              {
+                nombre: "pagos.yaml",
+                tipo: "openapi",
+                texto: "secreto-del-contrato",
+                bytes: 20,
+                addedAt: "2026-09-18T00:00:00.000Z",
+              },
+            ],
+          },
+        ],
+        aristas: [],
+      },
+      agregados: [],
+    };
+    ciclico.big_picture.nodos[0].self = ciclico.big_picture.nodos[0];
+    const salida = safeGraphToToon(ciclico);
+    expect(salida).not.toContain("secreto-del-contrato");
+  });
+
   it("se poda como `source_docs`: viaja con el proyecto, no al contexto", () => {
     const grafo = {
       nombre_proyecto: "P",

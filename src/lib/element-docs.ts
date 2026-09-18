@@ -67,7 +67,6 @@ export interface ElementDoc {
 export const MAX_DOCS_POR_CAJA = 10;
 export const MAX_TEXTO_DOC = 60_000;
 export const MAX_BINARIO_BYTES = 2_000_000;
-export const MAX_BINARIO_PROYECTO = 20_000_000;
 
 const texto = (v: unknown): string => (typeof v === "string" ? v : "");
 const TIPOS: readonly ElementDocTipo[] = ["pdf", "markdown", "json", "openapi", "imagen", "texto"];
@@ -136,7 +135,10 @@ function normalizar(entrada: EntradaDoc): ElementDoc | null {
   };
   const origen = texto(entrada.origen).trim();
   if (origen) doc.origen = origen;
-  const ruta = texto(entrada.origenRuta).trim();
+  // Sólo el NOMBRE del archivo, nunca la ruta: `origenRuta` viaja dentro del
+  // `.json` del proyecto y se imprime en el índice que lee cualquiera. La ruta
+  // absoluta de la máquina de quien adjuntó no es material, es su entorno.
+  const ruta = texto(entrada.origenRuta).trim().split(/[\\/]/).pop() ?? "";
   if (ruta) doc.origenRuta = ruta;
   // El binario sólo viaja bajo tope. Pasado eso queda el texto extraído y la
   // referencia al original, que es lo que permite ir a buscarlo.
@@ -377,9 +379,4 @@ export function mergeElementDocs(
     }
   }
   return salida.length ? salida : undefined;
-}
-
-/** Bytes de binario que de verdad viajan dentro del proyecto. */
-export function binarioUsado(docs: readonly ElementDoc[]): number {
-  return docs.reduce((n, d) => n + (d.binario ? d.bytes : 0), 0);
 }

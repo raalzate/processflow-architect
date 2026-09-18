@@ -327,7 +327,10 @@ export function safeGraphToToon(graph: unknown): string {
     return graphToToon(graph);
   } catch {
     try {
-      return JSON.stringify(graph);
+      // Podado IGUAL que el camino feliz: el fallback también arma prompt, y sin
+      // podar mete el texto de los adjuntos y de los documentos fuente en la
+      // ventana justo cuando algo ya salió mal.
+      return JSON.stringify(pruneNoise(graph));
     } catch {
       return "";
     }

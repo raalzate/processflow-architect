@@ -26,8 +26,9 @@ import {
   readSource,
   readView,
   searchModel,
+  readElementDoc,
   type Catalog,
-  readElementDoc,} from "./agent-retrieval";
+} from "./agent-retrieval";
 
 /**
  * Presupuesto de contexto por corrida, en CARACTERES. No en tokens: sin

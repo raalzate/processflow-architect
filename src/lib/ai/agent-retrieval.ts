@@ -384,7 +384,7 @@ export function searchModel(cat: Catalog, term: string, limit = SEARCH_LIMIT): T
         name: n.nombre,
         tipo: n.tipo_elemento ?? "",
         descripcion: (n.descripcion ?? "").slice(0, 120),
-        hints: fichaHints(n),
+        hints: fichaHints(n, cat.docs !== false),
         tier,
         viewIdx,
         nodeIdx,

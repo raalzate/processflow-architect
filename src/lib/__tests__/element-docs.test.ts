@@ -8,10 +8,8 @@ import {
   attachElementDoc,
   detectarTipoDoc,
   formatDocsIndex,
-  binarioUsado,
   mergeElementDocs,
   MAX_BINARIO_BYTES,
-  MAX_BINARIO_PROYECTO,
   MAX_DOCS_POR_CAJA,
   MAX_TEXTO_DOC,
   readElementDocRange,
@@ -82,7 +80,8 @@ describe("attachElementDoc — adjuntar, reemplazar y los topes", () => {
       origenRuta: "/home/ana/proveedor.pdf",
     });
     expect(a.binario).toBeUndefined();
-    expect(a.origenRuta).toBe("/home/ana/proveedor.pdf");
+    // Sólo el nombre: la ruta de la máquina de quien adjuntó no viaja (revisión #370).
+    expect(a.origenRuta).toBe("proveedor.pdf");
     expect(a.texto).toBe("texto extraído del PDF");
   });
 
@@ -241,19 +240,33 @@ describe("formatDocsIndex — el índice es lo que permite decidir qué pedir", 
   });
 });
 
-describe("removeElementDoc y el presupuesto de binario del proyecto", () => {
+describe("removeElementDoc", () => {
   it("quitar por nombre no distingue mayúsculas", () => {
     const docs = [doc({ nombre: "Contrato.yaml", texto: "a" })];
     expect(removeElementDoc(docs, "contrato.yaml")).toHaveLength(0);
   });
+});
 
-  it("binarioUsado suma sólo lo que de verdad viaja", () => {
-    const docs = [
-      doc({ nombre: "a.png", texto: "", binario: "x".repeat(100), bytes: 100 }),
-      doc({ nombre: "b.pdf", texto: "t", bytes: 5_000_000 }), // sin binario: no viaja
-    ];
-    expect(binarioUsado(docs)).toBe(100);
-    expect(MAX_BINARIO_PROYECTO).toBeGreaterThan(MAX_BINARIO_BYTES);
+describe("origenRuta — la ruta de la máquina no viaja en el proyecto", () => {
+  it("guarda sólo el nombre del archivo, no el camino", () => {
+    const [a] = attachElementDoc([], {
+      nombre: "contrato.yaml",
+      texto: "openapi: 3.0.0",
+      origenRuta: "/Users/ana/clientes/acme/contratos/pagos.yaml",
+      binario: "x",
+      bytes: MAX_BINARIO_BYTES + 1,
+    });
+    expect(a.origenRuta).toBe("pagos.yaml");
+    expect(a.origenRuta).not.toContain("/");
+  });
+
+  it("también con separador de Windows", () => {
+    const [a] = attachElementDoc([], {
+      nombre: "c.yaml",
+      texto: "x",
+      origenRuta: "C:\\Users\\ana\\pagos.yaml",
+    });
+    expect(a.origenRuta).toBe("pagos.yaml");
   });
 });
 

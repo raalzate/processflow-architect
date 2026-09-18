@@ -48,10 +48,23 @@ export function getGenerationConfig(): GenerationConfig {
   }
 }
 
+/**
+ * Evento que se emite al guardar. Quien DERIVA algo de esta configuración —el
+ * catálogo del agente deriva de ella si puede leer los adjuntos— tiene que
+ * enterarse en el acto: un control de privacidad que tarda en aplicarse es un
+ * control que no existe.
+ */
+export const GEN_CONFIG_EVENT = "ai-gen-config-changed";
+
 export function setGenerationConfig(c: GenerationConfig): void {
   try {
     localStorage.setItem(GEN_CONFIG_STORAGE, JSON.stringify(c));
   } catch {
     /* ignore */
+  }
+  try {
+    window.dispatchEvent(new Event(GEN_CONFIG_EVENT));
+  } catch {
+    /* sin `window` (pruebas, main): nadie está escuchando */
   }
 }
