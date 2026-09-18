@@ -612,7 +612,14 @@ export function AgentChatPanel() {
                   onCancel={() => cancelRun(m.id)}
                 />
               )}
-              {m.role === "assistant" && m.hint && <WindowOfferCard message={m} busy={busy} onRetry={() => retryWithWiderWindow(m.id)} onSettings={() => router.push("/settings#motor")} />}
+              {m.role === "assistant" && m.hint && (
+                <WindowOfferCard
+                  message={m}
+                  busy={busy}
+                  onRetry={() => retryWithWiderWindow(m.id)}
+                  onSettings={() => router.push("/settings#motor")}
+                />
+              )}
               {m.role === "assistant" && m.steps && <StepsTrace steps={m.steps} />}
               {m.role === "assistant" && !!m.producedArtifactIds?.length && (
                 <div className="mt-2 text-xs text-muted-foreground">

@@ -889,6 +889,37 @@ describe("runLitertAgent — la corrida que no llega a nada DICE por qué (#358)
     expect(res.reply).toMatch(/ventana|Ajustes/i);
   });
 
+  it("el presupuesto de LECTURA agotado no se disfraza de ventana corta", async () => {
+    // `budgetLeft` es RUN_BUDGET (agent-run.ts), no la ventana del motor:
+    // ampliar «Máx. tokens» no lo mueve. Ofrecer ahí el botón manda al humano a
+    // repetir una corrida que va a morir igual.
+    mockGen.mockRejectedValue(new Error("sin motor"));
+    convoPorTurno(() => '{"thought":"x","final":""}');
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "",
+      requestedKind: "tech-stack",
+      catalog,
+      maxTokens: 4096,
+      run: {
+        id: "r1",
+        goal: "stack",
+        turn: 0,
+        budgetLeft: 0,
+        read: ["Análisis de Flujo"],
+        notes: [],
+        asked: [],
+        decisions: [],
+        planApproved: true,
+      } as any,
+    });
+    expect(res.artifacts).toHaveLength(0);
+    expect(res.hint).toBeUndefined();
+    expect(res.reply).toMatch(/presupuesto de lectura/i);
+    expect(res.reply).toContain("Análisis de Flujo");
+    expect(res.reply).not.toMatch(/Máx\. tokens/);
+  });
+
   it("el pedido del «+» no contradice al plan: el menú de kinds queda en el pedido", async () => {
     let system = "";
     mockConvo.mockImplementation(async (_m: string, s?: string) => {

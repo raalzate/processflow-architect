@@ -1323,9 +1323,13 @@ ${exploreToolMenu(cat, invMax, input.requestedKind)}${clamp(ctx, ctxMax)}${memor
     const vistas = state.read.length ? ` leyendo ${state.read.join(", ")}` : "";
     if (artifacts.length) {
       reply = `Listo: «${artifacts[artifacts.length - 1].title}» está en el lienzo${vistas}.`;
-    } else if (desborde || state.budgetLeft <= 0) {
-      // Problema de RECURSOS, no del pedido: se nombra lo que se alcanzó a leer y
-      // se dice qué mover. La UI convierte esto en un botón (#358).
+    } else if (desborde || (state.budgetLeft <= 0 && !state.read.length)) {
+      // Problema de VENTANA, no del pedido: se nombra lo que se alcanzó a leer y
+      // se dice qué mover. La UI convierte esto en un botón (#358). El
+      // presupuesto de lectura agotado NO entra acá: `budgetLeft` es `RUN_BUDGET`
+      // (agent-run.ts), no la ventana del motor, y ampliar «Máx. tokens» no lo
+      // mueve — ofrecer ese botón manda al humano a repetir una corrida que va a
+      // morir igual.
       hint = "ventana-corta";
       const leido = state.read.length
         ? ` Alcancé a leer ${state.read.join(", ")}.`
@@ -1358,11 +1362,22 @@ ${exploreToolMenu(cat, invMax, input.requestedKind)}${clamp(ctx, ctxMax)}${memor
           run: state,
         };
       }
-      // Nada leído y sin plan: el modelo no llegó a ninguna parte. La ventana es
-      // lo único que el humano puede mover para que la próxima corrida respire.
+      // Sin plan rescatable: si además no se leyó nada, el modelo no llegó a
+      // ninguna parte y la ventana es lo único que el humano puede mover.
       hint = "ventana-corta";
-      reply =
-        "Me quedé sin turnos y el modelo no llegó a leer nada del proyecto. Ampliá «Máx. tokens» en Ajustes → Modelo de IA y volvé a pedirlo, o pedilo con más detalle.";
+      reply = state.read.length
+        ? `Me quedé sin turnos sin un plan utilizable, aunque leí ${state.read.join(
+            ", "
+          )}. Ampliá «Máx. tokens» en Ajustes → Modelo de IA y volvé a pedirlo, o pedilo sobre menos vistas.`
+        : "Me quedé sin turnos y el modelo no llegó a leer nada del proyecto. Ampliá «Máx. tokens» en Ajustes → Modelo de IA y volvé a pedirlo, o pedilo con más detalle.";
+    } else if (state.budgetLeft <= 0) {
+      // Presupuesto de LECTURA agotado con material leído y plan aprobado: la
+      // red de seguridad de arriba ya intentó generar con eso y no salió. Lo que
+      // el humano puede mover acá es el ALCANCE, no la ventana: por eso no hay
+      // `hint` y no se ofrece el botón de ampliar.
+      reply = `Gasté todo el presupuesto de lectura en ${state.read.join(
+        ", "
+      )} y no llegué a armar el artefacto. Pedilo sobre menos vistas —una sola alcanza para empezar— y va a rendir más.`;
     } else {
       reply = "No llegué a generar nada: probá pidiéndolo de nuevo con más detalle.";
     }

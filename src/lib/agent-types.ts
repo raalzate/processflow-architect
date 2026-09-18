@@ -182,7 +182,6 @@ export interface AgentRunState {
 
 export type ChatRole = "user" | "assistant";
 
-/** Mensaje del chat del agente. */
 /**
  * Por qué una corrida terminó sin artefacto, cuando hay algo que el humano PUEDE
  * cambiar. Vive acá (y no en `litert-agent`) porque lo comparten el bucle, el
@@ -190,6 +189,7 @@ export type ChatRole = "user" | "assistant";
  */
 export type AgentHint = "ventana-corta";
 
+/** Mensaje del chat del agente. */
 export interface ChatMessage {
   id: string;
   role: ChatRole;
