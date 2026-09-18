@@ -794,3 +794,132 @@ describe("runLitertAgent — un plan aprobado autoriza UN artefacto", () => {
     expect(res.reply).toBe("listo");
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Calles sin salida del bucle explorador (#358)                              */
+/* -------------------------------------------------------------------------- */
+
+describe("runLitertAgent — la corrida que no llega a nada DICE por qué (#358)", () => {
+  const nodo = (nombre: string) => ({
+    id: nombre.toLowerCase().replace(/\s+/g, "-"),
+    nombre,
+    tipo_elemento: "Comando",
+    descripcion: "",
+    estado_comparativo: "nuevo",
+  });
+  const grafo = (nombre: string) =>
+    ({
+      nombre_proyecto: "P",
+      version: "1.0.0",
+      fecha_analisis: "2026-08-18",
+      big_picture: { descripcion: "d", hotspots: [], nodos: [nodo(nombre)], aristas: [] },
+      agregados: [],
+    }) as any;
+  const catalog = {
+    views: [
+      { name: "Análisis de Flujo", notation: "ddd", kind: "graph" as const, graph: grafo("Confirmar pedido") },
+      { name: "C4 Contenedores", notation: "c4", kind: "graph" as const, graph: grafo("API") },
+    ],
+  };
+
+  /** Convo que responde según el turno y puede reventar como revienta LiteRT. */
+  function convoPorTurno(fn: (i: number) => string) {
+    let i = 0;
+    const send = vi.fn(async (_u: string) => {
+      const r = fn(i);
+      i++;
+      if (r === "__desborde__") {
+        throw new Error("Cannot rewind to time_step 0 from 4376. Ringbuffer size is 4096");
+      }
+      return r;
+    });
+    mockConvo.mockResolvedValue({ send, close: vi.fn(async () => {}) });
+    return send;
+  }
+
+  it("el desborde de ventana se nombra aunque ya hubiera leído algo", async () => {
+    convoPorTurno((i) =>
+      i === 0 ? '{"thought":"leo","action":"read_view","args":{"name":"Análisis de Flujo"}}' : "__desborde__"
+    );
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "",
+      requestedKind: "tech-stack",
+      catalog,
+      maxTokens: 4096,
+    });
+    expect(res.artifacts).toHaveLength(0);
+    expect(res.hint).toBe("ventana-corta");
+    expect(res.reply).toMatch(/ventana/i);
+    // Lo leído no se tira: el mensaje lo nombra para que el humano sepa qué se hizo.
+    expect(res.reply).toContain("Análisis de Flujo");
+  });
+
+  it("sin turnos y sin plan, rescata un plan con lo leído en vez de cerrar vacío", async () => {
+    // El modelo insiste en generar sin plan: cada intento lo rebota `needsPlan`.
+    convoPorTurno((i) =>
+      i === 0
+        ? '{"thought":"leo","action":"read_view","args":{"name":"Análisis de Flujo"}}'
+        : '{"thought":"genero","action":"generate_document","args":{"kind":"tech-stack","title":"Stack"}}'
+    );
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "",
+      requestedKind: "tech-stack",
+      catalog,
+      maxTokens: 4096,
+    });
+    expect(res.run?.pause?.kind).toBe("plan");
+    expect(res.run?.pause).toMatchObject({ artifactKind: "tech-stack" });
+    expect(res.reply).toMatch(/plan/i);
+    expect(res.artifacts).toHaveLength(0);
+  });
+
+  it("sin turnos y sin haber leído nada, ofrece ampliar la ventana", async () => {
+    convoPorTurno(() => '{"thought":"genero","action":"generate_document","args":{"kind":"tech-stack"}}');
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "",
+      requestedKind: "tech-stack",
+      catalog,
+      maxTokens: 4096,
+    });
+    expect(res.run?.pause).toBeUndefined();
+    expect(res.hint).toBe("ventana-corta");
+    expect(res.reply).toMatch(/ventana|Ajustes/i);
+  });
+
+  it("el pedido del «+» no contradice al plan: el menú de kinds queda en el pedido", async () => {
+    let system = "";
+    mockConvo.mockImplementation(async (_m: string, s?: string) => {
+      system = s ?? "";
+      return { send: vi.fn(async () => '{"final":"listo"}'), close: vi.fn(async () => {}) };
+    });
+    await runLitertAgent({
+      modelFile: "m",
+      message: "",
+      requestedKind: "tech-stack",
+      catalog,
+      maxTokens: 4096,
+    });
+    expect(system).toContain("tech-stack");
+    // Con el kind ya elegido, el catálogo entero de kinds es peso muerto en la ventana.
+    expect(system).not.toContain("roadmap —");
+  });
+
+  it("un turno de protocolo vacío nunca se muestra como respuesta", async () => {
+    convoPorTurno((i) =>
+      i === 0
+        ? '{"thought":"leo","action":"read_view","args":{"name":"Análisis de Flujo"}}'
+        : '{"final":""}'
+    );
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "",
+      requestedKind: "tech-stack",
+      catalog,
+      maxTokens: 4096,
+    });
+    expect(res.reply).not.toContain('"final"');
+  });
+});

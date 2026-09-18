@@ -122,3 +122,31 @@ export function describeEngine(
     detail: info.label,
   };
 }
+
+/**
+ * Motor del CHAT DEL AGENTE. No pasa por el router: `runLitertAgent` corre en el
+ * renderer sobre LiteRT sí o sí, así que el badge del panel no puede decir
+ * «nube» por tener una llave configurada — eso hacía creer que un pedido fallido
+ * lo había atendido el proveedor remoto (#358). Los ajustes entran sólo para
+ * mantener la firma del badge; lo único que decide es si el equipo tiene motor.
+ */
+export function describeAgentEngine(
+  _settings: AiRemoteSettings,
+  _keys?: KeyStatus,
+  ctx?: ContextoLocal
+): EngineDescription {
+  const hayLocal = ctx ? puedeUsarIaLocal(ctx.estadoLocal) : true;
+  if (!hayLocal) {
+    return sinIa(
+      ctx?.estadoLocal === "sin-webgpu"
+        ? "Este equipo no expone WebGPU: el agente necesita el motor local (LiteRT-LM)."
+        : "El agente sólo corre dentro de la aplicación de escritorio."
+    );
+  }
+  return {
+    available: true,
+    isLocal: true,
+    label: "IA local",
+    detail: "El agente del chat razona siempre en tu equipo (LiteRT-LM), aunque tengas un proveedor de nube configurado",
+  };
+}

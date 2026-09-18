@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeEngine } from "../provenance";
+import { describeEngine, describeAgentEngine } from "../provenance";
 import type { AiRemoteSettings } from "../remote-settings";
 
 const base: AiRemoteSettings = { mode: "local", provider: "gemini", models: {} };
@@ -96,5 +96,27 @@ describe("cuando el equipo no puede con la IA local", () => {
 
   it("sin decir nada del estado local, se asume que sirve (compatibilidad)", () => {
     expect(describeEngine({ mode: "local", provider: "gemini" } as never).available).toBe(true);
+  });
+});
+
+describe("describeAgentEngine — el chat del agente corre SIEMPRE en local (#358)", () => {
+  it("con llave y modo remoto sigue diciendo local: el agente no pasa por el router", () => {
+    const d = describeAgentEngine(
+      { mode: "remote", provider: "gemini", model: "x" } as any,
+      { gemini: true },
+      { estadoLocal: "disponible" }
+    );
+    expect(d.isLocal).toBe(true);
+    expect(d.label).toBe("IA local");
+    expect(d.detail).toMatch(/agente/i);
+  });
+
+  it("sin WebGPU no hay agente: lo dice en vez de prometerlo", () => {
+    const d = describeAgentEngine(
+      { mode: "local", provider: "gemini", model: "x" } as any,
+      {},
+      { estadoLocal: "sin-webgpu" }
+    );
+    expect(d.available).toBe(false);
   });
 });
