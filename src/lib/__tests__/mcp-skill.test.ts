@@ -154,6 +154,21 @@ describe("contrato del arnés dentro del skill", () => {
     }
   });
 
+  it("los dos skills documentan el material adjunto de la caja (#366)", () => {
+    // Una tool que el agente externo no ve, no la usa: el skill es su única
+    // forma de enterarse de que la caja puede llevar su contrato.
+    for (const s of listSkills()) {
+      for (const tool of [
+        "attach_element_doc",
+        "list_element_docs",
+        "read_element_doc",
+        "search_docs",
+      ]) {
+        expect(s.files[0].content, `${s.id} no menciona ${tool}`).toContain(tool);
+      }
+    }
+  });
+
   it("el skill principal referencia su archivo de ejemplos", () => {
     expect(SKILL_MD).toContain(SKILL_EXAMPLES_PATH);
   });

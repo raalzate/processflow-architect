@@ -26,6 +26,7 @@ import {
   readSource,
   readView,
   searchModel,
+  readElementDoc,
   type Catalog,
 } from "./agent-retrieval";
 
@@ -65,7 +66,9 @@ export type ToolCall =
   /** La ficha de UNA caja: descripción entera, propiedades y especificación. */
   | { tool: "read_element"; name: string }
   /** Un trozo del documento del que salió el modelo. */
-  | { tool: "read_source"; name: string; from?: number; to?: number };
+  | { tool: "read_source"; name: string; from?: number; to?: number }
+  /** Un trozo del material adjunto a UNA caja (el contrato con el que se construye). */
+  | { tool: "read_element_doc"; element: string; name: string; from?: number; to?: number };
 
 export const READ_TOOLS = [
   "list_views",
@@ -74,6 +77,7 @@ export const READ_TOOLS = [
   "search_model",
   "read_element",
   "read_source",
+  "read_element_doc",
 ] as const;
 
 /** Vistas que se pueden leer de una sola vez (más no entra en la ventana). */
@@ -202,6 +206,20 @@ export function applyToolCall(
       notes: [...state.notes, r.note],
     };
     return { state: next, observation: `Documento "${r.note.source.name}":\n${r.text}`, note: r.note };
+  }
+
+  if (call.tool === "read_element_doc") {
+    const r = readElementDoc(cat, call.element, call.name, state.budgetLeft, call.from, call.to);
+    if (!r.ok) {
+      const cerca = r.suggestions?.length ? ` Los adjuntos de esa caja: ${r.suggestions.join(", ")}.` : "";
+      return { state, observation: `${r.error}${cerca}` };
+    }
+    const next: AgentRunState = {
+      ...state,
+      budgetLeft: Math.max(0, state.budgetLeft - r.cost),
+      notes: [...state.notes, r.note],
+    };
+    return { state: next, observation: `Adjunto "${r.note.source.name}":\n${r.text}`, note: r.note };
   }
 
   if (call.tool === "search_model") {

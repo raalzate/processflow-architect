@@ -119,6 +119,33 @@ export function ModelConfigDialog({
               Ventana máxima de tokens del motor LiteRT-LM. Cambiarla recarga el modelo.
             </p>
 
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Adjuntos al agente</Label>
+              <div className="flex gap-2">
+                {(
+                  [
+                    ["a-pedido", "A pedido"],
+                    ["nunca", "Nunca"],
+                  ] as const
+                ).map(([valor, etiqueta]) => (
+                  <Button
+                    key={valor}
+                    type="button"
+                    size="sm"
+                    variant={(cfg.adjuntos ?? "a-pedido") === valor ? "default" : "outline"}
+                    onClick={() => patch({ adjuntos: valor })}
+                  >
+                    {etiqueta}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                El material adjunto a una caja (contratos, PDF, ejemplos) NUNCA entra solo en el
+                contexto: no cabe en la ventana. «A pedido» deja que el agente lo lea cuando lo
+                necesita; «Nunca» le saca la herramienta y deja de marcarlo.
+              </p>
+            </div>
+
             <div className="rounded-md border bg-muted/40 p-3 text-sm">
               <div className="font-medium">Acelerador: GPU (WebGPU)</div>
               <p className="mt-0.5 text-xs text-muted-foreground">

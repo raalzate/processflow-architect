@@ -1865,3 +1865,182 @@ describe("registerProcessflowTools · herramientas que editan la vista abierta (
     expect(res.content[0].text).toContain("No hay una vista abierta.");
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Adjuntos de la caja (feature 016, #364)                                     */
+/* -------------------------------------------------------------------------- */
+
+describe("adjuntos de una caja por MCP", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-docs-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  function toolsDe() {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    return tools;
+  }
+  async function diagramaConCaja(tools: Map<string, any>) {
+    const creado = await tools.get("create_diagram")!.handler({ name: "Pagos", notation: "c4" });
+    const id = /diagramId="([^"]+)"/.exec(creado.content[0].text)![1];
+    await tools.get("add_node")!.handler({ diagramId: id, name: "Enrollment API", type: "Contenedor" });
+    return id;
+  }
+
+  it("adjunta, lista, lee y quita — el ciclo completo", async () => {
+    const tools = toolsDe();
+    const id = await diagramaConCaja(tools);
+
+    const adj = await tools.get("attach_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "pagos.yaml",
+      text: "openapi: 3.0.0\npaths:\n  /pagos: {}",
+    });
+    expect(adj.isError).toBeUndefined();
+    expect(adj.content[0].text).toContain("openapi");
+
+    const idx = await tools.get("list_element_docs")!.handler({ diagramId: id, element: "Enrollment API" });
+    expect(idx.content[0].text).toContain("pagos.yaml");
+    // El índice NO trae el contenido: es lo que permite decidir qué pedir.
+    expect(idx.content[0].text).not.toContain("/pagos");
+
+    const leido = await tools.get("read_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "pagos.yaml",
+      from: 1,
+      to: 1,
+    });
+    expect(leido.content[0].text).toContain("openapi: 3.0.0");
+    expect(leido.content[0].text).not.toContain("/pagos");
+
+    const quitado = await tools.get("remove_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "pagos.yaml",
+    });
+    expect(quitado.content[0].text).toMatch(/Quedan 0/);
+  });
+
+  it("con `path` lee el archivo del disco de quien corre el agente", async () => {
+    const tools = toolsDe();
+    const id = await diagramaConCaja(tools);
+    const ruta = path.join(ws, "contrato.yaml");
+    await fs.writeFile(ruta, "openapi: 3.0.0\ninfo:\n  title: Pagos", "utf8");
+
+    const res = await tools.get("attach_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "contrato.yaml",
+      path: ruta,
+    });
+    expect(res.isError).toBeUndefined();
+    const leido = await tools.get("read_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "contrato.yaml",
+    });
+    expect(leido.content[0].text).toContain("title: Pagos");
+  });
+
+  it("una ruta ilegible avisa y no deja el diagrama a medias", async () => {
+    const tools = toolsDe();
+    const id = await diagramaConCaja(tools);
+    const res = await tools.get("attach_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "x.yaml",
+      path: path.join(ws, "no-existe.yaml"),
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/text/);
+  });
+
+  it("una caja que no existe falla NOMBRANDO las que hay", async () => {
+    const tools = toolsDe();
+    const id = await diagramaConCaja(tools);
+    const res = await tools.get("attach_element_doc")!.handler({
+      diagramId: id,
+      element: "Inventada",
+      name: "x.md",
+      text: "hola",
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("Enrollment API");
+  });
+
+  it("search_docs dice caja, adjunto y línea", async () => {
+    const tools = toolsDe();
+    const id = await diagramaConCaja(tools);
+    await tools.get("attach_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "pagos.yaml",
+      text: "linea uno\nregla de idempotencia\nfin",
+    });
+    const hit = await tools.get("search_docs")!.handler({ diagramId: id, term: "idempotencia" });
+    expect(hit.content[0].text).toContain("Enrollment API");
+    expect(hit.content[0].text).toContain('"pagos.yaml":2');
+
+    const nada = await tools.get("search_docs")!.handler({ diagramId: id, term: "blockchain" });
+    expect(nada.content[0].text).toMatch(/Ninguna coincidencia/);
+  });
+
+  it("get_element_spec trae el ÍNDICE del material y NUNCA su contenido (#365)", async () => {
+    const tools = toolsDe();
+    const id = await diagramaConCaja(tools);
+    await tools.get("attach_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "pagos.yaml",
+      text: "openapi: 3.0.0\nsecreto-del-contrato: si",
+    });
+    const nodo = /\((c4-[^)]+|[a-z0-9-]+)\)/;
+    const idx = (await tools.get("list_element_docs")!.handler({ diagramId: id })).content[0].text;
+    const elementId = nodo.exec(idx)![1];
+
+    const res = await tools.get("get_element_spec")!.handler({ diagramId: id, id: elementId });
+    expect(res.content[0].text).toContain("pagos.yaml");
+    expect(res.content[0].text).toContain("read_element_doc");
+    expect(res.content[0].text).not.toContain("secreto-del-contrato");
+  });
+
+  it("review_specs marca el desplegable sin material, sin bloquear (#365)", async () => {
+    const tools = toolsDe();
+    const id = await diagramaConCaja(tools);
+    const antes = (await tools.get("review_specs")!.handler({ diagramId: id })).content[0].text;
+    expect(antes).toMatch(/Sin material con el que construir/i);
+    expect(antes).toContain("Enrollment API");
+
+    await tools.get("attach_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "pagos.yaml",
+      text: "openapi: 3.0.0",
+    });
+    const despues = (await tools.get("review_specs")!.handler({ diagramId: id })).content[0].text;
+    expect(despues).not.toMatch(/Sin material con el que construir/i);
+  });
+
+  it("el material sobrevive el export: viaja dentro del proyecto", async () => {
+    const tools = toolsDe();
+    const id = await diagramaConCaja(tools);
+    await tools.get("attach_element_doc")!.handler({
+      diagramId: id,
+      element: "Enrollment API",
+      name: "pagos.yaml",
+      text: "openapi: 3.0.0",
+    });
+    const out = path.join(ws, "proyecto.json");
+    await tools.get("export_to_app")!.handler({ diagramId: id, outPath: out });
+    const graph = JSON.parse(await fs.readFile(out, "utf8"));
+    const todos = [...(graph.big_picture?.nodos ?? []), ...graph.agregados.flatMap((a: any) => a.nodos ?? [])];
+    const caja = todos.find((n: any) => n.nombre === "Enrollment API");
+    expect(caja.adjuntos[0].texto).toContain("openapi: 3.0.0");
+  });
+});

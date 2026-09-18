@@ -41,6 +41,8 @@ import {
   Link2,
   SlidersHorizontal,
   FileText,
+  Paperclip,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -148,6 +150,14 @@ import {
 } from "@/components/ui/select";
 import { useGraphContext } from "@/context/GraphContext";
 import { citaDe, resolveCita, type SourceDoc } from "@/lib/source-docs";
+import {
+  attachElementDoc,
+  removeElementDoc,
+  MAX_DOCS_POR_CAJA,
+  MAX_TEXTO_DOC,
+  type ElementDoc,
+} from "@/lib/element-docs";
+import { ACCEPTED_REFERENCE_TYPES, extractFileText } from "@/lib/pdf-text";
 import { applyGraphFilters, hasActiveFilters } from "@/lib/graph-filters";
 import { useViews } from "@/context/ViewsContext";
 import { useReference } from "@/context/ReferenceContext";
@@ -714,6 +724,171 @@ const ColorField: React.FC<{
  * archivo no se dibuja nada, con el documento ausente se dice que falta, y con
  * el documento adjunto se muestran las líneas citadas con su contexto.
  */
+/**
+ * Campo «Adjuntos»: el material con el que se CONSTRUYE la caja (contrato,
+ * ejemplo, decisión). Distinto de «Referencias», que dice dónde vive, y de la
+ * fuente citada, que dice de dónde salió el modelo.
+ *
+ * Todo lo que decide —tope, recorte, tipo, unicidad del nombre— vive en
+ * `src/lib/element-docs.ts`; acá sólo se orquesta y se AVISA del recorte, que
+ * es lo que no puede quedar escondido.
+ */
+const AdjuntosField: React.FC<{
+  value?: ElementDoc[];
+  onChange: (lista: ElementDoc[] | undefined) => void;
+}> = ({ value, onChange }) => {
+  const lista = value ?? [];
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [cargando, setCargando] = useState(false);
+  const [viendo, setViendo] = useState<string | null>(null);
+
+  const agregar = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setCargando(true);
+    let acumulado = lista;
+    try {
+      for (const file of Array.from(files)) {
+        try {
+          const texto = await extractFileText(file);
+          acumulado = attachElementDoc(acumulado, {
+            nombre: file.name,
+            texto,
+            bytes: file.size,
+            origen: "adjuntado en la ficha",
+          });
+          const doc = acumulado.find((d) => d.nombre === file.name);
+          if (doc?.truncado)
+            toast({
+              title: `«${file.name}» se recortó`,
+              description: `Se guardaron los primeros ${MAX_TEXTO_DOC.toLocaleString()} caracteres. El original sigue siendo tuyo.`,
+            });
+        } catch (e: any) {
+          toast({
+            variant: "destructive",
+            title: `No pude adjuntar «${file.name}»`,
+            description: String(e?.message ?? e),
+          });
+        }
+      }
+      onChange(acumulado.length ? acumulado : undefined);
+    } finally {
+      setCargando(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const quitar = (nombre: string) => {
+    const quedan = removeElementDoc(lista, nombre);
+    onChange(quedan.length ? quedan : undefined);
+    if (viendo === nombre) setViendo(null);
+  };
+
+  const abierto = lista.find((d) => d.nombre === viendo);
+
+  return (
+    <div
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        void agregar(e.dataTransfer.files);
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <Label htmlFor="adjunto-file">Adjuntos</Label>
+        <span className="text-2xs text-muted-foreground">
+          {lista.length}/{MAX_DOCS_POR_CAJA}
+        </span>
+      </div>
+      <p className="mb-1.5 mt-0.5 text-xs text-muted-foreground">
+        El material con el que se construye esta caja: contrato OpenAPI, ejemplo JSON, la
+        decisión en Markdown, el texto del PDF. Viaja dentro del proyecto y quien la implemente
+        —persona o agente— lo lee sin salir del diagrama.
+      </p>
+
+      {lista.length > 0 && (
+        <div className="overflow-hidden rounded-md border">
+          <table className="w-full table-fixed border-collapse text-xs">
+            <thead>
+              <tr className="bg-muted/60 text-left text-2xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-2 py-1 font-medium">Adjunto</th>
+                <th className="w-24 border-l px-2 py-1 font-medium">Tipo</th>
+                <th className="w-28 border-l px-2 py-1 font-medium">Tamaño</th>
+                <th className="w-[4.5rem] border-l px-2 py-1" />
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map((d) => (
+                <tr key={d.nombre} className="border-t align-top">
+                  <td className="truncate px-2 py-1" title={d.nombre}>
+                    {d.nombre}
+                    {d.truncado && (
+                      <span className="ml-1 text-2xs text-amber-600 dark:text-amber-400">
+                        (recortado)
+                      </span>
+                    )}
+                  </td>
+                  <td className="border-l px-2 py-1">{d.tipo}</td>
+                  <td className="border-l px-2 py-1">{(d.bytes / 1024).toFixed(1)} kB</td>
+                  <td className="border-l p-0">
+                    <div className="flex justify-end gap-0.5 px-1">
+                      <IconAction
+                        type="button"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => setViendo(viendo === d.nombre ? null : d.nombre)}
+                        label={accion("abrir", "adjunto")}
+                        icon={<Eye className="h-3.5 w-3.5" />}
+                      />
+                      <IconAction
+                        type="button"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => quitar(d.nombre)}
+                        label={accion("quitar", "adjunto")}
+                        icon={<Trash2 className="h-3.5 w-3.5" />}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {abierto && (
+        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 text-xs leading-relaxed text-foreground/80">
+          {abierto.texto || "(sin texto extraído: es material binario)"}
+        </pre>
+      )}
+
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          id="adjunto-file"
+          ref={fileRef}
+          type="file"
+          multiple
+          accept={ACCEPTED_REFERENCE_TYPES}
+          className="hidden"
+          onChange={(e) => void agregar(e.target.files)}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={cargando || lista.length >= MAX_DOCS_POR_CAJA}
+          onClick={() => fileRef.current?.click()}
+        >
+          <Paperclip className="mr-1.5 h-3.5 w-3.5" />
+          {cargando ? "Leyendo…" : accion("agregar", "adjunto")}
+        </Button>
+        <span className="text-2xs text-muted-foreground">o soltá los archivos acá</span>
+      </div>
+    </div>
+  );
+};
+
 const FuenteCitada: React.FC<{ descripcion?: string; docs: SourceDoc[] }> = ({ descripcion, docs }) => {
   const cita = citaDe(descripcion);
   const resuelta = useMemo(() => resolveCita(docs, cita), [docs, cita]);
@@ -1294,6 +1469,14 @@ const EditNodeDialog: React.FC<{
             <MetadataField
               value={draft.metadata}
               onChange={(lista) => setDraft((d) => (d ? { ...d, metadata: lista } : d))}
+            />
+          </div>
+
+          {/* Adjuntos: debajo de «Referencias», también a ancho completo. */}
+          <div className="mt-4">
+            <AdjuntosField
+              value={draft.adjuntos}
+              onChange={(lista) => setDraft((d) => (d ? { ...d, adjuntos: lista } : d))}
             />
           </div>
 

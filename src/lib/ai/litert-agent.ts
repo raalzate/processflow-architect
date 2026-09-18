@@ -941,7 +941,12 @@ function exploreToolMenu(cat: Catalog, invMax = 1200, requestedKind?: string): s
 - "read_view" {"name":"<nombre exacto>"} — una sola vista.
 - "search_model" {"term":"<palabra>"} — dónde aparece un concepto (dice en qué vista vive).
 - "read_source" {"name":"<documento>","from":<línea>,"to":<línea>} — un trozo del DOCUMENTO del que salió el modelo (los de abajo). Es lo que sostiene una caja: pedilo cuando te pregunten POR QUÉ el modelo dice lo que dice.
-- "read_element" {"name":"<nombre de la caja>"} — la FICHA de una caja: descripción entera, propiedades y ESPECIFICACIÓN (historias, requisitos, criterios). Pedila siempre que una caja venga marcada con {spec}, {props} o {desc+} en una lectura: ahí está el contrato, no en el resumen de 90 caracteres.
+- "read_element" {"name":"<nombre de la caja>"} — la FICHA de una caja: descripción entera, propiedades y ESPECIFICACIÓN (historias, requisitos, criterios). Pedila siempre que una caja venga marcada con {spec}, {props} o {desc+} en una lectura: ahí está el contrato, no en el resumen de 90 caracteres.${
+    cat.docs === false
+      ? ""
+      : `
+- "read_element_doc" {"element":"<caja>","name":"<adjunto>","from":<línea>,"to":<línea>} — un trozo del MATERIAL adjunto a una caja (contrato, ejemplo, decisión). Pedilo cuando la caja venga marcada con {docs:N}: el adjunto NO entra solo en el contexto porque no cabe.`
+  }
 - "list_views" {} — refrescar el inventario (ya lo tenés abajo: normalmente NO hace falta).
 
 Herramientas de GENERACIÓN (sólo con el plan aprobado):
@@ -1243,6 +1248,14 @@ ${exploreToolMenu(cat, invMax, input.requestedKind)}${clamp(ctx, ctxMax)}${memor
             ? ({ tool: "search_model", term: String(a.term ?? a.query ?? "") } as ToolCall)
             : action === "read_element"
               ? ({ tool: "read_element", name: String(a.name ?? a.element ?? a.id ?? "") } as ToolCall)
+              : action === "read_element_doc"
+                ? ({
+                    tool: "read_element_doc",
+                    element: String(a.element ?? a.node ?? a.id ?? ""),
+                    name: String(a.name ?? a.doc ?? a.document ?? ""),
+                    from: Number.isFinite(Number(a.from)) ? Number(a.from) : undefined,
+                    to: Number.isFinite(Number(a.to)) ? Number(a.to) : undefined,
+                  } as ToolCall)
               : action === "read_source"
                 ? ({
                     tool: "read_source",
@@ -1257,7 +1270,10 @@ ${exploreToolMenu(cat, invMax, input.requestedKind)}${clamp(ctx, ctxMax)}${memor
         type: action === "search_model" ? "search" : "read",
         tool: action,
         source:
-          call.tool === "read_view" || call.tool === "read_element" || call.tool === "read_source"
+          call.tool === "read_view" ||
+          call.tool === "read_element" ||
+          call.tool === "read_source" ||
+          call.tool === "read_element_doc"
             ? call.name
             : call.tool === "read_views"
               ? call.names.join(", ")

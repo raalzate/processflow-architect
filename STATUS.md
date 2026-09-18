@@ -48,6 +48,8 @@ lo que se supone va en "deuda conocida".
 | E2E del MCP (stdio) | script manual contra `mcp-server/index.ts` | verde — arnés completo (ingesta → citas → ambigüedades → calidad → revisión → export → install_skill) |
 | Lectura de la app por MCP (modo app) | script manual por CDP contra la app viva | verde — 43 tools registradas; `list_artifacts`, `get_artifact` (con revisión), `list_views`, `get_view` (+`importAs`) y sus errores con opciones, también contra OTRO proyecto |
 | Editor de artefactos con documento largo | script manual por CDP contra la app viva | verde — 11 021 caracteres: índice de 49 encabezados con salto, buscar/reemplazar (72 coincidencias), stats, borrador recuperable |
+| Material adjunto a una caja (016) | `npx vitest run src/lib/__tests__/element-docs.test.ts src/lib/mcp/__tests__/element-docs-tools.test.ts` | verde — 47 pruebas: el texto se recorta y se AVISA (nunca se rechaza), el binario sobre tope no viaja y deja la referencia al original, el tipo sale del contenido (`openapi:` en un `.yaml`), fusionar dos cajas conserva el homónimo renombrado, y el índice no contiene una línea del contenido |
+| El adjunto no entra en el contexto del agente (016) | `npx vitest run src/lib/ai/__tests__/agent-retrieval.test.ts src/lib/ai/__tests__/graph-toon.test.ts` | verde — SC-002: con un adjunto de 60 000 caracteres el digest crece sólo la marca `{docs:N}` y ni el TOON ni la ficha traen un byte del texto; `read_element_doc` es la única puerta, cuesta presupuesto y queda atribuida; con «Adjuntos al agente: nunca» no se marca ni se ofrece |
 | Integridad del registro de notaciones | `npx vitest run src/lib/__tests__/notations-registry.test.ts` | verde — todo tipo declarado está en la paleta y viceversa, sin repetidos, con icono en `ICON_MAP` y con ayuda |
 | Registro de un cambio en el historial | `node scripts/harness-selftest.mjs` | verde — `.githooks/commit-msg` frena un commit que toca código sin `#<issue>` ni línea `sin-issue: <motivo>`; 7 casos en un repo git temporal (docs solo, merge, declaración sin motivo) y la ruta `issue` del router recuerda preguntar antes de tocar producción |
 | Contención de contenedores | `npx vitest run src/components/graph/designer/__tests__/containment.test.ts` | verde — una sola regla (mayor solape, mínimo media caja, empate al más chico) aplicada en cada commit de geometría y al abrir; sobre el modelo real las bandas pasan de 1/0/0 nodos a 1/3/6 |
@@ -93,7 +95,19 @@ Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
 
 ## Trabajo en curso
 
-Nada abierto: el tablero de GitHub quedó en cero (0 issues abiertas). Las 6 tareas que quedaban
+**016 · Adjuntos y referencias documentales en la caja** (#360, ruta SDD completa: plan,
+checklist, testify, tasks y analyze como comentarios de la issue madre; tareas #361–#369).
+Implementadas T1–T8 en `feat/360-adjuntos-elemento`: el módulo puro `src/lib/element-docs.ts`,
+el campo `adjuntos` en el modelo y su ciclo completo, la fusión que no descarta, las cinco
+herramientas MCP (`attach_element_doc` · `list_element_docs` · `read_element_doc` ·
+`remove_element_doc` · `search_docs`), el índice en `get_element_spec` y la señal de
+`review_specs`, el lado del agente interno (marca `{docs:N}`, lectura a pedido, ajuste
+«Adjuntos al agente») y la sección «Adjuntos» de la ficha con su marca en el lienzo.
+**Sin verificar:** la ficha con la app viva (adjuntar soltando un PDF y ver el texto), y que un
+Gemma real pida `read_element_doc` cuando ve la marca — el ruteo está probado, la elección del
+modelo no la mide nadie.
+
+Lo anterior a esta feature: el tablero había quedado en cero (0 issues abiertas). Las 6 tareas que quedaban
 —validación visual de 001 y la IA de organización + medición de 002— se cerraron como *no
 planificadas* al pasar la ruta SDD a GitHub; si se retoman, se abre una feature nueva.
 

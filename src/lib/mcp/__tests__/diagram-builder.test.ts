@@ -254,6 +254,42 @@ describe("fromGraphData (round-trip)", () => {
     expect(cmd.container).toBe("Pedidos");
   });
 
+  it("el adjunto de una caja sobrevive el ciclo completo (#362)", () => {
+    // SC-003: el material viaja DENTRO del proyecto. Si el ciclo lo pierde, el
+    // adjunto es una promesa: en la otra máquina no está.
+    let m = emptyDiagram(base);
+    m = addContainer(m, { id: "P", nombre: "Pedidos", tipo_elemento: "Agregado" }).model;
+    m = addNode(m, { id: "cmd", nombre: "Crear", tipo_elemento: "Comando", container: "Pedidos" }).model;
+    const nodo = m.nodes.find((n) => n.id === "cmd")!;
+    nodo.adjuntos = [
+      {
+        nombre: "pagos.yaml",
+        tipo: "openapi",
+        texto: "openapi: 3.0.0\npaths:\n  /pagos: {}",
+        bytes: 34,
+        addedAt: "2026-09-18T00:00:00.000Z",
+      },
+    ];
+
+    const ida = toGraphData(m);
+    const vuelta = fromGraphData(ida, "ddd");
+    const otraVez = toGraphData(vuelta);
+
+    const enVuelta = vuelta.nodes.find((n) => n.id === "cmd")!;
+    expect(enVuelta.adjuntos?.[0]).toMatchObject({ nombre: "pagos.yaml", tipo: "openapi" });
+    expect(enVuelta.adjuntos?.[0].texto).toContain("/pagos");
+    const enLienzo = otraVez.agregados[0].nodos.find((n: any) => n.id === "cmd")!;
+    expect((enLienzo as any).adjuntos?.[0].texto).toContain("openapi: 3.0.0");
+  });
+
+  it("una caja SIN adjuntos no gana el campo al pasar por el ciclo (#362)", () => {
+    let m = emptyDiagram(base);
+    m = addContainer(m, { id: "P", nombre: "Pedidos", tipo_elemento: "Agregado" }).model;
+    m = addNode(m, { id: "cmd", nombre: "Crear", tipo_elemento: "Comando", container: "Pedidos" }).model;
+    const back = fromGraphData(toGraphData(m), "ddd");
+    expect(back.nodes.find((n) => n.id === "cmd")!.adjuntos).toBeUndefined();
+  });
+
   it("preserva el estilo de arista (dashed/arrow) al re-importar por el builder", () => {
     let m = emptyDiagram(base);
     m = addContainer(m, { id: "A", nombre: "A", tipo_elemento: "Agregado" }).model;

@@ -15,6 +15,7 @@
  */
 
 import { mergeSpec } from "./element-spec";
+import { mergeElementDocs } from "./element-docs";
 import type { GraphData, GraphNode, GraphLink } from "./types";
 import { claveNormalizada, type ElementMetadata } from "./element-metadata";
 
@@ -195,6 +196,11 @@ export function mergeNodesInGraph(
   // sólo se hereda si está vacía (ver `mergeSpec`). Una spec mezclada sería un
   // contrato que nadie escribió.
   primary.spec = mergeSpec(primary.spec, secondaries.map((s) => s.spec));
+
+  // Los adjuntos SÍ se unen: son material, no contrato. En conflicto de nombre
+  // gana el más reciente y el otro sobrevive renombrado, porque perder el
+  // contrato contra el que alguien iba a construir es peor que tener dos.
+  primary.adjuntos = mergeElementDocs(primary.adjuntos, secondaries.map((s) => s.adjuntos));
 
   // Unión de tags de tecnología.
   const tags = new Set<string>(primary.tags_tecnologia || []);

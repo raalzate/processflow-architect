@@ -25,6 +25,7 @@ import {
   resolveCita,
   type SourceDoc,
 } from "../source-docs";
+import { formatDocsIndex, readElementDocRange } from "../element-docs";
 
 /**
  * Techo de una sola lectura. Bajó de 6 000 a 2 000 caracteres cuando el motor
@@ -64,6 +65,11 @@ export interface Catalog {
    * viajan al contexto por existir: el agente ve el inventario y PIDE el trozo.
    */
   sources?: SourceDoc[];
+  /**
+   * `false` ⇒ el humano puso «Adjuntos al agente: nunca» en Ajustes: no se
+   * marca `{docs}` en el digest ni se ofrece la lectura. Ausente = permitido.
+   */
+  docs?: boolean;
 }
 
 export interface ViewInventoryItem {
@@ -219,11 +225,16 @@ function collectEdges(graph: GraphData | undefined): { fuente: string; destino: 
  * por nodo y sólo en los nodos que las ganan; el contenido se pide con
  * `read_element`, que es lo que respeta la ventana del motor local.
  */
-export function fichaHints(n: GraphNode): string {
+export function fichaHints(n: GraphNode, marcarDocs = true): string {
   const hints: string[] = [];
   if (specToContext(n.spec)) hints.push("spec");
   if (n.metadata?.length) hints.push("props");
   if ((n.descripcion ?? "").length > DESC_EN_DIGEST) hints.push("desc+");
+  // El material adjunto se MARCA y no se inyecta: un OpenAPI dentro del digest
+  // mata la corrida en la ventana de 4 096 tokens del motor local. La marca
+  // cuesta ~8 caracteres y es lo único que el modelo necesita para decidir si
+  // lo pide (#367).
+  if (marcarDocs && n.adjuntos?.length) hints.push(`docs:${n.adjuntos.length}`);
   return hints.length ? ` {${hints.join(",")}}` : "";
 }
 
@@ -238,7 +249,8 @@ export function fichaHints(n: GraphNode): string {
 export function viewDigest(
   graph: GraphData | undefined,
   notation: string,
-  limit = VIEW_READ_MAX
+  limit = VIEW_READ_MAX,
+  marcarDocs = true
 ): string {
   const nodos = collectGraphNodes(graph);
   const aristas = collectEdges(graph);
@@ -253,7 +265,7 @@ export function viewDigest(
     for (const n of nodos) {
       const agg = n.agregado ? ` @${n.agregado}` : "";
       const desc = n.descripcion ? ` — ${n.descripcion.slice(0, DESC_EN_DIGEST)}` : "";
-      lineas.push(`- ${n.nombre} [${n.tipo_elemento}]${agg}${desc}${fichaHints(n)}`);
+      lineas.push(`- ${n.nombre} [${n.tipo_elemento}]${agg}${desc}${fichaHints(n, marcarDocs)}`);
     }
   }
   if (aristas.length) {
@@ -303,7 +315,9 @@ export function readView(cat: Catalog, name: string, budget: number): ToolResult
     const nodos: GraphNode[] = collectGraphNodes(view.graph);
     nodes = nodos.map((n) => n.nombre).filter(Boolean).slice(0, MAX_CITABLE_NODES);
     // Digest, no TOON: ver `viewDigest` (la ventana del modelo local es chica).
-    cuerpo = view.graph ? viewDigest(view.graph, view.notation, limit) : "(vista vacía)";
+    cuerpo = view.graph
+      ? viewDigest(view.graph, view.notation, limit, cat.docs !== false)
+      : "(vista vacía)";
     facts.push(`${c.nodes} nodos y ${c.edges} aristas (notación ${view.notation}).`);
     const conts = containerNames(view.graph);
     if (conts.length) facts.push(`Contenedores: ${conts.join(", ")}.`);
@@ -370,7 +384,7 @@ export function searchModel(cat: Catalog, term: string, limit = SEARCH_LIMIT): T
         name: n.nombre,
         tipo: n.tipo_elemento ?? "",
         descripcion: (n.descripcion ?? "").slice(0, 120),
-        hints: fichaHints(n),
+        hints: fichaHints(n, cat.docs !== false),
         tier,
         viewIdx,
         nodeIdx,
@@ -525,6 +539,11 @@ export function readElement(cat: Catalog, name: string, budget: number): ToolRes
       lineas.push(`Fuente citada: ${cita} (el documento NO está adjunto al proyecto).`);
   }
 
+  // Índice del material, NUNCA su contenido: es lo que le dice al modelo que hay
+  // algo que pedir con read_element_doc.
+  if (cat.docs !== false && node.adjuntos?.length)
+    lineas.push("Material adjunto:", formatDocsIndex(node.adjuntos));
+
   const cuerpo = lineas.join("\n");
   const truncated = cuerpo.length > limit;
   const text = truncated ? `${cuerpo.slice(0, limit)}\n…(recortado por presupuesto)` : cuerpo;
@@ -595,5 +614,63 @@ export function readSource(
     cost: r.texto.length,
     truncated: r.truncado,
     note: { source: { type: "document", name: r.doc }, facts, nodes: [] },
+  };
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* 6 · Leer el material adjunto de una caja                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Un trozo del material adjunto a un elemento. Es la ÚNICA forma en que el texto
+ * de un adjunto entra en la corrida: nunca se inyecta solo, ni en el TOON ni en
+ * el digest (feature 016). Cuesta presupuesto y queda anotado como cualquier
+ * otra lectura, así que la traza dice de dónde salió lo que el agente afirma.
+ */
+export function readElementDoc(
+  cat: Catalog,
+  element: string,
+  name: string,
+  budget: number,
+  from?: number,
+  to?: number
+): ToolResult {
+  if (budget <= 0) {
+    return {
+      ok: false,
+      error:
+        "Sin presupuesto de contexto: no se puede leer más material. Consolidá con lo que ya leíste y declará qué quedó afuera.",
+    };
+  }
+  if (cat.docs === false) {
+    return {
+      ok: false,
+      error: "El humano puso «Adjuntos al agente: nunca» en Ajustes: no puedo leer material adjunto.",
+    };
+  }
+  const hit = resolveElement(cat, element);
+  if ("suggestions" in hit) {
+    return { ok: false, error: `No existe el elemento "${element}".`, suggestions: hit.suggestions };
+  }
+  const { node, view } = hit;
+  const docs = node.adjuntos ?? [];
+  if (!docs.length) {
+    return {
+      ok: false,
+      error: `"${node.nombre}" no tiene material adjunto: no hay nada que leer ahí.`,
+    };
+  }
+  const limit = Math.min(VIEW_READ_MAX, budget);
+  const r = readElementDocRange(docs, name, from, to, limit);
+  if (!r.ok) return { ok: false, error: r.error, suggestions: r.disponibles };
+  const facts = [`Leído del adjunto "${r.doc}" de "${node.nombre}"${from ? ` desde la línea ${from}` : ""}.`];
+  if (r.truncado) facts.push("Lectura RECORTADA: el adjunto tiene más de lo leído.");
+  return {
+    ok: true,
+    text: r.texto,
+    cost: r.texto.length,
+    truncated: r.truncado,
+    note: { source: { type: "document", name: `${node.nombre} · ${r.doc}` }, facts, nodes: [node.nombre] },
   };
 }

@@ -5,6 +5,7 @@ import type { SequenceMessageKind } from "./sequence/messages";
 import type { FragmentOp, FragmentPart } from "./sequence/fragments";
 import type { ElementMetadata } from "./element-metadata";
 import type { ElementSpec } from "./element-spec";
+import type { ElementDoc } from "./element-docs";
 import type { SourceDoc } from "./source-docs";
 import type { TableColumn } from "./mer/table-box";
 import type { NotationId } from "./notations";
@@ -86,6 +87,14 @@ export interface GraphNode extends SimulationNodeDatum {
    * proyectos existentes no cambian de forma al abrir la ficha.
    */
   spec?: ElementSpec;
+  /**
+   * Material con el que se CONSTRUYE la caja: contrato OpenAPI, PDF del
+   * proveedor, `.json` de ejemplo, `.md` de la decisión. Distinto de `metadata`
+   * (dónde vive) y de `spec` (qué debe hacer): un adjunto tiene contenido, y
+   * viaja dentro del proyecto para que abra en otra máquina. Ausente mientras
+   * no haya ninguno. Ver `src/lib/element-docs.ts`.
+   */
+  adjuntos?: ElementDoc[];
   /**
    * Columnas de la tabla, cuando el tipo se dibuja como caja de tabla (MER
    * físico: `Tabla Relacional`). Campo TIPADO y no metadatos libres: de acá
@@ -191,6 +200,8 @@ export interface Agregado {
   metadata?: ElementMetadata[];
   /** Especificación del contenedor (ver `GraphNode.spec`). */
   spec?: ElementSpec;
+  /** Material adjunto del contenedor (ver `GraphNode.adjuntos`). */
+  adjuntos?: ElementDoc[];
   /**
    * Estado del contenedor frente a lo que ya existe (mismo vocabulario que
    * `GraphNode.estado_comparativo`). Distingue documentar lo que hay de diseñar

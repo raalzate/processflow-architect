@@ -66,6 +66,35 @@ describe("collectMergeNodes", () => {
   });
 });
 
+describe("mergeNodesInGraph — adjuntos (#363)", () => {
+  it("fusionar dos cajas une su material y no descarta el homónimo distinto", () => {
+    const g = makeGraph();
+    const a1 = g.agregados[0].nodos.find((n: any) => n.id === "a1")! as any;
+    const a2 = g.agregados[0].nodos.find((n: any) => n.id === "a2")! as any;
+    a1.adjuntos = [
+      { nombre: "c.yaml", tipo: "openapi", texto: "v1", bytes: 2, addedAt: "2026-01-01T00:00:00.000Z" },
+    ];
+    a2.adjuntos = [
+      { nombre: "c.yaml", tipo: "openapi", texto: "v2", bytes: 2, addedAt: "2026-06-01T00:00:00.000Z" },
+      { nombre: "extra.md", tipo: "markdown", texto: "notas", bytes: 5, addedAt: "2026-06-01T00:00:00.000Z" },
+    ];
+
+    const out = mergeNodesInGraph(g, "a1", ["a2"]);
+    const fusionado = out.agregados[0].nodos.find((n: any) => n.id === "a1")! as any;
+    const nombres = fusionado.adjuntos.map((d: any) => d.nombre);
+    expect(nombres).toContain("extra.md");
+    // Gana el más reciente, pero el viejo sigue ahí con nombre propio.
+    expect(fusionado.adjuntos.find((d: any) => d.nombre === "c.yaml").texto).toBe("v2");
+    expect(nombres).toContain("c (1).yaml");
+  });
+
+  it("dos cajas sin adjuntos no ganan el campo al fusionarse", () => {
+    const out = mergeNodesInGraph(makeGraph(), "a1", ["a2"]);
+    const fusionado = out.agregados[0].nodos.find((n: any) => n.id === "a1")! as any;
+    expect(fusionado.adjuntos).toBeUndefined();
+  });
+});
+
 describe("mergeNodesInGraph", () => {
   it("fusiona un nodo del big_picture en uno de agregado, re-apunta TODAS las aristas", () => {
     const g = mergeNodesInGraph(makeGraph(), "a1", ["a2", "bp-actor"], "Cliente Final");

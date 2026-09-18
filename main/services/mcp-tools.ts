@@ -53,6 +53,20 @@ import {
   specMarkdown,
   specReport,
 } from "../../src/lib/mcp/element-spec-tools";
+import {
+  attachDocToElement,
+  docsIndex,
+  formatHits,
+  readDocOfElement,
+  removeDocFromElement,
+  resolverElemento,
+  searchDocsInModel,
+} from "../../src/lib/mcp/element-docs-tools";
+import {
+  MAX_DOCS_POR_CAJA,
+  MAX_TEXTO_DOC,
+  type ElementDocTipo,
+} from "../../src/lib/element-docs";
 import { PROPIEDADES_CANONICAS, VALOR_PENDIENTE } from "../../src/lib/element-properties";
 import {
   MAX_DOCS,
@@ -576,8 +590,17 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           (k) => `- \`${k}\` — ${EDGE_RELATIONS[k].label}: ${EDGE_RELATIONS[k].hint}`
         ),
       ].join("\n");
+      // El material de la caja se documenta acá porque esto es lo que se lee
+      // ANTES de construir: una herramienta que el agente no ve, no la usa.
+      const material = [
+        "",
+        "## Material de una caja (con qué se la construye)",
+        "- `attach_element_doc` adjunta el contrato/ejemplo/decisión a un elemento (`text` o `path`).",
+        "- `list_element_docs` da el ÍNDICE (nombre, tipo, tamaño); `read_element_doc` trae el texto por rango.",
+        "- `search_docs` dice en qué caja, adjunto y línea aparece un término.",
+      ].join("\n");
       return text(
-        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n${relaciones}\n\n## Guía\n${n.aiGuidance}`
+        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n${relaciones}${material}\n\n## Guía\n${n.aiGuidance}`
       );
     }
   );
@@ -1352,8 +1375,14 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       const model = await loadModel(diagramId);
       try {
         const spec = getElementSpec(model, id);
-        if (!spec) return text(`El elemento "${id}" todavía no tiene especificación.`);
-        return text(JSON.stringify(spec, null, 2));
+        // El ÍNDICE del material va siempre, con spec o sin ella: sin él, el
+        // agente externo no sabe que hay algo que pedir y construye contra la
+        // descripción. El contenido no sale de acá (read_element_doc).
+        const idx = docsIndex(model, id);
+        const adjuntos = idx.includes("no tiene material") ? "" : `\n\nAdjuntos (pedilos con read_element_doc):\n${idx}`;
+        if (!spec)
+          return text(`El elemento "${id}" todavía no tiene especificación.${adjuntos}`);
+        return text(`${JSON.stringify(spec, null, 2)}${adjuntos}`);
       } catch (e: any) {
         return fail(e.message);
       }
@@ -1676,6 +1705,183 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       } catch (e: any) {
         return fail(e.message);
       }
+    }
+  );
+
+  // -- 4d. Adjuntos de una CAJA: el material con el que se construye (feature 016) ---
+
+  const TIPOS_DOC = ["pdf", "markdown", "json", "openapi", "imagen", "texto"] as const;
+
+  server.registerTool(
+    "attach_element_doc",
+    {
+      title: "Adjuntar material a una caja",
+      description:
+        `Guarda DENTRO de la caja el material con el que se la construye: el contrato OpenAPI, el .json de ejemplo, el .md de la decisión, el texto del PDF del proveedor. Es distinto de attach_source (que sostiene la CITA del modelo: de dónde salió) y de las propiedades (que dicen dónde VIVE): esto es con qué se hace. Quien implemente la caja lo lee con read_element_doc sin salir del diagrama y sin tu sistema de archivos. Con \`path\` lo leo yo del disco (texto plano); con \`text\` lo mandás ya leído. Reemplaza por nombre. Tope: ${MAX_DOCS_POR_CAJA} adjuntos por caja de ${MAX_TEXTO_DOC} caracteres; lo que pase se recorta y se avisa.`,
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        element: z.string().describe("Id o nombre exacto de la caja."),
+        name: z.string().describe('Nombre del adjunto ("openapi-pagos.yaml").'),
+        text: z.string().optional().describe("Contenido, si ya lo leíste."),
+        path: z
+          .string()
+          .optional()
+          .describe("Ruta en TU disco: la leo yo (texto plano). Alternativa a `text`."),
+        origen: z.string().optional().describe('De dónde salió, para el humano ("PDF del proveedor").'),
+        tipo: z.enum(TIPOS_DOC).optional().describe("Si no lo decís, lo detecto del contenido."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, element, name, text: contenido, path: ruta, origen, tipo }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      let cuerpo = contenido ?? "";
+      if (!cuerpo && ruta) {
+        try {
+          // El disco es del proceso MCP, nunca del renderer: la app no tiene
+          // sistema de archivos y por eso el material viaja DENTRO del proyecto.
+          cuerpo = await fs.readFile(ruta, "utf8");
+        } catch (e: any) {
+          return fail(`No pude leer "${ruta}": ${String(e?.message ?? e)}. Mandá el contenido en \`text\`.`);
+        }
+      }
+      if (!cuerpo.trim()) return fail("Falta el contenido: mandá `text` o una `path` que se pueda leer.");
+      const model = await loadModel(diagramId);
+      try {
+        const r = attachDocToElement(model, element, {
+          nombre: name,
+          texto: cuerpo,
+          origen,
+          origenRuta: ruta,
+          tipo: tipo as ElementDocTipo | undefined,
+        });
+        await saveModel(diagramId, r.model);
+        return text(
+          `"${r.doc.nombre}" adjunto a ${r.elemento.nombre} (tipo ${r.doc.tipo}, ${
+            r.doc.texto.split("\n").length
+          } líneas${r.doc.truncado ? `, RECORTADO a ${MAX_TEXTO_DOC} caracteres` : ""}). Quien construya la caja lo lee con read_element_doc.`
+        );
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "list_element_docs",
+    {
+      title: "Material adjunto de las cajas",
+      description:
+        "Qué material tiene adjunto una caja (o todo el diagrama) y cuánto pesa, SIN su contenido. El índice es lo que te permite decidir qué pedir: pedí el contenido con read_element_doc.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        element: z.string().optional().describe("Id o nombre. Omitido → el diagrama entero."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, element }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        return text(docsIndex(model, element));
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "read_element_doc",
+    {
+      title: "Leer el material de una caja",
+      description:
+        "Devuelve el texto de un adjunto (entero o el rango de líneas que pidas). Es contra esto que se construye: el contrato real, no el resumen de la descripción.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        element: z.string().describe("Id o nombre de la caja."),
+        name: z.string().describe("Nombre del adjunto (el de list_element_docs)."),
+        from: z.number().optional().describe("Primera línea (1 por defecto)."),
+        to: z.number().optional().describe("Última línea (el final por defecto)."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, element, name, from, to }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        const r = readDocOfElement(model, element, name, from, to);
+        if (!r.ok)
+          return fail(
+            `${r.error}${r.disponibles.length ? ` Los que tiene: ${r.disponibles.join(", ")}.` : ""}`
+          );
+        return text(`${r.doc}:\n${r.texto}`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "remove_element_doc",
+    {
+      title: "Quitar material de una caja",
+      description: "Saca un adjunto de la caja. Lo demás del elemento queda igual.",
+      inputSchema: { diagramId: diagramIdSchema, element: z.string(), name: z.string() },
+    },
+    async ({ diagramId: diagramIdEntrada, element, name }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        const r = removeDocFromElement(model, element, name);
+        await saveModel(diagramId, r.model);
+        return text(`"${name}" quitado de ${r.elemento.nombre}. Quedan ${r.quedan} adjunto(s).`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "search_docs",
+    {
+      title: "Buscar en el material adjunto",
+      description:
+        "Busca un término en el texto de TODOS los adjuntos del diagrama y devuelve en qué caja, en qué adjunto y en qué línea aparece. Es lo que convierte el material en consultable: encontrás la línea y pedís el fragmento con read_element_doc.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        term: z.string().describe("Término a buscar (sin distinguir mayúsculas)."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, term }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      const hits = searchDocsInModel(model, term);
+      return text(
+        hits.length
+          ? `${hits.length} coincidencia(s) de "${term}":\n${formatHits(hits)}`
+          : `Ninguna coincidencia de "${term}" en el material adjunto del diagrama.`
+      );
     }
   );
 

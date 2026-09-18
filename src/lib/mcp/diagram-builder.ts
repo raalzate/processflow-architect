@@ -23,6 +23,7 @@
 import type { GraphData, GraphNode, Agregado, ReadModel } from "../types";
 import { problemasDePropiedades } from "../element-properties";
 import { sanitizeSpec, type ElementSpec } from "../element-spec";
+import { docsParaGuardar, type ElementDoc } from "../element-docs";
 import { sanitizeSourceDocs, type SourceDoc } from "../source-docs";
 import { moverMensaje } from "../sequence/order";
 import {
@@ -156,6 +157,12 @@ export interface BuilderNode {
    * MCP; en las dos direcciones pasa por `sanitizeSpec`.
    */
   spec?: ElementSpec;
+  /**
+   * Material con el que se construye la caja (contrato, PDF, ejemplo). Lo
+   * adjunta el agente externo por MCP o el humano en la ficha; en las dos
+   * direcciones pasa por `docsParaGuardar`. Ver `src/lib/element-docs.ts`.
+   */
+  adjuntos?: ElementDoc[];
   /**
    * Columnas de la tabla (MER físico): de ellas salen los compartimentos
    * «column»/«FK»/«index»/«PK» de la caja. Sólo tienen sentido en un tipo que se
@@ -1471,6 +1478,7 @@ function toDomainNode(n: BuilderNode): Omit<GraphNode, "agregado"> {
     descripcion,
     metadata: n.metadata,
     spec: sanitizeSpec(n.spec),
+    adjuntos: docsParaGuardar(n.adjuntos),
     columnas: normalizarColumnas(n.columnas),
     estado_comparativo: n.estado_comparativo ?? "nuevo",
     tags_tecnologia: n.tags_tecnologia ?? null,
@@ -1509,6 +1517,7 @@ export function toGraphData(input: DiagramModel): GraphData {
     borderColor: c.borderColor,
     metadata: c.metadata,
     spec: sanitizeSpec(c.spec),
+    adjuntos: docsParaGuardar(c.adjuntos),
     // Un contenedor también documenta lo que YA existe: sin esto el estado que
     // declara el agente moría en la serialización (sólo lo llevaban los nodos).
     estado_comparativo: c.estado_comparativo,
@@ -1607,6 +1616,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       borderColor: (agg as any).borderColor,
       metadata: normalizarLista(agg.metadata),
       spec: sanitizeSpec((agg as any).spec),
+      adjuntos: docsParaGuardar((agg as any).adjuntos),
       x: agg.x,
       y: agg.y,
       width: agg.width,
@@ -1618,6 +1628,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
         container: agg.nombre_agregado,
         metadata: normalizarLista((n as any).metadata),
         spec: sanitizeSpec((n as any).spec),
+        adjuntos: docsParaGuardar((n as any).adjuntos),
         columnas: normalizarColumnas((n as any).columnas),
       });
     }
@@ -1641,6 +1652,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       container: "",
       metadata: normalizarLista((n as any).metadata),
       spec: sanitizeSpec((n as any).spec),
+      adjuntos: docsParaGuardar((n as any).adjuntos),
       columnas: normalizarColumnas((n as any).columnas),
     });
   }
