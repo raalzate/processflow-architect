@@ -165,6 +165,30 @@ add_node { name: "Pasarela", type: "Componente",
 - Adjuntá lo que **sostiene el diagrama**, no la biblioteca entera: el tope son
   20 documentos de 60 000 caracteres y lo que pase se recorta.
 
+### El material de UNA caja: con qué se la construye
+
+\`attach_source\` responde «de dónde salió el modelo». Lo que necesita quien
+implementa una caja es otra cosa: **con qué se construye**. Eso va en la caja:
+
+\`\`\`
+attach_element_doc { element: "Enrollment API", name: "pagos.yaml",
+                     path: "/repo/contratos/pagos.yaml" }   // o text: "..."
+\`\`\`
+
+- \`list_element_docs\` da el **índice** (nombre, tipo, tamaño, si se recortó) de
+  una caja o de todo el diagrama; \`read_element_doc\` trae el texto, entero o por
+  rango de líneas; \`remove_element_doc\` lo quita.
+- \`get_element_spec\` ya devuelve ese índice: si una caja lista un adjunto,
+  **pedilo antes de escribir su spec o de construirla**. El índice es barato; el
+  contenido se pide.
+- \`search_docs\` busca un término en el material de todo el diagrama y te dice
+  caja, adjunto y línea: es cómo se encuentra la regla sin leer los contratos
+  enteros.
+- El tipo se detecta del contenido (un \`.yaml\` con \`openapi:\` es un contrato).
+  Tope: 10 adjuntos por caja de 60 000 caracteres.
+- \`review_specs\` marca las cajas desplegables **sin material ni URL de
+  contrato**: informa, no bloquea.
+
 ## 2 · Ambigüedades: una sola ronda, registrada
 
 Con la ficha llena, NO construyas. Primero registra en el diagrama lo que el
@@ -839,6 +863,30 @@ add_node { name: "Pasarela", type: "Componente",
   documento que no está: es la señal de que la evidencia se quedó afuera.
 - Adjuntá lo que **sostiene el diagrama**, no la biblioteca entera: el tope son
   20 documentos de 60 000 caracteres y lo que pase se recorta.
+
+### El material de UNA caja: con qué se la construye
+
+\`attach_source\` responde «de dónde salió el modelo». Lo que necesita quien
+implementa una caja es otra cosa: **con qué se construye**. Eso va en la caja:
+
+\`\`\`
+attach_element_doc { element: "Enrollment API", name: "pagos.yaml",
+                     path: "/repo/contratos/pagos.yaml" }   // o text: "..."
+\`\`\`
+
+- \`list_element_docs\` da el **índice** (nombre, tipo, tamaño, si se recortó) de
+  una caja o de todo el diagrama; \`read_element_doc\` trae el texto, entero o por
+  rango de líneas; \`remove_element_doc\` lo quita.
+- \`get_element_spec\` ya devuelve ese índice: si una caja lista un adjunto,
+  **pedilo antes de escribir su spec o de construirla**. El índice es barato; el
+  contenido se pide.
+- \`search_docs\` busca un término en el material de todo el diagrama y te dice
+  caja, adjunto y línea: es cómo se encuentra la regla sin leer los contratos
+  enteros.
+- El tipo se detecta del contenido (un \`.yaml\` con \`openapi:\` es un contrato).
+  Tope: 10 adjuntos por caja de 60 000 caracteres.
+- \`review_specs\` marca las cajas desplegables **sin material ni URL de
+  contrato**: informa, no bloquea.
 
 ### Especificación: qué debe hacer la caja y cómo se sabe
 

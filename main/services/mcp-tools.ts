@@ -590,8 +590,17 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           (k) => `- \`${k}\` — ${EDGE_RELATIONS[k].label}: ${EDGE_RELATIONS[k].hint}`
         ),
       ].join("\n");
+      // El material de la caja se documenta acá porque esto es lo que se lee
+      // ANTES de construir: una herramienta que el agente no ve, no la usa.
+      const material = [
+        "",
+        "## Material de una caja (con qué se la construye)",
+        "- `attach_element_doc` adjunta el contrato/ejemplo/decisión a un elemento (`text` o `path`).",
+        "- `list_element_docs` da el ÍNDICE (nombre, tipo, tamaño); `read_element_doc` trae el texto por rango.",
+        "- `search_docs` dice en qué caja, adjunto y línea aparece un término.",
+      ].join("\n");
       return text(
-        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n${relaciones}\n\n## Guía\n${n.aiGuidance}`
+        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n${relaciones}${material}\n\n## Guía\n${n.aiGuidance}`
       );
     }
   );
