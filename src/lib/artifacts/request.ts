@@ -49,8 +49,12 @@ export function resolveArtifactRequest(kind: string | undefined | null): Artifac
  */
 export function artifactRequestDirective(req: ArtifactRequest, message: string): string {
   const texto = (message ?? "").trim();
+  // El «generalo ya» chocaba con la regla del bucle explorador («plan primero»):
+  // el modelo local obedecía esta línea, el plan lo rebotaba y la corrida moría
+  // sin artefacto y sin decir por qué (#358). La orden incluye el orden.
   const pedido =
-    `El usuario pidió el artefacto «${req.label}»: generalo con la acción ` +
-    `"${req.tool}" y "kind":"${req.kind}". No cierres la corrida sin haberlo puesto en el lienzo.`;
+    `El usuario pidió el artefacto «${req.label}»: leé lo que necesites, proponé el plan y, ` +
+    `una vez aprobado, generalo con la acción "${req.tool}" y "kind":"${req.kind}". ` +
+    `No cierres la corrida sin haberlo puesto en el lienzo.`;
   return texto ? `${pedido}\n\nInstrucciones del usuario: ${texto}` : pedido;
 }

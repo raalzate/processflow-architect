@@ -16,6 +16,8 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
+import { offerWiderWindow } from "@/lib/ai/window-retry";
+import { getGenerationConfig } from "@/lib/ai-config";
 import {
   Send,
   Loader2,
@@ -36,6 +38,7 @@ import {
   ListChecks,
   HelpCircle,
   CheckCheck,
+  Gauge,
   Layers,
   Plus,
   Hammer,
@@ -236,6 +239,49 @@ function RunPauseCard({
   );
 }
 
+/**
+ * Tarjeta de SALIDA cuando la corrida murió por falta de ventana. El mensaje ya
+ * dice qué pasó; acá está el arreglo: ampliar «Máx. tokens» y reenviar el mismo
+ * pedido de un clic, sin que el usuario tenga que descubrir el slider (#358).
+ */
+function WindowOfferCard({
+  message,
+  busy,
+  onRetry,
+  onSettings,
+}: {
+  message: ChatMessage;
+  busy: boolean;
+  onRetry: () => void;
+  onSettings: () => void;
+}) {
+  const oferta = offerWiderWindow(message.hint, getGenerationConfig().maxTokens);
+  // Sin oferta (ya está al tope) queda el camino a Ajustes: ahí puede bajar el
+  // alcance del pedido o cambiar de modelo.
+  return (
+    <div className="mt-2 rounded-md border border-warning-border bg-warning-surface/40 p-2">
+      <div className="flex items-center gap-1.5 text-xs font-semibold">
+        <Gauge className="h-3.5 w-3.5 text-warning-foreground" /> Ventana del modelo
+      </div>
+      <p className="mt-1 text-2xs text-muted-foreground">
+        {oferta
+          ? "El agente se quedó sin contexto a mitad de camino. Puedo ampliarla y repetir el pedido."
+          : "La ventana ya está al máximo: probá con menos vistas en el pedido o un modelo más grande."}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {oferta && message.retry && (
+          <Button size="sm" className="h-7 text-xs" disabled={busy} onClick={onRetry}>
+            {oferta.label}
+          </Button>
+        )}
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onSettings}>
+          Ajustes → Modelo de IA
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function StepsTrace({ steps }: { steps: AgentStep[] }) {
   if (!steps?.length) return null;
   return (
@@ -274,6 +320,7 @@ export function AgentChatPanel() {
     resumeRun,
     cancelRun,
     answerBuilderQuestion,
+    retryWithWiderWindow,
     agentId,
     artifacts,
     contextArtifactIds,
@@ -563,6 +610,14 @@ export function AgentChatPanel() {
                   viewNames={views.map((v) => v.name)}
                   onDecide={(d) => resumeRun(m.id, d)}
                   onCancel={() => cancelRun(m.id)}
+                />
+              )}
+              {m.role === "assistant" && m.hint && (
+                <WindowOfferCard
+                  message={m}
+                  busy={busy}
+                  onRetry={() => retryWithWiderWindow(m.id)}
+                  onSettings={() => router.push("/settings#motor")}
                 />
               )}
               {m.role === "assistant" && m.steps && <StepsTrace steps={m.steps} />}

@@ -182,6 +182,13 @@ export interface AgentRunState {
 
 export type ChatRole = "user" | "assistant";
 
+/**
+ * Por qué una corrida terminó sin artefacto, cuando hay algo que el humano PUEDE
+ * cambiar. Vive acá (y no en `litert-agent`) porque lo comparten el bucle, el
+ * mensaje del chat y la UI que ofrece el arreglo (#358).
+ */
+export type AgentHint = "ventana-corta";
+
 /** Mensaje del chat del agente. */
 export interface ChatMessage {
   id: string;
@@ -193,6 +200,14 @@ export interface ChatMessage {
   contextArtifactIds?: string[]; // artefactos inyectados como contexto (opcional)
   attachments?: { name: string; contentType: string }[]; // documentos adjuntos (mensajes del usuario)
   error?: boolean;
+  /**
+   * Causa accionable de un cierre sin artefacto: la UI la traduce en un botón
+   * (ampliar la ventana del modelo y reintentar) en vez de dejar al usuario
+   * adivinando qué tocar en Ajustes (#358).
+   */
+  hint?: AgentHint;
+  /** Pedido original del turno: es lo que se reenvía al reintentar. */
+  retry?: { text: string; requestedKind?: string };
   /**
    * Corrida del agente asociada a este mensaje. Con `pause` presente, el mensaje
    * ES la corrida esperando al humano (plan por aprobar o pregunta por

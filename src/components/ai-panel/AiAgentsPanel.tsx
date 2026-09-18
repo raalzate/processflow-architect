@@ -109,7 +109,7 @@ export function AiAgentsPanel() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <AiProvenanceBadge className="shrink-0 whitespace-nowrap" />
+        <AiProvenanceBadge agente className="shrink-0 whitespace-nowrap" />
       </div>
 
       <div className="w-full p-1">
