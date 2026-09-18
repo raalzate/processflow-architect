@@ -185,3 +185,44 @@ describe("fundir", () => {
     expect(g.notas).toContain("lo escribió el humano");
   });
 });
+
+describe("revisarGrafoEntrante · la puerta de un cliente MCP externo", () => {
+  it("rechaza un grafo cuyas listas no son listas", () => {
+    const malo = { ...vista(), agregados: { nombre_agregado: "X" } } as any;
+    const r = applyViewEdit(vista(), { kind: "set-graph", graph: malo }, "c4");
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toContain("agregados");
+  });
+
+  it("rechaza una caja sin nombre o sin tipo", () => {
+    const sinNombre = vista();
+    sinNombre.big_picture.nodos = [{ id: "x", tipo_elemento: "Persona" } as any];
+    expect(applyViewEdit(vista(), { kind: "set-graph", graph: sinNombre }, "c4").ok).toBe(false);
+
+    const sinTipo = vista();
+    sinTipo.big_picture.nodos = [{ id: "x", nombre: "Ana" } as any];
+    const r = applyViewEdit(vista(), { kind: "set-graph", graph: sinTipo }, "c4");
+    expect(r.ok === false && r.error).toContain("no declara tipo");
+  });
+
+  it("rechaza un tipo ajeno a la notación con la sugerencia más parecida (§P6)", () => {
+    const ajeno = vista();
+    ajeno.big_picture.nodos = [nodo("x", "Web", "Container")];
+    const r = applyViewEdit(vista(), { kind: "set-graph", graph: ajeno }, "c4");
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toContain("Contenedor");
+  });
+
+  it("revisa también el tipo de los contenedores", () => {
+    const g = vista();
+    g.agregados = [{ nombre_agregado: "Tienda", entidad_raiz: "", descripcion: "", tipo_contenedor: "Pool", nodos: [], aristas: [] } as any];
+    const r = applyViewEdit(vista(), { kind: "set-graph", graph: g }, "c4");
+    expect(r.ok).toBe(false); // Pool es de BPMN, no de C4
+  });
+
+  it("un grafo correcto pasa", () => {
+    expect(applyViewEdit(vista(), { kind: "set-graph", graph: vista() }, "c4").ok).toBe(true);
+  });
+});

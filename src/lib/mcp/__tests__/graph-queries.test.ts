@@ -83,3 +83,32 @@ describe("consultas deterministas del grafo", () => {
     expect(relacionEntre(grafo(), "Ana", "Servicio")).toEqual({ kind: "ninguno" });
   });
 });
+
+describe("consultas · los bordes del grafo", () => {
+  it("un grafo sin listas no rompe: no hay nada que encontrar", () => {
+    const vacio = { nombre_proyecto: "P" } as any;
+    expect(elementoPorNombre(vacio, "X")).toEqual({ kind: "ninguno" });
+    expect(elementosPorTipo(vacio, "Persona")).toEqual({ kind: "ninguno" });
+    expect(relacionEntre(vacio, "A", "B")).toEqual({ kind: "ninguno" });
+  });
+
+  it("un id exacto resuelve aunque el nombre no coincida", () => {
+    expect(elementoPorNombre(grafo(), "svc")).toMatchObject({ kind: "uno", valor: { nombre: "Servicio" } });
+  });
+
+  it("un tipo vacío no devuelve todo el grafo", () => {
+    expect(elementosPorTipo(grafo(), "  ")).toEqual({ kind: "ninguno" });
+  });
+
+  it("la relación entre dos nombres ambiguos no se resuelve a ciegas", () => {
+    const g = grafo();
+    g.agregados[0].nodos.push(nodo("ctrl2", "Controlador", "Componente"));
+    expect(relacionEntre(g, "Controlador", "Servicio")).toEqual({ kind: "ninguno" });
+  });
+
+  it("dos relaciones entre el mismo par devuelven «varios»", () => {
+    const g = grafo();
+    g.politicas_inter_agregados = [{ fuente: "svc", destino: "ctrl", descripcion: "responde" } as any];
+    expect(relacionEntre(g, "Controlador", "Servicio").kind).toBe("varios");
+  });
+});

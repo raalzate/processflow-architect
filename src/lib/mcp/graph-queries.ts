@@ -13,7 +13,7 @@
  * el humano escribe «controlador» y la caja se llama «Controlador».
  */
 
-import type { GraphData, GraphLink, GraphNode } from "../types";
+import type { GraphData, GraphLink } from "../types";
 import { plano } from "./tipo-notacion";
 
 /** Respuesta de una consulta: una, varias o ninguna. Nunca «la primera». */
@@ -133,12 +133,4 @@ export function relacionEntre(graph: GraphData, a: string, b: string): Resultado
 /** Nombre de un elemento por id (para hablarle al humano de cajas, no de ids). */
 export function nombreDe(graph: GraphData, id: string): string {
   return [...elementos(graph), ...contenedores(graph)].find((e) => e.id === id)?.nombre ?? id;
-}
-
-/** Los nodos del grafo tal cual (sin la vista `ElementoRef`), por id. */
-export function nodosPorId(graph: GraphData): Map<string, Omit<GraphNode, "agregado">> {
-  const out = new Map<string, Omit<GraphNode, "agregado">>();
-  for (const n of graph.big_picture?.nodos ?? []) out.set(n.id, n);
-  for (const a of graph.agregados ?? []) for (const n of a.nodos ?? []) out.set(n.id, n);
-  return out;
 }

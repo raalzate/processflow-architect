@@ -26,7 +26,7 @@ import { MAX_CUSTOM_VIEWS } from "@/lib/views-types";
 import { cn } from "@/lib/utils";
 import { useGraphContext } from "@/context/GraphContext";
 import type { GraphData } from "@/lib/types";
-import type { NotationId } from "@/lib/notations";
+import { DEFAULT_NOTATION_ID, type NotationId } from "@/lib/notations";
 import { useViews } from "@/context/ViewsContext";
 import { ComponentDesigner } from "@/components/graph/designer/ComponentDesigner";
 import { ViewsTabBar } from "@/components/views/ViewsTabBar";
@@ -231,7 +231,7 @@ const McpImportBridge = () => {
             });
             return;
           }
-          const notacion = (vista?.notation ?? base.notation ?? "ddd") as NotationId;
+          const notacion = (vista?.notation ?? base.notation ?? DEFAULT_NOTATION_ID) as NotationId;
           const r = applyViewEdit(base, request, notacion);
           if (!r.ok) {
             electron.mcpAppActionReply?.(id, { ok: false, error: r.error });

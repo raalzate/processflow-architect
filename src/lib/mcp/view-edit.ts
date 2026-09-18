@@ -78,9 +78,11 @@ const EXTRAS_ARISTA = [
 
 type Arista = Omit<GraphLink, "tipo" | "source" | "target">;
 
+const lista = <T,>(x: unknown): T[] => (Array.isArray(x) ? (x as T[]) : []);
+
 const nodosDe = (g: GraphData): (Omit<GraphNode, "agregado"> & Record<string, unknown>)[] => [
-  ...((g.big_picture?.nodos ?? []) as any[]),
-  ...(g.agregados ?? []).flatMap((a) => (a.nodos ?? []) as any[]),
+  ...lista<any>(g?.big_picture?.nodos),
+  ...lista<any>(g?.agregados).flatMap((a) => lista<any>(a?.nodos)),
 ];
 
 const aristasDe = (g: GraphData): Arista[] => [
@@ -211,12 +213,66 @@ function tipoValido(tipo: string, notation: NotationId): { tipo: string } | { er
  * Aplica una operación al grafo de una vista y devuelve el grafo nuevo.
  * No muta nada: el renderer decide qué hacer con el resultado.
  */
+/**
+ * El grafo entrante de un `set-graph`, revisado antes de tocar el proyecto.
+ *
+ * El modo creativo ya valida su propuesta, pero `set_view_graph` también la usa
+ * un cliente MCP de afuera (Claude Code), y ahí no hay nadie que revise: un JSON
+ * bien formado con la forma equivocada llegaba hasta el estado del renderer.
+ * Se comprueba lo mínimo que hace publicable a un grafo: que las listas sean
+ * listas, que cada caja tenga nombre y que su tipo exista en la notación —con la
+ * sugerencia más parecida cuando no, que es lo que deja corregirlo (§P6).
+ */
+export function revisarGrafoEntrante(
+  graph: GraphData,
+  notation: NotationId
+): { ok: true } | { ok: false; error: string } {
+  if (!graph || typeof graph !== "object") return { ok: false, error: "El grafo entrante no es un objeto." };
+  const listas: [string, unknown][] = [
+    ["big_picture.nodos", graph.big_picture?.nodos],
+    ["big_picture.aristas", graph.big_picture?.aristas],
+    ["agregados", graph.agregados],
+  ];
+  for (const [donde, valor] of listas) {
+    if (valor !== undefined && !Array.isArray(valor)) {
+      return { ok: false, error: `El grafo entrante trae "${donde}" y no es una lista.` };
+    }
+  }
+
+  const validos = notationTypes(notation, { includeContainers: true });
+  const cajas: { nombre: unknown; tipo: unknown }[] = [
+    ...nodosDe(graph).map((n) => ({ nombre: n?.nombre, tipo: n?.tipo_elemento })),
+    ...(graph.agregados ?? []).map((a) => ({ nombre: a?.nombre_agregado, tipo: a?.tipo_contenedor })),
+  ];
+  for (const caja of cajas) {
+    if (typeof caja.nombre !== "string" || !caja.nombre.trim()) {
+      return { ok: false, error: "Hay una caja sin nombre en el grafo entrante." };
+    }
+    if (typeof caja.tipo !== "string" || !caja.tipo.trim()) {
+      return { ok: false, error: `"${caja.nombre}" no declara tipo.` };
+    }
+    const r = normalizarTipo(caja.tipo, validos);
+    if ("error" in r) {
+      const sugerencia = r.sugerido ? ` ¿Quisiste decir "${r.sugerido}"?` : "";
+      return {
+        ok: false,
+        error: `"${caja.nombre}" usa el tipo "${caja.tipo}", que no existe en ${notation}.${sugerencia} Los válidos: ${validos.join(", ")}.`,
+      };
+    }
+  }
+  return { ok: true };
+}
+
 export function applyViewEdit(
   actual: GraphData,
   edit: ViewEdit,
   notation: NotationId
 ): ViewEditResult {
   if (edit.kind === "set-graph") {
+    // La forma primero: contar los elementos de algo que no tiene la forma de un
+    // grafo es donde reventaba, y el mensaje útil es el de la forma.
+    const revision = revisarGrafoEntrante(edit.graph, notation);
+    if (!revision.ok) return revision;
     const nodos = nodosDe(edit.graph).length + (edit.graph.agregados?.length ?? 0);
     // §P8: ningún camino deja el lienzo en blanco.
     if (!nodos) return { ok: false, error: "El grafo entrante no tiene elementos: no se publica vacío." };
