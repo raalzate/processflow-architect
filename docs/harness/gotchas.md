@@ -433,3 +433,21 @@ Mecanismo: `src/components/graph/designer/__tests__/shape-coverage.test.ts` lee 
          silueta que el registro ya no declara. Verificada en rojo agregando una silueta sin su
          `case`.
 
+
+### GOTCHA: traer `main` a la rama pone el gate en rojo sin tocar código
+
+Issue: sin issue — se vio al actualizar los PR #320 y #355
+
+Síntoma: después de `git merge origin/main` el gate falla en dos señales —«self-test del arnés» y
+         «índice del repo»— con `graph-check: sello=… HEAD=… con N archivo(s) indexables
+         cambiados: corré npm run graph:update`. El remedio que sugiere el mensaje **no alcanza**:
+         `graphify update` reindexa pero no escribe el sello.
+Causa:   git no dispara `post-commit` en el commit de merge (para eso existe `post-merge`), así
+         que el sello `graphify-out/.indexed-head` se quedaba en el commit anterior. El índice
+         estaba bien; lo que faltaba era decirlo.
+Regla:   todo camino que mueve HEAD deja el sello escrito. Si aparece otro (rebase, cherry-pick a
+         mano), lleva su hook en el mismo cambio.
+Mecanismo: `.githooks/post-merge` + dos casos en `scripts/harness-selftest.mjs` que hacen un
+         merge de verdad en un repo temporal con un `graphify` de mentira en el PATH y exigen
+         `sello == HEAD`. Los casos verifican además que el merge OCURRIÓ: sin eso, un merge
+         abortado dejaba HEAD quieto y el sello viejo coincidía —verde sin hook.
