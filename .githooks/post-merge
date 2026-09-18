@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Post-merge: reindexa y SELLA después de un `git merge`.
+#
+# Por qué existe aparte del post-commit: git NO dispara `post-commit` en el
+# commit de merge —para eso está este hook—, así que traer `main` a una rama
+# dejaba el sello apuntando al commit anterior y `scripts/graph-check.mjs` (y
+# con él el gate entero) se ponía rojo sin que nadie hubiera tocado código. El
+# remedio a mano era `graphify update` + escribir el sello: eso es este archivo.
+#
+# Mismo criterio que el post-commit: barato, silencioso y fuera del entregable.
+# Si graphify no está, el merge YA ocurrió y no se toca nada.
+set -uo pipefail
+
+command -v graphify >/dev/null 2>&1 || exit 0
+[ -f graphify-out/graph.json ] || exit 0   # sin índice construido no hay nada que actualizar
+
+# En un merge lo que importa es lo que la rama GANÓ al traer la otra:
+# `ORIG_HEAD` es dónde estaba antes del merge.
+CAMBIOS=$(git diff --name-only ORIG_HEAD HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|mjs|md)$' || true)
+if [ -z "$CAMBIOS" ]; then
+  # Nada indexable entró: el índice sigue valiendo, pero hay que decirlo o
+  # graph-check lo lee como atrasado.
+  git rev-parse HEAD > graphify-out/.indexed-head
+  exit 0
+fi
+
+if graphify update >/dev/null 2>&1; then
+  git rev-parse HEAD > graphify-out/.indexed-head
+  echo "post-merge: índice de graphify actualizado."
+fi
+exit 0

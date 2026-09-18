@@ -95,12 +95,13 @@ npm run graph:check                # la señal del gate, suelta
 | `graphify-out/` | el índice: `graph.json` + `GRAPH_REPORT.md`. **Gitignorado**: es derivado y por máquina |
 | `.githooks/commit-msg` | el trabajo no entra al historial sin quedar registrado: si el diff staged toca código (`commitMsg.codePattern`), el mensaje lleva la referencia de la issue (`tracker.issuePattern`) o una línea `sin-issue: <motivo>` con motivo. Merge/revert/fixup quedan fuera. **No conoce GitHub**: con `AB#123` o `PROJ-123` en el config funciona igual. Lo prueban 9 casos del self-test en repos git temporales, dos de ellos con la config de otra forja |
 | `.githooks/post-commit` | reindexa después de cada commit. **No** se instala con `graphify hook install`: ese comando escribe en `.git/hooks/`, que git ignora porque `core.hooksPath=.githooks` |
+| `.githooks/post-merge` | reindexa y **sella** después de un `git merge`: git no dispara `post-commit` en el commit de merge, así que traer `main` a una rama dejaba el sello en el commit anterior y el gate se ponía rojo sin que nadie tocara código. Lo prueban dos casos del self-test en repos git temporales |
 | `.claude/hooks/graph-first.mjs` | pone el índice en el camino del agente cuando el pedido es «dónde está X», «quién usa Y», «cómo funciona Z» |
 | `node scripts/graph-check.mjs` | señal del gate: mide las **dos** formas en que un índice miente (abajo); **omitida** donde no existe (CI) |
 
 Las dos mentiras que se miden, y por qué así:
 
-1. **Estar viejo** — se mide por **contenido**: el post-commit sella en
+1. **Estar viejo** — se mide por **contenido**: el post-commit (y el post-merge) sellan en
    `graphify-out/.indexed-head` el sha que indexó, y la señal compara ese sello con HEAD; si
    difieren, sólo es rojo cuando entre ambos cambió un archivo indexable (`*.ts|tsx|js|mjs|md`).
    Medir por reloj daba falsos rojos (ver el gotcha «atrasado 0 minutos»), y medir contra el
