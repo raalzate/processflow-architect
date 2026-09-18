@@ -1064,6 +1064,34 @@ const SubProcessMarker: React.FC<{ cx: number; y: number; onOpen: () => void }> 
   </g>
 );
 
+/**
+ * Marca de MATERIAL ADJUNTO (feature 016). Mismo lenguaje visual que el
+ * marcador de subproceso —chapita apoyada sobre el borde— porque dice lo mismo:
+ * esta caja tiene algo más adentro de lo que se ve. No es clicable: el material
+ * se lee en la ficha, y un segundo gesto sobre el lienzo sería ruido.
+ */
+const AdjuntosMarker: React.FC<{ x: number; y: number; cuantos: number }> = ({ x, y, cuantos }) => (
+  <g>
+    <title>{`${cuantos} adjunto(s): el material con el que se construye`}</title>
+    <rect
+      x={x - 8}
+      y={y}
+      width={16}
+      height={14}
+      rx={2}
+      className="fill-white dark:fill-zinc-800 stroke-gray-400 dark:stroke-zinc-500"
+      strokeWidth={1.5}
+    />
+    {/* Clip: un trazo en U invertida, la forma universal del adjunto. */}
+    <path
+      d={`M ${x - 2.5} ${y + 10.5} L ${x - 2.5} ${y + 4.5} a 2.5 2.5 0 0 1 5 0 L ${x + 2.5} ${y + 10}`}
+      className="fill-none stroke-gray-600 dark:stroke-zinc-300"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+    />
+  </g>
+);
+
 // Puertos de conexión (4 lados). Aparecen al pasar el ratón sobre el nodo y
 // permiten arrastrar para crear un enlace, al estilo de React Flow / Figma.
 const ConnectPorts: React.FC<{
@@ -1778,6 +1806,15 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       {/* Badge de subproceso apoyado sobre el borde inferior (mitad fuera),
           como el marcador estándar BPMN: no invade el área del nombre. */}
       {hasSubView && <SubProcessMarker cx={nodeW / 2} y={nodeH - 7} onOpen={onOpenSubView!} />}
+      {/* Material adjunto: al lado del marcador de subproceso, corrido para que
+          los dos convivan en la misma caja. */}
+      {!!node.adjuntos?.length && (
+        <AdjuntosMarker
+          x={hasSubView ? nodeW / 2 + 20 : nodeW / 2}
+          y={nodeH - 7}
+          cuantos={node.adjuntos.length}
+        />
+      )}
       <ChangeStateBadge
         estado={node.estado_comparativo}
         // Esquina superior derecha de la FORMA dibujada (no de la caja lógica).
