@@ -33,6 +33,7 @@ import {
   elegirAsset,
   hayActualizacion,
   puedeAutoInstalar,
+  resolverAutoUpdater,
   type EstadoUpdate,
 } from "../../src/lib/update-check";
 
@@ -60,9 +61,16 @@ const publicar = (nuevo: EstadoUpdate): void => {
 /** El estado actual (lo pide el renderer al montar el botón). */
 export const updateStatus = (): EstadoUpdate => estado;
 
-/** `electron-updater` se carga perezoso: en desarrollo no se toca. */
+/**
+ * `electron-updater` se carga perezoso: en desarrollo no se toca.
+ *
+ * El export NO se desestructura: el módulo es CJS y publica `autoUpdater` con un
+ * getter que cjs-module-lexer no detecta, así que por `import()` el nombrado
+ * llega `undefined` y el módulo entero queda bajo `default` (issue #372). Quién
+ * gana lo decide `resolverAutoUpdater`, que está probado.
+ */
 async function autoUpdater() {
-  const { autoUpdater: u } = await import("electron-updater");
+  const u = resolverAutoUpdater(await import("electron-updater"));
   u.autoDownload = false;
   u.autoInstallOnAppQuit = false;
   u.allowPrerelease = false;

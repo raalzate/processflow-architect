@@ -472,3 +472,29 @@ Mecanismo: `.githooks/post-merge` + dos casos en `scripts/harness-selftest.mjs` 
          merge de verdad en un repo temporal con un `graphify` de mentira en el PATH y exigen
          `sello == HEAD`. Los casos verifican además que el merge OCURRIÓ: sin eso, un merge
          abortado dejaba HEAD quieto y el sello viejo coincidía —verde sin hook.
+
+### GOTCHA: un mock cómodo tapó que el updater nunca arrancó en Windows
+
+Issue: #372
+
+Síntoma: en la app EMPAQUETADA de Windows, Ajustes detecta la versión nueva («disponible 0.11.0»)
+         y al pulsar el botón muestra `Cannot set properties of undefined (setting 'autoDownload')`
+         con un «Reintentar» que siempre falla. En macOS y en desarrollo todo se veía bien, y la
+         suite estaba verde.
+Causa:   `main/services/updater.ts` desestructuraba `const { autoUpdater } = await import("electron-updater")`.
+         El paquete es CJS y publica ese export con `Object.defineProperty(exports, "autoUpdater", { get })`;
+         cjs-module-lexer —que arma el namespace cuando un CJS se carga por `import()`, y el main
+         compilado con `module: nodenext` conserva el `import()` dinámico tal cual— sólo reconoce
+         `exports.x = …`. El getter no se ve: el nombrado llega `undefined` y el módulo queda bajo
+         `default`. Nadie lo vio porque el camino sólo corre empaquetado Y en Windows/Linux
+         (`app.isPackaged` corta en desarrollo, y macOS no auto-instala: baja el `.dmg` con `fetch`).
+         Y el test no podía verlo: `vi.mock("electron-updater", () => ({ autoUpdater }))` inventaba
+         un export nombrado que en producción NUNCA existe.
+Regla:   un mock reproduce la forma que el módulo tiene en producción, no la cómoda. Si la
+         dependencia es CJS y se carga por `import()`, el namespace se simula con el export
+         nombrado en `undefined` y el contenido bajo `default`. Y ningún import de dependencia se
+         desestructura en el proceso main: la elección se resuelve en `src/lib/`, donde hay pruebas.
+Mecanismo: `resolverAutoUpdater` en `src/lib/update-check.ts` (puro, 4 casos en su test: nombrado,
+         sólo `default`, los dos, y ninguno —que lanza NOMBRANDO al paquete en vez de morir al
+         asignar—) + el mock de `main/services/__tests__/updater.test.ts`, ahora con la forma real:
+         volver a desestructurar el import pone esos tests en rojo.
