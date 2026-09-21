@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Cloud, KeyRound, Check, Loader2, Trash2, ExternalLink, Cpu, Shuffle } from "lucide-react";
+import { Cloud, KeyRound, Check, Loader2, Trash2, ExternalLink, Cpu, Shuffle, PlugZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { accion } from "@/lib/action-labels";
@@ -34,6 +34,11 @@ import {
   type RemoteProvider,
   type KeyStatus,
 } from "@/lib/ai/remote-settings";
+import {
+  diagnosticarFalloDeLlave,
+  veredictoLlaveOk,
+  PROMPT_DE_PRUEBA,
+} from "@/lib/ai/key-check";
 
 const api = () => (typeof window !== "undefined" ? window.electronAPI : undefined);
 
@@ -48,6 +53,7 @@ export function RemoteAiConfig() {
   const [keyStatus, setKeyStatus] = useState<KeyStatus>({});
   const [keyInput, setKeyInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [probando, setProbando] = useState(false);
 
   const isDesktop = !!api();
   const provider = settings.provider;
@@ -93,6 +99,24 @@ export function RemoteAiConfig() {
     await api()?.deleteAiKey?.(provider);
     toast({ title: "Llave eliminada", description: `${info.label}.` });
     await refreshStatus();
+  };
+
+  // Probar = una generación mínima por el canal que ya existe. `getAiKeyStatus`
+  // sólo sabe si hay bytes guardados; una llave revocada o un modelo mal escrito
+  // se descubrían recién al fallar una sugerencia real (#374).
+  const probarLlave = async () => {
+    const modelo = modelFor(settings, provider);
+    setProbando(true);
+    try {
+      await api()?.remoteGenerate?.({ provider, model: modelo, prompt: PROMPT_DE_PRUEBA });
+      const v = veredictoLlaveOk(provider, modelo);
+      toast({ title: v.titulo, description: v.detalle });
+    } catch (e) {
+      const v = diagnosticarFalloDeLlave(provider, e, modelo);
+      toast({ variant: "destructive", title: v.titulo, description: v.detalle });
+    } finally {
+      setProbando(false);
+    }
   };
 
   const configured = !!keyStatus[provider];
@@ -216,14 +240,30 @@ export function RemoteAiConfig() {
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar"}
             </Button>
             {configured && (
-              <IconAction
-                variant="ghost"
-                onClick={deleteKey}
-                disabled={!isDesktop}
-                label={accion("eliminar", "la llave")}
-                icon={<Trash2 className="h-4 w-4" />}
-                className="shrink-0 text-destructive"
-              />
+              <>
+                <IconAction
+                  variant="ghost"
+                  onClick={probarLlave}
+                  disabled={!isDesktop || probando}
+                  label={accion("probar", "la llave")}
+                  icon={
+                    probando ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <PlugZap className="h-4 w-4" />
+                    )
+                  }
+                  className="shrink-0"
+                />
+                <IconAction
+                  variant="ghost"
+                  onClick={deleteKey}
+                  disabled={!isDesktop}
+                  label={accion("eliminar", "la llave")}
+                  icon={<Trash2 className="h-4 w-4" />}
+                  className="shrink-0 text-destructive"
+                />
+              </>
             )}
           </div>
           <a

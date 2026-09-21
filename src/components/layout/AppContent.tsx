@@ -609,9 +609,23 @@ export function AppContent() {
       const estado = razonarEstadoLocal({ enElectron, webgpu });
       publicarEstadoIaLocal(estado);
       setDetectando(false);
-      const aviso = mensajeIaLocal(estado, { remotoActivo: loadAiSettings().mode !== "local" });
-      // El aviso no se cierra solo: es una limitación del equipo, no un evento.
-      if (aviso) toast({ title: aviso.titulo, description: aviso.detalle, duration: Infinity });
+      // La llave vive en el main: sin preguntarle, "modo remoto" no significa que
+      // la nube funcione, y el aviso prometería una salida que no existe.
+      const ajustes = loadAiSettings();
+      const llaves = await (window as any).electronAPI?.getAiKeyStatus?.().catch(() => ({}));
+      if (!mounted) return;
+      const aviso = mensajeIaLocal(estado, {
+        modo: ajustes.mode,
+        conLlave: !!llaves?.[ajustes.provider],
+      });
+      // Persiste sólo cuando el equipo se queda sin ninguna IA: ahí es una
+      // limitación, no un evento. Si la nube cubre el hueco, se va solo.
+      if (aviso)
+        toast({
+          title: aviso.titulo,
+          description: aviso.detalle,
+          duration: aviso.persistente ? Infinity : undefined,
+        });
     })();
     return () => {
       mounted = false;
