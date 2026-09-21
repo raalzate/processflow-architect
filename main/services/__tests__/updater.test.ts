@@ -16,7 +16,23 @@ const autoUpdater = {
 };
 
 vi.mock("electron", () => electron);
-vi.mock("electron-updater", () => ({ autoUpdater }));
+/**
+ * El namespace se simula como lo ENTREGA Node en producción, no como sería
+ * cómodo (issue #372): `electron-updater` es CJS y define `autoUpdater` con un
+ * getter, que cjs-module-lexer no detecta al cargarlo por `import()`. Resultado
+ * real: nada de export nombrado y el módulo colgando de `default`.
+ *
+ * El mock anterior devolvía `{ autoUpdater }` —un export nombrado que en la app
+ * empaquetada NUNCA existe—, así que la suite pasaba en verde mientras Windows y
+ * Linux morían con «Cannot set properties of undefined (setting 'autoDownload')».
+ * Con esta forma, volver a desestructurar el import pone el test en rojo.
+ *
+ * El nombrado va explícito en `undefined` porque el proxy de mocks de Vitest
+ * LANZA al leer un export que no declaraste, mientras que el namespace de Node
+ * simplemente lo da `undefined`: declararlo es la única forma de reproducir acá
+ * lo que pasa allá.
+ */
+vi.mock("electron-updater", () => ({ autoUpdater: undefined, default: { autoUpdater } }));
 
 const cargar = async () => {
   vi.resetModules();

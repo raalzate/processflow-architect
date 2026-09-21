@@ -6,6 +6,7 @@ import {
   etiquetaBreve,
   hayActualizacion,
   puedeAutoInstalar,
+  resolverAutoUpdater,
   type EstadoUpdate,
 } from "@/lib/update-check";
 
@@ -186,5 +187,39 @@ describe("elegirAsset (multi-plataforma, issue #231)", () => {
   it("un release sin artefactos no rompe: no hay nada que elegir", () => {
     expect(elegirAsset([], "darwin", "arm64")).toBeUndefined();
     expect(elegirAsset(assets, "aix", "x64")).toBeUndefined();
+  });
+});
+
+describe("resolverAutoUpdater (issue #372)", () => {
+  const u = { autoDownload: true };
+
+  it("toma el export nombrado cuando el namespace lo trae", () => {
+    expect(resolverAutoUpdater({ autoUpdater: u })).toBe(u);
+  });
+
+  /**
+   * La forma REAL en producción: `electron-updater` define su export con
+   * `Object.defineProperty(exports, "autoUpdater", { get })`, y cjs-module-lexer
+   * —que es quien arma el namespace cuando un CJS se carga por `import()`— sólo
+   * detecta `exports.x = …`. El getter no se ve, el nombrado llega `undefined` y
+   * todo el módulo queda colgando de `default`.
+   */
+  it("cae a `default` cuando el lexer no detectó el getter del CJS", () => {
+    expect(resolverAutoUpdater({ default: { autoUpdater: u } })).toBe(u);
+    expect(resolverAutoUpdater({ autoUpdater: undefined, default: { autoUpdater: u } })).toBe(u);
+  });
+
+  it("el nombrado gana cuando están los dos", () => {
+    const otro = { autoDownload: false };
+    expect(resolverAutoUpdater({ autoUpdater: u, default: { autoUpdater: otro } })).toBe(u);
+  });
+
+  /**
+   * Sin esto el síntoma era `Cannot set properties of undefined (setting
+   * 'autoDownload')`: el fallo aparecía al ASIGNAR, sin nombrar al culpable.
+   */
+  it("falla nombrando el paquete cuando no hay autoUpdater por ningún lado", () => {
+    expect(() => resolverAutoUpdater({})).toThrow(/electron-updater/);
+    expect(() => resolverAutoUpdater({ default: {} })).toThrow(/electron-updater/);
   });
 });

@@ -76,6 +76,41 @@ export function hayActualizacion(instalada: string, publicada?: string): boolean
 export const puedeAutoInstalar = (plataforma: string): boolean =>
   plataforma === "win32" || plataforma === "linux";
 
+/** Namespace de `electron-updater` tal como puede llegar, según quién lo cargue. */
+export interface ModuloUpdater<T> {
+  autoUpdater?: T;
+  default?: { autoUpdater?: T };
+}
+
+/**
+ * El `autoUpdater` del módulo, venga por donde venga (issue #372).
+ *
+ * `electron-updater` es CommonJS y publica su export con un getter:
+ * `Object.defineProperty(exports, "autoUpdater", { get })`. Cuando ese CJS se
+ * carga con `import()` —y el main compilado con `module: nodenext` conserva el
+ * `import()` dinámico tal cual—, Node arma el namespace con cjs-module-lexer,
+ * que sólo reconoce `exports.x = …` y `module.exports`. El getter no se ve: el
+ * nombrado llega `undefined` y todo queda colgando de `default`.
+ *
+ * Esto NO se puede descubrir en desarrollo (ahí el updater ni arranca) ni en
+ * macOS (que no auto-instala y jamás carga el módulo): sólo aparecía en Windows
+ * y Linux empaquetados. Por eso la elección se decide acá, donde hay pruebas, y
+ * no en una desestructuración del proceso main.
+ *
+ * Si no está por ningún lado se lanza NOMBRANDO al paquete: el síntoma original
+ * fue `Cannot set properties of undefined (setting 'autoDownload')`, un error que
+ * aparece al asignar y no dice quién lo causó.
+ */
+export function resolverAutoUpdater<T>(mod: ModuloUpdater<T>): T {
+  const u = mod?.autoUpdater ?? mod?.default?.autoUpdater;
+  if (!u) {
+    throw new Error(
+      "electron-updater no expuso `autoUpdater` (ni nombrado ni en `default`): la actualización automática no está disponible."
+    );
+  }
+  return u;
+}
+
 /**
  * Texto del botón. `undefined` cuando no debe haber botón: al día, la barra no
  * gana ruido. Cada estado dice qué va a pasar si se pulsa, y el fallo dice que se
