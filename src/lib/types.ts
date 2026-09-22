@@ -171,6 +171,13 @@ export interface GraphLink extends SimulationLinkDatum<GraphNode> {
   targetAnchor?: { x: number; y: number };
   /** Punto de doblez (esquina) del enrutado escalonado, en coords del lienzo. @deprecated usar midpoints */
   midpoint?: { x: number; y: number };
+  /**
+   * `true` → los quiebres los calculó la disposición legible y la próxima
+   * reorganización puede reemplazarlos. Ausente = los puso una persona y son
+   * intocables (feature 017 · FR-015). Un proyecto anterior a la feature no
+   * trae la marca, así que su geometría se respeta (FR-017).
+   */
+  geometriaAuto?: boolean;
   /** Puntos de quiebre (esquinas) del enrutado escalonado, en orden, coords del lienzo. */
   midpoints?: { x: number; y: number }[];
   /** Desplazamiento de la etiqueta respecto de su sitio sobre el trazo (px del lienzo). */

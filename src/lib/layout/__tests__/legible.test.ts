@@ -92,7 +92,7 @@ describe("disponerLegible", () => {
 
   it("los diagramas de secuencia quedan fuera: manda el tiempo, no la geometría", () => {
     const model: DiagramModel = {
-      meta: { nombre_proyecto: "secuencia", notation: "uml-sequence" },
+      meta: { nombre_proyecto: "secuencia", notation: "uml" },
       nodes: [
         { id: "a", nombre: "A", tipo_elemento: "Línea de Vida", container: "", x: 0, y: 0, width: 120, height: 400 },
         { id: "b", nombre: "B", tipo_elemento: "Línea de Vida", container: "", x: 400, y: 0, width: 120, height: 400 },

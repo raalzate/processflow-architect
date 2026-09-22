@@ -124,6 +124,12 @@ export interface DesignerLink {
   /** Puntos de quiebre (esquinas) del enrutado escalonado, en orden. */
   midpoints?: { x: number; y: number }[];
   /**
+   * `true` → los quiebres los calculó «Organizar» y puede recalcularlos.
+   * Ausente = los movió una persona y no se tocan (feature 017 · FR-015).
+   * Arrastrar un quiebre calculado borra la marca: pasa a ser del humano.
+   */
+  geometriaAuto?: boolean;
+  /**
    * Desplazamiento de la etiqueta respecto de su sitio natural sobre el trazo
    * (px del lienzo). Sin esto la etiqueta era inamovible y se solapaba con
    * nodos o con otras líneas sin salida posible.
@@ -225,6 +231,7 @@ export function canvasToGraphData(
       sourceAnchor: l.sourceAnchor,
       targetAnchor: l.targetAnchor,
       midpoints: l.midpoints,
+      geometriaAuto: l.geometriaAuto,
       labelOffset: l.labelOffset,
     };
     // Sólo cuenta como "dentro de un agregado" si el agregado EXISTE como contenedor
@@ -434,6 +441,7 @@ function addLink(
     targetAnchor?: DesignerLink["targetAnchor"];
     midpoint?: DesignerLink["midpoint"];
     midpoints?: DesignerLink["midpoints"];
+    geometriaAuto?: DesignerLink["geometriaAuto"];
     labelOffset?: DesignerLink["labelOffset"];
   }
 ) {
@@ -452,6 +460,9 @@ function addLink(
     targetAnchor: a.targetAnchor,
     // Compat: grafos viejos guardaban un único `midpoint`.
     midpoints: a.midpoints ?? (a.midpoint ? [a.midpoint] : undefined),
+    // Sin marca, la geometría guardada es del humano: es la opción conservadora
+    // (FR-017) y lo único que impide que un «Organizar» borre su trabajo.
+    geometriaAuto: a.geometriaAuto,
     labelOffset: a.labelOffset,
   });
 }

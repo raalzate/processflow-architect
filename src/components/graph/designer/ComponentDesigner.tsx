@@ -116,6 +116,7 @@ import {
   type PreviosIA,
 } from "@/lib/ai/suggestion-undo";
 import { arrangeGraphData, laneNames, laneSummary } from "@/lib/mcp/arrange";
+import { aplicarRecorridos } from "./link-arrange";
 import {
   DEFAULT_DENSITY,
   defaultStrategyFor,
@@ -3412,7 +3413,9 @@ export const ComponentDesigner: React.FC<{
               } else if (typeof ep.index === "number") {
                 ways[ep.index] = { x: p.x, y: p.y };
               }
-              l.set(ep.linkId, { ...cur, midpoint: undefined, midpoints: ways });
+              // Arrastrarlo lo vuelve MANUAL: a partir de acá es del humano y
+              // «Organizar» ya no puede reemplazarlo (TS-014).
+              l.set(ep.linkId, { ...cur, midpoint: undefined, midpoints: ways, geometriaAuto: undefined });
             }
             linksRef.current = l;
             return l;
@@ -3720,7 +3723,7 @@ export const ComponentDesigner: React.FC<{
       updateLinks((prev) => {
         const l = new Map(prev);
         const cur = l.get(linkId);
-        if (cur) l.set(linkId, { ...cur, midpoint: undefined, midpoints: next });
+        if (cur) l.set(linkId, { ...cur, midpoint: undefined, midpoints: next, geometriaAuto: undefined });
         return l;
       });
     },
@@ -3740,7 +3743,12 @@ export const ComponentDesigner: React.FC<{
           ? [cur.midpoint]
           : [];
         const next = ways.filter((_, i) => i !== index);
-        l.set(linkId, { ...cur, midpoint: undefined, midpoints: next.length ? next : undefined });
+        l.set(linkId, {
+          ...cur,
+          midpoint: undefined,
+          midpoints: next.length ? next : undefined,
+          geometriaAuto: undefined,
+        });
         return l;
       });
     },
@@ -3755,7 +3763,7 @@ export const ComponentDesigner: React.FC<{
         const l = new Map(prev);
         const cur = l.get(linkId);
         if (!cur) return prev;
-        l.set(linkId, { ...cur, midpoint: undefined, midpoints: undefined });
+        l.set(linkId, { ...cur, midpoint: undefined, midpoints: undefined, geometriaAuto: undefined });
         return l;
       });
     },
@@ -3922,19 +3930,24 @@ export const ComponentDesigner: React.FC<{
         return;
       }
       const posiciones = arrangeGraphData(content, notationId, { ...next, laneOrder: opts.laneOrder });
-      updateNodes((prev) => {
-        const out = new Map(prev);
-        for (const [id, n] of prev) {
-          const box = isContainerType(n.tipo_elemento)
-            ? posiciones.containers[n.nombre]
-            : posiciones.nodes[n.id];
-          if (box) out.set(id, { ...n, x: box.x, y: box.y, width: box.width, height: box.height });
-        }
-        return out;
-      });
+      const nodosNuevos = new Map(nodesRef.current);
+      for (const [id, n] of nodesRef.current) {
+        const box = isContainerType(n.tipo_elemento)
+          ? posiciones.containers[n.nombre]
+          : posiciones.nodes[n.id];
+        if (box) nodosNuevos.set(id, { ...n, x: box.x, y: box.y, width: box.width, height: box.height });
+      }
+      // Las líneas se reacomodan con las cajas: con el trazo viejo sobre
+      // posiciones nuevas el diagrama queda igual de ilegible (feature 017).
+      const enlacesNuevos = aplicarRecorridos(linksRef.current, posiciones.edges);
+      setNodes(nodosNuevos);
+      nodesRef.current = nodosNuevos;
+      setLinks(enlacesNuevos);
+      linksRef.current = enlacesNuevos;
+      pushSnapshot(nodosNuevos, enlacesNuevos); // un solo paso de Deshacer
       setArrangement(next);
     },
-    [arrangement, meta, notationId, updateNodes]
+    [arrangement, meta, notationId, pushSnapshot, updateNodes]
   );
 
   const suggestArrangementWithAi = useCallback(async () => {
