@@ -60,6 +60,25 @@ export const esGeometriaManual = (e: BuilderEdge): boolean =>
 const esSecuencia = (model: DiagramModel): boolean =>
   model.nodes.some((n) => isLifelineContainer(n.tipo_elemento));
 
+/**
+ * Una línea con la medida antes y después, para la respuesta de la herramienta
+ * del agente (FR-007). Declara con qué recorridos se tomó cada medida, o la
+ * comparación se leería como mérito —o culpa— de la reorganización (C5).
+ */
+export function resumenDeLegibilidad(medida: MedidaComparada, parcial = false): string {
+  const { antes, despues, conRecorridosManuales } = medida;
+  const partes = [
+    `Legibilidad: cruces ${antes.cruces} → ${despues.cruces} · ` +
+      `relaciones sobre caja ajena ${antes.sobreCaja} → ${despues.sobreCaja} ` +
+      `(sobre ${despues.relaciones} relaciones).`,
+  ];
+  if (conRecorridosManuales)
+    partes.push("Las dos medidas incluyen los recorridos que ajustó una persona, que no se tocaron.");
+  if (parcial)
+    partes.push("Disposición PARCIAL: se agotó el presupuesto de tiempo y se entrega la mejor hallada.");
+  return partes.join("\n");
+}
+
 /** Mide un diagrama tal como está, sin mover ni rutear nada. */
 export function medirDisposicion(model: DiagramModel): DisposicionLegible {
   const manuales = rutasManuales(model);

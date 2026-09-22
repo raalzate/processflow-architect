@@ -271,3 +271,34 @@ describe("formatFindings", () => {
     expect(formatFindings([])).toContain("Sin hallazgos");
   });
 });
+
+describe("regla LEGIBILIDAD (feature 017)", () => {
+  /** Tres cajas en fila: la relación de punta a punta pisa la del medio. */
+  const conRelacionSobreCaja = (): DiagramModel => {
+    let m = emptyDiagram({ nombre_proyecto: "Ilegible", notation: "ddd" as const });
+    const tipoNodo = tipo("ddd", "event");
+    for (const id of ["a", "medio", "b"]) {
+      m = addNode(m, { id, nombre: id.toUpperCase(), tipo_elemento: tipoNodo, x: 0, y: 0 }).model;
+    }
+    // Geometría explícita: la regla mide lo que se verá, no lo que el layout
+    // decida hoy.
+    m = {
+      ...m,
+      nodes: m.nodes.map((n, i) => ({ ...n, x: i * 300, y: 0, width: 100, height: 60 })),
+    };
+    return addEdge(m, { fuente: "a", destino: "b" });
+  };
+
+  it("TS-019 · reporta el diagrama con una relación que atraviesa una caja ajena", () => {
+    expect(rules(conRelacionSobreCaja())).toContain("LEGIBILIDAD");
+  });
+
+  it("TS-020 · calla cuando el diagrama está por debajo del umbral", () => {
+    let m = emptyDiagram({ nombre_proyecto: "Legible", notation: "ddd" as const });
+    const tipoNodo = tipo("ddd", "event");
+    m = addNode(m, { id: "a", nombre: "A", tipo_elemento: tipoNodo }).model;
+    m = addNode(m, { id: "b", nombre: "B", tipo_elemento: tipoNodo }).model;
+    m = addEdge(m, { fuente: "a", destino: "b" });
+    expect(rules(m)).not.toContain("LEGIBILIDAD");
+  });
+});

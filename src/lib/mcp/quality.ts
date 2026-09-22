@@ -18,7 +18,10 @@
 import { hasRole, roleOfType, typesWithRole, type ElementRole } from "../notations";
 import { resolveCita } from "../source-docs";
 import { isContainerType } from "./catalog";
+import { hayProblemaDeLegibilidad } from "../layout/metrics";
+import { medirDisposicion } from "../layout/legible";
 import {
+  layout,
   MAX_EDGE_LABEL_CHARS,
   MAX_NAME_CHARS,
   type BuilderEdge,
@@ -324,9 +327,36 @@ function sourceFindings(model: DiagramModel): QualityFinding[] {
   }));
 }
 
+/**
+ * Legibilidad de la DISPOSICIÓN (feature 017). No habla del modelado sino de lo
+ * que se ve: una relación que atraviesa una caja ajena se lee mal por buena que
+ * sea la semántica, y sin número "quedó feo" no es accionable. El umbral es el
+ * declarado en el spec (C2): cualquier paso sobre caja, o cruces por encima del
+ * 10% de las relaciones.
+ */
+function legibilidadFindings(model: DiagramModel): QualityFinding[] {
+  // Se mide sobre el diagrama DISPUESTO: `layout()` respeta la geometría que ya
+  // tenga, así que esto es exactamente lo que verá quien lo abra.
+  const medida = medirDisposicion(layout(model)).legibilidad.antes;
+  if (!hayProblemaDeLegibilidad(medida)) return [];
+  const partes: string[] = [];
+  if (medida.sobreCaja > 0)
+    partes.push(`${medida.sobreCaja} relación(es) atraviesan una caja que no es su extremo`);
+  if (medida.relaciones > 0 && medida.cruces > medida.relaciones * 0.1)
+    partes.push(`${medida.cruces} cruces sobre ${medida.relaciones} relaciones (más del 10%)`);
+  return [
+    {
+      level: "aviso",
+      rule: "LEGIBILIDAD",
+      message: `${partes.join(" y ")}. Probá relayout_diagram con otra estrategia; si persiste, suele sobrar una relación o faltar una banda.`,
+    },
+  ];
+}
+
 export function qualityFindings(model: DiagramModel): QualityFinding[] {
   const all = [
     ...sourceFindings(model),
+    ...legibilidadFindings(model),
     ...flowFindings(model),
     ...domainFindings(model),
     ...architectureFindings(model),

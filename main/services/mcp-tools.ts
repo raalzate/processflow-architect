@@ -36,6 +36,7 @@ import {
   fromGraphData,
   slugify,
   relayout,
+  relayoutConMedida,
   recordAmbiguity,
   resolveAmbiguity,
   pendingAmbiguities,
@@ -47,6 +48,7 @@ import {
   type Estado,
   type DiagramModel,
 } from "../../src/lib/mcp/diagram-builder";
+import { resumenDeLegibilidad } from "../../src/lib/layout/legible";
 import {
   getElementSpec,
   setElementSpec,
@@ -2156,7 +2158,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         return fail(e.message);
       }
       const model = await loadModel(diagramId);
-      const next = relayout(model, { density, strategy });
+      const { model: next, legibilidad, parcial } = relayoutConMedida(model, { density, strategy });
       await saveModel(diagramId, next);
       const bandas = next.nodes.filter((n) => isContainerType(n.tipo_elemento));
       const ancho = Math.max(...next.nodes.map((n) => (n.x ?? 0) + (n.width ?? 160)), 0);
@@ -2165,6 +2167,9 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         `Layout rehecho para "${diagramId}" (${model.meta.notation}).\n` +
           `Disposición: ${next.meta.layout?.density} · ${next.meta.layout?.strategy}.\n` +
           `Lienzo: ${Math.round(ancho)}×${Math.round(alto)} px · ${bandas.length} banda(s).\n` +
+          // Sin número, "quedó feo" no es accionable y el agente no puede
+          // decidir si vale la pena probar otra disposición (FR-007).
+          `${resumenDeLegibilidad(legibilidad, parcial)}\n` +
           `Siguiente: export_to_app (o export_as_view) para verlo en la app.`
       );
     }

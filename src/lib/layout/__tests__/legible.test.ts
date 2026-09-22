@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { relayout, relayoutConMedida, type DiagramModel } from "../../mcp/diagram-builder";
-import { disponerLegible, esGeometriaManual, medirDisposicion } from "../legible";
+import { disponerLegible, esGeometriaManual, medirDisposicion, resumenDeLegibilidad } from "../legible";
 import { medirModelo } from "../modelo";
 import { FIXTURES } from "./fixtures";
 
@@ -109,6 +109,28 @@ describe("disponerLegible", () => {
     expect(d.model).toBe(model);
     expect(d.legibilidad.antes).toEqual(d.legibilidad.despues);
     expect(d.legibilidad.antes).toEqual(medirModelo(model));
+  });
+});
+
+describe("resumenDeLegibilidad", () => {
+  const medida = {
+    antes: { cruces: 9, sobreCaja: 17, sinRuta: 0, relaciones: 108 },
+    despues: { cruces: 4, sobreCaja: 2, sinRuta: 0, relaciones: 108 },
+    conRecorridosManuales: false,
+  };
+
+  it("TS-018 · dice los dos números, antes y después", () => {
+    const texto = resumenDeLegibilidad(medida);
+    expect(texto).toContain("cruces 9 → 4");
+    expect(texto).toContain("relaciones sobre caja ajena 17 → 2");
+  });
+
+  it("C5 · declara si la medida incluye recorridos hechos a mano", () => {
+    expect(resumenDeLegibilidad({ ...medida, conRecorridosManuales: true })).toContain("una persona");
+  });
+
+  it("FR-016 · avisa cuando la disposición es parcial", () => {
+    expect(resumenDeLegibilidad(medida, true)).toContain("PARCIAL");
   });
 });
 
