@@ -285,6 +285,47 @@ export function costeDeDisposicion(l: Legibilidad): number {
   return l.cruces + 0.6 * l.sobreCaja;
 }
 
+/**
+ * Coste de la parte del diagrama que TOCA a unas relaciones concretas: los
+ * cruces en los que participan y su paso sobre cajas. Sirve para decidir un
+ * intercambio local sin volver a medir el diagrama entero — medir todo en cada
+ * prueba de intercambio es lo que hacía que un diagrama de 100 nodos se fuera
+ * del presupuesto (FR-012).
+ */
+export function costeLocal(cajas: Caja[], relaciones: Relacion[], afectadas: Set<string>): number {
+  const sub = relaciones.filter((r) => afectadas.has(r.id));
+  if (!sub.length) return 0;
+  const porId = new Map(cajas.map((c) => [c.id, c]));
+  const obstaculos = cajas.filter((c) => !c.esContenedor);
+  const trazos = relaciones
+    .map((r) => (r.fuente === r.destino ? null : trazoDe(r, porId)))
+    .filter((t): t is Trazo => t !== null);
+
+  let cruces = 0;
+  let sobreCaja = 0;
+  for (const t of trazos) {
+    if (!afectadas.has(t.rel.id)) continue;
+    for (const otro of trazos) {
+      if (otro.rel.id === t.rel.id) continue;
+      // Un par de afectadas se contaría dos veces: sólo cuenta el de menor id.
+      if (afectadas.has(otro.rel.id) && otro.rel.id < t.rel.id) continue;
+      const comparte =
+        t.rel.fuente === otro.rel.fuente ||
+        t.rel.fuente === otro.rel.destino ||
+        t.rel.destino === otro.rel.fuente ||
+        t.rel.destino === otro.rel.destino;
+      if (comparte) continue;
+      if (trazosSeCortan(t, otro)) cruces++;
+    }
+    const pisa = obstaculos.some((caja) => {
+      if (caja.id === t.rel.fuente || caja.id === t.rel.destino) return false;
+      return t.segmentos.some((sg) => segmentoPisaCaja(sg, caja));
+    });
+    if (pisa) sobreCaja++;
+  }
+  return cruces + 0.6 * sobreCaja;
+}
+
 /** ¿La disposición está por debajo del umbral de legibilidad declarado (C2)? */
 export function hayProblemaDeLegibilidad(l: Legibilidad): boolean {
   return l.sobreCaja > 0 || (l.relaciones > 0 && l.cruces > l.relaciones * 0.1);

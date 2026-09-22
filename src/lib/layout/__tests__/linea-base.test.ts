@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 
 import { relayoutConMedida } from "../../mcp/diagram-builder";
+import { defaultStrategyFor, LAYOUT_STRATEGIES, type LayoutStrategy } from "../../mcp/layout-presets";
 import { FIXTURES, LINEA_BASE, OBJETIVO, RELACIONES_DE_REFERENCIA } from "./fixtures";
 
 const medidas = FIXTURES.map((f) => ({ fixture: f, d: relayoutConMedida(f.modelo()) }));
@@ -56,6 +57,45 @@ describe("línea base de los diagramas de referencia", () => {
       const t0 = Date.now();
       relayoutConMedida(fixture.modelo());
       expect(Date.now() - t0).toBeLessThan(200);
+    }
+  });
+});
+
+/**
+ * TS-023 · TS-024 — La estrategia por DEFECTO de una notación tiene que ser la
+ * que mejor lee sus diagramas. No se cablea cuál es: se compara la del registro
+ * contra todas las demás sobre los diagramas de referencia de esa notación. Si
+ * alguien cambia el default —o el algoritmo—, esto lo mide en el gate.
+ */
+describe("estrategia por defecto", () => {
+  const dominio = FIXTURES.filter((f) => f.modelo().meta.notation === "ddd");
+
+  const total = (estrategia?: LayoutStrategy) =>
+    dominio.reduce(
+      (t, f) => {
+        const d = relayoutConMedida(f.modelo(), estrategia ? { strategy: estrategia } : {});
+        return {
+          cruces: t.cruces + d.legibilidad.despues.cruces,
+          sobreCaja: t.sobreCaja + d.legibilidad.despues.sobreCaja,
+        };
+      },
+      { cruces: 0, sobreCaja: 0 }
+    );
+
+  it("TS-023 · la de dominio es la que menos cruces deja en sus diagramas", () => {
+    const porDefecto = total();
+    for (const estrategia of Object.keys(LAYOUT_STRATEGIES) as LayoutStrategy[]) {
+      expect(porDefecto.cruces).toBeLessThanOrEqual(total(estrategia).cruces);
+    }
+    // Queda escrito cuál es hoy: el registro la declara y el lint la vigila.
+    expect(defaultStrategyFor("ddd")).toBe("radial");
+  });
+
+  it("TS-024 · con la estrategia por defecto ningún diagrama de dominio empeora", () => {
+    for (const f of dominio) {
+      const d = relayoutConMedida(f.modelo());
+      expect(d.legibilidad.despues.cruces).toBeLessThanOrEqual(f.hoy.cruces);
+      expect(d.legibilidad.despues.sobreCaja).toBeLessThanOrEqual(f.hoy.sobreCaja);
     }
   });
 });

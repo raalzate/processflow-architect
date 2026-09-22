@@ -13,6 +13,7 @@
 
 import {
   costeDeDisposicion,
+  costeLocal,
   medirLegibilidad,
   type Caja,
   type Legibilidad,
@@ -173,22 +174,35 @@ export function ordenarCapas(cajas: Caja[], relaciones: Relacion[], opts: OrdenO
       }
     }
 
-    // Pulido: intercambios dentro de la capa mientras el coste baje.
-    for (const capa of capasDe(actual.filter((c) => !c.esContenedor), eje)) {
+    // Pulido: intercambios dentro de la capa. Cada intercambio se decide con el
+    // coste LOCAL —sólo las relaciones que tocan a esas dos cajas—, y el pulido
+    // entero se acepta con UNA medida global. Medir el diagrama completo en cada
+    // prueba era lo que se comía el presupuesto en diagramas grandes.
+    let pulida = actual;
+    for (const capa of capasDe(pulida.filter((c) => !c.esContenedor), eje)) {
       for (let i = 0; i + 1 < capa.length && !agotado(); i++) {
         const cruz = cruzado(eje);
-        const a = actual.find((c) => c.id === capa[i].id)!;
-        const b = actual.find((c) => c.id === capa[i + 1].id)!;
-        const candidata = actual.map((c) =>
+        const a = pulida.find((c) => c.id === capa[i].id)!;
+        const b = pulida.find((c) => c.id === capa[i + 1].id)!;
+        const afectadas = new Set(
+          relaciones.filter((r) => [r.fuente, r.destino].some((x) => x === a.id || x === b.id)).map((r) => r.id)
+        );
+        if (!afectadas.size) continue;
+        const candidata = pulida.map((c) =>
           c.id === a.id ? ({ ...c, [cruz]: b[cruz] } as Caja) : c.id === b.id ? ({ ...c, [cruz]: a[cruz] } as Caja) : c
         );
-        const l = medir(candidata);
-        const c = costeDeDisposicion(l);
-        if (c < mejorCoste && admisible(l)) {
-          actual = candidata;
-          mejor = candidata;
-          mejorCoste = c;
+        if (costeLocal(candidata, relaciones, afectadas) < costeLocal(pulida, relaciones, afectadas)) {
+          pulida = candidata;
         }
+      }
+    }
+    if (pulida !== actual) {
+      const l = medir(pulida);
+      const c = costeDeDisposicion(l);
+      if (c < mejorCoste && admisible(l)) {
+        actual = pulida;
+        mejor = pulida;
+        mejorCoste = c;
       }
     }
   }

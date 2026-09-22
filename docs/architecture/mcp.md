@@ -36,6 +36,7 @@ Guía /mcp (playground) ─memoria─▶ main/services/mcp-playground.ts ──�
 | `main/services/mcp-app-state.ts` | cachea en el main el último retrato del lienzo que publica el renderer. |
 | `main/services/mcp-app-read.ts` | puente de LECTURA bajo demanda (main pregunta → renderer contesta, con timeout). |
 | `src/lib/mcp/*` | modelo, layout, validación, calidad, revisión, plan de vistas, estado de la app. Sin Electron, sin React (§P3). |
+| `src/lib/layout/*` | legibilidad de la disposición: la mide, ordena las capas y rutea lo que pisaría una caja. La encadena `layoutConMedida` en `diagram-builder.ts`, que es el ÚNICO sitio donde se decide geometría — el lienzo y el agente comparten ese camino. |
 | `src/lib/mcp-skill.ts` | los skills instalables y su plantilla (se renderizan con la config del transporte real). |
 
 **Regla al importar:** desde `mcp-tools.ts` se importa cada módulo directo, **nunca** el
@@ -104,7 +105,7 @@ ser —no inventar un sinónimo de algo que ya existe en otro grupo—, sólo de
 | `remove_element` / `remove_edge` | borran nodo/contenedor (con sus aristas) o una relación. |
 
 Los tres primeros aceptan `estado` (`existente` · `modificado` · `nuevo` · `sin_cambios` · `eliminado`), el vocabulario que distingue **documentar lo que hay** de **diseñar lo que viene**. Por defecto es `nuevo`: sin declararlo, el lienzo pinta como propuesta un sistema que ya está en producción. Sale de un solo lugar (`ESTADOS` en `src/lib/mcp/diagram-builder.ts`).
-| `relayout_diagram` | rehace la disposición con estrategia y densidad (`src/lib/mcp/layout-presets.ts`). |
+| `relayout_diagram` | rehace la disposición con estrategia y densidad (`src/lib/mcp/layout-presets.ts`), y responde cuánto mejoró la legibilidad: cruces y relaciones sobre caja ajena, antes y después ([ADR 0003](../decisions/0003-legibilidad-de-la-disposicion.md)). |
 | `render_mermaid` | vista previa Mermaid del modelo. |
 
 ### 4 · Revisión — el filtro antes de subir

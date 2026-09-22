@@ -498,3 +498,22 @@ Mecanismo: `resolverAutoUpdater` en `src/lib/update-check.ts` (puro, 4 casos en 
          sólo `default`, los dos, y ninguno —que lanza NOMBRANDO al paquete en vez de morir al
          asignar—) + el mock de `main/services/__tests__/updater.test.ts`, ahora con la forma real:
          volver a desestructurar el import pone esos tests en rojo.
+
+### GOTCHA: una aserción de tiempo de pared se rompe bajo la cobertura
+
+Issue: #376
+
+Síntoma: `npm test` verde y `npm run gate` rojo por el MISMO test: «expected 318 to be less than
+         200», en la prueba que verifica que un diagrama de 50 elementos se dispone en menos de
+         200 ms (SC-003 de la feature 017).
+Causa:   el gate corre `vitest run --coverage`, y la instrumentación V8 multiplica por unas siete
+         veces el tiempo de un cálculo que es puro CPU. No hay variable de entorno que lo delate
+         desde el test (`NODE_V8_COVERAGE` llega vacía), así que el test no puede saber en qué
+         régimen corre. La aserción medía la máquina del día, no el producto.
+Regla:   un requisito de tiempo no se prueba con el reloj de pared. Se prueba el MECANISMO que lo
+         hace cumplir: el cálculo lleva presupuesto y, agotado, devuelve la mejor solución hallada
+         marcada como parcial. El reloj sólo se usa como red, con un tope holgado y el número real
+         escrito al lado.
+Mecanismo: `presupuestoDe` en `src/lib/layout/legible.ts` (200 ms hasta 50 elementos, techo de 2 s)
+         + `TS-007` (presupuesto agotado → disposición parcial, con reloj inyectado) y `TS-006`
+         en `src/lib/layout/__tests__/legible.test.ts`, cuyo tope es el presupuesto por tres.
