@@ -1,0 +1,181 @@
+{
+  "id": "venta-y-underwriting-en-eva",
+  "meta": {
+    "nombre_proyecto": "venta-y-underwriting-en-eva",
+    "notation": "bpmn"
+  },
+  "nodes": [
+    {
+      "id": "banda-1",
+      "nombre": "Banda 1",
+      "tipo_elemento": "Carril",
+      "container": ""
+    },
+    {
+      "id": "banda-2",
+      "nombre": "Banda 2",
+      "tipo_elemento": "Carril",
+      "container": ""
+    },
+    {
+      "id": "elem-1",
+      "nombre": "Elemento 1",
+      "tipo_elemento": "Evento de Inicio",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-2",
+      "nombre": "Elemento 2",
+      "tipo_elemento": "Tarea",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-3",
+      "nombre": "Elemento 3",
+      "tipo_elemento": "Tarea",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-4",
+      "nombre": "Elemento 4",
+      "tipo_elemento": "Tarea",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-5",
+      "nombre": "Elemento 5",
+      "tipo_elemento": "Compuerta Exclusiva",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-6",
+      "nombre": "Elemento 6",
+      "tipo_elemento": "Compuerta Exclusiva",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-7",
+      "nombre": "Elemento 7",
+      "tipo_elemento": "Tarea",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-8",
+      "nombre": "Elemento 8",
+      "tipo_elemento": "Compuerta Exclusiva",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-9",
+      "nombre": "Elemento 9",
+      "tipo_elemento": "Tarea",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-10",
+      "nombre": "Elemento 10",
+      "tipo_elemento": "Tarea",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-11",
+      "nombre": "Elemento 11",
+      "tipo_elemento": "Evento de Fin",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-12",
+      "nombre": "Elemento 12",
+      "tipo_elemento": "Evento de Fin",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-13",
+      "nombre": "Elemento 13",
+      "tipo_elemento": "Evento de Mensaje",
+      "container": "Banda 2"
+    },
+    {
+      "id": "elem-14",
+      "nombre": "Elemento 14",
+      "tipo_elemento": "Tarea",
+      "container": "Banda 2"
+    },
+    {
+      "id": "elem-15",
+      "nombre": "Elemento 15",
+      "tipo_elemento": "Compuerta Exclusiva",
+      "container": "Banda 2"
+    }
+  ],
+  "edges": [
+    {
+      "fuente": "elem-1",
+      "destino": "elem-2"
+    },
+    {
+      "fuente": "elem-2",
+      "destino": "elem-3"
+    },
+    {
+      "fuente": "elem-3",
+      "destino": "elem-4"
+    },
+    {
+      "fuente": "elem-4",
+      "destino": "elem-5"
+    },
+    {
+      "fuente": "elem-5",
+      "destino": "elem-6"
+    },
+    {
+      "fuente": "elem-5",
+      "destino": "elem-13"
+    },
+    {
+      "fuente": "elem-13",
+      "destino": "elem-14"
+    },
+    {
+      "fuente": "elem-14",
+      "destino": "elem-15"
+    },
+    {
+      "fuente": "elem-15",
+      "destino": "elem-6"
+    },
+    {
+      "fuente": "elem-15",
+      "destino": "elem-12"
+    },
+    {
+      "fuente": "elem-6",
+      "destino": "elem-7"
+    },
+    {
+      "fuente": "elem-6",
+      "destino": "elem-12"
+    },
+    {
+      "fuente": "elem-7",
+      "destino": "elem-8"
+    },
+    {
+      "fuente": "elem-8",
+      "destino": "elem-9"
+    },
+    {
+      "fuente": "elem-8",
+      "destino": "elem-7"
+    },
+    {
+      "fuente": "elem-9",
+      "destino": "elem-10"
+    },
+    {
+      "fuente": "elem-10",
+      "destino": "elem-11"
+    }
+  ]
+}

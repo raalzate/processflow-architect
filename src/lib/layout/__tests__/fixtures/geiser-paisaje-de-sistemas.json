@@ -1,0 +1,145 @@
+{
+  "id": "geiser-paisaje-de-sistemas",
+  "meta": {
+    "nombre_proyecto": "geiser-paisaje-de-sistemas",
+    "notation": "c4"
+  },
+  "nodes": [
+    {
+      "id": "banda-1",
+      "nombre": "Banda 1",
+      "tipo_elemento": "Límite de Sistema",
+      "container": ""
+    },
+    {
+      "id": "banda-2",
+      "nombre": "Banda 2",
+      "tipo_elemento": "Límite de Sistema",
+      "container": ""
+    },
+    {
+      "id": "elem-1",
+      "nombre": "Elemento 1",
+      "tipo_elemento": "Persona",
+      "container": ""
+    },
+    {
+      "id": "elem-2",
+      "nombre": "Elemento 2",
+      "tipo_elemento": "Persona",
+      "container": ""
+    },
+    {
+      "id": "elem-3",
+      "nombre": "Elemento 3",
+      "tipo_elemento": "Contenedor",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-4",
+      "nombre": "Elemento 4",
+      "tipo_elemento": "Contenedor",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-5",
+      "nombre": "Elemento 5",
+      "tipo_elemento": "Contenedor",
+      "container": "Banda 2"
+    },
+    {
+      "id": "elem-6",
+      "nombre": "Elemento 6",
+      "tipo_elemento": "Contenedor",
+      "container": "Banda 2"
+    },
+    {
+      "id": "elem-7",
+      "nombre": "Elemento 7",
+      "tipo_elemento": "Contenedor",
+      "container": "Banda 2"
+    },
+    {
+      "id": "elem-8",
+      "nombre": "Elemento 8",
+      "tipo_elemento": "Contenedor",
+      "container": "Banda 2"
+    },
+    {
+      "id": "elem-9",
+      "nombre": "Elemento 9",
+      "tipo_elemento": "Contenedor",
+      "container": "Banda 2"
+    },
+    {
+      "id": "elem-10",
+      "nombre": "Elemento 10",
+      "tipo_elemento": "Sistema Externo",
+      "container": ""
+    },
+    {
+      "id": "elem-11",
+      "nombre": "Elemento 11",
+      "tipo_elemento": "Sistema Externo",
+      "container": ""
+    }
+  ],
+  "edges": [
+    {
+      "fuente": "elem-1",
+      "destino": "elem-3"
+    },
+    {
+      "fuente": "elem-2",
+      "destino": "elem-3"
+    },
+    {
+      "fuente": "elem-3",
+      "destino": "elem-4"
+    },
+    {
+      "fuente": "elem-3",
+      "destino": "elem-6"
+    },
+    {
+      "fuente": "elem-3",
+      "destino": "elem-5"
+    },
+    {
+      "fuente": "elem-4",
+      "destino": "elem-5"
+    },
+    {
+      "fuente": "elem-6",
+      "destino": "elem-5"
+    },
+    {
+      "fuente": "elem-5",
+      "destino": "elem-7"
+    },
+    {
+      "fuente": "elem-5",
+      "destino": "elem-10"
+    },
+    {
+      "fuente": "elem-5",
+      "destino": "elem-8"
+    },
+    {
+      "fuente": "elem-8",
+      "destino": "elem-11"
+    },
+    {
+      "fuente": "elem-8",
+      "destino": "elem-9"
+    },
+    {
+      "fuente": "elem-1",
+      "destino": "elem-9"
+    },
+    {
+      "fuente": "elem-4",
+      "destino": "elem-1"
+    }
+  ]
+}
