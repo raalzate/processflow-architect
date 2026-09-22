@@ -62,3 +62,32 @@ describe("arrangeGraphData", () => {
     expect(resumen).toContain("Beta:");
   });
 });
+
+describe("arrangeGraphData · legibilidad (feature 017)", () => {
+  it("TS-018 · informa la medida antes y después", () => {
+    const out = arrangeGraphData(paisaje(), "c4");
+    expect(out.legibilidad.antes).toMatchObject({ relaciones: expect.any(Number) });
+    expect(out.legibilidad.despues.cruces).toBeLessThanOrEqual(out.legibilidad.antes.cruces);
+    expect(out.parcial).toBe(false);
+  });
+
+  it("TS-011 · el lienzo y el agente disponen igual la misma entrada", () => {
+    const graph = paisaje();
+    const lienzo = arrangeGraphData(graph, "c4", { density: "comodo" });
+    // El agente por MCP entra por el mismo camino: `relayout_diagram` llama a
+    // `arrangeGraphData`. Dos corridas con las mismas opciones tienen que dar
+    // exactamente la misma disposición, posiciones Y recorridos (FR-009).
+    const agente = arrangeGraphData(graph, "c4", { density: "comodo" });
+    expect(agente.nodes).toEqual(lienzo.nodes);
+    expect(agente.containers).toEqual(lienzo.containers);
+    expect(agente.edges).toEqual(lienzo.edges);
+  });
+
+  it("TS-012 · no devuelve recorrido para la relación que ajustó una persona", () => {
+    const graph = paisaje();
+    const aMano = [{ x: 10, y: 20 }];
+    for (const a of graph.politicas_inter_agregados ?? []) (a as { midpoints?: unknown }).midpoints = aMano;
+    const out = arrangeGraphData(graph, "c4");
+    expect(Object.values(out.edges).some((e) => e.midpoints === aMano)).toBe(false);
+  });
+});

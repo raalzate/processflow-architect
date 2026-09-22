@@ -25,6 +25,26 @@ const CAJA_MINIMA = { w: 160, h: 90 };
  * par son relaciones distintas y tienen que poder rutearse por separado. */
 export const idDeRelacion = (i: number): string => `e${i}`;
 
+/**
+ * Clave con la que el LIENZO reconoce una relación. El índice del modelo no
+ * sirve fuera de él: el lienzo identifica sus enlaces con un id aleatorio y el
+ * viaje por `GraphData` reparte las aristas en tres listas, así que el orden
+ * cambia. Lo que sobrevive es el par de extremos y, entre repetidas, su turno.
+ */
+export const claveDeRelacion = (fuente: string, destino: string, turno: number): string =>
+  `${fuente}|${destino}|${turno}`;
+
+/** Claves de lienzo del modelo, en el orden de sus aristas. */
+export function clavesDeRelacion(model: DiagramModel): string[] {
+  const turnos = new Map<string, number>();
+  return model.edges.map((e) => {
+    const par = `${e.fuente}|${e.destino}`;
+    const turno = turnos.get(par) ?? 0;
+    turnos.set(par, turno + 1);
+    return claveDeRelacion(e.fuente, e.destino, turno);
+  });
+}
+
 export function cajasDelModelo(model: DiagramModel): Caja[] {
   const nombresContenedor = new Map<string, string>();
   for (const n of model.nodes) if (isContainerType(n.tipo_elemento)) nombresContenedor.set(n.nombre, n.id);

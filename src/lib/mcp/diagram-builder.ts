@@ -56,6 +56,7 @@ import {
   type ElementRole,
   type NotationId,
 } from "../notations";
+import { disponerLegible, medirDisposicion, type DisposicionLegible } from "../layout/legible";
 import { validTypesFor } from "./catalog";
 import { mermaidSafeId } from "./mermaid-id";
 import {
@@ -205,6 +206,18 @@ export interface BuilderEdge {
    * composición y agregación de UML. Ausente = asociación simple (flecha).
    */
   relation?: EdgeRelationKind;
+  /**
+   * Puntos de quiebre del trazo, en orden y en coordenadas del lienzo. Los
+   * escribe la disposición legible (`src/lib/layout`) o el humano arrastrando en
+   * el lienzo; quién los puso lo dice `geometriaAuto`.
+   */
+  midpoints?: { x: number; y: number }[];
+  /**
+   * `true` → los quiebres los calculó la disposición y puede reemplazarlos.
+   * Ausente = geometría del humano, intocable (FR-015). Un diagrama anterior a
+   * la feature 017 no trae la marca, así que su geometría se respeta (FR-017).
+   */
+  geometriaAuto?: boolean;
 }
 
 /**
@@ -1034,6 +1047,8 @@ const ROLES_ABAJO: ElementRole[] = ["system", "datastore", "external", "command"
 export interface LayoutOptions {
   density?: LayoutDensity;
   strategy?: LayoutStrategy;
+  /** Techo de tiempo de la fase de legibilidad (ver `layout/legible.ts`). */
+  presupuestoMs?: number;
 }
 
 /**
@@ -1406,11 +1421,7 @@ function layoutRadial(model: DiagramModel, preset: LayoutPreset): DiagramModel {
  * exista se ignora y lo que falte conserva su orden actual, así que ninguna
  * respuesta —por rara que sea— puede perder o duplicar un contenedor.
  */
-export function reorderLanes(
-  model: DiagramModel,
-  orden: string[],
-  opts: LayoutOptions = {}
-): DiagramModel {
+function conBandasOrdenadas(model: DiagramModel, orden: string[]): DiagramModel {
   const containers = model.nodes.filter(isContainerNode);
   const posicion = new Map<string, number>();
   orden.forEach((nombre, i) => {
@@ -1426,13 +1437,35 @@ export function reorderLanes(
   });
 
   const resto = model.nodes.filter((n) => !isContainerNode(n));
-  return relayout({ ...model, nodes: [...ordenados, ...resto] }, opts);
+  return { ...model, nodes: [...ordenados, ...resto] };
+}
+
+export function reorderLanes(
+  model: DiagramModel,
+  orden: string[],
+  opts: LayoutOptions = {}
+): DiagramModel {
+  return relayout(conBandasOrdenadas(model, orden), opts);
+}
+
+/** `reorderLanes` con la medida de legibilidad (lo que consume `arrange.ts`). */
+export function reorderLanesConMedida(
+  model: DiagramModel,
+  orden: string[],
+  opts: LayoutOptions = {}
+): DisposicionLegible {
+  return relayoutConMedida(conBandasOrdenadas(model, orden), opts);
 }
 
 export function relayout(model: DiagramModel, opts: LayoutOptions = {}): DiagramModel {
+  return relayoutConMedida(model, opts).model;
+}
+
+/** `relayout` con la medida de legibilidad antes y después (FR-007). */
+export function relayoutConMedida(model: DiagramModel, opts: LayoutOptions = {}): DisposicionLegible {
   const desnudos = model.nodes.map(({ x, y, width, height, ...n }) => n);
   // Sin opciones explícitas, se repite la disposición con la que se dibujó.
-  return layout({ ...model, nodes: desnudos }, { ...model.meta.layout, ...opts });
+  return layoutConMedida({ ...model, nodes: desnudos }, { ...model.meta.layout, ...opts });
 }
 
 /**
@@ -1442,10 +1475,26 @@ export function relayout(model: DiagramModel, opts: LayoutOptions = {}): Diagram
  * (`relayout()` fuerza el recálculo).
  */
 export function layout(model: DiagramModel, opts: LayoutOptions = {}): DiagramModel {
+  return layoutConMedida(model, opts).model;
+}
+
+/**
+ * Lo mismo que `layout()`, pero además devuelve cuánto mejoró la legibilidad.
+ * La estrategia coloca las cajas; después, la disposición legible las reordena
+ * dentro de su capa y rutea lo que pisaría una caja (feature 017). Las dos
+ * fases viven aquí, que es el ÚNICO sitio donde se decide geometría: el lienzo y
+ * el agente comparten este camino y por eso no pueden divergir (FR-009).
+ */
+export function layoutConMedida(
+  model: DiagramModel,
+  opts: LayoutOptions = {}
+): DisposicionLegible {
   const allPlaced = model.nodes.every(
     (n) => typeof n.x === "number" && typeof n.y === "number"
   );
-  if (allPlaced) return model;
+  // Un modelo ya posicionado se respeta: sólo se mide, no se mueve. Quien quiera
+  // recalcular pasa por `relayout()`, que desnuda la geometría primero.
+  if (allPlaced) return medirDisposicion(model);
 
   // El aire se escala al tamaño de nodo de la notación (ver `scalePreset`).
   const preset = scalePreset(getPreset(opts.density), cellSize(model));
@@ -1456,9 +1505,16 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): DiagramMo
       : strategy === "radial"
         ? layoutRadial(model, preset)
         : layoutPorRol(model, preset);
+  const legible = disponerLegible(dispuesto, { presupuestoMs: opts.presupuestoMs });
   // El modelo recuerda cómo se dibujó: el menú marca el actual y el agente puede
   // repetir por MCP exactamente la disposición que ve el humano.
-  return { ...dispuesto, meta: { ...dispuesto.meta, layout: { density: preset.id, strategy } } };
+  return {
+    ...legible,
+    model: {
+      ...legible.model,
+      meta: { ...legible.model.meta, layout: { density: preset.id, strategy } },
+    },
+  };
 }
 
 // =============================================================================
@@ -1561,6 +1617,10 @@ export function toGraphData(input: DiagramModel): GraphData {
       // diagrama en diagonal y pasa por encima de todo. Ortogonal por defecto;
       // si el modelo ya trae un ruteo explícito, manda el suyo.
       routing: e.routing ?? (sa !== ta ? ("orthogonal" as const) : undefined),
+      // Los quiebres que calculó la disposición legible viajan con la arista, o
+      // el lienzo recibiría las cajas ordenadas y las líneas sin rutear (FR-009).
+      midpoints: e.midpoints,
+      geometriaAuto: e.geometriaAuto,
     };
     if (sa && ta && sa === ta) aggByName.get(sa)!.aristas.push(arista);
     else if (sa && ta && sa !== ta) policies.push(arista);
@@ -1643,6 +1703,8 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
         color: (a as any).color,
         routing: (a as any).routing,
         relation: (a as any).relation,
+        midpoints: (a as any).midpoints,
+        geometriaAuto: (a as any).geometriaAuto,
       });
     }
   }
@@ -1667,6 +1729,8 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       color: a.color,
       routing: a.routing,
       relation: a.relation,
+      midpoints: a.midpoints,
+      geometriaAuto: a.geometriaAuto,
     });
   for (const a of data.big_picture?.aristas || []) pushEdge(a);
   for (const a of data.politicas_inter_agregados || []) pushEdge(a);

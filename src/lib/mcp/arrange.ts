@@ -12,7 +12,16 @@
 
 import type { GraphData } from "../types";
 import type { NotationId } from "../notations";
-import { fromGraphData, relayout, reorderLanes, type LayoutOptions } from "./diagram-builder";
+import type { MedidaComparada } from "../layout/legible";
+import { clavesDeRelacion } from "../layout/modelo";
+import type { Punto } from "../layout/metrics";
+import {
+  fromGraphData,
+  relayoutConMedida,
+  reorderLanesConMedida,
+  type BuilderEdge,
+  type LayoutOptions,
+} from "./diagram-builder";
 
 export interface ArrangedBox {
   x: number;
@@ -21,11 +30,27 @@ export interface ArrangedBox {
   height?: number;
 }
 
+/** Recorrido nuevo de una relación (ver `claveDeRelacion`). */
+export interface ArrangedEdge {
+  midpoints: Punto[];
+  routing: "orthogonal";
+}
+
 export interface ArrangeResult {
   /** Posición nueva por id de elemento (nodos no contenedores). */
   nodes: Record<string, ArrangedBox>;
   /** Posición nueva por NOMBRE de contenedor (su nombre es su clave en el lienzo). */
   containers: Record<string, ArrangedBox>;
+  /**
+   * Quiebres calculados, por clave de relación. La relación que no aparece
+   * conserva el recorrido que tenga: o la calculó una persona, o no le hace
+   * falta esquivar nada (feature 017).
+   */
+  edges: Record<string, ArrangedEdge>;
+  /** Cuánto mejoró la disposición: la misma medida antes y después (FR-007). */
+  legibilidad: MedidaComparada;
+  /** El presupuesto de tiempo se agotó y esto es lo mejor hallado (FR-016). */
+  parcial: boolean;
 }
 
 export interface ArrangeOptions extends LayoutOptions {
@@ -59,9 +84,9 @@ export function arrangeGraphData(
 ): ArrangeResult {
   const { laneOrder, ...layoutOpts } = opts;
   const model = fromGraphData(graph, (notation as NotationId) || (graph.notation as NotationId) || "ddd");
-  const dispuesto = laneOrder?.length
-    ? reorderLanes(model, laneOrder, layoutOpts)
-    : relayout(model, layoutOpts);
+  const { model: dispuesto, legibilidad, parcial } = laneOrder?.length
+    ? reorderLanesConMedida(model, laneOrder, layoutOpts)
+    : relayoutConMedida(model, layoutOpts);
 
   const nodes: Record<string, ArrangedBox> = {};
   const containers: Record<string, ArrangedBox> = {};
@@ -75,5 +100,14 @@ export function arrangeGraphData(
     if (nombresDeBanda.has(n.nombre)) containers[n.nombre] = box;
     else nodes[n.id] = box;
   }
-  return { nodes, containers };
+  // Las relaciones viajan por clave de par y turno: el id del enlace del lienzo
+  // es aleatorio y el viaje por `GraphData` reparte las aristas en tres listas.
+  const edges: Record<string, ArrangedEdge> = {};
+  const claves = clavesDeRelacion(dispuesto);
+  dispuesto.edges.forEach((e: BuilderEdge, i: number) => {
+    if (!e.geometriaAuto || !e.midpoints?.length) return;
+    edges[claves[i]] = { midpoints: e.midpoints, routing: "orthogonal" };
+  });
+
+  return { nodes, containers, edges, legibilidad, parcial };
 }
