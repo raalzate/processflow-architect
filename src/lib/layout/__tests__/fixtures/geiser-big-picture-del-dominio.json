@@ -1,0 +1,335 @@
+{
+  "id": "geiser-big-picture-del-dominio",
+  "meta": {
+    "nombre_proyecto": "geiser-big-picture-del-dominio",
+    "notation": "ddd"
+  },
+  "nodes": [
+    {
+      "id": "banda-1",
+      "nombre": "Banda 1",
+      "tipo_elemento": "Contexto Delimitado",
+      "container": ""
+    },
+    {
+      "id": "banda-2",
+      "nombre": "Banda 2",
+      "tipo_elemento": "Contexto Delimitado",
+      "container": ""
+    },
+    {
+      "id": "banda-3",
+      "nombre": "Banda 3",
+      "tipo_elemento": "Contexto Delimitado",
+      "container": ""
+    },
+    {
+      "id": "banda-4",
+      "nombre": "Banda 4",
+      "tipo_elemento": "Contexto Delimitado",
+      "container": ""
+    },
+    {
+      "id": "banda-5",
+      "nombre": "Banda 5",
+      "tipo_elemento": "Contexto Delimitado",
+      "container": ""
+    },
+    {
+      "id": "elem-1",
+      "nombre": "Elemento 1",
+      "tipo_elemento": "Comando",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-2",
+      "nombre": "Elemento 2",
+      "tipo_elemento": "Comando",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-3",
+      "nombre": "Elemento 3",
+      "tipo_elemento": "Regla de Negocio",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-4",
+      "nombre": "Elemento 4",
+      "tipo_elemento": "Comando",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-5",
+      "nombre": "Elemento 5",
+      "tipo_elemento": "Evento",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-6",
+      "nombre": "Elemento 6",
+      "tipo_elemento": "Evento",
+      "container": "Banda 1"
+    },
+    {
+      "id": "elem-7",
+      "nombre": "Elemento 7",
+      "tipo_elemento": "Comando",
+      "container": "Banda 2"
+    },
+    {
+      "id": "elem-8",
+      "nombre": "Elemento 8",
+      "tipo_elemento": "Regla de Negocio",
+      "container": "Banda 2"
+    },
+    {
+      "id": "elem-9",
+      "nombre": "Elemento 9",
+      "tipo_elemento": "Evento",
+      "container": "Banda 2"
+    },
+    {
+      "id": "elem-10",
+      "nombre": "Elemento 10",
+      "tipo_elemento": "Política",
+      "container": "Banda 2"
+    },
+    {
+      "id": "elem-11",
+      "nombre": "Elemento 11",
+      "tipo_elemento": "Comando",
+      "container": "Banda 3"
+    },
+    {
+      "id": "elem-12",
+      "nombre": "Elemento 12",
+      "tipo_elemento": "Comando",
+      "container": "Banda 3"
+    },
+    {
+      "id": "elem-13",
+      "nombre": "Elemento 13",
+      "tipo_elemento": "Evento",
+      "container": "Banda 3"
+    },
+    {
+      "id": "elem-14",
+      "nombre": "Elemento 14",
+      "tipo_elemento": "Comando",
+      "container": "Banda 3"
+    },
+    {
+      "id": "elem-15",
+      "nombre": "Elemento 15",
+      "tipo_elemento": "Regla de Negocio",
+      "container": "Banda 3"
+    },
+    {
+      "id": "elem-16",
+      "nombre": "Elemento 16",
+      "tipo_elemento": "Evento",
+      "container": "Banda 3"
+    },
+    {
+      "id": "elem-17",
+      "nombre": "Elemento 17",
+      "tipo_elemento": "Comando",
+      "container": "Banda 4"
+    },
+    {
+      "id": "elem-18",
+      "nombre": "Elemento 18",
+      "tipo_elemento": "Evento",
+      "container": "Banda 4"
+    },
+    {
+      "id": "elem-19",
+      "nombre": "Elemento 19",
+      "tipo_elemento": "Vista",
+      "container": "Banda 4"
+    },
+    {
+      "id": "elem-20",
+      "nombre": "Elemento 20",
+      "tipo_elemento": "Comando",
+      "container": "Banda 5"
+    },
+    {
+      "id": "elem-21",
+      "nombre": "Elemento 21",
+      "tipo_elemento": "Evento",
+      "container": "Banda 5"
+    },
+    {
+      "id": "elem-22",
+      "nombre": "Elemento 22",
+      "tipo_elemento": "Evento",
+      "container": "Banda 5"
+    },
+    {
+      "id": "elem-23",
+      "nombre": "Elemento 23",
+      "tipo_elemento": "Política",
+      "container": "Banda 5"
+    },
+    {
+      "id": "elem-24",
+      "nombre": "Elemento 24",
+      "tipo_elemento": "Evento",
+      "container": "Banda 5"
+    },
+    {
+      "id": "elem-25",
+      "nombre": "Elemento 25",
+      "tipo_elemento": "Actor",
+      "container": ""
+    },
+    {
+      "id": "elem-26",
+      "nombre": "Elemento 26",
+      "tipo_elemento": "Actor",
+      "container": ""
+    },
+    {
+      "id": "elem-27",
+      "nombre": "Elemento 27",
+      "tipo_elemento": "Actor",
+      "container": ""
+    },
+    {
+      "id": "elem-28",
+      "nombre": "Elemento 28",
+      "tipo_elemento": "Sistema Externo",
+      "container": ""
+    },
+    {
+      "id": "elem-29",
+      "nombre": "Elemento 29",
+      "tipo_elemento": "Sistema Externo",
+      "container": ""
+    }
+  ],
+  "edges": [
+    {
+      "fuente": "elem-25",
+      "destino": "elem-1"
+    },
+    {
+      "fuente": "elem-1",
+      "destino": "elem-2"
+    },
+    {
+      "fuente": "elem-2",
+      "destino": "elem-4"
+    },
+    {
+      "fuente": "elem-3",
+      "destino": "elem-2"
+    },
+    {
+      "fuente": "elem-4",
+      "destino": "elem-5"
+    },
+    {
+      "fuente": "elem-5",
+      "destino": "elem-6"
+    },
+    {
+      "fuente": "elem-2",
+      "destino": "elem-7"
+    },
+    {
+      "fuente": "elem-8",
+      "destino": "elem-7"
+    },
+    {
+      "fuente": "elem-7",
+      "destino": "elem-9"
+    },
+    {
+      "fuente": "elem-10",
+      "destino": "elem-7"
+    },
+    {
+      "fuente": "elem-26",
+      "destino": "elem-10"
+    },
+    {
+      "fuente": "elem-9",
+      "destino": "elem-5"
+    },
+    {
+      "fuente": "elem-5",
+      "destino": "elem-11"
+    },
+    {
+      "fuente": "elem-9",
+      "destino": "elem-12"
+    },
+    {
+      "fuente": "elem-11",
+      "destino": "elem-12"
+    },
+    {
+      "fuente": "elem-12",
+      "destino": "elem-13"
+    },
+    {
+      "fuente": "elem-13",
+      "destino": "elem-14"
+    },
+    {
+      "fuente": "elem-15",
+      "destino": "elem-14"
+    },
+    {
+      "fuente": "elem-14",
+      "destino": "elem-16"
+    },
+    {
+      "fuente": "elem-27",
+      "destino": "elem-14"
+    },
+    {
+      "fuente": "elem-16",
+      "destino": "elem-17"
+    },
+    {
+      "fuente": "elem-17",
+      "destino": "elem-18"
+    },
+    {
+      "fuente": "elem-18",
+      "destino": "elem-19"
+    },
+    {
+      "fuente": "elem-16",
+      "destino": "elem-20"
+    },
+    {
+      "fuente": "elem-20",
+      "destino": "elem-21"
+    },
+    {
+      "fuente": "elem-21",
+      "destino": "elem-22"
+    },
+    {
+      "fuente": "elem-23",
+      "destino": "elem-24"
+    },
+    {
+      "fuente": "elem-20",
+      "destino": "elem-23"
+    },
+    {
+      "fuente": "elem-28",
+      "destino": "elem-1"
+    },
+    {
+      "fuente": "elem-29",
+      "destino": "elem-11"
+    }
+  ]
+}

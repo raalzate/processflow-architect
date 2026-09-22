@@ -399,6 +399,39 @@ describe("canvasToGraphData", () => {
     ]);
   });
 
+  it("TS-014 · la marca de geometría automática sobrevive la ida y vuelta", () => {
+    const a = makeNode({ id: "a", nombre: "A", tipo_elemento: "Comando" });
+    const b = makeNode({ id: "b", nombre: "B", tipo_elemento: "Evento" });
+    const auto = makeLink({
+      id: "l1",
+      sourceId: "a",
+      targetId: "b",
+      descripcion: "x",
+      routing: "orthogonal",
+      midpoints: [{ x: 10, y: 20 }],
+      geometriaAuto: true,
+    });
+    const g = canvasToGraphData(nodesMap(a, b), linksMap(auto), BASE);
+    const { links } = graphDataToCanvas(g);
+    expect(Array.from(links.values())[0].geometriaAuto).toBe(true);
+  });
+
+  it("FR-017 · la geometría guardada sin marca vuelve como del humano", () => {
+    const a = makeNode({ id: "a", nombre: "A", tipo_elemento: "Comando" });
+    const b = makeNode({ id: "b", nombre: "B", tipo_elemento: "Evento" });
+    const aMano = makeLink({
+      id: "l1",
+      sourceId: "a",
+      targetId: "b",
+      descripcion: "x",
+      routing: "orthogonal",
+      midpoints: [{ x: 10, y: 20 }],
+    });
+    const g = canvasToGraphData(nodesMap(a, b), linksMap(aMano), BASE);
+    const { links } = graphDataToCanvas(g);
+    expect(Array.from(links.values())[0].geometriaAuto).toBeUndefined();
+  });
+
   it("migrates a legacy single midpoint to midpoints[] on load", () => {
     const g = canvasToGraphData(
       nodesMap(

@@ -15,6 +15,8 @@
  * pregunte por el adaptador WebGPU, nadie puede afirmar que la IA local sirve.
  */
 
+import type { AiMode } from "@/lib/ai/remote-settings";
+
 export type EstadoIaLocal = "desconocido" | "disponible" | "sin-webgpu" | "sin-electron";
 
 /** Lo que se sabe del entorno cuando se razona el estado. */
@@ -41,32 +43,56 @@ export const puedeUsarIaLocal = (estado: EstadoIaLocal): boolean => estado === "
 export interface AvisoIaLocal {
   titulo: string;
   detalle: string;
+  /**
+   * ¿El aviso se queda hasta que lo cierren? Sólo cuando el equipo se queda
+   * SIN ninguna IA: ahí es una limitación, no un evento. Si la nube cubre el
+   * hueco, el aviso es informativo y se va solo.
+   */
+  persistente: boolean;
+}
+
+/** Lo que la nube aporta en este equipo, para saber si el hueco local importa. */
+export interface CoberturaNube {
+  modo: AiMode;
+  /** ¿Hay llave guardada para el proveedor elegido? */
+  conLlave: boolean;
 }
 
 /**
- * Qué avisar. Devuelve `undefined` cuando no hay nada que decir. El aviso dice
- * las dos cosas que importan: que la app **sí** sirve sin IA local, y cuál es la
- * salida si querés IA (el proveedor de nube, que es opt-in y con tu llave).
+ * Qué avisar. Devuelve `undefined` cuando no hay nada que decir.
+ *
+ * El silencio importa tanto como el aviso: en modo `remote` con llave, el motor
+ * local no se iba a usar igual, así que avisar de su ausencia es ruido sobre una
+ * capacidad que el usuario ya decidió no usar (#374). En `hybrid` sí se avisa
+ * —las tareas ligeras cambian de destino— pero sin quedarse pegado.
  */
 export function mensajeIaLocal(
   estado: EstadoIaLocal,
-  { remotoActivo }: { remotoActivo: boolean }
+  { modo, conLlave }: CoberturaNube
 ): AvisoIaLocal | undefined {
   if (estado === "disponible" || estado === "desconocido") return undefined;
+  // La nube atiende TODO: no hay hueco que avisar.
+  if (modo === "remote" && conLlave) return undefined;
 
-  const salida = remotoActivo
-    ? "Tu proveedor de IA en la nube sigue atendiendo las sugerencias."
-    : "Si querés sugerencias, activá un proveedor de IA en la nube en Ajustes (con tu propia llave).";
+  const nubeLista = modo !== "local" && conLlave;
+  const salida = nubeLista
+    ? "Estás en modo híbrido: las sugerencias ligeras también irán a tu proveedor de nube."
+    : modo !== "local"
+      ? "Elegiste un proveedor de nube pero todavía no hay llave: agregala en Ajustes."
+      : "Si querés sugerencias, activá un proveedor de IA en la nube en Ajustes (con tu propia llave).";
+  const persistente = !nubeLista;
 
   if (estado === "sin-webgpu") {
     return {
       titulo: "IA local no disponible",
       detalle: `Este equipo no expone WebGPU, que es lo que necesita el motor local (LiteRT-LM). Podés seguir usando todo lo demás: dibujar y editar diagramas en el lienzo, importar, exportar y el servidor MCP. ${salida}`,
+      persistente,
     };
   }
   return {
     titulo: "IA local no disponible",
     detalle: `El motor local sólo corre dentro de la aplicación de escritorio. ${salida}`,
+    persistente,
   };
 }
 

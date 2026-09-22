@@ -1,0 +1,27 @@
+{
+  "id": "prueba-tooltip",
+  "meta": {
+    "nombre_proyecto": "prueba-tooltip",
+    "notation": "ddd"
+  },
+  "nodes": [
+    {
+      "id": "elem-1",
+      "nombre": "Elemento 1",
+      "tipo_elemento": "Comando",
+      "container": ""
+    },
+    {
+      "id": "elem-2",
+      "nombre": "Elemento 2",
+      "tipo_elemento": "Evento de Dominio",
+      "container": ""
+    }
+  ],
+  "edges": [
+    {
+      "fuente": "elem-1",
+      "destino": "elem-2"
+    }
+  ]
+}

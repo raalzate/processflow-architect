@@ -22,6 +22,7 @@ export const VERBO = {
   abrir: "Abrir",
   cerrar: "Cerrar",
   descargar: "Descargar",
+  probar: "Probar",
   ayuda: "Ayuda y atajos",
 } as const;
 

@@ -39,25 +39,47 @@ describe("puedeUsarIaLocal", () => {
 });
 
 describe("mensajeIaLocal", () => {
+  const soloLocal = { modo: "local" as const, conLlave: false };
+
   it("sin WebGPU explica qué se pierde y qué se puede hacer", () => {
-    const m = mensajeIaLocal("sin-webgpu", { remotoActivo: false })!;
+    const m = mensajeIaLocal("sin-webgpu", soloLocal)!;
     expect(m.titulo).toMatch(/IA local/i);
     expect(m.detalle).toMatch(/WebGPU/);
     // Lo importante: la app SÍ sirve, y hay una salida (la nube, opt-in).
     expect(m.detalle).toMatch(/diagram|lienzo|dibujar/i);
     expect(m.detalle).toMatch(/nube|proveedor|Ajustes/i);
+    // Sin ninguna IA: el aviso se queda hasta que lo cierren.
+    expect(m.persistente).toBe(true);
   });
 
-  it("sin WebGPU pero con la nube activada, no ofrece lo que ya está puesto", () => {
-    expect(mensajeIaLocal("sin-webgpu", { remotoActivo: true })!.detalle).not.toMatch(/Ajustes/);
+  it("en modo remoto con llave NO avisa: el motor local no se iba a usar (#374)", () => {
+    expect(mensajeIaLocal("sin-webgpu", { modo: "remote", conLlave: true })).toBeUndefined();
+    expect(mensajeIaLocal("sin-electron", { modo: "remote", conLlave: true })).toBeUndefined();
+  });
+
+  it("en híbrido con llave avisa el cambio de destino, sin ofrecer lo que ya está puesto", () => {
+    const m = mensajeIaLocal("sin-webgpu", { modo: "hybrid", conLlave: true })!;
+    expect(m.detalle).not.toMatch(/Ajustes/);
+    expect(m.detalle).toMatch(/híbrido|ligeras/i);
+    // No es una limitación sin salida: se va solo.
+    expect(m.persistente).toBe(false);
+  });
+
+  it("con modo de nube elegido pero SIN llave, manda a configurarla", () => {
+    for (const modo of ["remote", "hybrid"] as const) {
+      const m = mensajeIaLocal("sin-webgpu", { modo, conLlave: false })!;
+      expect(m.detalle, modo).toMatch(/llave/i);
+      expect(m.detalle, modo).toMatch(/Ajustes/);
+      expect(m.persistente, modo).toBe(true);
+    }
   });
 
   it("cuando está disponible no hay nada que avisar", () => {
-    expect(mensajeIaLocal("disponible", { remotoActivo: false })).toBeUndefined();
+    expect(mensajeIaLocal("disponible", soloLocal)).toBeUndefined();
   });
 
   it("fuera de Electron no se culpa a la GPU", () => {
-    expect(mensajeIaLocal("sin-electron", { remotoActivo: false })!.detalle).not.toMatch(/WebGPU/);
+    expect(mensajeIaLocal("sin-electron", soloLocal)!.detalle).not.toMatch(/WebGPU/);
   });
 });
 
