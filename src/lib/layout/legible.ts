@@ -80,7 +80,8 @@ export function resumenDeLegibilidad(medida: MedidaComparada, parcial = false): 
   const { antes, despues, conRecorridosManuales } = medida;
   const partes = [
     `Legibilidad: cruces ${antes.cruces} → ${despues.cruces} · ` +
-      `relaciones sobre caja ajena ${antes.sobreCaja} → ${despues.sobreCaja} ` +
+      `relaciones sobre caja ajena ${antes.sobreCaja} → ${despues.sobreCaja} · ` +
+      `encimadas ${antes.solape} → ${despues.solape} ` +
       `(sobre ${despues.relaciones} relaciones).`,
   ];
   if (conRecorridosManuales)

@@ -10,8 +10,8 @@ Issue: #376 (feature 017)
 
 Aceptado el 2026-09-22. Lo que hace cumplir la decisión no es esta prosa:
 
-- `src/lib/layout/metrics.ts` convierte "quedó feo" en tres números (cruces · relaciones que
-  atraviesan una caja ajena · relaciones sin recorrido).
+- `src/lib/layout/metrics.ts` convierte "quedó feo" en números: cruces · relaciones encimadas ·
+  relaciones que atraviesan una caja ajena · relaciones sin recorrido.
 - `src/lib/layout/__tests__/linea-base.test.ts` corre esos números sobre la topología de los **seis
   diagramas reales** en cada `npm run gate`: si el conjunto se pasa del objetivo, si **un solo**
   diagrama empeora en **cualquiera** de las dos métricas, o si retrocede respecto de lo ya logrado,
@@ -38,7 +38,7 @@ Tres módulos puros bajo `src/lib/layout/`, encadenados en un solo sitio (`layou
 
 | Módulo | Qué decide |
 |---|---|
-| `metrics.ts` | cuánto se lee: cruces, paso sobre caja, relaciones sin recorrido |
+| `metrics.ts` | cuánto se lee: cruces, relaciones encimadas, paso sobre caja, relaciones sin recorrido |
 | `order.ts` | qué elemento ocupa cada ranura de su capa (baricentro + pulido) |
 | `routing.ts` | por dónde pasa la relación que en recta pisaría una caja o cruzaría a otra |
 | `legible.ts` | los encadena, marca la geometría que genera y compara antes/después |
@@ -47,8 +47,14 @@ Reglas que no se negocian, y por qué:
 
 - **Ordenar sólo permuta ranuras.** Las coordenadas del preset no se tocan, así que ningún elemento
   sale de su banda y el aire del diagrama se conserva.
-- **Ninguna fase puede empeorar ninguna de las dos métricas.** El coste combinado por sí solo
-  aceptaba cambiar un cruce por dos pasos sobre caja: el número bajaba y el diagrama se leía peor.
+- **Ninguna fase puede empeorar ninguna de las métricas.** El coste combinado por sí solo aceptaba
+  cambiar un cruce por dos pasos sobre caja: el número bajaba y el diagrama se leía peor.
+- **Lo que no se mide, el optimizador lo explota.** La medida contaba la X real y descartaba el
+  solape colineal. Correcto para no inflar los cruces, pero al no contarlo *como nada*, meter una
+  relación en un corredor ya ocupado le salía gratis al ruteo: lo prefería. Los seis diagramas daban
+  0 cruces con dos líneas encimadas 632 px. El solape es hoy una dimensión propia (#392), y entre
+  relaciones que comparten un extremo no cuenta: separarlas es repartir las puntas por el borde del
+  nodo (puertos), declarado fuera de alcance.
 - **Se rutea la relación que pisaría una caja y la que se cruzaría con otra**, en dos pasadas de
   rip-up & reroute. Con una sola pasada, la que se decidió temprano no se entera de que otra
   terminó pasándole por encima. Lo que no cambia es la garantía: si ninguna candidata baja el
@@ -63,13 +69,13 @@ Reglas que no se negocian, y por qué:
 
 Sobre los seis diagramas de referencia (108 relaciones), medidos con `metrics.ts`:
 
-| | Cruces | Relaciones sobre caja ajena |
-|---|---|---|
-| Disposición de partida (la estrategia sola) | 9 | 17 |
-| Con orden y ruteo | **0** | **0** |
+| | Cruces | Encimadas | Sobre caja ajena |
+|---|---|---|---|
+| Disposición de partida (la estrategia sola) | 9 | 8 | 17 |
+| Con orden y ruteo | **3** | **0** | **0** |
 
-Ningún diagrama empeora en ninguna de las dos métricas, y ninguno queda con una sola X ni una sola
-línea por encima de una caja ajena. El objetivo del spec era ≤6 y ≤2.
+Ningún diagrama empeora en ninguna de las tres métricas. El objetivo del spec era ≤6 cruces y ≤2
+sobre caja; el solape no estaba en el spec porque nadie lo había medido (ver abajo).
 
 Esos números son un **trinquete**: cada fixture registra lo que se logró (`logrado`) y el gate lo
 exige, porque cumplir el objetivo del spec dejaría pasar un retroceso de 0 a 5 cruces sin una sola

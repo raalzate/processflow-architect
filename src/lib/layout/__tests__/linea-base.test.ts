@@ -30,9 +30,10 @@ describe("línea base de los diagramas de referencia", () => {
     const suma = medidas.reduce(
       (t, { base }) => ({
         cruces: t.cruces + base.legibilidad.antes.cruces,
+        solape: t.solape + base.legibilidad.antes.solape,
         sobreCaja: t.sobreCaja + base.legibilidad.antes.sobreCaja,
       }),
-      { cruces: 0, sobreCaja: 0 }
+      { cruces: 0, solape: 0, sobreCaja: 0 }
     );
     expect(suma).toEqual(LINEA_BASE);
   });
@@ -41,16 +42,19 @@ describe("línea base de los diagramas de referencia", () => {
     const suma = medidas.reduce(
       (t, { d }) => ({
         cruces: t.cruces + d.legibilidad.despues.cruces,
+        solape: t.solape + d.legibilidad.despues.solape,
         sobreCaja: t.sobreCaja + d.legibilidad.despues.sobreCaja,
       }),
-      { cruces: 0, sobreCaja: 0 }
+      { cruces: 0, solape: 0, sobreCaja: 0 }
     );
     expect(suma.cruces).toBeLessThanOrEqual(OBJETIVO.cruces);
     expect(suma.sobreCaja).toBeLessThanOrEqual(OBJETIVO.sobreCaja);
+    expect(suma.solape).toBeLessThanOrEqual(OBJETIVO.solape);
   });
 
   it.each(medidas)("TS-003 · SC-002 · $fixture.id no empeora", ({ fixture, d }) => {
     expect(d.legibilidad.despues.cruces).toBeLessThanOrEqual(fixture.hoy.cruces);
+    expect(d.legibilidad.despues.solape).toBeLessThanOrEqual(fixture.hoy.solape);
     expect(d.legibilidad.despues.sobreCaja).toBeLessThanOrEqual(fixture.hoy.sobreCaja);
     // Tope por diagrama declarado en el spec, que es más flojo que la línea base
     // medida: se comprueba igual para que el criterio del spec quede escrito.
@@ -59,6 +63,7 @@ describe("línea base de los diagramas de referencia", () => {
     // Trinquete: lo que ya se logró no se pierde. Cumplir el objetivo del spec
     // dejaría pasar un retroceso de 0 a 5 cruces sin una sola prueba en rojo.
     expect(d.legibilidad.despues.cruces).toBeLessThanOrEqual(fixture.logrado.cruces);
+    expect(d.legibilidad.despues.solape).toBeLessThanOrEqual(fixture.logrado.solape);
     expect(d.legibilidad.despues.sobreCaja).toBeLessThanOrEqual(fixture.logrado.sobreCaja);
   });
 
@@ -86,10 +91,11 @@ describe("estrategia por defecto", () => {
         const d = relayoutConMedida(f.modelo(), estrategia ? { strategy: estrategia } : {});
         return {
           cruces: t.cruces + d.legibilidad.despues.cruces,
+          solape: t.solape + d.legibilidad.despues.solape,
           sobreCaja: t.sobreCaja + d.legibilidad.despues.sobreCaja,
         };
       },
-      { cruces: 0, sobreCaja: 0 }
+      { cruces: 0, solape: 0, sobreCaja: 0 }
     );
 
   it("TS-023 · la de dominio es la que menos cruces deja en sus diagramas", () => {
@@ -105,6 +111,7 @@ describe("estrategia por defecto", () => {
     for (const f of dominio) {
       const d = relayoutConMedida(f.modelo());
       expect(d.legibilidad.despues.cruces).toBeLessThanOrEqual(f.hoy.cruces);
+      expect(d.legibilidad.despues.solape).toBeLessThanOrEqual(f.hoy.solape);
       expect(d.legibilidad.despues.sobreCaja).toBeLessThanOrEqual(f.hoy.sobreCaja);
     }
   });

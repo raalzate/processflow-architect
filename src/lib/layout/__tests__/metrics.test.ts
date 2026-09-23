@@ -24,7 +24,7 @@ describe("medirLegibilidad", () => {
     const l = medirLegibilidad([caja("a", 0, 0), caja("b", 400, 0)], [
       { id: "e0", fuente: "a", destino: "b" },
     ]);
-    expect(l).toEqual({ cruces: 0, sobreCaja: 0, sinRuta: 0, relaciones: 1 });
+    expect(l).toEqual({ cruces: 0, solape: 0, sobreCaja: 0, sinRuta: 0, relaciones: 1 });
   });
 
   it("cuenta la X de dos relaciones que se cortan", () => {
@@ -79,6 +79,7 @@ describe("medirLegibilidad", () => {
   it("TS-022 · un diagrama sin relaciones mide cero", () => {
     expect(medirLegibilidad([caja("a", 0, 0)], [])).toEqual({
       cruces: 0,
+      solape: 0,
       sobreCaja: 0,
       sinRuta: 0,
       relaciones: 0,
@@ -102,21 +103,32 @@ describe("medirLegibilidad", () => {
 });
 
 describe("costeDeDisposicion", () => {
+  const base = { cruces: 0, solape: 0, sobreCaja: 0, sinRuta: 0, relaciones: 10 };
+
   it("pondera el paso sobre caja por debajo del cruce, pero no lo ignora", () => {
-    const base = { cruces: 0, sobreCaja: 0, sinRuta: 0, relaciones: 10 };
     expect(costeDeDisposicion({ ...base, cruces: 1 })).toBe(1);
     expect(costeDeDisposicion({ ...base, sobreCaja: 1 })).toBeCloseTo(0.6);
+  });
+
+  it("#392 · dos relaciones encimadas cuestan como un cruce", () => {
+    expect(costeDeDisposicion({ ...base, solape: 1 })).toBe(1);
   });
 });
 
 describe("hayProblemaDeLegibilidad", () => {
+  const base = { cruces: 0, solape: 0, sobreCaja: 0, sinRuta: 0, relaciones: 40 };
+
   it("C2 · cualquier relación sobre caja dispara hallazgo", () => {
-    expect(hayProblemaDeLegibilidad({ cruces: 0, sobreCaja: 1, sinRuta: 0, relaciones: 40 })).toBe(true);
+    expect(hayProblemaDeLegibilidad({ ...base, sobreCaja: 1 })).toBe(true);
+  });
+
+  it("#392 · dos relaciones encimadas también: esconden una relación entera", () => {
+    expect(hayProblemaDeLegibilidad({ ...base, solape: 1 })).toBe(true);
   });
 
   it("C2 · los cruces disparan hallazgo por encima del 10% de las relaciones", () => {
-    expect(hayProblemaDeLegibilidad({ cruces: 2, sobreCaja: 0, sinRuta: 0, relaciones: 10 })).toBe(true);
-    expect(hayProblemaDeLegibilidad({ cruces: 1, sobreCaja: 0, sinRuta: 0, relaciones: 10 })).toBe(false);
+    expect(hayProblemaDeLegibilidad({ ...base, cruces: 2, relaciones: 10 })).toBe(true);
+    expect(hayProblemaDeLegibilidad({ ...base, cruces: 1, relaciones: 10 })).toBe(false);
   });
 });
 

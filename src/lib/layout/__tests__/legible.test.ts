@@ -144,15 +144,16 @@ describe("disponerLegible", () => {
 
 describe("resumenDeLegibilidad", () => {
   const medida = {
-    antes: { cruces: 9, sobreCaja: 17, sinRuta: 0, relaciones: 108 },
-    despues: { cruces: 4, sobreCaja: 2, sinRuta: 0, relaciones: 108 },
+    antes: { cruces: 9, solape: 8, sobreCaja: 17, sinRuta: 0, relaciones: 108 },
+    despues: { cruces: 3, solape: 0, sobreCaja: 0, sinRuta: 0, relaciones: 108 },
     conRecorridosManuales: false,
   };
 
   it("TS-018 · dice los dos números, antes y después", () => {
     const texto = resumenDeLegibilidad(medida);
-    expect(texto).toContain("cruces 9 → 4");
-    expect(texto).toContain("relaciones sobre caja ajena 17 → 2");
+    expect(texto).toContain("cruces 9 → 3");
+    expect(texto).toContain("relaciones sobre caja ajena 17 → 0");
+    expect(texto).toContain("encimadas 8 → 0");
   });
 
   it("C5 · declara si la medida incluye recorridos hechos a mano", () => {

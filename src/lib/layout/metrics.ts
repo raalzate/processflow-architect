@@ -48,6 +48,14 @@ export interface Relacion {
 export interface Legibilidad {
   /** Pares de relaciones que se cortan fuera de un extremo común. */
   cruces: number;
+  /**
+   * Pares de relaciones que comparten recorrido: van encimadas por el mismo
+   * corredor. No son un cruce —no hay X— pero se leen peor: en pantalla son una
+   * sola línea y no se sabe cuántas relaciones hay ni de dónde sale cada una.
+   * Mientras no se midió, meterse en un corredor ocupado le salía GRATIS al
+   * ruteo, así que lo prefería (#392).
+   */
+  solape: number;
   /** Relaciones que atraviesan una caja que no es ninguno de sus extremos. */
   sobreCaja: number;
   /** Relaciones sin recorrido dibujable (una caja falta o el trazo degenera). */
@@ -58,6 +66,12 @@ export interface Legibilidad {
 
 /** Margen alrededor de una caja: rozar el borde ya se lee como "la pisa". */
 export const MARGEN_CAJA = 2;
+
+/** Dos tramos a menos de esto, y en el mismo eje, se ven como una sola línea. */
+export const TOLERANCIA_SOLAPE = 6;
+
+/** Tramo compartido a partir del cual el solape se nota en pantalla. */
+export const SOLAPE_MINIMO = 40;
 
 /**
  * A partir de este número de relaciones, contar cruces por fuerza bruta (O(E²))
@@ -176,6 +190,10 @@ function trazoDe(rel: Relacion, cajas: Map<string, Caja>): Trazo | null {
   return { rel, segmentos, minX, minY, maxX, maxY };
 }
 
+/** ¿Las dos relaciones se tocan en un nodo común? Ahí no hay ni cruce ni solape. */
+export const comparteExtremo = (a: Relacion, b: Relacion): boolean =>
+  a.fuente === b.fuente || a.fuente === b.destino || a.destino === b.fuente || a.destino === b.destino;
+
 const solapan = (a: Trazo, b: Trazo): boolean =>
   a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY;
 
@@ -191,8 +209,7 @@ function trazosSeCortan(a: Trazo, b: Trazo): boolean {
  * nodo por definición: eso no es un cruce, es el diagrama.
  */
 function contarCruces(trazos: Trazo[]): number {
-  const comparte = (a: Relacion, b: Relacion) =>
-    a.fuente === b.fuente || a.fuente === b.destino || a.destino === b.fuente || a.destino === b.destino;
+  const comparte = comparteExtremo;
 
   if (trazos.length <= UMBRAL_INDICE) {
     let cruces = 0;
@@ -236,6 +253,39 @@ function contarCruces(trazos: Trazo[]): number {
 }
 
 /**
+ * Largo que dos tramos comparten yendo por el mismo carril (`Segmento` es el
+ * par de puntos de un tramo). Sólo cuenta el
+ * solape AXIAL (los dos horizontales o los dos verticales, casi a la misma
+ * altura): es el que el ojo lee como una línea sola.
+ */
+export function largoEncimado(a: Segmento, b: Segmento): number {
+  const [a1, a2] = a;
+  const [b1, b2] = b;
+  const horiz = Math.abs(a1.y - a2.y) < 1 && Math.abs(b1.y - b2.y) < 1;
+  const vert = Math.abs(a1.x - a2.x) < 1 && Math.abs(b1.x - b2.x) < 1;
+  if (horiz && Math.abs(a1.y - b1.y) < TOLERANCIA_SOLAPE) {
+    return Math.max(
+      0,
+      Math.min(Math.max(a1.x, a2.x), Math.max(b1.x, b2.x)) - Math.max(Math.min(a1.x, a2.x), Math.min(b1.x, b2.x))
+    );
+  }
+  if (vert && Math.abs(a1.x - b1.x) < TOLERANCIA_SOLAPE) {
+    return Math.max(
+      0,
+      Math.min(Math.max(a1.y, a2.y), Math.max(b1.y, b2.y)) - Math.max(Math.min(a1.y, a2.y), Math.min(b1.y, b2.y))
+    );
+  }
+  return 0;
+}
+
+/** ¿Estos dos trazos van encimados en algún tramo largo? */
+export function seEnciman(a: { segmentos: Segmento[] }, b: { segmentos: Segmento[] }): boolean {
+  for (const s1 of a.segmentos)
+    for (const s2 of b.segmentos) if (largoEncimado(s1, s2) > SOLAPE_MINIMO) return true;
+  return false;
+}
+
+/**
  * Mide la legibilidad de un diagrama ya posicionado.
  *
  * Las auto-relaciones no entran: tienen forma propia (un lazo) y contarlas como
@@ -272,7 +322,18 @@ export function medirLegibilidad(cajas: Caja[], relaciones: Relacion[]): Legibil
     if (pisa) sobreCaja++;
   }
 
-  return { cruces: contarCruces(trazos), sobreCaja, sinRuta, relaciones: consideradas };
+  let solape = 0;
+  for (let i = 0; i < trazos.length; i++)
+    for (let j = i + 1; j < trazos.length; j++) {
+      // Mismo criterio que el cruce: dos relaciones que comparten un extremo se
+      // juntan al llegar a él por definición. Separarlas es repartir las puntas
+      // por el borde del nodo (puertos), que el spec declaró fuera de alcance;
+      // cobrarlo aquí sería exigirle al ruteo algo que no puede hacer.
+      if (comparteExtremo(trazos[i].rel, trazos[j].rel)) continue;
+      if (seEnciman(trazos[i], trazos[j])) solape++;
+    }
+
+  return { cruces: contarCruces(trazos), solape, sobreCaja, sinRuta, relaciones: consideradas };
 }
 
 /**
@@ -280,9 +341,12 @@ export function medirLegibilidad(cajas: Caja[], relaciones: Relacion[]): Legibil
  * en el número, pero el prototipo mostró que es el que más molesta al leer: por
  * eso 0,6 y no 0,2 — baja lo suficiente como para que una pasada que cambia un
  * cruce por dos pasos sobre caja se descarte (FR-002).
+ *
+ * El solape pesa como un cruce: dos líneas encimadas esconden una relación
+ * entera, que es peor que verlas cruzarse (#392).
  */
 export function costeDeDisposicion(l: Legibilidad): number {
-  return l.cruces + 0.6 * l.sobreCaja;
+  return l.cruces + 0.6 * l.sobreCaja + l.solape;
 }
 
 /**
@@ -302,6 +366,7 @@ export function costeLocal(cajas: Caja[], relaciones: Relacion[], afectadas: Set
     .filter((t): t is Trazo => t !== null);
 
   let cruces = 0;
+  let solape = 0;
   let sobreCaja = 0;
   for (const t of trazos) {
     if (!afectadas.has(t.rel.id)) continue;
@@ -309,12 +374,8 @@ export function costeLocal(cajas: Caja[], relaciones: Relacion[], afectadas: Set
       if (otro.rel.id === t.rel.id) continue;
       // Un par de afectadas se contaría dos veces: sólo cuenta el de menor id.
       if (afectadas.has(otro.rel.id) && otro.rel.id < t.rel.id) continue;
-      const comparte =
-        t.rel.fuente === otro.rel.fuente ||
-        t.rel.fuente === otro.rel.destino ||
-        t.rel.destino === otro.rel.fuente ||
-        t.rel.destino === otro.rel.destino;
-      if (comparte) continue;
+      if (comparteExtremo(t.rel, otro.rel)) continue;
+      if (seEnciman(t, otro)) solape++;
       if (trazosSeCortan(t, otro)) cruces++;
     }
     const pisa = obstaculos.some((caja) => {
@@ -323,10 +384,14 @@ export function costeLocal(cajas: Caja[], relaciones: Relacion[], afectadas: Set
     });
     if (pisa) sobreCaja++;
   }
-  return cruces + 0.6 * sobreCaja;
+  return cruces + 0.6 * sobreCaja + solape;
 }
 
 /** ¿La disposición está por debajo del umbral de legibilidad declarado (C2)? */
 export function hayProblemaDeLegibilidad(l: Legibilidad): boolean {
-  return l.sobreCaja > 0 || (l.relaciones > 0 && l.cruces > l.relaciones * 0.1);
+  return (
+    l.sobreCaja > 0 ||
+    l.solape > 0 ||
+    (l.relaciones > 0 && l.cruces > l.relaciones * 0.1)
+  );
 }

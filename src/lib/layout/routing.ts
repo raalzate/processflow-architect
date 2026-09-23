@@ -17,10 +17,12 @@
 
 import {
   costeDeDisposicion,
+  largoEncimado,
   medirLegibilidad,
   recortarABorde,
   seCortan,
   segmentoPisaCaja,
+  SOLAPE_MINIMO,
   type Caja,
   type Punto,
   type Relacion,
@@ -48,13 +50,13 @@ const MARGEN_POR_DEFECTO = 8;
 const PRESUPUESTO_POR_DEFECTO = 2000;
 
 /** Cuántos corredores desplazados se prueban a cada lado del centro. */
-const DESPLAZAMIENTOS = 3;
+const DESPLAZAMIENTOS = 5;
 
 /** Cuántos corredores por eje entran en el rodeo de dos tramos. */
 const RODEOS = 4;
 
 /** Pesos del coste. El obstáculo domina: es el dolor que reportó el usuario. */
-const PESO = { obstaculo: 10, cruce: 4, doblez: 0.8, longitud: 1 / 4000 };
+const PESO = { obstaculo: 10, cruce: 4, solape: 5, doblez: 0.8, longitud: 1 / 4000 };
 
 /**
  * Pasadas de rip-up & reroute. Con una sola, la relación que se decidió primero
@@ -62,7 +64,7 @@ const PESO = { obstaculo: 10, cruce: 4, doblez: 0.8, longitud: 1 / 4000 };
  * cruces del diagrama de enrollment (#391). Dos pasadas alcanzan; la tercera no
  * cambió nada en ningún diagrama de referencia y se corta sola si no hay cambio.
  */
-const PASADAS = 2;
+const PASADAS = 3;
 
 const centro = (c: Caja): Punto => ({ x: c.x + c.width / 2, y: c.y + c.height / 2 });
 
@@ -119,14 +121,13 @@ function candidatas(
     const hi = Math.max(p, q) + paso * DESPLAZAMIENTOS;
     return v >= lo && v <= hi;
   };
-  const xs = [
-    ...Array.from({ length: 2 * DESPLAZAMIENTOS + 1 }, (_, i) => (a.x + b.x) / 2 + (i - DESPLAZAMIENTOS) * paso),
-    ...libres.x.filter((v) => enRango(v, a.x, b.x)),
-  ];
-  const ys = [
-    ...Array.from({ length: 2 * DESPLAZAMIENTOS + 1 }, (_, i) => (a.y + b.y) / 2 + (i - DESPLAZAMIENTOS) * paso),
-    ...libres.y.filter((v) => enRango(v, a.y, b.y)),
-  ];
+  // Medio paso además del paso entero: dos relaciones que necesitan el mismo
+  // pasillo pueden repartírselo en vez de encimarse (#392).
+  const rejilla = (centro: number) =>
+    Array.from({ length: 4 * DESPLAZAMIENTOS + 1 }, (_, i) => centro + ((i - 2 * DESPLAZAMIENTOS) * paso) / 2);
+  const desviados = (vs: number[]) => vs.flatMap((v) => [v, v - paso / 2, v + paso / 2]);
+  const xs = [...rejilla((a.x + b.x) / 2), ...desviados(libres.x).filter((v) => enRango(v, a.x, b.x))];
+  const ys = [...rejilla((a.y + b.y) / 2), ...desviados(libres.y).filter((v) => enRango(v, a.y, b.y))];
   for (const mx of xs) out.push([a, { x: mx, y: a.y }, { x: mx, y: b.y }, b]);
   for (const my of ys) out.push([a, { x: a.x, y: my }, { x: b.x, y: my }, b]);
   // Rodeo por dos corredores: la única forma de salir de un nodo encajonado,
@@ -228,17 +229,28 @@ export function rutarRelaciones(
         return n;
       };
 
+      // Meterse en un corredor ya ocupado tiene que DOLER, o el ruteo lo
+      // prefiere: ahí no hay obstáculo ni cruce que pagar, y dos líneas
+      // encimadas esconden una relación entera (#392). Pesa más que el cruce.
+      const encimaCon = (pts: Punto[]): number => {
+        let n = 0;
+        for (const s of segmentos(pts))
+          for (const t of otras) if (largoEncimado(s, t) > SOLAPE_MINIMO) n++;
+        return n;
+      };
+
       const costeDe = (pts: Punto[]) =>
         PESO.obstaculo * pisa(pts, p) +
         PESO.cruce * cruzaCon(pts) +
+        PESO.solape * encimaCon(pts) +
         PESO.doblez * Math.max(0, pts.length - 2) +
         PESO.longitud * largo(pts);
 
-      // Se rutea la que pisa una caja y también la que sólo se CRUZA con otra
-      // (#391): el corredor que esquiva una caja suele meterse justo por donde
-      // van dos diagonales que no pisan nada, y ésas antes eran intocables.
+      // Se rutea la que pisa una caja, la que sólo se CRUZA con otra (#391) y la
+      // que va ENCIMADA de otra (#392): el corredor que esquiva una caja suele
+      // meterse justo por donde ya pasa otra línea o dos diagonales limpias.
       const suyo = actual.get(p.rel.id)!;
-      if (pisa(suyo, p) === 0 && cruzaCon(suyo) === 0) continue;
+      if (pisa(suyo, p) === 0 && cruzaCon(suyo) === 0 && encimaCon(suyo) === 0) continue;
 
       // La RECTA es la candidata a batir, no una más: si ninguna mejora, la
       // relación se queda con el enrutado de su notación (FR-014 · D2).

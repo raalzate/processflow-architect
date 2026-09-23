@@ -26,6 +26,8 @@ import venta from "./venta-y-underwriting-en-eva.json";
 
 export interface Medida {
   cruces: number;
+  /** Pares de relaciones sin extremo común que van encimadas (#392). */
+  solape: number;
   sobreCaja: number;
 }
 
@@ -47,7 +49,8 @@ export interface FixtureTopologia {
   /**
    * Lo que el producto logra HOY en este diagrama. Es un trinquete: el objetivo
    * del spec (≤6 y ≤2 en total) ya quedó muy atrás, y sin este número nada
-   * impediría volver a él sin que el gate dijera nada.
+   * impediría volver a él sin que el gate dijera nada. `limiteSpec` deja el
+   * solape en 99 a propósito: el spec no lo conocía, lo exige el trinquete.
    */
   logrado: Medida;
 }
@@ -64,18 +67,43 @@ interface Crudo {
 // construir el modelo, que es donde el compilador puede decir algo útil.
 const crudos: Crudo[] = ([
 
-  { fx: cobranza, hoy: { cruces: 0, sobreCaja: 4 }, limiteSpec: { cruces: 1, sobreCaja: 4 }, logrado: { cruces: 0, sobreCaja: 0 } },
+  {
+    fx: cobranza,
+    hoy: { cruces: 0, solape: 0, sobreCaja: 4 },
+    limiteSpec: { cruces: 1, solape: 99, sobreCaja: 4 },
+    logrado: { cruces: 0, solape: 0, sobreCaja: 0 },
+  },
   {
     fx: bigPicture,
-    hoy: { cruces: 3, sobreCaja: 6 },
+    hoy: { cruces: 3, solape: 7, sobreCaja: 6 },
     estrategiaBase: "radial" as LayoutStrategy,
-    limiteSpec: { cruces: 8, sobreCaja: 10 },
-    logrado: { cruces: 0, sobreCaja: 0 },
+    limiteSpec: { cruces: 8, solape: 99, sobreCaja: 10 },
+    logrado: { cruces: 2, solape: 0, sobreCaja: 0 },
   },
-  { fx: enrollment, hoy: { cruces: 3, sobreCaja: 4 }, limiteSpec: { cruces: 4, sobreCaja: 5 }, logrado: { cruces: 0, sobreCaja: 0 } },
-  { fx: paisaje, hoy: { cruces: 3, sobreCaja: 2 }, limiteSpec: { cruces: 3, sobreCaja: 2 }, logrado: { cruces: 0, sobreCaja: 0 } },
-  { fx: tooltip, hoy: { cruces: 0, sobreCaja: 0 }, limiteSpec: { cruces: 0, sobreCaja: 0 }, logrado: { cruces: 0, sobreCaja: 0 } },
-  { fx: venta, hoy: { cruces: 0, sobreCaja: 1 }, limiteSpec: { cruces: 0, sobreCaja: 1 }, logrado: { cruces: 0, sobreCaja: 0 } },
+  {
+    fx: enrollment,
+    hoy: { cruces: 3, solape: 1, sobreCaja: 4 },
+    limiteSpec: { cruces: 4, solape: 99, sobreCaja: 5 },
+    logrado: { cruces: 1, solape: 0, sobreCaja: 0 },
+  },
+  {
+    fx: paisaje,
+    hoy: { cruces: 3, solape: 0, sobreCaja: 2 },
+    limiteSpec: { cruces: 3, solape: 99, sobreCaja: 2 },
+    logrado: { cruces: 0, solape: 0, sobreCaja: 0 },
+  },
+  {
+    fx: tooltip,
+    hoy: { cruces: 0, solape: 0, sobreCaja: 0 },
+    limiteSpec: { cruces: 0, solape: 99, sobreCaja: 0 },
+    logrado: { cruces: 0, solape: 0, sobreCaja: 0 },
+  },
+  {
+    fx: venta,
+    hoy: { cruces: 0, solape: 0, sobreCaja: 1 },
+    limiteSpec: { cruces: 0, solape: 99, sobreCaja: 1 },
+    logrado: { cruces: 0, solape: 0, sobreCaja: 0 },
+  },
 ] as unknown) as Crudo[];
 
 export const FIXTURES: FixtureTopologia[] = crudos.map(({ fx, hoy, estrategiaBase, limiteSpec, logrado }) => ({
@@ -96,9 +124,17 @@ export const RELACIONES_DE_REFERENCIA = FIXTURES.reduce((t, f) => t + f.modelo()
 
 /** Suma de la línea base de hoy. */
 export const LINEA_BASE: Medida = FIXTURES.reduce(
-  (t, f) => ({ cruces: t.cruces + f.hoy.cruces, sobreCaja: t.sobreCaja + f.hoy.sobreCaja }),
-  { cruces: 0, sobreCaja: 0 }
+  (t, f) => ({
+    cruces: t.cruces + f.hoy.cruces,
+    solape: t.solape + f.hoy.solape,
+    sobreCaja: t.sobreCaja + f.hoy.sobreCaja,
+  }),
+  { cruces: 0, solape: 0, sobreCaja: 0 }
 );
 
-/** Objetivo de SC-001 para el conjunto entero. */
-export const OBJETIVO: Medida = { cruces: 6, sobreCaja: 2 };
+/**
+ * Objetivo de SC-001 para el conjunto entero. El spec no habla de solape —es
+ * una dimensión que apareció después (#392)—, así que el tope del conjunto lo
+ * pone el trinquete de cada fixture, no este número: por eso va en 0.
+ */
+export const OBJETIVO: Medida = { cruces: 6, solape: 0, sobreCaja: 2 };
