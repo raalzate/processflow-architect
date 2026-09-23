@@ -1153,6 +1153,84 @@ describe("metadatos de la caja: ida y vuelta", () => {
 });
 
 // -----------------------------------------------------------------------------
+// Estilo del elemento (element-style) en el ida y vuelta
+// -----------------------------------------------------------------------------
+
+describe("estilo de la caja: ida y vuelta", () => {
+  const estilo = {
+    fuente: "Georgia, serif",
+    tamano: 18,
+    negrita: true,
+    alineacion: "izquierda" as const,
+    colorTexto: "#112233",
+  };
+
+  it("sobrevive el ciclo lienzo → GraphData → lienzo, en nodo Y en contenedor", () => {
+    const nodes = new Map<string, DesignerNode>([
+      ["agg-Pagos", makeNode({ id: "agg-Pagos", nombre: "Pagos", tipo_elemento: "Agregado", estilo })],
+      ["cmd", makeNode({ id: "cmd", nombre: "Pagar", agregado: "Pagos", estilo })],
+    ]);
+    const data = canvasToGraphData(nodes, new Map(), {
+      nombre_proyecto: "P",
+      fecha_analisis: "2026-09-23",
+    });
+    expect((data.agregados[0] as Agregado).estilo).toEqual(estilo);
+    expect(data.agregados[0].nodos[0].estilo).toEqual(estilo);
+
+    const vuelta = graphDataToCanvas(data);
+    expect(vuelta.nodes.get("cmd")!.estilo).toEqual(estilo);
+    expect(vuelta.nodes.get("agg-Pagos")!.estilo).toEqual(estilo);
+  });
+
+  it("un estilo sin nada NO viaja: el archivo no engorda con un objeto vacío por caja", () => {
+    const nodes = new Map<string, DesignerNode>([
+      ["cmd", makeNode({ id: "cmd", nombre: "Pagar", estilo: { negrita: false } })],
+    ]);
+    const data = canvasToGraphData(nodes, new Map(), {
+      nombre_proyecto: "P",
+      fecha_analisis: "2026-09-23",
+    });
+    expect(data.big_picture.nodos[0].estilo).toBeUndefined();
+  });
+
+  it("un modelo guardado ANTES de la feature abre sin estilo y sin error", () => {
+    const viejo: GraphData = {
+      ...emptyGraphData("Viejo", "2026-09-23"),
+      big_picture: {
+        descripcion: "",
+        hotspots: [],
+        nodos: [
+          { id: "cmd", nombre: "Pagar", tipo_elemento: "Comando", estado_comparativo: "nuevo" } as any,
+        ],
+        aristas: [],
+      },
+    };
+    expect(graphDataToCanvas(viejo).nodes.get("cmd")!.estilo).toBeUndefined();
+  });
+
+  it("lo guardado se normaliza al abrir: una alineación inventada no entra al lienzo", () => {
+    const data: GraphData = {
+      ...emptyGraphData("P", "2026-09-23"),
+      big_picture: {
+        descripcion: "",
+        hotspots: [],
+        nodos: [
+          {
+            id: "cmd",
+            nombre: "Pagar",
+            tipo_elemento: "Comando",
+            estado_comparativo: "nuevo",
+            estilo: { alineacion: "middle", tamano: "20", negrita: true },
+          } as any,
+        ],
+        aristas: [],
+      },
+    };
+    expect(graphDataToCanvas(data).nodes.get("cmd")!.estilo).toEqual({ tamano: 20, negrita: true });
+  });
+});
+
+// -----------------------------------------------------------------------------
 // Especificación del elemento (element-spec) en el ida y vuelta
 // -----------------------------------------------------------------------------
 

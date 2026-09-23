@@ -112,6 +112,7 @@ import {
 } from "@/components/ui/dialog";
 import { NOTATION_HELP } from "@/lib/notation-help";
 import { cn } from "@/lib/utils";
+import { estiloBloque, estiloSilueta, estiloTextoHtml, estiloTextoSvg } from "@/lib/element-style";
 import { splitEdgeLabel } from "@/lib/edge-label";
 import { edgeIsDashed, relationStyle, type EdgeMarker } from "@/lib/edge-relations";
 import {
@@ -1214,6 +1215,21 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
 
   const isDeleted = node.estado_comparativo === "eliminado";
 
+  // Estilo elegido por el usuario (`element-style.ts`). Sólo trae las claves que
+  // tocó, y aplicarlo EN LÍNEA es lo que le gana a la clase de Tailwind que pone
+  // la silueta: lo que no tocó lo sigue decidiendo la notación.
+  const estiloTxt = estiloTextoHtml(node.estilo);
+  const estiloTxtSvg = estiloTextoSvg(node.estilo);
+  const estiloBlq = estiloBloque(node.estilo);
+  // Con la caja seleccionada el contorno propio no se aplica: manda el azul de
+  // selección (por eso el borde viaja sólo cuando no hay trazo de resalte).
+  const estiloForma = estiloSilueta(
+    node.estilo,
+    { color: node.color, borderColor: node.borderColor },
+    { conBorde: !trazoResalte }
+  );
+  const trazoPropio = estiloForma.stroke;
+
   if (isContainerType(node.tipo_elemento)) {
     const width = node.width || AGGREGATE_DEFAULT_WIDTH;
     const height = node.height || AGGREGATE_DEFAULT_HEIGHT;
@@ -1276,8 +1292,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           // arrastre encima —ahí sí importa saber dónde cae lo que se suelta.
           // Colores personalizados del contenedor: fondo siempre; borde sólo sin selección.
           style={{
-            ...(node.color ? { fill: node.color } : {}),
-            ...(!trazoResalte && node.borderColor ? { stroke: node.borderColor } : {}),
+            ...estiloForma,
             ...(lifeline && !isSelected && !connecting ? { opacity: 0.25 } : {}),
           }}
         />
@@ -1356,7 +1371,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 meta?.transparent ? "fill-canvas" : color.bg,
                 trazoResalte ?? meta?.stroke ?? color.border
               )}
-              style={!trazoResalte && node.borderColor ? { stroke: node.borderColor } : undefined}
+              style={trazoPropio ? { stroke: trazoPropio } : undefined}
             />
             <line
               x1={width / 2}
@@ -1366,7 +1381,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               strokeDasharray="6 6"
               strokeWidth={2}
               className={cn(trazoResalte ?? meta?.stroke ?? color.border)}
-              style={!trazoResalte && node.borderColor ? { stroke: node.borderColor } : undefined}
+              style={trazoPropio ? { stroke: trazoPropio } : undefined}
             />
             <text
               x={width / 2}
@@ -1379,6 +1394,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 color.text,
                 isDeleted && "line-through"
               )}
+              style={estiloTxtSvg}
             >
               {node.nombre}
             </text>
@@ -1393,7 +1409,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               y2={height}
               className={cn(trazoResalte ?? meta?.stroke ?? color.border)}
               strokeWidth={2}
-              style={!trazoResalte && node.borderColor ? { stroke: node.borderColor } : undefined}
+              style={trazoPropio ? { stroke: trazoPropio } : undefined}
             />
             <text
               // Rotado sobre el centro de la banda; el nombre lee de abajo a arriba.
@@ -1407,6 +1423,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 color.text,
                 isDeleted && "line-through"
               )}
+              style={estiloTxtSvg}
             >
               {node.nombre}
             </text>
@@ -1424,6 +1441,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               color.text,
               isDeleted && "line-through"
             )}
+            style={estiloTxtSvg}
           >
             {node.nombre}
           </text>
@@ -1437,6 +1455,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               color.text,
               isDeleted && "line-through"
             )}
+            style={estiloTxtSvg}
           >
             {node.nombre}
           </text>
@@ -1546,10 +1565,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             connecting && "group-hover:stroke-blue-500 group-hover:stroke-[3px]"
           )}
           strokeWidth={isSelected ? 3 : isRelated ? 2.5 : 2}
-          style={{
-            ...(node.color ? { fill: node.color } : {}),
-            ...(!trazoResalte && node.borderColor ? { stroke: node.borderColor } : {}),
-          }}
+          style={estiloForma}
         />
         {/* Banda del nombre: la tabla se identifica de un vistazo aunque la caja
             esté llena de filas. */}
@@ -1559,6 +1575,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           textAnchor="middle"
           fill="currentColor"
           className={cn("select-none text-[11px] font-bold", color.text, isDeleted && "line-through")}
+          style={estiloTxtSvg}
         >
           {node.nombre}
         </text>
@@ -1648,18 +1665,21 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         strokeWidth={isSelected ? 3 : isRelated ? 2.5 : 2}
         // Colores personalizados: fondo siempre; borde sólo si no está seleccionado
         // (al seleccionar manda el contorno azul de selección).
-        style={{
-          ...(node.color ? { fill: node.color } : {}),
-          ...(!trazoResalte && node.borderColor ? { stroke: node.borderColor } : {}),
-        }}
+        style={estiloForma}
       />
       <foreignObject width={nodeW} height={nodeH} className="pointer-events-none">
         {shape === "text" ? (
           // Texto SIN silueta. El «encabezado» separa jerarquía: título grande
           // arriba y el cuerpo debajo, más chico. El rótulo es una sola línea.
           textStyleOfType(node.tipo_elemento) === "heading" ? (
-            <div className={cn("flex h-full w-full flex-col justify-center px-1", color.text)}>
-              <p className={cn("text-base font-bold leading-tight select-none break-words", isDeleted && "line-through")}>
+            <div
+              className={cn("flex h-full w-full flex-col justify-center px-1", color.text)}
+              style={estiloBlq}
+            >
+              <p
+                className={cn("text-base font-bold leading-tight select-none break-words", isDeleted && "line-through")}
+                style={estiloTxt}
+              >
                 {node.nombre}
               </p>
               {!!node.descripcion && (
@@ -1669,8 +1689,22 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               )}
             </div>
           ) : (
-            <div className={cn("flex h-full w-full items-center justify-center px-1 text-center", color.text)}>
-              <p className={cn("text-sm font-bold leading-tight select-none break-words line-clamp-3", isDeleted && "line-through")}>
+            // En COLUMNA (y no en fila) a propósito: así la alineación vertical
+            // del estilo es `justifyContent` en todas las siluetas por igual.
+            <div
+              className={cn(
+                "flex h-full w-full flex-col items-center justify-center px-1 text-center",
+                color.text
+              )}
+              style={estiloBlq}
+            >
+              <p
+                className={cn(
+                  "text-sm font-bold leading-tight select-none break-words line-clamp-3",
+                  isDeleted && "line-through"
+                )}
+                style={estiloTxt}
+              >
                 {node.nombre}
               </p>
             </div>
@@ -1685,12 +1719,14 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               color.text,
               shape === "ellipse" && "px-6"
             )}
+            style={estiloBlq}
           >
             <p
               className={cn(
                 "text-sm font-bold leading-tight select-none break-words max-w-full line-clamp-3",
                 isDeleted && "line-through"
               )}
+              style={estiloTxt}
             >
               {node.nombre}
             </p>
@@ -1722,12 +1758,16 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 )}
               />
             )}
-            <div className="h-full flex flex-col items-center justify-center text-center gap-0.5">
+            <div
+              className="h-full flex flex-col items-center justify-center text-center gap-0.5"
+              style={estiloBlq}
+            >
               <p
                 className={cn(
                   "text-sm font-bold leading-tight select-none break-words max-w-full line-clamp-2",
                   isDeleted && "line-through"
                 )}
+                style={estiloTxt}
               >
                 {node.nombre}
               </p>
@@ -1753,6 +1793,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               // Deja aire para el badge de subproceso apoyado en el borde inferior.
               hasSubView && !labelOutside && "pb-3"
             )}
+            style={estiloBlq}
           >
             {/* Símbolos UML canónicos (punto inicial, rombo de decisión): sin
                 icono. Una forma LIBRE tampoco lo lleva: la silueta ya dice lo
@@ -1770,6 +1811,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                   meta?.hideIcon ? "line-clamp-3" : "line-clamp-2",
                   isDeleted && "line-through"
                 )}
+                style={estiloTxt}
               >
                 {node.nombre}
               </p>
@@ -1798,6 +1840,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               color.text,
               isDeleted && "line-through"
             )}
+            style={estiloTxt}
           >
             {node.nombre}
           </p>

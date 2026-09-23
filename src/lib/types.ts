@@ -6,6 +6,7 @@ import type { FragmentOp, FragmentPart } from "./sequence/fragments";
 import type { ElementMetadata } from "./element-metadata";
 import type { ElementSpec } from "./element-spec";
 import type { ElementDoc } from "./element-docs";
+import type { ElementStyle } from "./element-style";
 import type { SourceDoc } from "./source-docs";
 import type { TableColumn } from "./mer/table-box";
 import type { NotationId } from "./notations";
@@ -73,6 +74,14 @@ export interface GraphNode extends SimulationNodeDatum {
   color?: string;
   /** Color de borde/contorno personalizado (hex). Si falta, usa el de la notación. */
   borderColor?: string;
+  /**
+   * Cómo se DIBUJA la caja cuando el usuario no quiere lo que decidió la
+   * notación: tipografía, tamaño, alineación y colores. Ausente mientras nadie
+   * toque nada —y entonces manda la notación, como siempre—. `color` y
+   * `borderColor` sobreviven porque los proyectos guardados los traen; el
+   * estilo, si dice algo, manda sobre ellos. Ver `src/lib/element-style.ts`.
+   */
+  estilo?: ElementStyle;
   /**
    * Referencias y datos externos de la caja: dónde vive de verdad (repositorio,
    * wiki, tablero, dueño). Es lo que conecta el diagrama con los artefactos
@@ -203,6 +212,8 @@ export interface Agregado {
   color?: string;
   /** Color de borde/contorno personalizado del contenedor (hex). */
   borderColor?: string;
+  /** Estilo visual del contenedor (ver `GraphNode.estilo`). */
+  estilo?: ElementStyle;
   /** Referencias y datos externos del contenedor (ver `GraphNode.metadata`). */
   metadata?: ElementMetadata[];
   /** Especificación del contenedor (ver `GraphNode.spec`). */

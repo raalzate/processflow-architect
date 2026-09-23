@@ -27,7 +27,7 @@ const NOISE_KEYS = new Set<string>([
   // Internos de la simulación d3 (SimulationNodeDatum/LinkDatum)
   "vx", "vy", "fx", "fy", "index",
   // Presentación
-  "color", "borderColor", "isGroup", "routing", "arrow",
+  "color", "borderColor", "estilo", "isGroup", "routing", "arrow",
   // Anclas y quiebres de las aristas (coordenadas del lienzo)
   "sourceAnchor", "targetAnchor", "midpoint", "midpoints",
   // Referencias circulares al nodo (duplican fuente/destino)
