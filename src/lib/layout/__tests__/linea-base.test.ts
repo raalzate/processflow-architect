@@ -13,7 +13,13 @@ import { relayoutConMedida } from "../../mcp/diagram-builder";
 import { defaultStrategyFor, LAYOUT_STRATEGIES, type LayoutStrategy } from "../../mcp/layout-presets";
 import { FIXTURES, LINEA_BASE, OBJETIVO, RELACIONES_DE_REFERENCIA } from "./fixtures";
 
-const medidas = FIXTURES.map((f) => ({ fixture: f, d: relayoutConMedida(f.modelo()) }));
+const medidas = FIXTURES.map((f) => ({
+  fixture: f,
+  d: relayoutConMedida(f.modelo()),
+  // La línea base se mide con la estrategia que el diagrama tenía ANTES de la
+  // feature: es contra ese punto de partida que SC-002 exige no empeorar.
+  base: relayoutConMedida(f.modelo(), f.estrategiaBase ? { strategy: f.estrategiaBase } : {}),
+}));
 
 describe("línea base de los diagramas de referencia", () => {
   it("el conjunto son las 108 relaciones del spec", () => {
@@ -22,9 +28,9 @@ describe("línea base de los diagramas de referencia", () => {
 
   it("la línea base registrada sigue siendo la que mide la disposición de partida", () => {
     const suma = medidas.reduce(
-      (t, { d }) => ({
-        cruces: t.cruces + d.legibilidad.antes.cruces,
-        sobreCaja: t.sobreCaja + d.legibilidad.antes.sobreCaja,
+      (t, { base }) => ({
+        cruces: t.cruces + base.legibilidad.antes.cruces,
+        sobreCaja: t.sobreCaja + base.legibilidad.antes.sobreCaja,
       }),
       { cruces: 0, sobreCaja: 0 }
     );
@@ -50,6 +56,10 @@ describe("línea base de los diagramas de referencia", () => {
     // medida: se comprueba igual para que el criterio del spec quede escrito.
     expect(d.legibilidad.despues.cruces).toBeLessThanOrEqual(fixture.limiteSpec.cruces);
     expect(d.legibilidad.despues.sobreCaja).toBeLessThanOrEqual(fixture.limiteSpec.sobreCaja);
+    // Trinquete: lo que ya se logró no se pierde. Cumplir el objetivo del spec
+    // dejaría pasar un retroceso de 0 a 5 cruces sin una sola prueba en rojo.
+    expect(d.legibilidad.despues.cruces).toBeLessThanOrEqual(fixture.logrado.cruces);
+    expect(d.legibilidad.despues.sobreCaja).toBeLessThanOrEqual(fixture.logrado.sobreCaja);
   });
 
   it("SC-003 · cada diagrama de referencia se dispone en menos de 200 ms", () => {
@@ -87,8 +97,8 @@ describe("estrategia por defecto", () => {
     for (const estrategia of Object.keys(LAYOUT_STRATEGIES) as LayoutStrategy[]) {
       expect(porDefecto.cruces).toBeLessThanOrEqual(total(estrategia).cruces);
     }
-    // Queda escrito cuál es hoy: el registro la declara y el lint la vigila.
-    expect(defaultStrategyFor("ddd")).toBe("radial");
+    // Queda escrito cuál es hoy; el registro es quien la declara (P6).
+    expect(defaultStrategyFor("ddd")).toBe("flujo");
   });
 
   it("TS-024 · con la estrategia por defecto ningún diagrama de dominio empeora", () => {

@@ -13,8 +13,9 @@ Aceptado el 2026-09-22. Lo que hace cumplir la decisión no es esta prosa:
 - `src/lib/layout/metrics.ts` convierte "quedó feo" en tres números (cruces · relaciones que
   atraviesan una caja ajena · relaciones sin recorrido).
 - `src/lib/layout/__tests__/linea-base.test.ts` corre esos números sobre la topología de los **seis
-  diagramas reales** en cada `npm run gate`: si el conjunto se pasa del objetivo, o si **un solo**
-  diagrama empeora en **cualquiera** de las dos métricas, el gate se pone rojo.
+  diagramas reales** en cada `npm run gate`: si el conjunto se pasa del objetivo, si **un solo**
+  diagrama empeora en **cualquiera** de las dos métricas, o si retrocede respecto de lo ya logrado,
+  el gate se pone rojo.
 - La regla `LEGIBILIDAD` de `src/lib/mcp/quality.ts` lo reporta como hallazgo de `review_diagram`.
 
 ## Contexto
@@ -39,7 +40,7 @@ Tres módulos puros bajo `src/lib/layout/`, encadenados en un solo sitio (`layou
 |---|---|
 | `metrics.ts` | cuánto se lee: cruces, paso sobre caja, relaciones sin recorrido |
 | `order.ts` | qué elemento ocupa cada ranura de su capa (baricentro + pulido) |
-| `routing.ts` | por dónde pasa la relación que en recta pisaría una caja |
+| `routing.ts` | por dónde pasa la relación que en recta pisaría una caja o cruzaría a otra |
 | `legible.ts` | los encadena, marca la geometría que genera y compara antes/después |
 
 Reglas que no se negocian, y por qué:
@@ -48,8 +49,10 @@ Reglas que no se negocian, y por qué:
   sale de su banda y el aire del diagrama se conserva.
 - **Ninguna fase puede empeorar ninguna de las dos métricas.** El coste combinado por sí solo
   aceptaba cambiar un cruce por dos pasos sobre caja: el número bajaba y el diagrama se leía peor.
-- **Sólo se rutea la relación que pisaría una caja.** Convertir todo en escalera rompería el
-  enrutado por defecto que declara cada notación (P6).
+- **Se rutea la relación que pisaría una caja y la que se cruzaría con otra**, en dos pasadas de
+  rip-up & reroute. Con una sola pasada, la que se decidió temprano no se entera de que otra
+  terminó pasándole por encima. Lo que no cambia es la garantía: si ninguna candidata baja el
+  coste, la relación conserva el enrutado que declara su notación (P6 · FR-014).
 - **La geometría del humano es intocable.** La que calcula la disposición se marca (`geometriaAuto`);
   la que no está marcada es de una persona —incluida toda la anterior a esta feature— y sobrevive a
   cualquier reorganización. Arrastrar un quiebre calculado lo vuelve manual.
@@ -63,9 +66,14 @@ Sobre los seis diagramas de referencia (108 relaciones), medidos con `metrics.ts
 | | Cruces | Relaciones sobre caja ajena |
 |---|---|---|
 | Disposición de partida (la estrategia sola) | 9 | 17 |
-| Con orden y ruteo | **4** | **2** |
+| Con orden y ruteo | **0** | **0** |
 
-Ningún diagrama empeora en ninguna de las dos métricas.
+Ningún diagrama empeora en ninguna de las dos métricas, y ninguno queda con una sola X ni una sola
+línea por encima de una caja ajena. El objetivo del spec era ≤6 y ≤2.
+
+Esos números son un **trinquete**: cada fixture registra lo que se logró (`logrado`) y el gate lo
+exige, porque cumplir el objetivo del spec dejaría pasar un retroceso de 0 a 5 cruces sin una sola
+prueba en rojo.
 
 La línea base del spec (16 / 22) venía del prototipo, que contaba también el solape colineal como
 cruce y medía desde el centro de la caja en vez del borde. La métrica que se entrega cuenta sólo la
@@ -76,11 +84,13 @@ en `src/lib/layout/__tests__/fixtures/index.ts`, que es donde el gate los compar
 
 - Los diagramas ya guardados **no se migran**: cambian cuando alguien los reorganiza. Es el
   comportamiento de siempre de `relayout_diagram`.
-- La estrategia por defecto de DDD **sigue siendo `radial`**. El spec preveía cambiarla por ser la
-  peor, pero eso se midió sin orden ni ruteo; con la feature entera, `radial` deja 2 cruces en los
-  diagramas de dominio y ninguna otra estrategia deja menos. La decisión dejó de ser una opinión:
-  el test `TS-023` compara la del registro contra todas las demás y se pondrá rojo el día que otra
-  sea mejor.
+- La estrategia por defecto de DDD pasa de `radial` a **`flujo`** (#387). Medido con la feature
+  entera sobre los diagramas de dominio: `flujo` 0 cruces / 0 sobre caja, `radial` 1/2, `capas` 2/4.
+  Las relaciones de DDD tienen dirección (Actor → Comando → Evento → Política) y el avance por flujo
+  la aprovecha; el radial repartía en anillos y las relaciones se cortaban en el centro. La decisión
+  dejó de ser una opinión: el test `TS-023` compara la del registro contra todas las demás y se
+  pondrá rojo el día que otra sea mejor. El MER sigue siendo radial: ahí la entidad con sus
+  atributos alrededor es la lectura correcta.
 - Quedan **fuera de alcance**, declarados: separar relaciones paralelas o bidireccionales que
   comparten trazo, repartir extremos por el borde (puertos), y los mensajes de un diagrama de
   secuencia, donde manda el tiempo y no la geometría.

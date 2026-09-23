@@ -54,7 +54,15 @@ const DESPLAZAMIENTOS = 3;
 const RODEOS = 4;
 
 /** Pesos del coste. El obstáculo domina: es el dolor que reportó el usuario. */
-const PESO = { obstaculo: 10, cruceFijo: 4, crucePendiente: 2, doblez: 0.8, longitud: 1 / 4000 };
+const PESO = { obstaculo: 10, cruce: 4, doblez: 0.8, longitud: 1 / 4000 };
+
+/**
+ * Pasadas de rip-up & reroute. Con una sola, la relación que se decidió primero
+ * no se entera de que otra terminó pasándole por encima: así quedaban los dos
+ * cruces del diagrama de enrollment (#391). Dos pasadas alcanzan; la tercera no
+ * cambió nada en ningún diagrama de referencia y se corta sola si no hay cambio.
+ */
+const PASADAS = 2;
 
 const centro = (c: Caja): Punto => ({ x: c.x + c.width / 2, y: c.y + c.height / 2 });
 
@@ -175,10 +183,6 @@ export function rutarRelaciones(
     return d !== 0 ? d : a.rel.id.localeCompare(b.rel.id);
   });
 
-  let rutas = new Map<string, Punto[]>();
-  const trazado: Array<{ seg: [Punto, Punto]; rel: Relacion }> = [];
-  const restantes = new Map(pendientes.map((p) => [p.rel.id, p.recta]));
-
   const libres = {
     x: corredores(obstaculos, "x", margen),
     y: corredores(obstaculos, "y", margen),
@@ -193,61 +197,78 @@ export function rutarRelaciones(
     return n;
   };
 
-  for (const p of pendientes) {
-    restantes.delete(p.rel.id);
-    if (opts.fijas?.has(p.rel.id)) {
-      const suya = p.rel.puntos ?? p.recta;
-      trazado.push(...segmentos(suya).map((seg) => ({ seg, rel: p.rel })));
-      continue;
-    }
-    const sinRutear = pisa(p.recta, p) === 0;
-    // D2: lo que ya se lee bien no se toca. Así el enrutado por defecto de la
-    // notación (curvo en C4, recto en el resto) sobrevive intacto.
-    if (sinRutear || ahora() - t0 > presupuesto) {
-      trazado.push(...segmentos(p.recta).map((seg) => ({ seg, rel: p.rel })));
-      continue;
-    }
+  // Recorrido ACTUAL de cada relación, empezando por la recta. El ruteo trabaja
+  // sobre este dibujo completo en vez de sobre "lo ya trazado": una relación que
+  // se decidió temprano tiene que poder revisarse cuando otra le pasa por encima.
+  const actual = new Map<string, Punto[]>(
+    pendientes.map((p) => [p.rel.id, opts.fijas?.has(p.rel.id) ? p.rel.puntos ?? p.recta : p.recta])
+  );
 
-    // Dos relaciones que comparten un extremo se tocan en el nodo: eso no es un
-    // cruce y cobrarlo empujaba al ruteo a dar rodeos que nadie pedía.
-    const ajena = (otra: Relacion) =>
-      otra.fuente !== p.rel.fuente &&
-      otra.fuente !== p.rel.destino &&
-      otra.destino !== p.rel.fuente &&
-      otra.destino !== p.rel.destino;
+  for (let pasada = 0; pasada < PASADAS && ahora() - t0 <= presupuesto; pasada++) {
+    let cambio = false;
 
-    const cruzaCon = (pts: Punto[]): number => {
-      const segs = segmentos(pts);
-      let coste = 0;
-      for (const s of segs) {
-        for (const t of trazado) if (ajena(t.rel) && seCortan(s, t.seg)) coste += PESO.cruceFijo;
-        for (const q of pendientes) {
-          if (!restantes.has(q.rel.id) || !ajena(q.rel)) continue;
-          for (const t of segmentos(q.recta)) if (seCortan(s, t)) coste += PESO.crucePendiente;
-        }
-      }
-      return coste;
-    };
+    for (const p of pendientes) {
+      if (opts.fijas?.has(p.rel.id) || ahora() - t0 > presupuesto) continue;
 
-    let mejor = p.recta;
-    let mejorCoste = Infinity;
-    for (const bruta of candidatas(centro(p.fuente), centro(p.destino), paso, libres)) {
-      const pts = recortar(bruta, p.fuente, p.destino);
-      const coste =
+      // Dos relaciones que comparten un extremo se tocan en el nodo: eso no es
+      // un cruce y cobrarlo empujaba al ruteo a dar rodeos que nadie pedía.
+      const ajena = (otra: Relacion) =>
+        otra.fuente !== p.rel.fuente &&
+        otra.fuente !== p.rel.destino &&
+        otra.destino !== p.rel.fuente &&
+        otra.destino !== p.rel.destino;
+
+      const otras = pendientes
+        .filter((q) => q.rel.id !== p.rel.id && ajena(q.rel))
+        .flatMap((q) => segmentos(actual.get(q.rel.id)!));
+
+      const cruzaCon = (pts: Punto[]): number => {
+        let n = 0;
+        for (const s of segmentos(pts)) for (const t of otras) if (seCortan(s, t)) n++;
+        return n;
+      };
+
+      const costeDe = (pts: Punto[]) =>
         PESO.obstaculo * pisa(pts, p) +
-        cruzaCon(pts) +
+        PESO.cruce * cruzaCon(pts) +
         PESO.doblez * Math.max(0, pts.length - 2) +
         PESO.longitud * largo(pts);
-      if (coste < mejorCoste) {
-        mejorCoste = coste;
-        mejor = pts;
+
+      // Se rutea la que pisa una caja y también la que sólo se CRUZA con otra
+      // (#391): el corredor que esquiva una caja suele meterse justo por donde
+      // van dos diagonales que no pisan nada, y ésas antes eran intocables.
+      const suyo = actual.get(p.rel.id)!;
+      if (pisa(suyo, p) === 0 && cruzaCon(suyo) === 0) continue;
+
+      // La RECTA es la candidata a batir, no una más: si ninguna mejora, la
+      // relación se queda con el enrutado de su notación (FR-014 · D2).
+      let mejor = p.recta;
+      let mejorCoste = costeDe(p.recta);
+      for (const bruta of candidatas(centro(p.fuente), centro(p.destino), paso, libres)) {
+        const pts = recortar(bruta, p.fuente, p.destino);
+        const coste = costeDe(pts);
+        if (coste < mejorCoste) {
+          mejorCoste = coste;
+          mejor = pts;
+        }
+      }
+
+      if (JSON.stringify(mejor) !== JSON.stringify(suyo)) {
+        actual.set(p.rel.id, mejor);
+        cambio = true;
       }
     }
 
-    trazado.push(...segmentos(mejor).map((seg) => ({ seg, rel: p.rel })));
+    // Sin cambios, otra pasada daría exactamente lo mismo.
+    if (!cambio) break;
+  }
+
+  let rutas = new Map<string, Punto[]>();
+  for (const p of pendientes) {
+    if (opts.fijas?.has(p.rel.id)) continue;
     // Sin ruta limpia se guarda la menos mala: el diagrama se dibuja igual
     // (P8 — el lienzo nunca queda en blanco).
-    const quiebres = mejor.slice(1, -1);
+    const quiebres = actual.get(p.rel.id)!.slice(1, -1);
     if (quiebres.length) rutas.set(p.rel.id, quiebres);
   }
 
