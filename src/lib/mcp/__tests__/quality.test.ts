@@ -293,6 +293,26 @@ describe("regla LEGIBILIDAD (feature 017)", () => {
     expect(rules(conRelacionSobreCaja())).toContain("LEGIBILIDAD");
   });
 
+  it("#390 · calla cuando el ruteo ya esquivó la caja", () => {
+    // El mismo diagrama ilegible, pero con el recorrido que calcula la
+    // disposición: la regla tiene que medir ESE trazo, no la recta que el
+    // lienzo no dibuja. Antes denunciaba lo que el ruteo acababa de arreglar.
+    const m = conRelacionSobreCaja();
+    const ruteado: DiagramModel = {
+      ...m,
+      edges: m.edges.map((e) => ({
+        ...e,
+        routing: "orthogonal" as const,
+        midpoints: [
+          { x: 50, y: 200 },
+          { x: 650, y: 200 },
+        ],
+        geometriaAuto: true,
+      })),
+    };
+    expect(rules(ruteado)).not.toContain("LEGIBILIDAD");
+  });
+
   it("TS-020 · calla cuando el diagrama está por debajo del umbral", () => {
     let m = emptyDiagram({ nombre_proyecto: "Legible", notation: "ddd" as const });
     const tipoNodo = tipo("ddd", "event");
