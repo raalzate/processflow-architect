@@ -43,6 +43,15 @@ import {
   FileText,
   Paperclip,
   Eye,
+  Bold,
+  Italic,
+  Underline,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignVerticalJustifyStart,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -166,6 +175,16 @@ import { buildEmbedMap, wouldCreateCycle } from "@/lib/view-embeds";
 import { ReferenceContextDialog } from "./ReferenceContextDialog";
 import { CanvasContextMenu, type CanvasMenuItem } from "./CanvasContextMenu";
 import { draftPatch, hasDraftChanges, parseTagList } from "./inspector-draft";
+import {
+  FUENTES,
+  TAMANO_MAX,
+  TAMANO_MIN,
+  clampTamano,
+  estiloParaGuardar,
+  type AlineacionH,
+  type AlineacionV,
+  type ElementStyle,
+} from "@/lib/element-style";
 import {
   copySelection,
   getSharedClipboard,
@@ -715,6 +734,193 @@ const ColorField: React.FC<{
     </div>
   </div>
 );
+
+/** Botón de dos estados del bloque «Estilo» (negrita, alineación…). */
+const EstiloToggle: React.FC<{
+  activo: boolean;
+  title: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}> = ({ activo, title, onClick, children }) => (
+  <button
+    type="button"
+    title={title}
+    aria-label={title}
+    aria-pressed={activo}
+    onClick={onClick}
+    className={cn(
+      "flex h-7 w-7 items-center justify-center rounded border transition",
+      activo ? "border-blue-500 bg-blue-500/10 text-blue-600" : "border-input hover:bg-accent"
+    )}
+  >
+    {children}
+  </button>
+);
+
+/**
+ * Bloque «Estilo» de la ficha: cómo se DIBUJA la caja cuando lo que decidió la
+ * notación no alcanza —un nombre largo que no entra, una caja que hay que
+ * resaltar en la lámina del cliente—.
+ *
+ * Cada control apaga su propio valor al volver a pulsarlo, y lo que queda
+ * vacío no se guarda: así «restablecer» no es un botón aparte y la caja vuelve
+ * sola al estilo de su tipo. Los colores de fondo y borde viven acá y, al
+ * tocarlos, limpian los campos sueltos que traía el proyecto (`color`,
+ * `borderColor`) para que el estilo sea la única fuente.
+ */
+const EstiloField: React.FC<{
+  value?: ElementStyle;
+  /** Colores sueltos del proyecto guardado, que este bloque reemplaza. */
+  legado: { color?: string; borderColor?: string };
+  onChange: (estilo: ElementStyle | undefined, limpiarLegado: boolean) => void;
+}> = ({ value, legado, onChange }) => {
+  const estilo = value ?? {};
+  const set = (parche: Partial<ElementStyle>, limpiarLegado = false) =>
+    onChange(estiloParaGuardar({ ...estilo, ...parche }), limpiarLegado);
+  /** Un valor que ya está puesto se quita al volver a elegirlo. */
+  const alternar = <K extends keyof ElementStyle>(clave: K, valor: ElementStyle[K]) =>
+    set({ [clave]: estilo[clave] === valor ? undefined : valor } as Partial<ElementStyle>);
+
+  const fuenteActual = FUENTES.find((f) => f.css === (estilo.fuente ?? ""))?.id ?? "heredada";
+  const horizontales: { id: AlineacionH; label: string; Icon: typeof AlignLeft }[] = [
+    { id: "izquierda", label: "Alinear a la izquierda", Icon: AlignLeft },
+    { id: "centro", label: "Centrar", Icon: AlignCenter },
+    { id: "derecha", label: "Alinear a la derecha", Icon: AlignRight },
+  ];
+  const verticales: { id: AlineacionV; label: string; Icon: typeof AlignLeft }[] = [
+    { id: "arriba", label: "Arriba", Icon: AlignVerticalJustifyStart },
+    { id: "medio", label: "Al medio", Icon: AlignVerticalJustifyCenter },
+    { id: "abajo", label: "Abajo", Icon: AlignVerticalJustifyEnd },
+  ];
+
+  return (
+    <div className="rounded-md border p-3">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm font-semibold">Estilo</Label>
+        {!!value && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => onChange(undefined, false)}
+          >
+            Restablecer
+          </Button>
+        )}
+      </div>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        Lo que no toques lo sigue decidiendo la notación.
+      </p>
+
+      <div className="mt-3 grid grid-cols-[1fr_auto] items-end gap-2">
+        <div>
+          <Label className="text-xs">Fuente</Label>
+          <Select
+            value={fuenteActual}
+            onValueChange={(id) =>
+              set({ fuente: FUENTES.find((f) => f.id === id)?.css || undefined })
+            }
+          >
+            <SelectTrigger className="mt-1 h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FUENTES.map((f) => (
+                <SelectItem key={f.id} value={f.id}>
+                  {f.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs">Tamaño</Label>
+          <div className="mt-1 flex items-center gap-1">
+            <Input
+              type="number"
+              min={TAMANO_MIN}
+              max={TAMANO_MAX}
+              placeholder="auto"
+              className="h-8 w-20"
+              value={estilo.tamano ?? ""}
+              onChange={(e) => set({ tamano: clampTamano(e.target.value) })}
+            />
+            <span className="text-xs text-muted-foreground">px</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1">
+          <EstiloToggle
+            activo={!!estilo.negrita}
+            title="Negrita"
+            onClick={() => set({ negrita: !estilo.negrita })}
+          >
+            <Bold className="h-3.5 w-3.5" />
+          </EstiloToggle>
+          <EstiloToggle
+            activo={!!estilo.cursiva}
+            title="Cursiva"
+            onClick={() => set({ cursiva: !estilo.cursiva })}
+          >
+            <Italic className="h-3.5 w-3.5" />
+          </EstiloToggle>
+          <EstiloToggle
+            activo={!!estilo.subrayado}
+            title="Subrayado"
+            onClick={() => set({ subrayado: !estilo.subrayado })}
+          >
+            <Underline className="h-3.5 w-3.5" />
+          </EstiloToggle>
+        </div>
+        <div className="flex items-center gap-1">
+          {horizontales.map(({ id, label, Icon }) => (
+            <EstiloToggle
+              key={id}
+              activo={estilo.alineacion === id}
+              title={label}
+              onClick={() => alternar("alineacion", id)}
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </EstiloToggle>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          {verticales.map(({ id, label, Icon }) => (
+            <EstiloToggle
+              key={id}
+              activo={estilo.alineacionVertical === id}
+              title={label}
+              onClick={() => alternar("alineacionVertical", id)}
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </EstiloToggle>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-3">
+        <ColorField
+          label="Color de letra"
+          value={estilo.colorTexto}
+          onChange={(c) => set({ colorTexto: c })}
+        />
+        <ColorField
+          label="Color de fondo"
+          value={estilo.fondo ?? legado.color}
+          onChange={(c) => set({ fondo: c }, true)}
+        />
+        <ColorField
+          label="Color de borde"
+          value={estilo.borde ?? legado.borderColor}
+          onChange={(c) => set({ borde: c }, true)}
+        />
+      </div>
+    </div>
+  );
+};
 
 /**
  * El fragmento del documento que sostiene esta caja. La cita («Fuente:
@@ -1450,15 +1656,23 @@ const EditNodeDialog: React.FC<{
             />
             <SugBtn field="tags" onClick={suggestTags} disabled={!draft.nombre.trim()} />
           </TagsField>
-          <ColorField
-            label="Color de fondo"
-            value={draft.color}
-            onChange={(c) => setDraft((d) => (d ? { ...d, color: c } : d))}
-          />
-          <ColorField
-            label="Color de borde"
-            value={draft.borderColor}
-            onChange={(c) => setDraft((d) => (d ? { ...d, borderColor: c } : d))}
+          <EstiloField
+            value={draft.estilo}
+            legado={{ color: draft.color, borderColor: draft.borderColor }}
+            onChange={(estilo, limpiarLegado) =>
+              setDraft((d) =>
+                d
+                  ? {
+                      ...d,
+                      estilo,
+                      // Tocar el fondo o el borde desde acá deja al estilo como
+                      // única fuente: si no, el campo suelto del proyecto viejo
+                      // seguiría ahí, invisible y contradiciendo a la ficha.
+                      ...(limpiarLegado ? { color: undefined, borderColor: undefined } : {}),
+                    }
+                  : d
+              )
+            }
           />
             </div>
           </div>

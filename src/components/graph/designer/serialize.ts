@@ -23,6 +23,7 @@ import { type FragmentOp, type FragmentPart } from "@/lib/sequence/fragments";
 import { normalizarLista, type ElementMetadata } from "@/lib/element-metadata";
 import { sanitizeSpec, type ElementSpec } from "@/lib/element-spec";
 import { docsParaGuardar, type ElementDoc } from "@/lib/element-docs";
+import { estiloParaGuardar, normalizarEstilo, type ElementStyle } from "@/lib/element-style";
 import { normalizarColumnas, type TableColumn } from "@/lib/mer/table-box";
 import {
   isNotationContainer,
@@ -50,6 +51,12 @@ export interface DesignerNode {
   color?: string;
   /** Color de borde/contorno personalizado (hex). */
   borderColor?: string;
+  /**
+   * Estilo visual de la caja (tipografía, alineación, colores). Vale igual para
+   * un nodo y para un CONTENEDOR: al guardar viaja a `Agregado.estilo`.
+   * Ver `src/lib/element-style.ts`.
+   */
+  estilo?: ElementStyle;
   /**
    * Referencias y datos externos de la caja (repo, wiki, dueño). Vale igual para
    * un nodo y para un CONTENEDOR: en el lienzo el contenedor también es un
@@ -185,6 +192,7 @@ export function canvasToGraphData(
       tipo_contenedor: c.tipo_elemento,
       color: c.color,
       borderColor: c.borderColor,
+      estilo: estiloParaGuardar(c.estilo),
       metadata: c.metadata,
       // Una spec vacía no viaja: se guarda `undefined` para no agregarle un
       // objeto a cada contenedor del archivo (ver `isSpecEmpty`).
@@ -288,6 +296,7 @@ function toDomainNode(n: DesignerNode): Omit<GraphNode, "agregado"> {
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
     borderColor: n.borderColor,
+    estilo: estiloParaGuardar(n.estilo),
     metadata: n.metadata,
     spec: sanitizeSpec(n.spec),
     adjuntos: docsParaGuardar(n.adjuntos),
@@ -347,6 +356,8 @@ export function graphDataToCanvas(content: GraphData | null | undefined): {
       estado_comparativo: agg.estado_comparativo || "nuevo",
       color: (agg as any).color,
       borderColor: (agg as any).borderColor,
+      // Puede venir de un archivo viejo o de un agente: se normaliza, no se confía.
+      estilo: normalizarEstilo((agg as any).estilo),
       // Lo guardado puede venir de un import o de una versión vieja: se normaliza
       // (descarta lo inválido, deduplica por clave) en vez de confiar.
       metadata: normalizarLista((agg as any).metadata),
@@ -412,6 +423,7 @@ function hydrateNode(
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
     borderColor: n.borderColor,
+    estilo: normalizarEstilo((n as { estilo?: unknown }).estilo),
     metadata: normalizarLista(n.metadata),
     spec: sanitizeSpec(n.spec),
     adjuntos: docsParaGuardar((n as { adjuntos?: unknown }).adjuntos),

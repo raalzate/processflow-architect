@@ -80,7 +80,8 @@ export function resumenDeLegibilidad(medida: MedidaComparada, parcial = false): 
   const { antes, despues, conRecorridosManuales } = medida;
   const partes = [
     `Legibilidad: cruces ${antes.cruces} → ${despues.cruces} · ` +
-      `relaciones sobre caja ajena ${antes.sobreCaja} → ${despues.sobreCaja} ` +
+      `relaciones sobre caja ajena ${antes.sobreCaja} → ${despues.sobreCaja} · ` +
+      `encimadas ${antes.solape} → ${despues.solape} ` +
       `(sobre ${despues.relaciones} relaciones).`,
   ];
   if (conRecorridosManuales)
@@ -90,19 +91,37 @@ export function resumenDeLegibilidad(medida: MedidaComparada, parcial = false): 
   return partes.join("\n");
 }
 
-/** Mide un diagrama tal como está, sin mover ni rutear nada. */
+/**
+ * Mide un diagrama tal como está, sin mover ni rutear nada.
+ *
+ * Usa TODOS los quiebres guardados, los haya puesto una persona o la propia
+ * disposición: lo que se mide es el trazo que se dibuja (D6). La marca
+ * `geometriaAuto` decide qué se puede REEMPLAZAR, no qué se mide — confundir
+ * las dos cosas hacía que la revisión denunciara cuatro relaciones sobre caja
+ * en un diagrama que el ruteo acababa de dejar en cero (#390).
+ */
 export function medirDisposicion(model: DiagramModel): DisposicionLegible {
-  const manuales = rutasManuales(model);
-  const medida = medirLegibilidad(
-    cajasDelModelo(model),
-    relacionesDelModelo(model, manuales)
-  );
+  const rutas = rutasGuardadas(model);
+  const medida = medirLegibilidad(cajasDelModelo(model), relacionesDelModelo(model, rutas));
   return {
     model,
-    legibilidad: { antes: medida, despues: medida, conRecorridosManuales: manuales.size > 0 },
-    rutas: manuales,
+    legibilidad: {
+      antes: medida,
+      despues: medida,
+      conRecorridosManuales: rutasManuales(model).size > 0,
+    },
+    rutas,
     parcial: false,
   };
+}
+
+/** Recorridos que tiene el diagrama hoy, sin importar quién los puso. */
+function rutasGuardadas(model: DiagramModel): Map<string, Punto[]> {
+  const rutas = new Map<string, Punto[]>();
+  model.edges.forEach((e, i) => {
+    if (e.midpoints?.length) rutas.set(idDeRelacion(i), e.midpoints);
+  });
+  return rutas;
 }
 
 /** Recorridos que puso una persona, por id de relación. */

@@ -378,10 +378,12 @@ const DDD: Notation = {
     "Táctico: Entidades, Objetos de Valor, Agregados con su Raíz, Eventos de Dominio, Servicios de Dominio, Repositorios y Fábricas.",
   analystRole: "analista DDD/Event Storming",
   modelLabel: "Modelo de Dominio",
-  // DDD no cuenta una historia con inicio y fin: cuenta cómo un concepto central
-  // se relaciona con todo lo demás (el mapa de patrones de Evans se dibuja así).
-  // Por capas quedaba una rejilla que escondía justamente eso: las relaciones.
-  defaultLayout: "radial",
+  // DDD no cuenta una historia con inicio y fin, pero sus relaciones sí tienen
+  // dirección (Actor → Comando → Evento → Política), y medido sobre los diagramas
+  // de referencia el avance por flujo es el que menos cruces deja: 0 contra 1 del
+  // radial, y ninguna relación por encima de una caja contra 2 (#387 · #391).
+  // El radial repartía en anillos y las relaciones se cortaban en el centro.
+  defaultLayout: "flujo",
   flowRules:
     "- Actor → Comando (relación \"ejecuta\")\n" +
     "- Comando → Evento (relación \"produce\")\n" +

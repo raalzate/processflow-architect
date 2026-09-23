@@ -34,10 +34,14 @@ const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.hypot(a.x - b.x, a.y - b.y);
 
 describe("estrategia radial", () => {
-  it("DDD se dibuja radial por defecto y la estrategia existe en el menú", () => {
-    expect(defaultStrategyFor("ddd")).toBe("radial");
+  it("la estrategia radial se puede pedir y está en el menú", () => {
+    // DDD dejó de nacer radial (#387): medido sobre los diagramas de referencia,
+    // el flujo deja menos cruces. La estrategia sigue existiendo y se pide a mano.
+    expect(defaultStrategyFor("ddd")).toBe("flujo");
     expect(resolveStrategy("radial", "ddd")).toBe("radial");
     expect(LAYOUT_STRATEGIES.radial.id).toBe("radial");
+    // El MER sí sigue siendo radial: una entidad con sus atributos alrededor.
+    expect(defaultStrategyFor("mer")).toBe("radial");
   });
 
   it("BPMN sigue siendo flujo: la notación declara su disposición, no el algoritmo", () => {

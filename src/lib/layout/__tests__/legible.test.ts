@@ -10,7 +10,7 @@ import {
   PRESUPUESTO_TECHO_MS,
   resumenDeLegibilidad,
 } from "../legible";
-import { medirModelo } from "../modelo";
+import { idDeRelacion, medirModelo } from "../modelo";
 import { FIXTURES } from "./fixtures";
 
 const fixture = (id: string): DiagramModel => FIXTURES.find((f) => f.id === id)!.modelo();
@@ -125,21 +125,35 @@ describe("disponerLegible", () => {
     const d = medirDisposicion(model);
     expect(d.model).toBe(model);
     expect(d.legibilidad.antes).toEqual(d.legibilidad.despues);
-    expect(d.legibilidad.antes).toEqual(medirModelo(model));
+  });
+
+  it("#390 · medirDisposicion mide el trazo real, con los quiebres que tenga", () => {
+    // Este diagrama sale del layout con una relación ruteada. Medir sin sus
+    // quiebres cuenta una recta que el lienzo no dibuja: era lo que hacía que
+    // la revisión denunciara lo que el ruteo acababa de arreglar.
+    const model = relayout(fixture("venta-y-underwriting-en-eva"));
+    const ruteadas = new Map(
+      model.edges.flatMap((e, i) => (e.midpoints?.length ? [[idDeRelacion(i), e.midpoints]] : []))
+    );
+    expect(ruteadas.size).toBeGreaterThan(0);
+    expect(medirDisposicion(model).legibilidad.antes).toEqual(medirModelo(model, ruteadas));
+    // Y sin ellos la medida es peor: la diferencia es justo el defecto.
+    expect(medirModelo(model).sobreCaja).toBeGreaterThan(medirModelo(model, ruteadas).sobreCaja);
   });
 });
 
 describe("resumenDeLegibilidad", () => {
   const medida = {
-    antes: { cruces: 9, sobreCaja: 17, sinRuta: 0, relaciones: 108 },
-    despues: { cruces: 4, sobreCaja: 2, sinRuta: 0, relaciones: 108 },
+    antes: { cruces: 9, solape: 8, sobreCaja: 17, sinRuta: 0, relaciones: 108 },
+    despues: { cruces: 3, solape: 0, sobreCaja: 0, sinRuta: 0, relaciones: 108 },
     conRecorridosManuales: false,
   };
 
   it("TS-018 · dice los dos números, antes y después", () => {
     const texto = resumenDeLegibilidad(medida);
-    expect(texto).toContain("cruces 9 → 4");
-    expect(texto).toContain("relaciones sobre caja ajena 17 → 2");
+    expect(texto).toContain("cruces 9 → 3");
+    expect(texto).toContain("relaciones sobre caja ajena 17 → 0");
+    expect(texto).toContain("encimadas 8 → 0");
   });
 
   it("C5 · declara si la medida incluye recorridos hechos a mano", () => {
