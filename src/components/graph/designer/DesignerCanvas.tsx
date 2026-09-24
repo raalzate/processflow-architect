@@ -112,7 +112,14 @@ import {
 } from "@/components/ui/dialog";
 import { NOTATION_HELP } from "@/lib/notation-help";
 import { cn } from "@/lib/utils";
-import { estiloBloque, estiloSilueta, estiloTextoHtml, estiloTextoSvg } from "@/lib/element-style";
+import {
+  estiloBloque,
+  estiloHeredado,
+  estiloSilueta,
+  estiloTextoHtml,
+  estiloTextoSvg,
+  xSegunAlineacion,
+} from "@/lib/element-style";
 import { splitEdgeLabel } from "@/lib/edge-label";
 import { edgeIsDashed, relationStyle, type EdgeMarker } from "@/lib/edge-relations";
 import {
@@ -1229,6 +1236,11 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
     { conBorde: !trazoResalte }
   );
   const trazoPropio = estiloForma.stroke;
+  // Con un tamaño elegido a mano el recorte por líneas estorba: el usuario sube
+  // la letra justo para leer el nombre entero, y el `line-clamp` se lo comía
+  // («Cotización emitida…» quedaba en «Cotizac»). Sin tamaño propio, el recorte
+  // sigue: es lo que impide que un nombre largo invada al vecino.
+  const recorta = !node.estilo?.tamano;
 
   if (isContainerType(node.tipo_elemento)) {
     const width = node.width || AGGREGATE_DEFAULT_WIDTH;
@@ -1384,7 +1396,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               style={trazoPropio ? { stroke: trazoPropio } : undefined}
             />
             <text
-              x={width / 2}
+              x={xSegunAlineacion(node.estilo, width)}
               y={HEAD / 2}
               textAnchor="middle"
               dominantBaseline="central"
@@ -1432,7 +1444,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           // El nombre va DENTRO del borde de abajo: en una elipse las esquinas
           // no existen, y ahí el óvalo ya no tapa a ningún hijo.
           <text
-            x={width / 2}
+            x={xSegunAlineacion(node.estilo, width)}
             y={height - 14}
             textAnchor="middle"
             fill="currentColor"
@@ -1447,7 +1459,9 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           </text>
         ) : (
           <text
-            x="12"
+            // Este nombre nace pegado a la izquierda (no lleva `textAnchor`), así
+            // que sólo se recoloca si el usuario eligió una alineación.
+            x={node.estilo?.alineacion ? xSegunAlineacion(node.estilo, width) : 12}
             y="24"
             fill="currentColor"
             className={cn(
@@ -1570,7 +1584,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         {/* Banda del nombre: la tabla se identifica de un vistazo aunque la caja
             esté llena de filas. */}
         <text
-          x={layout.w / 2}
+          x={xSegunAlineacion(node.estilo, layout.w)}
           y={TABLE_BOX.altoTitulo / 2 + 4}
           textAnchor="middle"
           fill="currentColor"
@@ -1700,7 +1714,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             >
               <p
                 className={cn(
-                  "text-sm font-bold leading-tight select-none break-words line-clamp-3",
+                  "text-sm font-bold leading-tight select-none break-words",
+                  recorta && "line-clamp-3",
                   isDeleted && "line-through"
                 )}
                 style={estiloTxt}
@@ -1723,7 +1738,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           >
             <p
               className={cn(
-                "text-sm font-bold leading-tight select-none break-words max-w-full line-clamp-3",
+                "text-sm font-bold leading-tight select-none break-words max-w-full",
+                recorta && "line-clamp-3",
                 isDeleted && "line-through"
               )}
               style={estiloTxt}
@@ -1748,6 +1764,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               // padding del rectángulo, el nombre se sale por los costados.
               shape === "ellipse" ? "px-9" : "px-3",
             )}
+            style={estiloHeredado(node.estilo)}
           >
             {/* En el óvalo el icono se mete hacia adentro para no caer fuera de la curva. */}
             {!meta?.hideIcon && (
@@ -1764,7 +1781,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             >
               <p
                 className={cn(
-                  "text-sm font-bold leading-tight select-none break-words max-w-full line-clamp-2",
+                  "text-sm font-bold leading-tight select-none break-words max-w-full",
+                  recorta && "line-clamp-2",
                   isDeleted && "line-through"
                 )}
                 style={estiloTxt}
@@ -1808,7 +1826,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                   // de desbordarse: nombres cortos se ven completos; los largos se
                   // recortan con «…» sin invadir nodos vecinos.
                   "text-xs font-bold leading-tight select-none break-words max-w-full",
-                  meta?.hideIcon ? "line-clamp-3" : "line-clamp-2",
+                  recorta && (meta?.hideIcon ? "line-clamp-3" : "line-clamp-2"),
                   isDeleted && "line-through"
                 )}
                 style={estiloTxt}
@@ -1836,7 +1854,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             className={cn(
               // Evento/compuerta: el nombre va debajo; se ajusta a 2 líneas con
               // elipsis para no solaparse con el nodo de al lado.
-              "text-center text-xs font-bold leading-tight select-none break-words line-clamp-2",
+              "text-center text-xs font-bold leading-tight select-none break-words",
+              recorta && "line-clamp-2",
               color.text,
               isDeleted && "line-through"
             )}

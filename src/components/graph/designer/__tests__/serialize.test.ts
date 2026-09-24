@@ -1183,8 +1183,10 @@ describe("estilo de la caja: ida y vuelta", () => {
   });
 
   it("un estilo sin nada NO viaja: el archivo no engorda con un objeto vacío por caja", () => {
+    // Ojo: `negrita: false` NO es vacío (es «quitale la negrita que pone la
+    // silueta»); vacío es no haber elegido nada.
     const nodes = new Map<string, DesignerNode>([
-      ["cmd", makeNode({ id: "cmd", nombre: "Pagar", estilo: { negrita: false } })],
+      ["cmd", makeNode({ id: "cmd", nombre: "Pagar", estilo: { fuente: "", cursiva: false } })],
     ]);
     const data = canvasToGraphData(nodes, new Map(), {
       nombre_proyecto: "P",

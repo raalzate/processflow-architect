@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   FUENTES,
+  estiloHeredado,
+  xSegunAlineacion,
   TAMANO_MAX,
   TAMANO_MIN,
   clampTamano,
@@ -38,12 +40,20 @@ describe("qué se persiste", () => {
   it("un estilo sin nada es vacío y no se guarda", () => {
     expect(estiloVacio(undefined)).toBe(true);
     expect(estiloVacio({})).toBe(true);
-    expect(estiloVacio({ negrita: false, fuente: "" })).toBe(true);
-    expect(estiloParaGuardar({ negrita: false })).toBeUndefined();
+    expect(estiloVacio({ fuente: "", colorTexto: undefined })).toBe(true);
+    expect(estiloParaGuardar({ fuente: "" })).toBeUndefined();
   });
 
-  it("«sin negrita» es la ausencia de la clave, no `false` guardado", () => {
-    expect(estiloParaGuardar({ tamano: 12, negrita: false })).toEqual({ tamano: 12 });
+  it("quitar la negrita SÍ se guarda: la silueta pinta el nombre en negrita sola", () => {
+    expect(estiloVacio({ negrita: false })).toBe(false);
+    expect(estiloParaGuardar({ negrita: false })).toEqual({ negrita: false });
+    expect(estiloParaGuardar({ tamano: 12, negrita: false })).toEqual({ tamano: 12, negrita: false });
+  });
+
+  it("la cursiva y el subrayado apagados son la ausencia: ninguna silueta los pone", () => {
+    expect(estiloParaGuardar({ tamano: 12, cursiva: false, subrayado: false })).toEqual({
+      tamano: 12,
+    });
   });
 
   it("guarda el tamaño ya recortado", () => {
@@ -61,6 +71,10 @@ describe("lo que llega de fuera se normaliza", () => {
     expect(normalizarEstilo(null)).toBeUndefined();
     expect(normalizarEstilo("negrita")).toBeUndefined();
     expect(normalizarEstilo({ negrita: "sí" })).toBeUndefined();
+  });
+
+  it("conserva el `false` de la negrita, que es una decisión del usuario", () => {
+    expect(normalizarEstilo({ negrita: false })).toEqual({ negrita: false });
   });
 
   it("conserva lo válido y recorta el tamaño en texto", () => {
@@ -114,6 +128,30 @@ describe("traducción a propiedades de dibujo", () => {
     expect(svg.fontSize).toBe(20);
   });
 
+  it("en SVG la alineación es el ANCLA: con `text-align` no pasaba nada", () => {
+    expect(estiloTextoSvg(completo).textAnchor).toBe("end");
+    expect(estiloTextoSvg(completo).textAlign).toBeUndefined();
+    expect(estiloTextoSvg({ alineacion: "izquierda" }).textAnchor).toBe("start");
+    expect(estiloTextoSvg({ tamano: 10 }).textAnchor).toBeUndefined();
+  });
+
+  it("el ancla sola no alcanza: la `x` también se mueve al borde que toca", () => {
+    expect(xSegunAlineacion({ alineacion: "izquierda" }, 200)).toBe(12);
+    expect(xSegunAlineacion({ alineacion: "derecha" }, 200)).toBe(188);
+    expect(xSegunAlineacion({ alineacion: "centro" }, 200)).toBe(100);
+    // Sin alineación elegida, el centro de siempre.
+    expect(xSegunAlineacion(undefined, 200)).toBe(100);
+  });
+
+  it("las líneas secundarias heredan familia y color, pero NO el tamaño", () => {
+    expect(estiloHeredado(completo)).toEqual({
+      fontFamily: "Georgia, serif",
+      color: "#112233",
+    });
+    expect(estiloHeredado({ tamano: 40 })).toEqual({});
+    expect(estiloHeredado(undefined)).toEqual({});
+  });
+
   it("quitar la negrita la pisa explícitamente: la clase de la silueta traía `font-bold`", () => {
     expect(estiloTextoHtml({ negrita: false }).fontWeight).toBe(400);
     expect(estiloTextoHtml({ negrita: true }).fontWeight).toBe(700);
@@ -121,6 +159,8 @@ describe("traducción a propiedades de dibujo", () => {
 
   it("en un bloque en columna, lo vertical es `justifyContent` y lo horizontal `alignItems`", () => {
     expect(estiloBloque(completo)).toEqual({
+      fontFamily: "Georgia, serif",
+      color: "#112233",
       justifyContent: "flex-end",
       alignItems: "flex-end",
       textAlign: "right",

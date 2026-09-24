@@ -772,11 +772,18 @@ const EstiloField: React.FC<{
   value?: ElementStyle;
   /** Colores sueltos del proyecto guardado, que este bloque reemplaza. */
   legado: { color?: string; borderColor?: string };
-  onChange: (estilo: ElementStyle | undefined, limpiarLegado: boolean) => void;
+  /**
+   * Recibe el PARCHE (o `null` para borrar todo el estilo), no el estilo
+   * entero. Dos controles pulsados antes de que React repinte compartían el
+   * mismo `value` y el segundo pisaba al primero: se vio en la app, negrita +
+   * alinear a la derecha dejaba sólo lo último. Con el parche, el que aplica es
+   * el `setDraft` del padre, que sí ve el estado vigente.
+   */
+  onChange: (parche: Partial<ElementStyle> | null, limpiarLegado: boolean) => void;
 }> = ({ value, legado, onChange }) => {
   const estilo = value ?? {};
   const set = (parche: Partial<ElementStyle>, limpiarLegado = false) =>
-    onChange(estiloParaGuardar({ ...estilo, ...parche }), limpiarLegado);
+    onChange(parche, limpiarLegado);
   /** Un valor que ya está puesto se quita al volver a elegirlo. */
   const alternar = <K extends keyof ElementStyle>(clave: K, valor: ElementStyle[K]) =>
     set({ [clave]: estilo[clave] === valor ? undefined : valor } as Partial<ElementStyle>);
@@ -803,14 +810,15 @@ const EstiloField: React.FC<{
             variant="ghost"
             size="sm"
             className="h-6 px-2 text-xs"
-            onClick={() => onChange(undefined, false)}
+            onClick={() => onChange(null, false)}
           >
             Restablecer
           </Button>
         )}
       </div>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Lo que no toques lo sigue decidiendo la notación.
+        Lo que no toques lo sigue decidiendo la notación. Con una letra grande el nombre puede
+        no entrar: la caja no crece sola, se agranda con el tirador de su esquina.
       </p>
 
       <div className="mt-3 grid grid-cols-[1fr_auto] items-end gap-2">
@@ -854,9 +862,11 @@ const EstiloField: React.FC<{
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1">
           <EstiloToggle
-            activo={!!estilo.negrita}
+            // Sin estilo propio el nombre ya se pinta en negrita: el botón nace
+            // encendido y lo que hace es APAGARLA (y eso sí se guarda).
+            activo={estilo.negrita !== false}
             title="Negrita"
-            onClick={() => set({ negrita: !estilo.negrita })}
+            onClick={() => set({ negrita: estilo.negrita === false ? undefined : false })}
           >
             <Bold className="h-3.5 w-3.5" />
           </EstiloToggle>
@@ -1659,12 +1669,16 @@ const EditNodeDialog: React.FC<{
           <EstiloField
             value={draft.estilo}
             legado={{ color: draft.color, borderColor: draft.borderColor }}
-            onChange={(estilo, limpiarLegado) =>
+            onChange={(parche, limpiarLegado) =>
               setDraft((d) =>
                 d
                   ? {
                       ...d,
-                      estilo,
+                      // El parche se aplica sobre el estilo VIGENTE, no sobre el
+                      // que vio el control al pintarse (ver `EstiloField`).
+                      estilo: parche
+                        ? estiloParaGuardar({ ...(d.estilo ?? {}), ...parche })
+                        : undefined,
                       // Tocar el fondo o el borde desde acá deja al estilo como
                       // única fuente: si no, el campo suelto del proyecto viejo
                       // seguiría ahí, invisible y contradiciendo a la ficha.
