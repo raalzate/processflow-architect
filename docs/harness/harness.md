@@ -55,6 +55,13 @@ alcance. La serie usa las fechas de alta y cierre de cada issue, nunca la de hoy
 respuesta, el mismo gráfico. En CI `gh` no tiene sesión y el plan sale «sin dato» con su error,
 nunca en cero; el panel de esa corrida se sube como artefacto.
 
+La pestaña **Memoria** muestra la memoria del agente como llega: lo que lee al arrancar y cuánto
+pesa, lo que entra sólo cuando algo lo dispara (con su uso real en las transcripciones), la
+memoria automática de esta máquina con las rutas que ya no resuelven, y los ADR con su estado. En
+este repo el panel ejecuta `.claude/hooks/session-start.mjs` para medir lo que inyecta
+(`panel.memory.runSessionHooks: true`): se revisó que sólo lee git y STATUS. Lo que inyecta
+`sdd-router` se mide desde `sdd.routes` sin ejecutarlo (`panel.memory.promptSources`).
+
 ### Fuera del gate: las capturas del README
 
 ```bash
