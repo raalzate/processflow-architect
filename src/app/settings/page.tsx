@@ -15,6 +15,7 @@ import {
   BrainCircuit,
   Plug,
   MonitorCog,
+  Sun,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -39,6 +40,7 @@ import { RemoteAiConfig } from "@/components/settings/RemoteAiConfig";
 import { McpServerConfig } from "@/components/settings/McpServerConfig";
 import { SystemInfoCard } from "@/components/settings/SystemInfoCard";
 import { UpdateConfig } from "@/components/settings/UpdateConfig";
+import { AppearanceConfig } from "@/components/settings/AppearanceConfig";
 import type { LitertModelStatus } from "@/types/electron";
 
 const api = () => (typeof window !== "undefined" ? (window as any).electronAPI : undefined);
@@ -48,6 +50,7 @@ const SECTIONS = [
   { id: "modelo", label: "Modelo de IA", icon: Download },
   { id: "motor", label: "Motor de IA", icon: BrainCircuit },
   { id: "mcp", label: "Servidor MCP", icon: Plug },
+  { id: "apariencia", label: "Apariencia", icon: Sun },
   { id: "sistema", label: "Sistema", icon: MonitorCog },
 ] as const;
 
@@ -341,6 +344,11 @@ export default function SettingsPage() {
             {/* Servidor MCP embebido (opt-in): Claude Code/Codex diseñan sobre la app */}
             <section id="mcp" className="scroll-mt-4">
               <McpServerConfig />
+            </section>
+
+            {/* Tema de la app y del lienzo (feature 018) */}
+            <section id="apariencia" className="scroll-mt-4">
+              <AppearanceConfig />
             </section>
 
             {/* Actualizaciones (#208): interruptor de la búsqueda automática y
