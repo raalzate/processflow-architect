@@ -14,24 +14,32 @@
     --popover: 210 20% 98%;
     --popover-foreground: 220 15% 15%;
 
-    --primary: 218 35% 62%;           /* Azul frío medio (antes era índigo cálido) */
+    /* 51% y no 62%: con el texto blanco encima, el 62% daba 3,04:1 y el botón
+       primario no se leía. El tono es el mismo, la luminosidad la fija la medida. */
+    --primary: 218 35% 49%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 210 18% 92%;
     --secondary-foreground: 220 12% 25%;
 
     --muted: 210 20% 94%;
-    --muted-foreground: 220 10% 50%;
+    --muted-foreground: 220 10% 44%;  /* 4,6:1 sobre la superficie atenuada */
 
-    --accent: 200 30% 70%;            /* Azul-grisáceo frío */
+    --accent: 200 30% 44%;            /* Azul-grisáceo frío, con blanco encima a 4,6:1 */
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 70% 62%;         /* Rojo menos saturado para que no rompa la armonía fría */
+    /* Se lee como TEXTO de error sobre el fondo y como fondo de botón con texto
+       claro: las dos cosas piden 4,5:1, y a 62% daba 3,44:1. */
+    --destructive: 0 70% 52%;
     --destructive-foreground: 0 0% 98%;
 
     --border: 210 20% 88%;
-    --input: 210 20% 88%;
-    --ring: 218 35% 62%;
+    /* El borde de un campo es lo ÚNICO que dice dónde empieza el campo (el
+       relleno es el del fondo), así que es un límite de componente y le toca
+       3:1 (WCAG 1.4.11). El separador decorativo `--border` no: la superficie
+       que rodea ya se distingue sola. */
+    --input: 210 20% 58%;
+    --ring: 218 35% 49%;
 
 
     /* Estado y superficies auxiliares. La app se muestra en oscuro (spec 003),
@@ -43,7 +51,7 @@
     --success-surface: 150 50% 94%;
     --success-border: 150 35% 78%;
 
-    --warning: 32 75% 45%;
+    --warning: 32 75% 36%;
     --warning-foreground: 30 60% 24%;
     --warning-surface: 40 85% 94%;
     --warning-border: 38 60% 78%;
@@ -65,15 +73,21 @@
     --code-foreground: 210 14% 88%;
 
     --canvas: 210 20% 99%;
+    /* Cromo del lienzo. La ARISTA es contenido y se mide (3:1 sobre el lienzo);
+       la cuadrícula es decoración y no. Antes vivían como clases sueltas dentro
+       del componente: en claro la arista daba 1,66:1 y no se veía. */
+    --canvas-edge: 215 16% 47%;
+    --canvas-grid: 213 27% 84%;
+    --canvas-grid-major: 214 32% 91%;
 
     --sidebar-background: 210 20% 96%;
     --sidebar-foreground: 220 15% 20%;
-    --sidebar-primary: 218 35% 62%;
+    --sidebar-primary: 218 35% 49%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 210 18% 90%;
     --sidebar-accent-foreground: 220 12% 22%;
     --sidebar-border: 210 20% 86%;
-    --sidebar-ring: 218 35% 62%;
+    --sidebar-ring: 218 35% 49%;
 
     --radius: 0.5rem;
   }
@@ -111,7 +125,9 @@
     --destructive-foreground: 0 45% 10%;
 
     --border: 220 12% 34%;
-    --input: 220 12% 34%;
+    /* 47% y no 34%: el borde del campo es su único límite y a 34% daba 1,89:1
+       sobre el fondo. Es el mismo gris, más claro lo justo para verse. */
+    --input: 220 12% 47%;
     --ring: 218 52% 68%;
 
 
@@ -148,6 +164,9 @@
     /* Lienzo: un punto por debajo del fondo de la app. Es la superficie de
        trabajo y se distingue del resto sin cambiar de familia de color. */
     --canvas: 222 16% 13%;
+    --canvas-edge: 240 4% 46%;
+    --canvas-grid: 215 25% 27%;
+    --canvas-grid-major: 217 33% 17%;
 
     /* Barra lateral: `tailwind.config.ts` mapea estas variables desde siempre,
        pero nadie las definía y `bg-sidebar` resolvía a un hsl() inválido. */
