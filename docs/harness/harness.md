@@ -7,19 +7,24 @@ este documento nombra el comando que falla si alguien la viola.
 ## El gate
 
 ```
-npm run gate        # self-test · link-check de docs · lint · typecheck · tests con cobertura · build
+npm run gate        # self-test · link-check · lint · panel · skills · índice · typecheck · tests · build
+npm run panel       # el panel del arnés, a mano (el gate ya lo regenera en cada corrida)
 npm run gate:fast   # igual sin el build (señal de desarrollo, NO entregable)
 ```
 
-`scripts/gate.sh` es la única definición del gate. Lo corren tres actores con el mismo comando:
-el humano, el agente (subagente `gate-runner`) y CI (job `gate` en `.github/workflows/ci.yml`).
-Al terminar en verde borra `.git/gate-dirty`, que es lo que mira el hook `Stop`.
+`scripts/gate.mjs` es la única definición del gate, y sus señales se declaran en
+`.claude/harness.config.json` → `gate.signals` (`scripts/gate.sh` quedó como envoltorio de una
+línea). Lo corren tres actores con el mismo comando: el humano, el agente (subagente `gate-runner`)
+y CI (job `gate` en `.github/workflows/ci.yml`). Al terminar en verde borra `.git/gate-dirty`, que
+es lo que mira el hook `Stop`. En cada corrida, verde o roja, escribe el registro por señal
+(`.git/harness-gate.json`) y regenera el **panel del arnés** (ver abajo).
 
 | Señal | Qué prueba | Por qué no la cubre otra |
 |---|---|---|
 | `node scripts/harness-selftest.mjs` | que los hooks bloquean lo que dicen bloquear y que ninguna ruta del config apunta a la nada | un hook roto o un config inválido fallan en silencio: ninguna otra señal los ve |
 | `node scripts/docs-linkcheck.mjs` | que ninguna referencia a un doc o a una ruta del repo apunte a la nada | mover un archivo rompe punteros que ninguna otra señal mira |
 | `node scripts/repo-lint.mjs` | convenciones que el compilador no ve: pureza de `src/lib/`, agnosticismo de notación, invariantes de WebGPU, SDKs de nube prohibidos, `.only(` olvidado, dependencias de hook que leen la notación, tokens del tema en la UI, `fill` en los `<text>` de SVG, detección de plataforma en un solo módulo, notas de release en `docs/releases/<versión>.md`, el router sin conocer tareas de IA por nombre y todo gotcha con su `Mecanismo:` | barato, atrapa clases enteras de error; ver ADR `docs/decisions/0001-arnes-del-agente.md` sobre por qué no es ESLint |
+| `node scripts/panel/generar.mjs --sin-vivo --verificar --estricto` | que el panel del arnés se arma y se renderiza (sin escribir: no pisa el que el gate regenera al final) y que el arnés no tiene alarmas (hooks que no existen, señales sin `why`, piezas que el mapa no ubica, punteros muertos en la memoria) | el self-test de este repo no cubre el panel; sin esta señal un panel roto se descubre recién cuando alguien lo abre |
 | `node scripts/graph-check.mjs` | que el índice de graphify no contesta con el repo de antes del último commit | ninguna otra señal mira los derivados; un índice viejo miente con cara de dato |
 | `npm run typecheck` | que el proyecto compila completo (renderer + electron) | vitest transpila por archivo y **no** type-checkea: un import inválido pasa los tests y rompe el build |
 | `npm run test:coverage` | comportamiento de `src/lib/` con la misma cobertura que exige CI, **offline**: `vitest.setup.ts` revienta si un test sale a la red | no ve tipos ni empaquetado |
@@ -36,6 +41,19 @@ Al terminar en verde borra `.git/gate-dirty`, que es lo que mira el hook `Stop`.
 > rompía el watcher de Next (ver `docs/harness/gotchas.md`); un caso del self-test falla si vuelven.
 
 **Test verde ≠ compila ≠ entregable.** Reportar "listo" sin un gate verde es una violación, no un descuido.
+
+### El panel del arnés
+
+`npm run panel` (y el gate, al final de cada corrida) escribe `.git/harness-panel/index.html`: una
+página autocontenida con la salud del arnés (el mapa guía/freno/sensor de `taxonomy`, los hooks,
+las señales con su `why`), la memoria (STATUS, gotchas, constitución, reglas) y lo que corrió en
+esta máquina. Ver `docs/panel.md`.
+
+El **burn-down** sale del plan que vive en GitHub: `scripts/panel-gestor.mjs` —el adaptador de ESTE
+repo— trae todas las issues con una sola llamada a `gh`, y las que llevan `sdd:task` son el
+alcance. La serie usa las fechas de alta y cierre de cada issue, nunca la de hoy: con la misma
+respuesta, el mismo gráfico. En CI `gh` no tiene sesión y el plan sale «sin dato» con su error,
+nunca en cero; el panel de esa corrida se sube como artefacto.
 
 ### Fuera del gate: las capturas del README
 

@@ -12,6 +12,55 @@
       "preload.ts",
       "scripts/",
       ".claude/hooks/"
+    ],
+    "$signals": "Las señales del gate, declarativas: `scripts/gate.mjs` ejecuta esta lista en orden y escribe el registro por señal (`.git/harness-gate.json`) que lee el panel. Antes vivían cableadas en `scripts/gate.sh`, que hoy es un envoltorio de una línea: mismo orden, mismo `why` (sus comentarios), el build sigue fuera del modo fast.",
+    "signals": [
+      {
+        "name": "self-test del arnés",
+        "command": ["node", "scripts/harness-selftest.mjs"],
+        "why": "el arnés antes que el código: un hook roto invalida todas las demás señales"
+      },
+      {
+        "name": "link-check de docs",
+        "command": ["node", "scripts/docs-linkcheck.mjs"],
+        "why": "mover un doc rompe referencias que nadie más mira"
+      },
+      {
+        "name": "lint de convenciones",
+        "command": ["node", "scripts/repo-lint.mjs"],
+        "why": "las convenciones que el compilador no ve: pureza de lib/, notación, WebGPU"
+      },
+      {
+        "name": "panel del arnés",
+        "command": ["node", "scripts/panel/generar.mjs", "--sin-vivo", "--verificar", "--estricto"],
+        "why": "la prueba de vida del panel EN ESTE REPO: el self-test de acá no lo cubre, y un panel que no genera —o que muestra el arnés con alarmas— se descubre recién cuando alguien lo abre. Sin la capa en vivo: determinista y sin red (el burn-down del gestor lo agrega el panel que el gate regenera al final)"
+      },
+      {
+        "name": "skills sincronizados",
+        "command": ["node", "scripts/sync-skills.mjs", "--check"],
+        "why": "el skill que se entrega al agente externo debe ser el del repo, no una copia vieja"
+      },
+      {
+        "name": "índice del repo",
+        "command": ["node", "scripts/graph-check.mjs"],
+        "why": "el índice de graphify no puede contestar con el repo de antes del último commit (se omite en verde donde no hay índice: en CI no existe)"
+      },
+      {
+        "name": "typecheck",
+        "command": ["npm", "run", "typecheck", "--silent"],
+        "why": "vitest transpila por archivo y NO type-checkea: esta señal es irremplazable"
+      },
+      {
+        "name": "tests con cobertura",
+        "command": ["npm", "run", "test:coverage", "--silent"],
+        "why": "el comportamiento, con la misma cobertura que exige CI"
+      },
+      {
+        "name": "build de producción",
+        "command": ["npm", "run", "build", "--silent"],
+        "fastSkip": true,
+        "why": "dev y prod difieren: tree-shaking, resolución de módulos, empaquetado Electron"
+      }
     ]
   },
   "protectedPaths": [
@@ -322,6 +371,66 @@
   },
   "status": {
     "file": "STATUS.md"
+  },
+  "taxonomy": {
+    "$comment": "El arnés como sistema de control: cada pieza con su dirección (guía: antes de decidir · freno: decidido y no ejecutado · sensor: después), su tipo y su etapa. Lo lee `scripts/harness-map.mjs` y lo pinta el panel (pestaña Salud). Una pieza que esto no clasifica es rojo en el mapa: un control nuevo que nadie ubicó es uno del que nadie sabe qué cubre.",
+    "stages": ["sesión", "pedido", "acción decidida", "edición hecha", "fin del turno", "commit", "merge", "push", "integración"],
+    "events": {
+      "SessionStart": { "direction": "guía", "stage": "sesión" },
+      "UserPromptSubmit": { "direction": "guía", "stage": "pedido" },
+      "PreToolUse": { "direction": "freno", "stage": "acción decidida" },
+      "PostToolUse": { "direction": "sensor", "stage": "edición hecha" },
+      "Stop": { "direction": "sensor", "stage": "fin del turno" }
+    },
+    "gitHooksDir": ".githooks",
+    "gitHooks": {
+      "pre-commit": { "direction": "sensor", "stage": "commit" },
+      "commit-msg": { "direction": "sensor", "stage": "commit" },
+      "post-commit": { "direction": "guía", "stage": "commit" },
+      "post-merge": { "direction": "guía", "stage": "merge" },
+      "pre-push": { "direction": "sensor", "stage": "push" }
+    },
+    "$gateStages": "Dónde corre el gate COMPLETO: el hook Stop y CI. `pre-commit` es barato a propósito y no lo corre.",
+    "gateStages": ["fin del turno", "integración"],
+    "agents": {
+      "explorer": { "direction": "guía", "kind": "inferencial", "stage": "pedido" },
+      "reviewer": { "direction": "sensor", "kind": "inferencial", "stage": "fin del turno" },
+      "gate-runner": { "direction": "sensor", "kind": "computacional", "stage": "fin del turno" }
+    },
+    "guides": {
+      "CLAUDE.md": { "stage": "sesión" },
+      "CONSTITUTION.md": { "stage": "sesión" },
+      ".claude/commands": { "stage": "pedido" },
+      ".claude/skills": { "stage": "pedido" }
+    },
+    "pipelines": {
+      ".github/workflows/ci.yml": { "stage": "integración" }
+    }
+  },
+  "panel": {
+    "$comment": "El panel del arnés (docs/panel.md): salud del arnés, memoria del repo y esta máquina en un HTML autocontenido en `.git/harness-panel/`. Lo regenera `scripts/gate.sh` al final de cada corrida, fallando abierto. El plan vive en GitHub (`sdd.github`: una issue por tarea con `sdd:task`), así que el burn-down sale de `scripts/panel-gestor.mjs`, el adaptador de ESTE repo: una sola llamada a `gh` con las fechas de alta y cierre de cada issue. Sin `gh` o sin sesión (CI), el plan sale «sin dato» con su error, nunca en cero.",
+    "sources": {
+      "guide": "CLAUDE.md",
+      "constitutions": [
+        "CONSTITUTION.md"
+      ],
+      "manifest": "package.json"
+    },
+    "tasks": {
+      "manifest": "package.json",
+      "key": "scripts",
+      "invocation": "npm run"
+    },
+    "tracker": {
+      "command": [
+        "node",
+        "scripts/panel-gestor.mjs"
+      ],
+      "timeoutMs": 30000
+    },
+    "plan": {
+      "source": "tracker"
+    }
   },
   "sdd": {
     "$comment": "Ruta SDD. Este repo NO tiene el Intent Integrity Kit instalado en .tessl/plugins; usa las skills sofka-0x del entorno. El self-test exige que las skills existan y en CI reporta 'omitido' en vez de fallar. Ver docs/harness/sdd.md.",
