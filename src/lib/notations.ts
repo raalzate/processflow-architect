@@ -337,38 +337,38 @@ const DDD: Notation = {
     // relaciones con nombre. No son notas adhesivas pegadas en una pared —eso es
     // el tablero de un taller, no el modelo— así que la silueta es la misma para
     // todos y lo que distingue es el color, el icono y la relación.
-    { type: "Comando", icon: "TerminalSquare", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Evento", icon: "Zap", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Actor", icon: "User", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Vista", icon: "RectangleHorizontal", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Regla de Negocio", icon: "Gavel", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Sistema Externo", icon: "HardDrive", shape: "ellipse", stroke: "stroke-zinc-400", bg: "fill-zinc-500", border: "border-zinc-500", text: "text-white" },
-    { type: "Política", icon: "Milestone", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Raíz de Agregado", icon: "Crown", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Entidad", icon: "Fingerprint", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Objeto de Valor", icon: "Gem", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Servicio de Dominio", icon: "Cog", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Repositorio", icon: "Archive", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Fábrica", icon: "Factory", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Comando", icon: "TerminalSquare", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Evento", icon: "Zap", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Actor", icon: "User", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Vista", icon: "RectangleHorizontal", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Regla de Negocio", icon: "Gavel", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Sistema Externo", icon: "HardDrive", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-500", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-white" },
+    { type: "Política", icon: "Milestone", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Raíz de Agregado", icon: "Crown", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Entidad", icon: "Fingerprint", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Objeto de Valor", icon: "Gem", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Servicio de Dominio", icon: "Cog", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Repositorio", icon: "Archive", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Fábrica", icon: "Factory", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // Agrupamientos del mapa: elipse punteada alrededor de los conceptos que
     // van juntos, con el nombre en el borde de abajo (ver `containerStyle`).
-    { type: "Agregado", icon: "Package", container: true, containerStyle: "blob", stroke: "stroke-stone-700", bg: "fill-stone-950/40", border: "border-stone-800", text: "text-stone-100" },
+    { type: "Agregado", icon: "Package", container: true, containerStyle: "blob", stroke: "stroke-stone-600 dark:stroke-stone-500", bg: "fill-stone-100 dark:fill-stone-950/40", border: "border-stone-400 dark:border-stone-800", text: "text-stone-900 dark:text-stone-100" },
     // El Contexto Delimitado NO es desplegable: es una frontera lógica del
     // dominio, y un mapa estratégico de DDD legítimamente no tiene un
     // repositorio por contexto. Lo desplegable se modela en C4/UML.
-    { type: "Contexto Delimitado", icon: "Box", container: true, containerStyle: "blob", stroke: "stroke-teal-500", bg: "fill-teal-950/40", border: "border-teal-500", text: "text-teal-100" },
-    { type: "Subdominio", icon: "Layers", container: true, containerStyle: "blob", stroke: "stroke-fuchsia-500", bg: "fill-fuchsia-950/40", border: "border-fuchsia-500", text: "text-fuchsia-100" },
+    { type: "Contexto Delimitado", icon: "Box", container: true, containerStyle: "blob", stroke: "stroke-teal-600 dark:stroke-teal-500", bg: "fill-teal-100 dark:fill-teal-950/40", border: "border-teal-400 dark:border-teal-500", text: "text-teal-900 dark:text-teal-100" },
+    { type: "Subdominio", icon: "Layers", container: true, containerStyle: "blob", stroke: "stroke-fuchsia-600 dark:stroke-fuchsia-500", bg: "fill-fuchsia-100 dark:fill-fuchsia-950/40", border: "border-fuchsia-400 dark:border-fuchsia-500", text: "text-fuchsia-900 dark:text-fuchsia-100" },
     // --- Mapa de Contexto: Relación de Poder (Aguas Arriba/Aguas Abajo) ---
-    { type: "Cliente/Proveedor", icon: "ArrowLeftRight", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Conformista", icon: "ArrowRightToLine", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Partnership", icon: "Handshake", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Cliente/Proveedor", icon: "ArrowLeftRight", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Conformista", icon: "ArrowRightToLine", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Partnership", icon: "Handshake", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // --- Mapa de Contexto: Integración y Servicios ---
-    { type: "Servicio de Host Abierto (OHS)", icon: "DoorOpen", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Lenguaje Publicado (PL)", icon: "Languages", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Capa Anticorrupción (ACL)", icon: "ShieldHalf", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Núcleo Compartido", icon: "Share2", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Servicio de Host Abierto (OHS)", icon: "DoorOpen", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Lenguaje Publicado (PL)", icon: "Languages", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Capa Anticorrupción (ACL)", icon: "ShieldHalf", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Núcleo Compartido", icon: "Share2", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // --- Mapa de Contexto: Aislamiento Total ---
-    { type: "Caminos Separados", icon: "Unlink", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Caminos Separados", icon: "Unlink", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
   ],
   aiGuidance:
     "Aplica DDD y Lenguaje Ubicuo. Estratégico: Subdominios (Core/Supporting/Generic), Bounded Contexts y Mapa de Contexto. " +
@@ -425,28 +425,28 @@ const BPMN: Notation = {
     // --- Eventos ---
     // Símbolos compactos al estilo BPMN: círculo pequeño con tinte -100 + anillo
     // fuerte -600, nombre debajo (como en las herramientas BPMN clásicas).
-    { type: "Evento de Inicio", icon: "Play", shape: "ellipse", compact: true, stroke: "stroke-green-600", bg: "fill-green-950", border: "border-green-500", text: "text-green-100" },
-    { type: "Evento Intermedio", icon: "Circle", shape: "ellipse", compact: true, stroke: "stroke-yellow-600", bg: "fill-yellow-950", border: "border-yellow-500", text: "text-yellow-100" },
-    { type: "Evento de Fin", icon: "StopCircle", shape: "ellipse", compact: true, stroke: "stroke-red-600", bg: "fill-red-950", border: "border-red-500", text: "text-red-100" },
-    { type: "Evento de Mensaje", icon: "Mail", shape: "ellipse", compact: true, stroke: "stroke-sky-600", bg: "fill-sky-950", border: "border-sky-500", text: "text-sky-100" },
-    { type: "Evento Temporizador", icon: "Timer", shape: "ellipse", compact: true, stroke: "stroke-amber-600", bg: "fill-amber-950", border: "border-amber-500", text: "text-amber-100" },
-    { type: "Evento de Error", icon: "AlertTriangle", shape: "ellipse", compact: true, stroke: "stroke-rose-600", bg: "fill-rose-950", border: "border-rose-500", text: "text-rose-100" },
+    { type: "Evento de Inicio", icon: "Play", shape: "ellipse", compact: true, stroke: "stroke-green-600 dark:stroke-green-600", bg: "fill-green-100 dark:fill-green-950", border: "border-green-400 dark:border-green-500", text: "text-green-900 dark:text-green-100" },
+    { type: "Evento Intermedio", icon: "Circle", shape: "ellipse", compact: true, stroke: "stroke-yellow-700 dark:stroke-yellow-600", bg: "fill-yellow-100 dark:fill-yellow-950", border: "border-yellow-400 dark:border-yellow-500", text: "text-yellow-900 dark:text-yellow-100" },
+    { type: "Evento de Fin", icon: "StopCircle", shape: "ellipse", compact: true, stroke: "stroke-red-600 dark:stroke-red-600", bg: "fill-red-100 dark:fill-red-950", border: "border-red-400 dark:border-red-500", text: "text-red-900 dark:text-red-100" },
+    { type: "Evento de Mensaje", icon: "Mail", shape: "ellipse", compact: true, stroke: "stroke-sky-600 dark:stroke-sky-600", bg: "fill-sky-100 dark:fill-sky-950", border: "border-sky-400 dark:border-sky-500", text: "text-sky-900 dark:text-sky-100" },
+    { type: "Evento Temporizador", icon: "Timer", shape: "ellipse", compact: true, stroke: "stroke-amber-600 dark:stroke-amber-600", bg: "fill-amber-100 dark:fill-amber-950", border: "border-amber-400 dark:border-amber-500", text: "text-amber-900 dark:text-amber-100" },
+    { type: "Evento de Error", icon: "AlertTriangle", shape: "ellipse", compact: true, stroke: "stroke-rose-600 dark:stroke-rose-600", bg: "fill-rose-100 dark:fill-rose-950", border: "border-rose-400 dark:border-rose-500", text: "text-rose-900 dark:text-rose-100" },
     // --- Actividades y datos ---
-    { type: "Tarea", icon: "Square", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Subproceso", icon: "Boxes", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Objeto de Datos", icon: "FileText", shape: "rect", stroke: "stroke-zinc-400", bg: "fill-zinc-500", border: "border-zinc-500", text: "text-white" },
-    { type: "Almacén de Datos", icon: "Database", shape: "cylinder", stroke: "stroke-zinc-400", bg: "fill-zinc-500", border: "border-zinc-500", text: "text-white" },
-    { type: "Anotación", icon: "MessageSquare", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Tarea", icon: "Square", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Subproceso", icon: "Boxes", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Objeto de Datos", icon: "FileText", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-500", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-white" },
+    { type: "Almacén de Datos", icon: "Database", shape: "cylinder", stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-500", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-white" },
+    { type: "Anotación", icon: "MessageSquare", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // --- Compuertas (decisiones / bifurcaciones): rombo compacto, nombre debajo ---
     // Compuerta genérica: se conserva por compatibilidad con diagramas existentes.
-    { type: "Compuerta", icon: "Diamond", shape: "diamond", compact: true, stroke: "stroke-amber-600", bg: "fill-amber-950", border: "border-amber-500", text: "text-amber-100" },
-    { type: "Compuerta Exclusiva", icon: "X", shape: "diamond", compact: true, stroke: "stroke-orange-600", bg: "fill-orange-950", border: "border-orange-500", text: "text-orange-100" },
-    { type: "Compuerta Paralela", icon: "Plus", shape: "diamond", compact: true, stroke: "stroke-emerald-600", bg: "fill-emerald-950", border: "border-emerald-500", text: "text-emerald-100" },
-    { type: "Compuerta Inclusiva", icon: "Circle", shape: "diamond", compact: true, stroke: "stroke-indigo-600", bg: "fill-indigo-950", border: "border-indigo-500", text: "text-indigo-100" },
-    { type: "Compuerta de Eventos", icon: "CircleDot", shape: "diamond", compact: true, stroke: "stroke-purple-600", bg: "fill-purple-950", border: "border-purple-500", text: "text-purple-100" },
+    { type: "Compuerta", icon: "Diamond", shape: "diamond", compact: true, stroke: "stroke-amber-600 dark:stroke-amber-600", bg: "fill-amber-100 dark:fill-amber-950", border: "border-amber-400 dark:border-amber-500", text: "text-amber-900 dark:text-amber-100" },
+    { type: "Compuerta Exclusiva", icon: "X", shape: "diamond", compact: true, stroke: "stroke-orange-600 dark:stroke-orange-600", bg: "fill-orange-100 dark:fill-orange-950", border: "border-orange-400 dark:border-orange-500", text: "text-orange-900 dark:text-orange-100" },
+    { type: "Compuerta Paralela", icon: "Plus", shape: "diamond", compact: true, stroke: "stroke-emerald-600 dark:stroke-emerald-600", bg: "fill-emerald-100 dark:fill-emerald-950", border: "border-emerald-400 dark:border-emerald-500", text: "text-emerald-900 dark:text-emerald-100" },
+    { type: "Compuerta Inclusiva", icon: "Circle", shape: "diamond", compact: true, stroke: "stroke-indigo-600 dark:stroke-indigo-400", bg: "fill-indigo-100 dark:fill-indigo-950", border: "border-indigo-400 dark:border-indigo-500", text: "text-indigo-900 dark:text-indigo-100" },
+    { type: "Compuerta de Eventos", icon: "CircleDot", shape: "diamond", compact: true, stroke: "stroke-purple-600 dark:stroke-purple-600", bg: "fill-purple-100 dark:fill-purple-950", border: "border-purple-400 dark:border-purple-500", text: "text-purple-900 dark:text-purple-100" },
     // --- Contenedores (los ÚNICOS transparentes: un fondo taparía a sus hijos) ---
-    { type: "Pool", icon: "Container", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-sky-600", bg: "fill-sky-950/40", border: "border-sky-600", text: "text-sky-900 dark:text-sky-200" },
-    { type: "Carril", icon: "Rows3", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-cyan-600", bg: "fill-cyan-950/40", border: "border-cyan-600", text: "text-cyan-900 dark:text-cyan-200" },
+    { type: "Pool", icon: "Container", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-sky-600 dark:stroke-sky-600", bg: "fill-sky-100 dark:fill-sky-950/40", border: "border-sky-400 dark:border-sky-600", text: "text-sky-900 dark:text-sky-200" },
+    { type: "Carril", icon: "Rows3", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-cyan-600 dark:stroke-cyan-600", bg: "fill-cyan-100 dark:fill-cyan-950/40", border: "border-cyan-400 dark:border-cyan-600", text: "text-cyan-900 dark:text-cyan-200" },
   ],
   aiGuidance:
     "Modela procesos BPMN: Pools y Carriles (lanes) por responsable; Eventos de Inicio/Intermedio/Fin y sus variantes (Mensaje, Temporizador, Error); Tareas y Subprocesos; Objetos y Almacenes de Datos; Anotaciones. " +
@@ -493,17 +493,17 @@ const C4: Notation = {
     // de Structurizr obligaba a memorizar cuatro tonos para leer lo que el texto
     // ya dice. Lo de TERCEROS sí se atenúa: es la única jerarquía que el ojo
     // necesita de un vistazo.
-    { type: "Persona", icon: "User", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Sistema", icon: "Box", shape: "rounded", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Persona", icon: "User", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Sistema", icon: "Box", shape: "rounded", deployable: true, stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // El sistema EXTERNO no es nuestro: no se le exige repositorio.
-    { type: "Sistema Externo", icon: "HardDrive", shape: "rounded", stroke: "stroke-zinc-400", bg: "fill-zinc-500", border: "border-zinc-500", text: "text-white" },
-    { type: "Contenedor", icon: "Container", shape: "rounded", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Componente", icon: "Component", shape: "rect", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Base de Datos", icon: "Database", shape: "cylinder", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Sistema Externo", icon: "HardDrive", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-500", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-white" },
+    { type: "Contenedor", icon: "Container", shape: "rounded", deployable: true, stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Componente", icon: "Component", shape: "rect", deployable: true, stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Base de Datos", icon: "Database", shape: "cylinder", deployable: true, stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // Los límites son marcos: su nombre se lee sobre el lienzo, así que el color
     // del texto cambia con el tema (en oscuro, un -900 era invisible).
-    { type: "Límite de Sistema", icon: "Frame", container: true, transparent: true, stroke: "stroke-zinc-400", bg: "fill-transparent", border: "border-zinc-400", text: "text-zinc-700 dark:text-zinc-200" },
-    { type: "Límite de Contenedor", icon: "SquareDashedBottom", container: true, transparent: true, stroke: "stroke-zinc-400", bg: "fill-transparent", border: "border-zinc-400", text: "text-zinc-600 dark:text-zinc-300" },
+    { type: "Límite de Sistema", icon: "Frame", container: true, transparent: true, stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-transparent", border: "border-zinc-400 dark:border-zinc-400", text: "text-zinc-700 dark:text-zinc-200" },
+    { type: "Límite de Contenedor", icon: "SquareDashedBottom", container: true, transparent: true, stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-transparent", border: "border-zinc-400 dark:border-zinc-400", text: "text-zinc-600 dark:text-zinc-300" },
   ],
   aiGuidance:
     "Aplica el modelo C4 (Simon Brown): nivel 1 Contexto (Personas y Sistemas y sus relaciones), nivel 2 Contenedores (apps/servicios/bases de datos dentro del Límite de Sistema), nivel 3 Componentes dentro de cada Contenedor. Etiqueta relaciones con tecnología/protocolo (ej. 'usa [HTTPS/JSON]').",
@@ -578,69 +578,69 @@ const UML: Notation = {
     },
   ],
   elements: [
-    { type: "Clase", icon: "Box", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Clase Abstracta", icon: "BoxSelect", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Interfaz", icon: "Plug", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Enumeración", icon: "List", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Clase", icon: "Box", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Clase Abstracta", icon: "BoxSelect", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Interfaz", icon: "Plug", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Enumeración", icon: "List", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // Tipos que NO son clases pero viven en el diagrama de clases: el tipo de
     // dato (valor sin identidad), la plantilla (genérico) y el estereotipo
     // («entity», «service»), que es la extensión estándar de UML.
-    { type: "Tipo de Dato", icon: "Type", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Clase Plantilla", icon: "Braces", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Clase de Asociación", icon: "Link2", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Estereotipo", icon: "Tag", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Componente", icon: "Component", shape: "rect", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Nodo", icon: "Server", shape: "rect", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Tipo de Dato", icon: "Type", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Clase Plantilla", icon: "Braces", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Clase de Asociación", icon: "Link2", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Estereotipo", icon: "Tag", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Componente", icon: "Component", shape: "rect", deployable: true, stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Nodo", icon: "Server", shape: "rect", deployable: true, stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // Actor UML: figura humana (stick figure), como en las herramientas UML clásicas.
-    { type: "Actor", icon: "PersonStanding", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Caso de Uso", icon: "Circle", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Actor", icon: "PersonStanding", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Caso de Uso", icon: "Circle", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // Nota adhesiva UML (comentario anclable a cualquier elemento).
-    { type: "Nota", icon: "StickyNote", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Paquete", icon: "Folder", container: true, transparent: true, stroke: "stroke-yellow-600", bg: "fill-yellow-950/40", border: "border-yellow-500", text: "text-yellow-900 dark:text-yellow-200" },
+    { type: "Nota", icon: "StickyNote", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Paquete", icon: "Folder", container: true, transparent: true, stroke: "stroke-yellow-700 dark:stroke-yellow-600", bg: "fill-yellow-100 dark:fill-yellow-950/40", border: "border-yellow-400 dark:border-yellow-500", text: "text-yellow-900 dark:text-yellow-200" },
     // Diagrama de componentes: el puerto es el punto de conexión del componente
     // y las interfaces son el par lollipop (provista) / socket (requerida). Van
     // COMPACTOS: su figura es el símbolo, el nombre va debajo.
-    { type: "Puerto", icon: "Square", shape: "rect", compact: true, stroke: "stroke-zinc-400", bg: "fill-zinc-600", border: "border-zinc-500", text: "text-zinc-100" },
-    { type: "Interfaz Provista", icon: "Circle", shape: "ellipse", compact: true, stroke: "stroke-zinc-400", bg: "fill-zinc-600", border: "border-zinc-500", text: "text-zinc-100" },
-    { type: "Interfaz Requerida", icon: "CircleDashed", shape: "ellipse", compact: true, stroke: "stroke-zinc-400", bg: "fill-zinc-600", border: "border-zinc-500", text: "text-zinc-100" },
-    { type: "Artefacto de Despliegue", icon: "FileCode2", shape: "rect", deployable: true, stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Puerto", icon: "Square", shape: "rect", compact: true, stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-600", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-zinc-100" },
+    { type: "Interfaz Provista", icon: "Circle", shape: "ellipse", compact: true, stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-600", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-zinc-100" },
+    { type: "Interfaz Requerida", icon: "CircleDashed", shape: "ellipse", compact: true, stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-600", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-zinc-100" },
+    { type: "Artefacto de Despliegue", icon: "FileCode2", shape: "rect", deployable: true, stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // Despliegue: el dispositivo es hardware; el entorno de ejecución ANIDA lo
     // que corre dentro (servidor de aplicaciones, contenedor, runtime).
-    { type: "Dispositivo", icon: "Smartphone", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Entorno de Ejecución", icon: "Cpu", container: true, transparent: true, stroke: "stroke-teal-500", bg: "fill-teal-950/40", border: "border-teal-500", text: "text-teal-900 dark:text-teal-200" },
+    { type: "Dispositivo", icon: "Smartphone", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Entorno de Ejecución", icon: "Cpu", container: true, transparent: true, stroke: "stroke-teal-600 dark:stroke-teal-500", bg: "fill-teal-100 dark:fill-teal-950/40", border: "border-teal-400 dark:border-teal-500", text: "text-teal-900 dark:text-teal-200" },
     // --- Secuencia (interacción) ---
     // La línea de vida es un CONTENEDOR: las activaciones y los mensajes se
     // colocan dentro, y el tiempo baja por su línea punteada.
-    { type: "Línea de Vida", icon: "Rows3", container: true, containerStyle: "lifeline", transparent: true, stroke: "stroke-indigo-400", bg: "fill-indigo-950/40", border: "border-indigo-400", text: "text-indigo-900 dark:text-indigo-200" },
-    { type: "Activación", icon: "Minus", shape: "rect", stroke: "stroke-indigo-400", bg: "fill-indigo-700", border: "border-indigo-500", text: "text-white" },
+    { type: "Línea de Vida", icon: "Rows3", container: true, containerStyle: "lifeline", transparent: true, stroke: "stroke-indigo-600 dark:stroke-indigo-400", bg: "fill-indigo-100 dark:fill-indigo-950/40", border: "border-indigo-400 dark:border-indigo-400", text: "text-indigo-900 dark:text-indigo-200" },
+    { type: "Activación", icon: "Minus", shape: "rect", stroke: "stroke-indigo-600 dark:stroke-indigo-400", bg: "fill-indigo-100 dark:fill-indigo-700", border: "border-indigo-400 dark:border-indigo-500", text: "text-indigo-900 dark:text-white" },
     // Fragmento combinado (alt / opt / loop / par): marco con la etiqueta del
     // operador; lo que encierra es la parte condicional de la interacción.
     // Se dibuja con la PESTAÑA del operador arriba a la izquierda, como manda
     // UML: sin ella un `loop` era un rectángulo punteado con un nombre, y no
     // decía qué hace ni cuándo (feature 013).
-    { type: "Fragmento", icon: "Frame", container: true, containerStyle: "fragment", transparent: true, stroke: "stroke-indigo-500", bg: "fill-indigo-950/40", border: "border-indigo-500", text: "text-indigo-900 dark:text-indigo-200" },
+    { type: "Fragmento", icon: "Frame", container: true, containerStyle: "fragment", transparent: true, stroke: "stroke-indigo-600 dark:stroke-indigo-500", bg: "fill-indigo-100 dark:fill-indigo-950/40", border: "border-indigo-400 dark:border-indigo-500", text: "text-indigo-900 dark:text-indigo-200" },
     // Mensaje perdido/encontrado: la punta que no tiene participante al otro lado.
-    { type: "Mensaje Perdido", icon: "Circle", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-indigo-300", bg: "fill-indigo-300", border: "border-indigo-500", text: "text-indigo-100" },
+    { type: "Mensaje Perdido", icon: "Circle", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-indigo-600 dark:stroke-indigo-300", bg: "fill-indigo-100 dark:fill-indigo-300", border: "border-indigo-400 dark:border-indigo-500", text: "text-indigo-900 dark:text-indigo-100" },
     // --- Máquina de estados ---
     // Pseudoestado inicial CANÓNICO: punto sólido oscuro, sin icono (la figura
     // rellena ES el símbolo UML).
-    { type: "Estado Inicial", icon: "Disc", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-slate-400", bg: "fill-slate-300", border: "border-slate-800", text: "text-slate-100" },
-    { type: "Estado", icon: "ToggleLeft", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Estado Compuesto", icon: "Boxes", container: true, transparent: true, stroke: "stroke-sky-500", bg: "fill-sky-950/40", border: "border-sky-500", text: "text-sky-900 dark:text-sky-200" },
+    { type: "Estado Inicial", icon: "Disc", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-300", border: "border-slate-400 dark:border-slate-800", text: "text-slate-900 dark:text-slate-100" },
+    { type: "Estado", icon: "ToggleLeft", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Estado Compuesto", icon: "Boxes", container: true, transparent: true, stroke: "stroke-sky-600 dark:stroke-sky-500", bg: "fill-sky-100 dark:fill-sky-950/40", border: "border-sky-400 dark:border-sky-500", text: "text-sky-900 dark:text-sky-200" },
     // Rombo de decisión canónico: vacío por dentro (las guardas van en las aristas).
-    { type: "Decisión", icon: "Diamond", shape: "diamond", compact: true, hideIcon: true, stroke: "stroke-amber-600", bg: "fill-amber-950", border: "border-amber-500", text: "text-amber-100" },
-    { type: "Historial", icon: "History", shape: "ellipse", compact: true, stroke: "stroke-purple-500", bg: "fill-purple-950", border: "border-purple-400", text: "text-purple-100" },
+    { type: "Decisión", icon: "Diamond", shape: "diamond", compact: true, hideIcon: true, stroke: "stroke-amber-600 dark:stroke-amber-600", bg: "fill-amber-100 dark:fill-amber-950", border: "border-amber-400 dark:border-amber-500", text: "text-amber-900 dark:text-amber-100" },
+    { type: "Historial", icon: "History", shape: "ellipse", compact: true, stroke: "stroke-purple-600 dark:stroke-purple-500", bg: "fill-purple-100 dark:fill-purple-950", border: "border-purple-400 dark:border-purple-400", text: "text-purple-900 dark:text-purple-100" },
     // Estado final: círculo con anillo (ojo de buey).
-    { type: "Estado Final", icon: "Target", shape: "ellipse", compact: true, stroke: "stroke-slate-700", bg: "fill-slate-950", border: "border-slate-700", text: "text-slate-100" },
+    { type: "Estado Final", icon: "Target", shape: "ellipse", compact: true, stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-950", border: "border-slate-400 dark:border-slate-700", text: "text-slate-900 dark:text-slate-100" },
     // --- Diagrama de actividad ---
     // Nodo inicial canónico: punto sólido (verde oscuro para distinguirlo del de estados).
-    { type: "Inicio de Actividad", icon: "Disc", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-emerald-400", bg: "fill-emerald-300", border: "border-emerald-700", text: "text-emerald-100" },
-    { type: "Acción", icon: "Activity", shape: "rounded", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Nodo de Decisión", icon: "GitBranch", shape: "diamond", compact: true, hideIcon: true, stroke: "stroke-orange-600", bg: "fill-orange-950", border: "border-orange-500", text: "text-orange-100" },
+    { type: "Inicio de Actividad", icon: "Disc", shape: "ellipse", compact: true, hideIcon: true, stroke: "stroke-emerald-600 dark:stroke-emerald-400", bg: "fill-emerald-100 dark:fill-emerald-300", border: "border-emerald-400 dark:border-emerald-700", text: "text-emerald-900 dark:text-emerald-100" },
+    { type: "Acción", icon: "Activity", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Nodo de Decisión", icon: "GitBranch", shape: "diamond", compact: true, hideIcon: true, stroke: "stroke-orange-600 dark:stroke-orange-600", bg: "fill-orange-100 dark:fill-orange-950", border: "border-orange-400 dark:border-orange-500", text: "text-orange-900 dark:text-orange-100" },
     // Barra de bifurcación/unión (fork/join): icono Minus evoca la barra; trazo
     // y texto oscuros para legibilidad en paleta y lienzo.
-    { type: "Bifurcación/Unión", icon: "Minus", shape: "rect", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
-    { type: "Fin de Actividad", icon: "Target", shape: "ellipse", stroke: "stroke-zinc-500", bg: "fill-zinc-700", border: "border-zinc-700", text: "text-white" },
+    { type: "Bifurcación/Unión", icon: "Minus", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Fin de Actividad", icon: "Target", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
   ],
   aiGuidance:
     "Aplica UML. Diagramas de clases (Clases, Clases Abstractas, Interfaces, Enumeraciones, Tipos de Dato, Clases Plantilla —genéricas—, Clases de Asociación y Estereotipos «como este», con relaciones de herencia, implementación, asociación, agregación, composición y dependencia), de componentes (Componentes con sus Puertos e Interfaces Provista/Requerida, y Artefactos de Despliegue), de despliegue (Nodos, Dispositivos y Entornos de Ejecución que ANIDAN lo que corre dentro) y de casos de uso (Actores y Casos de Uso agrupados en Paquetes). " +
@@ -707,36 +707,36 @@ const MER: Notation = {
   ],
   elements: [
     // --- Entidades: rectángulo. La DÉBIL lleva línea doble (canon de Chen) ---
-    { type: "Entidad Fuerte", icon: "Table", shape: "rect", stroke: "stroke-emerald-400", bg: "fill-zinc-700", border: "border-emerald-400", text: "text-white" },
-    { type: "Entidad Débil", icon: "Table2", shape: "rect", outline: "double", stroke: "stroke-emerald-400", bg: "fill-zinc-700", border: "border-emerald-400", text: "text-white" },
+    { type: "Entidad Fuerte", icon: "Table", shape: "rect", stroke: "stroke-emerald-600 dark:stroke-emerald-400", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-emerald-400 dark:border-emerald-400", text: "text-zinc-900 dark:text-white" },
+    { type: "Entidad Débil", icon: "Table2", shape: "rect", outline: "double", stroke: "stroke-emerald-600 dark:stroke-emerald-400", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-emerald-400 dark:border-emerald-400", text: "text-zinc-900 dark:text-white" },
     // Entidad asociativa (agregación): una relación M:N con atributos propios
     // que pasa a comportarse como entidad.
-    { type: "Entidad Asociativa", icon: "Link2", shape: "rect", stroke: "stroke-emerald-500", bg: "fill-zinc-700", border: "border-emerald-500", text: "text-white" },
+    { type: "Entidad Asociativa", icon: "Link2", shape: "rect", stroke: "stroke-emerald-600 dark:stroke-emerald-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-emerald-400 dark:border-emerald-500", text: "text-zinc-900 dark:text-white" },
     // --- Relaciones: rombo. La cardinalidad va en la ARISTA (ver flowRules) ---
-    { type: "Relación", icon: "Diamond", shape: "diamond", stroke: "stroke-amber-500", bg: "fill-amber-900", border: "border-amber-500", text: "text-amber-50" },
-    { type: "Relación Identificadora", icon: "Diamond", shape: "diamond", outline: "double", stroke: "stroke-amber-500", bg: "fill-amber-900", border: "border-amber-500", text: "text-amber-50" },
+    { type: "Relación", icon: "Diamond", shape: "diamond", stroke: "stroke-amber-600 dark:stroke-amber-500", bg: "fill-amber-100 dark:fill-amber-900", border: "border-amber-400 dark:border-amber-500", text: "text-amber-900 dark:text-amber-50" },
+    { type: "Relación Identificadora", icon: "Diamond", shape: "diamond", outline: "double", stroke: "stroke-amber-600 dark:stroke-amber-500", bg: "fill-amber-100 dark:fill-amber-900", border: "border-amber-400 dark:border-amber-500", text: "text-amber-900 dark:text-amber-50" },
     // Jerarquía de especialización: triángulo con la punta al supertipo. El
     // nombre dice la restricción ("d" disjunta / "o" solapada, total o parcial).
-    { type: "Jerarquía (ISA)", icon: "Triangle", shape: "triangle", compact: true, stroke: "stroke-rose-400", bg: "fill-rose-900", border: "border-rose-400", text: "text-rose-50" },
+    { type: "Jerarquía (ISA)", icon: "Triangle", shape: "triangle", compact: true, stroke: "stroke-rose-600 dark:stroke-rose-400", bg: "fill-rose-100 dark:fill-rose-900", border: "border-rose-400 dark:border-rose-400", text: "text-rose-900 dark:text-rose-50" },
     // Categoría (tipo unión): subclase cuyos miembros vienen de varios
     // supertipos distintos; se dibuja con el símbolo ∪ y es compacta.
-    { type: "Categoría (Unión)", icon: "Combine", shape: "ellipse", compact: true, stroke: "stroke-rose-400", bg: "fill-rose-900", border: "border-rose-400", text: "text-rose-50" },
+    { type: "Categoría (Unión)", icon: "Combine", shape: "ellipse", compact: true, stroke: "stroke-rose-600 dark:stroke-rose-400", bg: "fill-rose-100 dark:fill-rose-900", border: "border-rose-400 dark:border-rose-400", text: "text-rose-900 dark:text-rose-50" },
     // --- Atributos: elipse pegada a su entidad o relación ---
-    { type: "Atributo", icon: "Circle", shape: "ellipse", stroke: "stroke-sky-400", bg: "fill-sky-900", border: "border-sky-400", text: "text-sky-50" },
-    { type: "Atributo Clave", icon: "KeyRound", shape: "ellipse", stroke: "stroke-sky-300", bg: "fill-sky-800", border: "border-sky-300", text: "text-sky-50" },
-    { type: "Clave Parcial", icon: "KeySquare", shape: "ellipse", stroke: "stroke-sky-300", bg: "fill-sky-800", border: "border-sky-300", text: "text-sky-50" },
-    { type: "Atributo Compuesto", icon: "Network", shape: "ellipse", stroke: "stroke-sky-400", bg: "fill-sky-900", border: "border-sky-400", text: "text-sky-50" },
+    { type: "Atributo", icon: "Circle", shape: "ellipse", stroke: "stroke-sky-600 dark:stroke-sky-400", bg: "fill-sky-100 dark:fill-sky-900", border: "border-sky-400 dark:border-sky-400", text: "text-sky-900 dark:text-sky-50" },
+    { type: "Atributo Clave", icon: "KeyRound", shape: "ellipse", stroke: "stroke-sky-600 dark:stroke-sky-300", bg: "fill-sky-100 dark:fill-sky-800", border: "border-sky-400 dark:border-sky-300", text: "text-sky-900 dark:text-sky-50" },
+    { type: "Clave Parcial", icon: "KeySquare", shape: "ellipse", stroke: "stroke-sky-600 dark:stroke-sky-300", bg: "fill-sky-100 dark:fill-sky-800", border: "border-sky-400 dark:border-sky-300", text: "text-sky-900 dark:text-sky-50" },
+    { type: "Atributo Compuesto", icon: "Network", shape: "ellipse", stroke: "stroke-sky-600 dark:stroke-sky-400", bg: "fill-sky-100 dark:fill-sky-900", border: "border-sky-400 dark:border-sky-400", text: "text-sky-900 dark:text-sky-50" },
     // Multivaluado = elipse doble; derivado = elipse punteada (no se almacena).
-    { type: "Atributo Multivaluado", icon: "CopyPlus", shape: "ellipse", outline: "double", stroke: "stroke-sky-400", bg: "fill-sky-900", border: "border-sky-400", text: "text-sky-50" },
-    { type: "Atributo Derivado", icon: "Sigma", shape: "ellipse", outline: "dashed", stroke: "stroke-sky-400", bg: "fill-sky-900", border: "border-sky-400", text: "text-sky-50" },
+    { type: "Atributo Multivaluado", icon: "CopyPlus", shape: "ellipse", outline: "double", stroke: "stroke-sky-600 dark:stroke-sky-400", bg: "fill-sky-100 dark:fill-sky-900", border: "border-sky-400 dark:border-sky-400", text: "text-sky-900 dark:text-sky-50" },
+    { type: "Atributo Derivado", icon: "Sigma", shape: "ellipse", outline: "dashed", stroke: "stroke-sky-600 dark:stroke-sky-400", bg: "fill-sky-100 dark:fill-sky-900", border: "border-sky-400 dark:border-sky-400", text: "text-sky-900 dark:text-sky-50" },
     // --- Modelo relacional: lo que ya se puede crear en la base ---
-    { type: "Tabla Relacional", icon: "TableProperties", shape: "rect", table: true, stroke: "stroke-violet-400", bg: "fill-violet-900", border: "border-violet-400", text: "text-violet-50" },
-    { type: "Clave Primaria (PK)", icon: "KeyRound", shape: "rect", compact: true, stroke: "stroke-violet-300", bg: "fill-violet-800", border: "border-violet-300", text: "text-violet-50" },
-    { type: "Clave Foránea (FK)", icon: "Link", shape: "rect", compact: true, stroke: "stroke-violet-300", bg: "fill-violet-800", border: "border-violet-300", text: "text-violet-50" },
-    { type: "Restricción", icon: "ShieldCheck", shape: "rounded", stroke: "stroke-violet-400", bg: "fill-violet-900", border: "border-violet-400", text: "text-violet-50" },
-    { type: "Índice", icon: "Hash", shape: "rounded", stroke: "stroke-violet-400", bg: "fill-violet-900", border: "border-violet-400", text: "text-violet-50" },
+    { type: "Tabla Relacional", icon: "TableProperties", shape: "rect", table: true, stroke: "stroke-violet-600 dark:stroke-violet-400", bg: "fill-violet-100 dark:fill-violet-900", border: "border-violet-400 dark:border-violet-400", text: "text-violet-900 dark:text-violet-50" },
+    { type: "Clave Primaria (PK)", icon: "KeyRound", shape: "rect", compact: true, stroke: "stroke-violet-600 dark:stroke-violet-300", bg: "fill-violet-100 dark:fill-violet-800", border: "border-violet-400 dark:border-violet-300", text: "text-violet-900 dark:text-violet-50" },
+    { type: "Clave Foránea (FK)", icon: "Link", shape: "rect", compact: true, stroke: "stroke-violet-600 dark:stroke-violet-300", bg: "fill-violet-100 dark:fill-violet-800", border: "border-violet-400 dark:border-violet-300", text: "text-violet-900 dark:text-violet-50" },
+    { type: "Restricción", icon: "ShieldCheck", shape: "rounded", stroke: "stroke-violet-600 dark:stroke-violet-400", bg: "fill-violet-100 dark:fill-violet-900", border: "border-violet-400 dark:border-violet-400", text: "text-violet-900 dark:text-violet-50" },
+    { type: "Índice", icon: "Hash", shape: "rounded", stroke: "stroke-violet-600 dark:stroke-violet-400", bg: "fill-violet-100 dark:fill-violet-900", border: "border-violet-400 dark:border-violet-400", text: "text-violet-900 dark:text-violet-50" },
     // El esquema es la frontera lógica de la base: delimita, no reparte trabajo.
-    { type: "Esquema", icon: "Database", container: true, transparent: true, stroke: "stroke-violet-500", bg: "fill-violet-950/40", border: "border-violet-500", text: "text-violet-900 dark:text-violet-200" },
+    { type: "Esquema", icon: "Database", container: true, transparent: true, stroke: "stroke-violet-600 dark:stroke-violet-500", bg: "fill-violet-100 dark:fill-violet-950/40", border: "border-violet-400 dark:border-violet-500", text: "text-violet-900 dark:text-violet-200" },
   ],
   aiGuidance:
     "Aplica el Modelo Entidad-Relación (Chen). Entidad Fuerte para lo que tiene clave propia y Entidad Débil (línea doble) para lo que sólo se identifica a través de su dueña, unida a él por una Relación Identificadora (rombo doble). " +
@@ -815,46 +815,46 @@ const GENERAL: Notation = {
   ],
   elements: [
     // --- Básicas ---
-    { type: "Rectángulo", icon: "RectangleHorizontal", shape: "rect", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Rectángulo Redondeado", icon: "SquareDashedBottom", shape: "rounded", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Rectángulo", icon: "RectangleHorizontal", shape: "rect", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Rectángulo Redondeado", icon: "SquareDashedBottom", shape: "rounded", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
     // El cuadrado y el círculo miden IGUAL de ancho que de alto: con la ficha
     // rectangular no son un cuadrado ni un círculo, son otra forma.
-    { type: "Cuadrado", icon: "Square", shape: "rect", size: SQUARE_SIZE, stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Elipse", icon: "Circle", shape: "ellipse", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Círculo", icon: "CircleDot", shape: "ellipse", size: SQUARE_SIZE, stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Rombo", icon: "Diamond", shape: "diamond", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Triángulo", icon: "Triangle", shape: "triangle", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Paralelogramo", icon: "Shapes", shape: "parallelogram", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Hexágono", icon: "Hexagon", shape: "hexagon", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Cuadrado", icon: "Square", shape: "rect", size: SQUARE_SIZE, stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Elipse", icon: "Circle", shape: "ellipse", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Círculo", icon: "CircleDot", shape: "ellipse", size: SQUARE_SIZE, stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Rombo", icon: "Diamond", shape: "diamond", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Triángulo", icon: "Triangle", shape: "triangle", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Paralelogramo", icon: "Shapes", shape: "parallelogram", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Hexágono", icon: "Hexagon", shape: "hexagon", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
     // --- Texto ---
     // Sin silueta: el rótulo suelto es texto sobre el lienzo, y una caja
     // alrededor lo convertiría en otra cosa.
     // Las cajas del texto son ajustadas: un rótulo con la caja de la ficha deja
     // un hueco enorme alrededor de una línea, y el hueco se arrastra y se
     // conecta como si fuera la forma.
-    { type: "Texto Libre", icon: "Type", shape: "text", textStyle: "label", size: { w: 200, h: 44 }, hideIcon: true, stroke: "stroke-transparent", bg: "fill-transparent", border: "border-transparent", text: "text-slate-100" },
-    { type: "Título y Texto", icon: "Heading", shape: "text", textStyle: "heading", size: { w: 240, h: 92 }, hideIcon: true, stroke: "stroke-transparent", bg: "fill-transparent", border: "border-transparent", text: "text-slate-100" },
+    { type: "Texto Libre", icon: "Type", shape: "text", textStyle: "label", size: { w: 200, h: 44 }, hideIcon: true, stroke: "stroke-transparent", bg: "fill-transparent", border: "border-transparent", text: "text-zinc-900 dark:text-slate-100" },
+    { type: "Título y Texto", icon: "Heading", shape: "text", textStyle: "heading", size: { w: 240, h: 92 }, hideIcon: true, stroke: "stroke-transparent", bg: "fill-transparent", border: "border-transparent", text: "text-zinc-900 dark:text-slate-100" },
     // --- Cajas y marcos ---
-    { type: "Caja de Proceso", icon: "PanelTop", shape: "process", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Cubo", icon: "Box", shape: "cube", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Marco", icon: "Frame", shape: "frame", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Lista de Ítems", icon: "List", shape: "list", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Forma D", icon: "Rows3", shape: "dshape", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Paso", icon: "ChevronRight", shape: "step", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Caja de Proceso", icon: "PanelTop", shape: "process", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Cubo", icon: "Box", shape: "cube", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Marco", icon: "Frame", shape: "frame", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Lista de Ítems", icon: "List", shape: "list", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Forma D", icon: "Rows3", shape: "dshape", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Paso", icon: "ChevronRight", shape: "step", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
     // --- Papel y anotación ---
-    { type: "Documento", icon: "FileText", shape: "document", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Nota Doblada", icon: "StickyNote", shape: "note", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Globo de Diálogo", icon: "MessageSquare", shape: "callout", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Globo Ovalado", icon: "MessageCircle", shape: "callout-oval", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
+    { type: "Documento", icon: "FileText", shape: "document", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Nota Doblada", icon: "StickyNote", shape: "note", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Globo de Diálogo", icon: "MessageSquare", shape: "callout", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Globo Ovalado", icon: "MessageCircle", shape: "callout-oval", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
     // --- Otras siluetas ---
-    { type: "Cilindro", icon: "Database", shape: "cylinder", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Nube", icon: "Cloud", shape: "cloud", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Semicírculo", icon: "Boxes", shape: "semicircle", stroke: "stroke-slate-400", bg: "fill-slate-700", border: "border-slate-400", text: "text-white" },
-    { type: "Figura de Persona", icon: "PersonStanding", shape: "person", size: SQUARE_SIZE, hideIcon: true, stroke: "stroke-slate-300", bg: "fill-slate-700", border: "border-slate-300", text: "text-white" },
+    { type: "Cilindro", icon: "Database", shape: "cylinder", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Nube", icon: "Cloud", shape: "cloud", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Semicírculo", icon: "Boxes", shape: "semicircle", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Figura de Persona", icon: "PersonStanding", shape: "person", size: SQUARE_SIZE, hideIcon: true, stroke: "stroke-slate-600 dark:stroke-slate-300", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-300", text: "text-slate-900 dark:text-white" },
     // --- Contenedor ---
     // Agrupa por afinidad y no delimita un territorio: marco punteado con el
     // nombre en la esquina, como el resto de las fronteras lógicas.
-    { type: "Contenedor General", icon: "Boxes", container: true, transparent: true, stroke: "stroke-slate-400", bg: "fill-slate-800/40", border: "border-slate-400", text: "text-slate-900 dark:text-slate-200" },
+    { type: "Contenedor General", icon: "Boxes", container: true, transparent: true, stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-800/40", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-slate-200" },
   ],
   aiGuidance:
     "Paleta de PROPÓSITO GENERAL: sus tipos son siluetas, no conceptos. Usala sólo cuando el usuario pide un boceto o un esquema que no es un modelo de dominio (DDD), un proceso (BPMN), una arquitectura (C4/UML) ni un modelo de datos (MER) — si encaja en una de ésas, esa notación dice más. " +
@@ -958,6 +958,20 @@ export const ALL_DEPLOYABLE_TYPES: ReadonlySet<string> = new Set(
  * de notación: una notación nueva marca sus tipos y hereda la regla.
  */
 export const isDeployableType = (type: string): boolean => ALL_DEPLOYABLE_TYPES.has(type);
+
+/**
+ * ¿El NOMBRE de este elemento se dibuja FUERA de su silueta? Pasa con los
+ * símbolos compactos (eventos y compuertas BPMN, pseudoestados UML) y con las
+ * figuras que no tienen ancho útil en el centro: el rombo y el triángulo.
+ *
+ * Vive acá y no en el lienzo porque no es un detalle de dibujo: decide **sobre
+ * qué fondo se lee el nombre** —el relleno de la caja o el lienzo—, y de eso
+ * depende si el texto contrasta. El lienzo la usa para pintar y la verificación
+ * de contraste para medir; con la regla escrita en dos lados, una de las dos
+ * mediría lo que no se ve.
+ */
+export const labelOutsideOf = (e: Pick<NotationElement, "compact" | "shape">): boolean =>
+  !!e.compact || e.shape === "diamond" || e.shape === "triangle";
 
 /**
  * Tipos de una notación para ofrecer/validar en la UI y en los prompts.

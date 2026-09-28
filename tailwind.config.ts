@@ -106,6 +106,10 @@ export default {
           foreground: 'hsl(var(--code-foreground))',
         },
         canvas: 'hsl(var(--canvas))',
+        // Cromo del lienzo (ver `src/lib/canvas-chrome.ts`).
+        'canvas-edge': 'hsl(var(--canvas-edge))',
+        'canvas-grid': 'hsl(var(--canvas-grid))',
+        'canvas-grid-major': 'hsl(var(--canvas-grid-major))',
         sidebar: {
           DEFAULT: 'hsl(var(--sidebar-background))',
           foreground: 'hsl(var(--sidebar-foreground))',
