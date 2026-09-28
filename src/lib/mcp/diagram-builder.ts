@@ -1049,6 +1049,13 @@ export interface LayoutOptions {
   strategy?: LayoutStrategy;
   /** Techo de tiempo de la fase de legibilidad (ver `layout/legible.ts`). */
   presupuestoMs?: number;
+  /**
+   * Reloj para el presupuesto de tiempo (inyectable). Por defecto `Date.now`.
+   * Congelarlo (p. ej. `() => 0`) vuelve la disposición DETERMINISTA: el
+   * optimizador corre todas sus pasadas sin depender de la carga de la máquina,
+   * que es lo que necesita la línea base del gate para no flakear.
+   */
+  ahora?: () => number;
 }
 
 /**
@@ -1505,7 +1512,10 @@ export function layoutConMedida(
       : strategy === "radial"
         ? layoutRadial(model, preset)
         : layoutPorRol(model, preset);
-  const legible = disponerLegible(dispuesto, { presupuestoMs: opts.presupuestoMs });
+  const legible = disponerLegible(dispuesto, {
+    presupuestoMs: opts.presupuestoMs,
+    ahora: opts.ahora,
+  });
   // El modelo recuerda cómo se dibujó: el menú marca el actual y el agente puede
   // repetir por MCP exactamente la disposición que ve el humano.
   return {
