@@ -770,6 +770,47 @@ const EstiloToggle: React.FC<{
  * tocarlos, limpian los campos sueltos que traía el proyecto (`color`,
  * `borderColor`) para que el estilo sea la única fuente.
  */
+/**
+ * El campo Tamaño (font-size). Mantiene el texto CRUDO mientras se escribe y sólo
+ * normaliza (clampea a [8,72]) al salir del campo o con Enter. Clampear en cada
+ * tecla pisaba lo tecleado —un dígito intermedio < 8 se volvía 8 al instante— y no
+ * dejaba escribir un valor (#413). Vacío al salir → `undefined`: la caja vuelve al
+ * tamaño de su tipo.
+ */
+const TamanoInput: React.FC<{
+  value?: number;
+  onCommit: (n: number | undefined) => void;
+}> = ({ value, onCommit }) => {
+  const [texto, setTexto] = useState(value != null ? String(value) : "");
+  // Re-sembrar cuando cambia el elemento seleccionado o se restablece el estilo.
+  useEffect(() => setTexto(value != null ? String(value) : ""), [value]);
+
+  const confirmar = () => {
+    const n = clampTamano(texto);
+    onCommit(n);
+    setTexto(n != null ? String(n) : ""); // refleja lo ya normalizado
+  };
+
+  return (
+    <div className="mt-1 flex items-center gap-1">
+      <Input
+        type="number"
+        min={TAMANO_MIN}
+        max={TAMANO_MAX}
+        placeholder="auto"
+        className="h-8 w-20"
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        onBlur={confirmar}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+      />
+      <span className="text-xs text-muted-foreground">px</span>
+    </div>
+  );
+};
+
 const EstiloField: React.FC<{
   value?: ElementStyle;
   /** Colores sueltos del proyecto guardado, que este bloque reemplaza. */
@@ -838,18 +879,7 @@ const EstiloField: React.FC<{
         </div>
         <div>
           <Label className="text-xs">Tamaño</Label>
-          <div className="mt-1 flex items-center gap-1">
-            <Input
-              type="number"
-              min={TAMANO_MIN}
-              max={TAMANO_MAX}
-              placeholder="auto"
-              className="h-8 w-20"
-              value={estilo.tamano ?? ""}
-              onChange={(e) => set({ tamano: clampTamano(e.target.value) })}
-            />
-            <span className="text-xs text-muted-foreground">px</span>
-          </div>
+          <TamanoInput value={estilo.tamano} onCommit={(n) => set({ tamano: n })} />
         </div>
       </div>
 
