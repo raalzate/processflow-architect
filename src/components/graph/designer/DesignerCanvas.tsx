@@ -149,6 +149,7 @@ import {
   isLifelineContainer,
   isSwimlaneContainer,
   labelLayoutOfType,
+  labelOutsideOf,
   sizeOfType,
   NOTATION_LIST,
   isFreeformType,
@@ -160,6 +161,7 @@ import {
   type ShapeKind,
 } from "@/lib/notations";
 import { MIN_PALETTE_QUERY, filtrarPaleta } from "@/lib/palette-search";
+import { CANVAS_CHROME } from "@/lib/canvas-chrome";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
 import { FRAGMENT_OPS, esOperador, type FragmentPart } from "@/lib/sequence/fragments";
 import {
@@ -1529,7 +1531,9 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         : undefined;
   // Rombo y triángulo no tienen ancho útil en sus vértices: el nombre va fuera
   // (igual que en los símbolos compactos).
-  const labelOutside = compact || shape === "diamond" || shape === "triangle";
+  // La regla vive en el registro (`labelOutsideOf`): decide sobre qué fondo se
+  // lee el nombre, y la verificación de contraste mide contra ese mismo fondo.
+  const labelOutside = labelOutsideOf({ compact, shape });
   // Tamaño declarado por la notación del tipo (C4 es más grande: su ficha lleva
   // tres líneas); la caja de tabla mide lo que miden sus filas. Lo resuelve
   // `nodeBox`, el mismo que usan el recorte de aristas y el minimapa.
@@ -1995,7 +1999,7 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
               ? "stroke-amber-500"
               : link.color
                 ? ""
-                : "stroke-gray-400 dark:stroke-zinc-500 opacity-60 dark:opacity-90"
+                : `${CANVAS_CHROME.arista} opacity-80 dark:opacity-90`
         )}
         strokeWidth={isSelected ? 2.5 : isRelated ? 2 : 1.5}
         markerEnd={markerEnd}

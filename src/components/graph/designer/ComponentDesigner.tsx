@@ -62,6 +62,7 @@ import {
   type TableColumn,
 } from "@/lib/mer/table-box";
 import { accion } from "@/lib/action-labels";
+import { debeResembrar } from "@/lib/designer-reseed";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -175,6 +176,7 @@ import { buildEmbedMap, wouldCreateCycle } from "@/lib/view-embeds";
 import { ReferenceContextDialog } from "./ReferenceContextDialog";
 import { CanvasContextMenu, type CanvasMenuItem } from "./CanvasContextMenu";
 import { draftPatch, hasDraftChanges, parseTagList } from "./inspector-draft";
+import { CANVAS_CHROME } from "@/lib/canvas-chrome";
 import {
   FUENTES,
   TAMANO_MAX,
@@ -3166,6 +3168,13 @@ export const ComponentDesigner: React.FC<{
   // --- Carga de la fuente (proyecto activo o grafo de la vista) ---
   const loadedFileId = useRef<string | null>(null);
   const skipFirstSave = useRef(true);
+  // Lo ÚLTIMO que este lienzo emitió por autoguardado y lo último que sembró.
+  // Sirven para distinguir el round-trip propio (mismo objeto de vuelta) de un
+  // REEMPLAZO EXTERNO —p.ej. `set_view_graph` del constructor—, que llega como un
+  // objeto nuevo que este lienzo nunca emitió y por eso debe re-sembrarse (#bug
+  // "el diagrama entra a la vista pero el lienzo no lo pinta").
+  const lastEmittedRef = useRef<GraphData | null>(null);
+  const seededContentRef = useRef<GraphData | null>(null);
   useEffect(() => {
     if (!sourceContent || !sourceKey) {
       if (!isViewMode) {
@@ -3176,8 +3185,23 @@ export const ComponentDesigner: React.FC<{
       }
       return;
     }
-    if (loadedFileId.current === sourceKey) return;
+    // Se re-siembra si cambió la fuente O si el contenido entrante es uno que este
+    // lienzo NO produjo (reemplazo externo). La decisión es pura y está probada.
+    const mismaFuente = loadedFileId.current === sourceKey;
+    if (
+      !debeResembrar({
+        loadedKey: loadedFileId.current,
+        sourceKey,
+        incoming: sourceContent,
+        lastEmitted: lastEmittedRef.current,
+        lastSeeded: seededContentRef.current,
+      })
+    ) {
+      return;
+    }
+    if (mismaFuente) fittedKeyRef.current = null; // reemplazo externo: re-encuadrar
     loadedFileId.current = sourceKey;
+    seededContentRef.current = sourceContent;
     skipFirstSave.current = true; // no guardar el contenido recién cargado
 
     // Al ABRIR se normaliza la pertenencia: lo guardado puede venir de una
@@ -3255,6 +3279,7 @@ export const ComponentDesigner: React.FC<{
     }
     setSaveState("saving");
     const content = buildContent(nodesRef.current, linksRef.current, meta, notationId);
+    lastEmittedRef.current = content; // lo propio: no re-sembrar en el round-trip
     if (onChangeRef.current) onChangeRef.current(content);
     else if (currentFileId) handleDesignUpdate(currentFileId, content);
     const t = setTimeout(() => setSaveState("saved"), 400);
@@ -4839,19 +4864,19 @@ export const ComponentDesigner: React.FC<{
                   celda y líneas mayores tenues cada 5 celdas. Va dentro del viewBox
                   para escalar y alinear con los nodos al hacer zoom. */}
               <pattern id="grid-minor" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
-                <circle cx={0.5} cy={0.5} r={0.75} className="fill-slate-300 dark:fill-slate-700" />
+                <circle cx={0.5} cy={0.5} r={0.75} className={CANVAS_CHROME.cuadriculaPunto} />
               </pattern>
               <pattern id="grid-major" width={GRID * 5} height={GRID * 5} patternUnits="userSpaceOnUse">
                 <rect width={GRID * 5} height={GRID * 5} fill="url(#grid-minor)" />
                 <path
                   d={`M ${GRID * 5} 0 L 0 0 0 ${GRID * 5}`}
                   fill="none"
-                  className="stroke-slate-200/80 dark:stroke-slate-800/80"
+                  className={CANVAS_CHROME.cuadriculaLinea}
                   strokeWidth={1}
                 />
               </pattern>
               <marker id="arrow-end" viewBox="0 -5 10 10" refX="10" refY="0" markerWidth="6" markerHeight="6" orient="auto">
-                <path d="M0,-5L10,0L0,5" className="fill-gray-400 opacity-60" />
+                <path d="M0,-5L10,0L0,5" className={cn(CANVAS_CHROME.flecha, "opacity-80 dark:opacity-90")} />
               </marker>
               <marker id="arrow-end-selected" viewBox="0 -5 10 10" refX="10" refY="0" markerWidth="6" markerHeight="6" orient="auto">
                 <path d="M0,-5L10,0L0,5" className="fill-blue-600" />
@@ -4859,7 +4884,7 @@ export const ComponentDesigner: React.FC<{
               {/* Flechas de inicio (para enlaces bidireccionales). auto-start-reverse
                   orienta la punta hacia afuera del origen. */}
               <marker id="arrow-start" viewBox="0 -5 10 10" refX="10" refY="0" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M0,-5L10,0L0,5" className="fill-gray-400 opacity-60" />
+                <path d="M0,-5L10,0L0,5" className={cn(CANVAS_CHROME.flecha, "opacity-80 dark:opacity-90")} />
               </marker>
               <marker id="arrow-start-selected" viewBox="0 -5 10 10" refX="10" refY="0" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                 <path d="M0,-5L10,0L0,5" className="fill-blue-600" />
@@ -4878,12 +4903,12 @@ export const ComponentDesigner: React.FC<{
               {(["", "-selected"] as const).map((sel) =>
                 (["end", "start"] as const).map((punta) =>
                   Object.entries(EDGE_MARKER_SHAPES).map(([nombre, m]) => {
-                    const trazo = sel ? "stroke-blue-600" : "stroke-gray-400 dark:stroke-zinc-500";
+                    const trazo = sel ? "stroke-blue-600" : CANVAS_CHROME.arista;
                     const relleno =
                       m.fill === "solid"
                         ? sel
                           ? "fill-blue-600"
-                          : "fill-gray-400 dark:fill-zinc-500"
+                          : CANVAS_CHROME.flecha
                         : m.fill === "hollow"
                           ? "fill-canvas"
                           : "fill-none";

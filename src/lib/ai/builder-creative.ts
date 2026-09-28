@@ -23,6 +23,7 @@ import { fromMermaid } from "../mcp/from-mermaid";
 import { toMermaid } from "../mcp/to-mermaid";
 import { fromGraphData, toGraphData, validate, type DiagramModel } from "../mcp/diagram-builder";
 import { qualityFindings, MAX_NODES } from "../mcp/quality";
+import { isContainerType } from "../mcp/catalog";
 
 export interface CreativeDeps {
   /** Pide el Mermaid al modelo (la `AiTask` `creative-diagram`). */
@@ -95,6 +96,38 @@ export function recortarSiNoEntra(
 }
 
 /**
+ * Quita los contenedores SIN hijos de una propuesta. El modelo local a veces
+ * declara un contenedor y no le mete nada: el lienzo lo dibuja como una banda o
+ * marco vacío (regla CONTENEDOR-VACIO de `quality.ts`), justo lo que el humano ve
+ * como "elementos sueltos". Se van el contenedor y las aristas que lo tocaban.
+ *
+ * Si al quitarlos el modelo quedaría vacío no se toca nada: §P8 (el lienzo nunca
+ * en blanco) manda sobre la limpieza.
+ */
+export function quitarContenedoresVacios(model: DiagramModel): {
+  model: DiagramModel;
+  quitados: string[];
+} {
+  const conHijos = new Set(
+    model.nodes
+      .filter((n) => !isContainerType(n.tipo_elemento) && n.container)
+      .map((n) => n.container as string)
+  );
+  const vacios = model.nodes.filter(
+    (n) => isContainerType(n.tipo_elemento) && !conHijos.has(n.nombre)
+  );
+  if (!vacios.length) return { model, quitados: [] };
+  const ids = new Set(vacios.map((n) => n.id));
+  const limpio: DiagramModel = {
+    ...model,
+    nodes: model.nodes.filter((n) => !ids.has(n.id)),
+    edges: model.edges.filter((e) => !ids.has(e.fuente) && !ids.has(e.destino)),
+  };
+  if (!limpio.nodes.length) return { model, quitados: [] };
+  return { model: limpio, quitados: vacios.map((n) => n.nombre) };
+}
+
+/**
  * Los problemas de una propuesta que el modelo PUEDE corregir escribiendo otro
  * Mermaid: lo que el parser no resolvió y los hallazgos graves de calidad.
  *
@@ -111,9 +144,17 @@ function problemas(model: DiagramModel, hallazgos: string[]): string[] {
   return [...hallazgos, ...graves];
 }
 
-/** Lo que el humano tiene que mirar aunque no dispare un reintento. */
+/**
+ * Lo que el humano tiene que mirar aunque no dispare un reintento: los errores de
+ * esquema y los AVISOS de calidad. Antes los avisos se calculaban y se tiraban, y
+ * el modo creativo publicaba un contenedor vacío o un nombre recortado sin decir
+ * nada: el humano veía el problema en el lienzo sin una sola advertencia.
+ */
 function porRevisar(model: DiagramModel): string[] {
-  return validate(model).errors;
+  const avisos = qualityFindings(model)
+    .filter((f) => f.level === "aviso")
+    .map((f) => f.message);
+  return [...validate(model).errors, ...avisos];
 }
 
 /**
@@ -174,10 +215,21 @@ export async function runCreative(
     };
   }
 
+  // Limpieza determinista antes de publicar: fuera los contenedores vacíos que el
+  // modelo local suele dejar (bandas fantasma que el humano lee como "sueltos").
+  const limpieza = quitarContenedoresVacios(model);
+  model = limpieza.model;
+
   const graph = toGraphData(model);
+  const notaLimpieza = limpieza.quitados.length
+    ? `Quité ${limpieza.quitados.length} contenedor(es) vacío(s) que el modelo dejó sin elementos: ${limpieza.quitados
+        .map((n) => `"${n}"`)
+        .join(", ")}.`
+    : "";
   const resumen = [
     `Propuesta: ${model.nodes.length} elemento(s) y ${model.edges.length} relación(es) en "${input.vista.nombre}".`,
     aviso,
+    notaLimpieza,
     (() => {
       const revisar = [...hallazgos, ...porRevisar(model!)];
       return revisar.length ? `Quedó por revisar:\n${revisar.map((h) => `- ${h}`).join("\n")}` : "";
