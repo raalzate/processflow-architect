@@ -1685,7 +1685,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         // (al seleccionar manda el contorno azul de selección).
         style={estiloForma}
       />
-      <foreignObject width={nodeW} height={nodeH} className="pointer-events-none">
+      <foreignObject
+        width={nodeW}
+        height={nodeH}
+        // El texto libre no tiene silueta: si la fuente es más alta que la caja
+        // (44px por defecto), debe DESBORDAR en vez de recortarse (#415).
+        className={cn("pointer-events-none", shape === "text" && "overflow-visible")}
+      >
         {shape === "text" ? (
           // Texto SIN silueta. El «encabezado» separa jerarquía: título grande
           // arriba y el cuerpo debajo, más chico. El rótulo es una sola línea.
@@ -1717,9 +1723,10 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               style={estiloBlq}
             >
               <p
+                // Sin `line-clamp`: el texto libre se dibuja a su tamaño real y
+                // desborda la caja en vez de recortarse (#415).
                 className={cn(
                   "text-sm font-bold leading-tight select-none break-words",
-                  recorta && "line-clamp-3",
                   isDeleted && "line-through"
                 )}
                 style={estiloTxt}
@@ -1893,6 +1900,24 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         connecting={connecting}
         onStartConnect={onStartConnect}
       />
+      {/* Grip de resize del texto libre: deja estirar el ancho para acomodar el
+          rótulo en una línea (o varias). Sólo cuando está seleccionado, para no
+          ensuciar un rótulo sin caja. #415/#417. */}
+      {shape === "text" && isSelected && (
+        <g onMouseDown={onResizeMouseDown} className="cursor-nwse-resize">
+          <rect x={nodeW - 12} y={nodeH - 12} width="12" height="12" className="fill-transparent" />
+          <path
+            d={`M${nodeW - 10},${nodeH} L${nodeW},${nodeH - 10}`}
+            className="stroke-gray-400 dark:stroke-zinc-500"
+            strokeWidth="2"
+          />
+          <path
+            d={`M${nodeW - 6},${nodeH} L${nodeW},${nodeH - 6}`}
+            className="stroke-gray-400 dark:stroke-zinc-500"
+            strokeWidth="2"
+          />
+        </g>
+      )}
     </g>
   );
 };

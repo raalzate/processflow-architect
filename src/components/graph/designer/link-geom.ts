@@ -119,7 +119,14 @@ export function nodeBox(node: DesignerNode, notation?: NotationId): { w: number;
   // Caja de TABLA (MER físico): mide lo que miden sus filas. El tamaño de la
   // notación no sirve acá — una tabla de veinte columnas no cabe en la ficha.
   if (isTableType(node.tipo_elemento)) return tableBoxSize(node.nombre, node.columnas);
-  return sizeOfType(node.tipo_elemento, notation);
+  const base = sizeOfType(node.tipo_elemento, notation);
+  // El texto libre es redimensionable (#417/#421): respeta la geometría que le
+  // dio el humano; sin ella, cae al tamaño del tipo. El resto de las cajas miden
+  // lo que su tipo declara.
+  if (shapeForType(node.tipo_elemento) === "text") {
+    return { w: node.width || base.w, h: node.height || base.h };
+  }
+  return base;
 }
 
 /**
