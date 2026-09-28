@@ -1671,7 +1671,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         // (al seleccionar manda el contorno azul de selección).
         style={estiloForma}
       />
-      <foreignObject width={nodeW} height={nodeH} className="pointer-events-none">
+      <foreignObject
+        width={nodeW}
+        height={nodeH}
+        // El texto libre no tiene silueta: si la fuente es más alta que la caja
+        // (44px por defecto), debe DESBORDAR en vez de recortarse (#415).
+        className={cn("pointer-events-none", shape === "text" && "overflow-visible")}
+      >
         {shape === "text" ? (
           // Texto SIN silueta. El «encabezado» separa jerarquía: título grande
           // arriba y el cuerpo debajo, más chico. El rótulo es una sola línea.
@@ -1703,8 +1709,10 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               style={estiloBlq}
             >
               <p
+                // Sin `line-clamp`: el texto libre se dibuja a su tamaño real y
+                // desborda la caja en vez de recortarse (#415).
                 className={cn(
-                  "text-sm font-bold leading-tight select-none break-words line-clamp-3",
+                  "text-sm font-bold leading-tight select-none break-words",
                   isDeleted && "line-through"
                 )}
                 style={estiloTxt}
