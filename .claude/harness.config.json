@@ -360,7 +360,8 @@
       ".git",
       "out",
       ".processflow",
-      ".tessl"
+      ".tessl",
+      "graphify-out"
     ],
     "ignoreFiles": [
       "docs/harness/buenas-practicas.md"
