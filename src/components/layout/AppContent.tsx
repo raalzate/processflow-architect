@@ -10,7 +10,8 @@ import { SidebarInset } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { FileJson, FileUp, Loader2, Plug } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { parseDiagramJson, isJsonFile } from "@/lib/import-diagram";
+import { isJsonFile } from "@/lib/import-diagram";
+import { parseBoardFile } from "@/lib/board-file";
 import { readMcpPrefs } from "@/lib/mcp-settings";
 import { describeAppState } from "@/lib/mcp/app-state";
 import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
@@ -441,8 +442,10 @@ const WelcomeScreen = () => {
   const importFile = async (file: File) => {
     try {
       if (!isJsonFile(file)) throw new Error("Arrastra un archivo .json (GraphData).");
-      const { name, content } = parseDiagramJson(await file.text(), file.name);
-      handleCreateProjectFromContent(name, content);
+      // Importa el TABLERO completo (proyecto + vistas). Un .json viejo (una sola
+      // vista) sigue entrando: `parseBoardFile` devuelve las vistas vacías.
+      const { name, content, vistas } = parseBoardFile(await file.text(), file.name);
+      handleCreateProjectFromContent(name, content, vistas);
     } catch (err: any) {
       toast({
         variant: "destructive",

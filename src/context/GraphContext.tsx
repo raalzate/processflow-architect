@@ -13,6 +13,7 @@ import {
 } from "@/lib/types";
 import type { NotationId } from "@/lib/notations";
 import type { OrgFilter } from "@/lib/project-orgs";
+import type { PersistedViews } from "@/lib/views-types";
 
 
 
@@ -84,7 +85,7 @@ export interface GraphContextType {
   handleDownloadPdf: () => void;
   handleRunAnalysis: (type: 'drivers' | 'constraints' | 'roadmap' | 'proposal', { temperature, customPrompt }: { temperature?: number; customPrompt?: string; }) => Promise<void>;
   handleCreateProject: (nombre: string, notation?: NotationId) => void;
-  handleCreateProjectFromContent: (nombre: string, content: GraphData) => string | null;
+  handleCreateProjectFromContent: (nombre: string, content: GraphData, vistas?: PersistedViews) => string | null;
   handleDesignUpdate: (fileId: string, content: GraphData) => void;
   handleFileSelect: (id: string) => void;
   handleFileDelete: (id: string) => void;

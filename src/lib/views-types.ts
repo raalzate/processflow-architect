@@ -36,6 +36,28 @@ export interface DesignView {
   createdAt: string; // ISO
 }
 
+/**
+ * Catálogo de vistas persistido de un proyecto: las vistas custom más el estado
+ * de la tira (activa, inyectadas, subprocesos abiertos). Vive acá —y no en
+ * `ViewsContext`— porque es lo que viaja en el archivo del tablero
+ * (`board-file.ts`) y el módulo del archivo es puro: no puede importar del context.
+ */
+export interface PersistedViews {
+  customViews: DesignView[];
+  activeViewId: string;
+  injectedViewIds: string[];
+  /** Subprocesos abiertos como pestaña virtual. Opcional: proyectos viejos no lo tienen. */
+  openViewIds?: string[];
+}
+
+/** Catálogo vacío por defecto (proyecto sin vistas custom). */
+export const emptyPersistedViews = (): PersistedViews => ({
+  customViews: [],
+  activeViewId: "design",
+  injectedViewIds: [],
+  openViewIds: [],
+});
+
 /** Máximo de vistas CUSTOM que el usuario puede crear. */
 export const MAX_CUSTOM_VIEWS = 50;
 /** Máximo de vistas que pueden inyectarse simultáneamente al contexto del agente. */

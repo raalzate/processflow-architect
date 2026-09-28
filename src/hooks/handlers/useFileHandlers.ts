@@ -2,6 +2,9 @@ import { useCallback } from "react";
 import type { SavedFile, GraphData, ArchitectureDriversOutput, ConstraintsRisksOutput, RoadmapOutput, TechnicalElementsOutput } from "@/lib/types";
 import { emptyGraphData } from "@/components/graph/designer/serialize";
 import { normalizeImportedGraphData } from "@/lib/import-diagram";
+import { packBoard } from "@/lib/board-file";
+import { emptyPersistedViews, type PersistedViews } from "@/lib/views-types";
+import { readStoredViews, writeStoredViews } from "@/context/ViewsContext";
 import { normalizeProjectName, renameSavedFile } from "@/lib/project-rename";
 import type { NotationId } from "@/lib/notations";
 
@@ -60,7 +63,11 @@ export function useFileHandlers(deps: FileHandlersDeps) {
 
     // Crea un proyecto NUEVO a partir de contenido ya generado (ej. el modelo de
     // dominio que produce la IA desde documentos) y lo carga en el lienzo.
-    const handleCreateProjectFromContent = useCallback((nombre: string, content: GraphData) => {
+    // `vistas` viaja al importar un TABLERO completo (#428): las tabs del archivo
+    // se siembran para el proyecto nuevo ANTES de activarlo, así `ViewsContext` las
+    // levanta al cargar. La IA (modelo desde documentos) no manda vistas → catálogo
+    // vacío, como antes.
+    const handleCreateProjectFromContent = useCallback((nombre: string, content: GraphData, vistas?: PersistedViews) => {
         const name = (nombre || "").trim() || "Diseño IA";
         // Rellena defaults SIN perder campos: un GraphData exportado completo
         // (con `defaultRouting`/`source_docs`) o el modelo parcial de la IA
@@ -69,6 +76,9 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         const fullContent: GraphData = normalizeImportedGraphData(content, name);
         const newFile: SavedFile = { id: `${name}-${new Date().getTime()}`, name: `${name}.json`, content: fullContent };
         try {
+            // Sembrar las vistas ANTES de activar el proyecto: el efecto de carga de
+            // ViewsContext lee por fileId, así las tabs aparecen como propias.
+            writeStoredViews(newFile.id, vistas ?? emptyPersistedViews());
             const res = loadFile(newFile);
             addFile(newFile);
             setCurrentFileId(newFile.id);
@@ -157,7 +167,11 @@ export function useFileHandlers(deps: FileHandlersDeps) {
     const handleDownloadJson = useCallback(() => {
         if (!graphData || !currentFileId) { toast({ variant: "destructive", title: "No hay archivo para descargar", description: "Carga o selecciona un archivo primero." }); return; }
         const currentFile = savedFiles.find(f => f.id === currentFileId); if (!currentFile) return;
-        const blob = new Blob([JSON.stringify(graphData, null, 2)], { type: 'application/json' });
+        // Exporta el TABLERO completo: el GraphData del Modelo + TODAS las vistas
+        // (las tabs viven en localStorage por proyecto). Antes sólo salía el Modelo
+        // y al reimportar se perdían las demás vistas (#428).
+        const board = packBoard(graphData, readStoredViews(currentFileId));
+        const blob = new Blob([JSON.stringify(board, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = currentFile.name; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         toast({ title: "Descarga Iniciada", description: `Se está descargando "${currentFile.name}".` });
     }, [graphData, currentFileId, savedFiles, toast]);

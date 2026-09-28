@@ -32,7 +32,9 @@ import {
   BUILTIN_VIEWS,
   MAX_CUSTOM_VIEWS,
   MAX_INJECTED_VIEWS,
+  emptyPersistedViews,
   type DesignView,
+  type PersistedViews,
 } from "@/lib/views-types";
 import { DEFAULT_NOTATION_ID, INITIAL_NOTATION_ID, type NotationId } from "@/lib/notations";
 import { emptyGraphData } from "@/components/graph/designer/serialize";
@@ -48,14 +50,6 @@ const uid = () =>
 
 const nowIso = () => new Date().toISOString();
 
-interface PersistedViews {
-  customViews: DesignView[];
-  activeViewId: string;
-  injectedViewIds: string[];
-  /** Subprocesos abiertos como pestaña virtual. Opcional: proyectos viejos no lo tienen. */
-  openViewIds?: string[];
-}
-
 function storageKey(fileId: string) {
   return `views_${fileId}`;
 }
@@ -67,7 +61,32 @@ function loadViews(fileId: string): PersistedViews {
   } catch {
     /* ignore */
   }
-  return { customViews: [], activeViewId: "design", injectedViewIds: [], openViewIds: [] };
+  return emptyPersistedViews();
+}
+
+/**
+ * Catálogo de vistas persistido de un proyecto (todas las vistas + estado de la
+ * tira). Lo lee el export del tablero (`useFileHandlers`) para meter las vistas en
+ * el archivo: al exportar, lo del proyecto activo ya está en `localStorage`.
+ */
+export function readStoredViews(fileId: string): PersistedViews {
+  if (!fileId) return emptyPersistedViews();
+  return loadViews(fileId);
+}
+
+/**
+ * Escribe el catálogo de vistas de un proyecto. Lo usa el import del tablero para
+ * sembrar las vistas del archivo ANTES de activar el proyecto nuevo, así el
+ * `useEffect` de carga (que lee por `fileId`) las levanta como si siempre hubieran
+ * estado. Sin esto, importar reconstruía sólo la vista «Modelo» (#428).
+ */
+export function writeStoredViews(fileId: string, vistas: PersistedViews): void {
+  if (!fileId) return;
+  try {
+    localStorage.setItem(storageKey(fileId), JSON.stringify(vistas));
+  } catch {
+    /* sin localStorage no hay dónde sembrarlas; el proyecto abre con el Modelo */
+  }
 }
 
 /**
