@@ -293,13 +293,17 @@ el tab «Spec» de su ficha.
 set_element_spec { id: "c4-api-pagos", spec: {
   featureName: "Cobro recurrente",
   input: "<lo que pide el documento, con sus palabras>",
-  stories: [ { titulo: "Cobrar la cuota", prioridad: "P1",
-               porQue: "…", pruebaIndependiente: "…",
-               escenarios: [ { given: "…", when: "…", then: "…" } ] } ],
+  stories: [ { tipo: "entrada", ref: "<id de la caja que lo llama>", hace: "qué hace esta entrada",
+               escenarios: [ { given: "…", when: "…", then: "…" } ] },
+             { tipo: "salida", ref: "<id de la caja a la que llama>", hace: "qué hace esta salida" } ],
   requirements: [ { texto: "El sistema MUST …" } ],
   criteria: [ { texto: "… con un número medible" } ] } }
 ```
 
+- **El `stories` es el FLUJO: una lista PLANA y en ORDEN de pasos.** Cada paso es
+  `tipo: "entrada"` (una caja lo llama) o `tipo: "salida"` (llama a otra caja),
+  apunta con `ref` a un id de nodo que YA EXISTE, dice `hace` y puede llevar
+  `detalle` y `escenarios`. El orden es la secuencia; no hay prioridad.
 - Lo que el documento **no decide, no se inventa**: `needsClarification: true` en
   ese requisito, y además registrá la ambigüedad con `record_ambiguity`.
 - **Es una pasada propia, después de crear las cajas.** Un portafolio de

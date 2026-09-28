@@ -309,12 +309,13 @@ const conSpec = (over: Record<string, unknown> = {}) => ({
   stories: [
     {
       id: "st-1",
-      titulo: "Cobrar la cuota",
-      prioridad: "P1",
-      porQue: "sin cobro no hay negocio",
-      pruebaIndependiente: "con una cuota vencida",
+      tipo: "entrada",
+      ref: "n-scheduler",
+      hace: "dispara el cobro mensual",
+      detalle: ["revisa las cuotas vencidas"],
       escenarios: [{ id: "sc-1", given: "una cuota vencida", when: "corre el cobro", then: "queda pagada" }],
     },
+    { id: "st-2", tipo: "salida", ref: "n-bus", hace: "publica CuotaCobrada" },
   ],
   edgeCases: ["¿y si la tarjeta se rechaza?"],
   requirements: [{ id: "fr-1", texto: "El sistema MUST reintentar 3 veces", needsClarification: true }],
@@ -343,10 +344,13 @@ describe("read_element · el contrato de la caja llega al agente", () => {
     expect(r.text).toContain(largo);
   });
 
-  it("devuelve historias, requisitos y criterios de la especificación", () => {
+  it("devuelve pasos, su flujo, requisitos y criterios de la especificación", () => {
     const r = readElement(cat(), "Pasarela", 5000);
     if (!r.ok) throw new Error("debía leer");
-    expect(r.text).toContain("Cobrar la cuota");
+    // Cada paso es una entrada o una salida a un nodo (id), con qué hace y detalle.
+    expect(r.text).toContain("Paso [entrada] n-scheduler — dispara el cobro mensual");
+    expect(r.text).toContain("detalle: revisa las cuotas vencidas");
+    expect(r.text).toContain("Paso [salida] n-bus — publica CuotaCobrada");
     expect(r.text).toContain("una cuota vencida → corre el cobro → queda pagada");
     expect(r.text).toContain("99 % en un intento");
     // Lo marcado por aclarar es lo que el agente tiene que preguntar: viaja.

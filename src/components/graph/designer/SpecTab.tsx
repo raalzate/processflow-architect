@@ -4,8 +4,10 @@
  * @fileOverview Tab «Spec» de la ficha de elemento: el contrato de la caja.
  *
  * La ficha decía qué es el elemento y dónde vive; acá se escribe **qué debe
- * hacer y cómo se sabe que quedó bien**: historias de usuario priorizadas con
- * escenarios Given/When/Then, casos límite, requisitos funcionales, entidades
+ * hacer y cómo se sabe que quedó bien**: el flujo como una lista PLANA de pasos
+ * —cada paso es una entrada (una caja lo llama) o una salida (llama a otra caja),
+ * elegida entre las cajas ya conectadas en el lienzo, con qué hace, detalle y sus
+ * escenarios Given/When/Then—, casos límite, requisitos funcionales, entidades
  * clave y criterios de éxito.
  *
  * Vive en su propio archivo porque `ComponentDesigner.tsx` ya pasa las 3 800
@@ -32,6 +34,7 @@ import {
   HelpCircle,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -48,25 +51,26 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { accion } from "@/lib/action-labels";
 import {
-  MAX_ESCENARIOS_POR_HISTORIA,
-  MAX_HISTORIAS,
+  MAX_ESCENARIOS_POR_PASO,
+  MAX_PASOS,
   MAX_ITEMS_LISTA,
   SPEC_STATUSES,
+  SPEC_STEP_KINDS,
   emptySpec,
   etiqueta,
   isSpecEmpty,
   moveItem,
-  nextPriority,
   nuevaEntidad,
-  nuevaHistoria,
   nuevoCriterio,
   nuevoEscenario,
+  nuevoPaso,
   nuevoRequisito,
   specFileName,
   specToMarkdown,
   specWithSeededDate,
   type ElementSpec,
-  type SpecStory,
+  type SpecStep,
+  type SpecStepKind,
 } from "@/lib/element-spec";
 import { cn } from "@/lib/utils";
 
@@ -167,18 +171,35 @@ const FilaAcciones: React.FC<{
   </div>
 );
 
-/** Una historia de usuario con sus escenarios. */
-const HistoriaCard: React.FC<{
-  historia: SpecStory;
+/** Nodos vecinos de una caja: quién la llama (entrantes) y a quién llama
+ * (salientes). Salen de las aristas ya dibujadas en el lienzo. */
+export interface FlujoVecinos {
+  entrantes: { id: string; nombre: string }[];
+  salientes: { id: string; nombre: string }[];
+}
+
+/** Un paso del flujo: es una entrada o una salida a un nodo, con qué hace,
+ * detalle y sus escenarios. El nodo se elige entre las cajas ya conectadas en el
+ * lienzo (por tipo); una ref que ya no está conectada se marca «desconectado» en
+ * vez de desaparecer sin avisar. */
+const PasoCard: React.FC<{
+  paso: SpecStep;
   indice: number;
   total: number;
-  onChange: (h: SpecStory) => void;
+  flujoVecinos: FlujoVecinos;
+  resolveNodeName: (id: string) => string;
+  onChange: (h: SpecStep) => void;
   onMover: (desde: number, hasta: number) => void;
   onQuitar: () => void;
-}> = ({ historia, indice, total, onChange, onMover, onQuitar }) => {
+}> = ({ paso, indice, total, flujoVecinos, resolveNodeName, onChange, onMover, onQuitar }) => {
   const [abierta, setAbierta] = useState(true);
-  const set = (parche: Partial<SpecStory>) => onChange({ ...historia, ...parche });
-  const escenarios = historia.escenarios;
+  const set = (parche: Partial<SpecStep>) => onChange({ ...paso, ...parche });
+  const escenarios = paso.escenarios;
+  const detalle = paso.detalle;
+  // Los nodos elegibles dependen del tipo: una entrada la llama un vecino
+  // ENTRANTE; una salida llama a un vecino SALIENTE.
+  const opciones = paso.tipo === "entrada" ? flujoVecinos.entrantes : flujoVecinos.salientes;
+  const refConectado = !paso.ref || opciones.some((o) => o.id === paso.ref);
 
   return (
     <div className="rounded-md border bg-background p-2">
@@ -188,45 +209,103 @@ const HistoriaCard: React.FC<{
           onClick={() => setAbierta((a) => !a)}
           className="mt-1.5 shrink-0 text-muted-foreground hover:text-foreground"
           aria-expanded={abierta}
-          title={abierta ? "Colapsar historia" : "Expandir historia"}
+          title={abierta ? "Colapsar paso" : "Expandir paso"}
         >
           {abierta ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
-        <Input
-          value={historia.titulo}
-          onChange={(e) => set({ titulo: e.target.value })}
-          placeholder={`Historia ${indice + 1} — título breve`}
-          className="h-8"
-        />
-        <Input
-          value={historia.prioridad}
-          onChange={(e) => set({ prioridad: e.target.value })}
-          title="Prioridad (P1 es la más crítica)"
-          className="h-8 w-16 shrink-0 text-center"
-        />
+        <Select value={paso.tipo} onValueChange={(v) => set({ tipo: v as SpecStepKind })}>
+          <SelectTrigger className="h-8 w-[104px] shrink-0" title="¿Es una entrada o una salida?">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SPEC_STEP_KINDS.map((k) => (
+              <SelectItem key={k.value} value={k.value}>
+                {k.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="min-w-0 flex-1">
+          <Select value={paso.ref || undefined} onValueChange={(id) => set({ ref: id })}>
+            <SelectTrigger
+              className={cn("h-8", !refConectado && "border-warning text-warning")}
+              title={
+                refConectado
+                  ? undefined
+                  : "Apunta a una caja que ya no está conectada a este elemento en el lienzo"
+              }
+            >
+              <SelectValue
+                placeholder={
+                  opciones.length
+                    ? paso.tipo === "entrada"
+                      ? "¿qué caja lo llama?"
+                      : "¿a qué caja llama?"
+                    : "conectá una arista en el lienzo"
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {/* Ref actual que ya no es vecino: se muestra igual para no perderla. */}
+              {!refConectado && paso.ref && (
+                <SelectItem value={paso.ref}>{resolveNodeName(paso.ref)} (desconectado)</SelectItem>
+              )}
+              {opciones.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <FilaAcciones
           indice={indice}
           total={total}
           onMover={onMover}
           onQuitar={onQuitar}
-          quitarLabel={accion("eliminar", "historia de usuario")}
+          quitarLabel={accion("eliminar", "paso")}
         />
       </div>
 
       {abierta && (
         <div className="mt-2 space-y-2 pl-5">
-          <Textarea
-            value={historia.porQue}
-            onChange={(e) => set({ porQue: e.target.value })}
-            placeholder="Por qué esta prioridad: qué valor entrega y por qué va antes que las otras"
-            className="min-h-[56px] text-sm"
+          <Input
+            value={paso.hace}
+            onChange={(e) => set({ hace: e.target.value })}
+            placeholder={paso.tipo === "entrada" ? "qué hace esta entrada" : "qué hace esta salida"}
+            className="h-8 text-sm"
           />
-          <Textarea
-            value={historia.pruebaIndependiente}
-            onChange={(e) => set({ pruebaIndependiente: e.target.value })}
-            placeholder="Prueba independiente: cómo se verifica esta historia sola, sin las demás"
-            className="min-h-[56px] text-sm"
-          />
+
+          <div className="flex items-center justify-between">
+            <Label className="text-2xs uppercase tracking-wide text-muted-foreground">Más detalle</Label>
+            <IconAction
+              type="button"
+              variant="ghost"
+              className="h-7 w-7"
+              disabled={detalle.length >= MAX_ITEMS_LISTA}
+              label={accion("agregar", "línea de detalle")}
+              icon={<Plus className="h-4 w-4" />}
+              onClick={() => set({ detalle: [...detalle, ""] })}
+            />
+          </div>
+          {detalle.map((d, k) => (
+            <div key={`det-${k}`} className="flex items-start gap-1">
+              <Textarea
+                value={d}
+                onChange={(e) => set({ detalle: detalle.map((x, j) => (j === k ? e.target.value : x)) })}
+                placeholder="detalle de la conexión…"
+                className="min-h-[36px] text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => set({ detalle: detalle.filter((_, j) => j !== k) })}
+                className="mt-1 shrink-0 rounded p-1 text-muted-foreground hover:text-destructive"
+                title={accion("quitar")}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
 
           <div className="flex items-center justify-between">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -236,7 +315,7 @@ const HistoriaCard: React.FC<{
               type="button"
               variant="ghost"
               className="h-7 w-7"
-              disabled={escenarios.length >= MAX_ESCENARIOS_POR_HISTORIA}
+              disabled={escenarios.length >= MAX_ESCENARIOS_POR_PASO}
               label={accion("agregar", "escenario Given/When/Then")}
               icon={<Plus className="h-4 w-4" />}
               onClick={() => set({ escenarios: [...escenarios, nuevoEscenario()] })}
@@ -245,7 +324,7 @@ const HistoriaCard: React.FC<{
 
           {escenarios.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              Sin escenarios la historia no se puede verificar: agregá al menos uno.
+              Sin escenarios el paso no se puede verificar: agregá al menos uno.
             </p>
           )}
 
@@ -316,7 +395,15 @@ export interface SpecTabProps {
   /** Aviso de copiado/exportado (lo muestra el llamador con su toast). */
   onCopiar?: (markdown: string) => void;
   onExportar?: (markdown: string, filename: string) => void;
+  /** Vecinos de la caja en el lienzo: las entradas/salidas de un paso se eligen
+   * entre ellos. Ausente → no hay de dónde elegir (el picker lo dice). */
+  flujoVecinos?: FlujoVecinos;
+  /** Resuelve el id de un nodo a su nombre (para chips y markdown). Ausente →
+   * se muestra el id. */
+  resolveNodeName?: (id: string) => string;
 }
+
+const SIN_VECINOS: FlujoVecinos = { entrantes: [], salientes: [] };
 
 export const SpecTab: React.FC<SpecTabProps> = ({
   value,
@@ -328,6 +415,8 @@ export const SpecTab: React.FC<SpecTabProps> = ({
   onDescartarPropuesta,
   onCopiar,
   onExportar,
+  flujoVecinos = SIN_VECINOS,
+  resolveNodeName = (id) => id,
 }) => {
   const spec = value ?? emptySpec();
 
@@ -341,7 +430,10 @@ export const SpecTab: React.FC<SpecTabProps> = ({
     onChange(isSpecEmpty(siguiente) ? undefined : siguiente);
   };
 
-  const markdown = useMemo(() => specToMarkdown(spec, elementName), [spec, elementName]);
+  const markdown = useMemo(
+    () => specToMarkdown(spec, elementName, resolveNodeName),
+    [spec, elementName, resolveNodeName]
+  );
   const vacia = isSpecEmpty(spec);
 
   return (
@@ -350,7 +442,7 @@ export const SpecTab: React.FC<SpecTabProps> = ({
       <div className="space-y-2 rounded-md border bg-muted/20 p-2">
         <div className="flex items-center justify-between gap-2">
           <Label htmlFor="spec-feature" className="text-xs uppercase tracking-wide text-muted-foreground">
-            Nombre de la feature
+            Nombre
           </Label>
           {suggestButton}
         </div>
@@ -391,7 +483,7 @@ export const SpecTab: React.FC<SpecTabProps> = ({
         </div>
         <div>
           <Label htmlFor="spec-input" className="text-2xs uppercase tracking-wide text-muted-foreground">
-            Entrada del usuario
+            Descripción
           </Label>
           <Textarea
             id="spec-input"
@@ -407,7 +499,7 @@ export const SpecTab: React.FC<SpecTabProps> = ({
       {propuesta && (
         <div className="space-y-2 rounded-md border border-ai-border bg-ai-surface p-2">
           <p className="text-xs text-ai">
-            La IA propone un borrador con {propuesta.stories.length} historia(s) y{" "}
+            La IA propone un borrador con {propuesta.stories.length} paso(s) y{" "}
             {propuesta.requirements.length} requisito(s). Aplicarlo REEMPLAZA lo que hay escrito.
           </p>
           <div className="flex gap-2">
@@ -422,26 +514,27 @@ export const SpecTab: React.FC<SpecTabProps> = ({
       )}
 
       <Seccion
-        titulo="Historias de usuario"
-        ayuda="Cada historia es una tajada entregable por sí sola. P1 es la más crítica."
+        titulo="Flujo o pasos"
+        ayuda="El flujo es una lista de pasos en orden (subí o bajá para definir la secuencia). Cada paso es una ENTRADA (una caja lo llama) o una SALIDA (llama a otra caja), elegida entre las cajas conectadas en el lienzo, con qué hace y sus escenarios."
         cantidad={spec.stories.length}
-        addLabel={accion("agregar", "historia de usuario")}
+        addLabel={accion("agregar", "paso")}
         onAdd={() =>
-          spec.stories.length < MAX_HISTORIAS &&
-          set({ stories: [...spec.stories, nuevaHistoria(nextPriority(spec.stories))] })
+          spec.stories.length < MAX_PASOS && set({ stories: [...spec.stories, nuevoPaso()] })
         }
       >
         {spec.stories.length === 0 && (
           <p className="text-xs text-muted-foreground">
-            Sin historias no hay especificación: agregá la primera (P1).
+            Sin pasos no hay especificación: agregá el primero.
           </p>
         )}
         {spec.stories.map((h, i) => (
-          <HistoriaCard
+          <PasoCard
             key={h.id}
-            historia={h}
+            paso={h}
             indice={i}
             total={spec.stories.length}
+            flujoVecinos={flujoVecinos}
+            resolveNodeName={resolveNodeName}
             onChange={(nueva) => set({ stories: spec.stories.map((x) => (x.id === h.id ? nueva : x)) })}
             onMover={(desde, hasta) => set({ stories: moveItem(spec.stories, desde, hasta) })}
             onQuitar={() => set({ stories: spec.stories.filter((x) => x.id !== h.id) })}

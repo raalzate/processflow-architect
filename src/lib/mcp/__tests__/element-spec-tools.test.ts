@@ -25,11 +25,16 @@ const specDeAgente = () => ({
   input: "el asesor da de alta sin soporte",
   stories: [
     {
-      titulo: "Dar de alta",
-      prioridad: "P1",
-      porQue: "es el único camino",
-      pruebaIndependiente: "con un asesor",
+      tipo: "entrada",
+      ref: "db",
+      hace: "recibe la consulta del asesor",
       escenarios: [{ given: "asesor con sesión", when: "envía el alta", then: "queda vigente" }],
+    },
+    {
+      tipo: "salida",
+      ref: "db",
+      hace: "persiste el alta",
+      escenarios: [{ given: "alta válida", when: "se confirma", then: "queda registrada" }],
     },
   ],
   requirements: [{ texto: "El sistema MUST registrar el alta" }],
@@ -62,7 +67,7 @@ describe("setElementSpec", () => {
     const out = setElementSpec(modelo(), "api", {
       featureName: "x",
       status: "publicada",
-      stories: ["basura", null, { titulo: "vale" }],
+      stories: ["basura", null, { tipo: "salida", ref: "db", hace: "vale" }],
       requirements: "no es una lista",
     });
     expect(out.nodes[0].spec!.status).toBe("borrador");
@@ -98,6 +103,16 @@ describe("specMarkdown", () => {
     expect(md).toContain("**Given** asesor con sesión");
     expect(md).toContain("- **FR-001**: El sistema MUST registrar el alta");
     expect(md).toContain("- **SC-001**: 99 % en un intento");
+  });
+
+  it("resuelve el nodo del paso al NOMBRE de la caja, no al id, y muestra el tipo", () => {
+    const out = setElementSpec(modelo(), "api", specDeAgente());
+    const md = specMarkdown(out, "api");
+    // ref "db" → "Policies DB"; el tipo del paso encabeza la línea.
+    expect(md).toContain("### Step 1 — Input: Policies DB");
+    expect(md).toContain("**Does**: recibe la consulta del asesor");
+    expect(md).toContain("### Step 2 — Output: Policies DB");
+    expect(md).toContain("**Does**: persiste el alta");
   });
 
   it("del diagrama entero: una sección por elemento CON spec", () => {
@@ -148,20 +163,37 @@ describe("specReport", () => {
     expect(specReport(out).markdown).toContain("por aclarar");
   });
 
-  it("caza historias sin escenarios: no se pueden verificar", () => {
+  it("caza pasos sin escenarios: no se pueden verificar (nombrados por tipo + nodo)", () => {
     const out = setElementSpec(modelo(), "api", {
       featureName: "x",
-      stories: [{ titulo: "Dar de alta", prioridad: "P1" }],
+      stories: [{ tipo: "entrada", ref: "db", hace: "recibe" }],
     });
-    expect(specReport(out).estados.find((e) => e.id === "api")!.historiasSinEscenarios).toEqual([
-      "Dar de alta",
+    expect(specReport(out).estados.find((e) => e.id === "api")!.pasosSinEscenarios).toEqual([
+      "entrada: Policies DB",
     ]);
   });
 
-  it("un diagrama con todo completo lo dice", () => {
+  it("caza pasos con flujo roto: entrada/salida a una caja que ya no existe", () => {
+    const out = setElementSpec(modelo(), "api", {
+      featureName: "x",
+      stories: [{ tipo: "salida", ref: "borrada", hace: "publica", escenarios: [{ given: "a", when: "b", then: "c" }] }],
+    });
+    const estado = specReport(out).estados.find((e) => e.id === "api")!;
+    // La caja "borrada" no existe: se nombra por su id porque no hay nombre que resolver.
+    expect(estado.pasosConFlujoRoto).toEqual(["salida: borrada"]);
+    expect(specReport(out).markdown).toContain("flujo roto");
+  });
+
+  it("un flujo que apunta a cajas existentes no se marca roto", () => {
     const out = setElementSpec(modelo(), "api", specDeAgente());
-    const soloApi = { ...out, nodes: [out.nodes[0]] };
-    expect(specReport(soloApi).markdown).toContain("están completas");
+    expect(specReport(out).estados.find((e) => e.id === "api")!.pasosConFlujoRoto).toEqual([]);
+  });
+
+  it("un diagrama con todo completo lo dice", () => {
+    // El flujo del paso apunta a `db` y `api`: ambas cajas siguen en el modelo,
+    // así que no hay flujo roto y la única spec del diagrama está completa.
+    const out = setElementSpec(modelo(), "api", specDeAgente());
+    expect(specReport(out).markdown).toContain("están completas");
   });
 
   it("un diagrama sin elementos no revienta", () => {
@@ -180,7 +212,7 @@ describe("setElementSpec con merge · completar sin pisar (#239)", () => {
       "El sistema MUST notificar",
     ]);
     expect(spec.featureName).toBe("Alta de póliza");
-    expect(spec.stories).toHaveLength(1);
+    expect(spec.stories).toHaveLength(2);
   });
 
   it("sin merge, la misma llamada REEMPLAZA (la semántica vieja no cambia)", () => {

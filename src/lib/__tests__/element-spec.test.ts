@@ -1,14 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
-  MAX_HISTORIAS,
+  MAX_PASOS,
   MAX_ITEMS_LISTA,
   emptySpec,
   isSpecEmpty,
   specWithSeededDate,
-  nextPriority,
   etiqueta,
   moveItem,
-  nuevaHistoria,
+  nuevoPaso,
   nuevoEscenario,
   nuevoRequisito,
   nuevaEntidad,
@@ -26,7 +25,7 @@ import {
 const conDatos = (): ElementSpec => ({
   ...emptySpec(),
   featureName: "Cobro recurrente",
-  stories: [{ ...nuevaHistoria("P1"), titulo: "Cobrar la cuota" }],
+  stories: [{ ...nuevoPaso("salida"), ref: "n-bus", hace: "publica CuotaCobrada" }],
 });
 
 describe("emptySpec / isSpecEmpty", () => {
@@ -52,12 +51,15 @@ describe("emptySpec / isSpecEmpty", () => {
     expect(isSpecEmpty({ ...emptySpec(), status: "aprobada" })).toBe(false);
   });
 
-  it("una historia con todos sus campos vacíos no cuenta como dato", () => {
-    expect(isSpecEmpty({ ...emptySpec(), stories: [nuevaHistoria("P1")] })).toBe(true);
+  it("un paso recién agregado (sin nodo ni datos) no cuenta como dato", () => {
+    // El `+` agrega un paso vacío: no debe persistir spec hasta que se llene.
+    expect(isSpecEmpty({ ...emptySpec(), stories: [nuevoPaso()] })).toBe(true);
   });
 
-  it("una historia con título cuenta como dato", () => {
-    expect(isSpecEmpty(conDatos())).toBe(false);
+  it("un paso cuenta apenas tiene nodo, o qué hace, o detalle, o escenarios", () => {
+    expect(isSpecEmpty({ ...emptySpec(), stories: [{ ...nuevoPaso("entrada"), ref: "n-checkout" }] })).toBe(false);
+    expect(isSpecEmpty({ ...emptySpec(), stories: [{ ...nuevoPaso(), hace: "algo" }] })).toBe(false);
+    expect(isSpecEmpty({ ...emptySpec(), stories: [{ ...nuevoPaso(), detalle: ["valida stock"] }] })).toBe(false);
   });
 
   it("un caso límite escrito cuenta; uno en blanco no", () => {
@@ -78,28 +80,6 @@ describe("specWithSeededDate", () => {
   it("no pisa la fecha que el usuario corrigió a mano", () => {
     const s = { ...conDatos(), createdAt: "2020-01-01" };
     expect(specWithSeededDate(s, "2026-08-27").createdAt).toBe("2020-01-01");
-  });
-});
-
-describe("nextPriority", () => {
-  it("la primera historia es P1", () => {
-    expect(nextPriority([])).toBe("P1");
-  });
-
-  it("propone la siguiente libre", () => {
-    expect(nextPriority([nuevaHistoria("P1"), nuevaHistoria("P2")])).toBe("P3");
-  });
-
-  it("rellena el hueco que dejó una historia borrada", () => {
-    expect(nextPriority([nuevaHistoria("P1"), nuevaHistoria("P3")])).toBe("P2");
-  });
-
-  it("una prioridad repetida no rompe la propuesta", () => {
-    expect(nextPriority([nuevaHistoria("P1"), nuevaHistoria("P1")])).toBe("P2");
-  });
-
-  it("una prioridad escrita a mano y rara no rompe nada", () => {
-    expect(nextPriority([{ ...nuevaHistoria("P1"), prioridad: "urgente" }])).toBe("P1");
   });
 });
 
@@ -137,16 +117,15 @@ describe("moveItem", () => {
   });
 });
 
-describe("ids de las piezas nuevas", () => {
+describe("ids y forma de las piezas nuevas", () => {
   it("cada pieza nace con un id único (sirve de key de React)", () => {
-    const ids = [nuevaHistoria("P1").id, nuevaHistoria("P2").id, nuevoEscenario().id, nuevoRequisito().id];
+    const ids = [nuevoPaso().id, nuevoPaso().id, nuevoEscenario().id, nuevoRequisito().id];
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("una historia nueva trae la prioridad pedida y ningún escenario", () => {
-    const h = nuevaHistoria("P2");
-    expect(h.prioridad).toBe("P2");
-    expect(h.escenarios).toEqual([]);
+  it("un paso nuevo es una entrada por defecto, sin nodo ni escenarios", () => {
+    expect(nuevoPaso()).toMatchObject({ tipo: "entrada", ref: "", hace: "", detalle: [], escenarios: [] });
+    expect(nuevoPaso("salida").tipo).toBe("salida");
   });
 });
 
@@ -164,7 +143,7 @@ describe("sanitizeSpec", () => {
   it("completa lo que falta y descarta lo que no sirve", () => {
     const s = sanitizeSpec({
       featureName: "Cobro",
-      stories: [{ titulo: "Cobrar" }, "basura", null],
+      stories: [{ tipo: "salida", ref: "n-bus", hace: "publica" }, "basura", null],
       requirements: [{ texto: "El sistema DEBE cobrar" }, { texto: "" }],
       edgeCases: ["sin saldo", 7],
     });
@@ -176,6 +155,44 @@ describe("sanitizeSpec", () => {
     expect(s?.edgeCases).toEqual(["sin saldo"]);
   });
 
+  it("un paso es {tipo, ref, hace, detalle, escenarios}: acepta nodeId, tipo raro cae en entrada", () => {
+    const s = sanitizeSpec({
+      featureName: "x",
+      stories: [
+        { tipo: "inventado", ref: "n-a", hace: "envía el pedido", detalle: ["valida", "  ", 7] },
+        { nodeId: "n-b", hace: "publica" }, // acepta nodeId como ref; sin tipo → entrada
+      ],
+    });
+    expect(s?.stories[0]).toMatchObject({ tipo: "entrada", ref: "n-a", hace: "envía el pedido", detalle: ["valida"] });
+    expect(s?.stories[1]).toMatchObject({ tipo: "entrada", ref: "n-b", hace: "publica" });
+  });
+
+  it("un paso que sólo tiene nodo (sin hace ni escenarios) se conserva", () => {
+    const s = sanitizeSpec({ featureName: "x", stories: [{ tipo: "salida", ref: "n-bus" }] });
+    expect(s?.stories).toHaveLength(1);
+    expect(s?.stories[0]).toMatchObject({ tipo: "salida", ref: "n-bus" });
+  });
+
+  it("un archivo viejo conserva los escenarios e IGNORA título/prioridad/porQue/prueba", () => {
+    const s = sanitizeSpec({
+      featureName: "x",
+      stories: [
+        {
+          titulo: "Cobrar",
+          prioridad: "P1",
+          porQue: "sin cobro no hay negocio",
+          pruebaIndependiente: "con una cuota vencida",
+          escenarios: [{ given: "a", when: "b", then: "c" }],
+        },
+      ],
+    });
+    expect(s?.stories[0]).toMatchObject({ tipo: "entrada", ref: "", hace: "", detalle: [] });
+    expect(s?.stories[0].escenarios[0]).toMatchObject({ given: "a", when: "b", then: "c" });
+    for (const viejo of ["titulo", "prioridad", "porQue", "pruebaIndependiente"]) {
+      expect(s?.stories[0]).not.toHaveProperty(viejo);
+    }
+  });
+
   it("un estado inventado cae en borrador", () => {
     expect(sanitizeSpec({ featureName: "x", status: "publicada" })?.status).toBe("borrador");
   });
@@ -183,18 +200,18 @@ describe("sanitizeSpec", () => {
   it("recorta a los topes en vez de dejar crecer la caja sin límite", () => {
     const s = sanitizeSpec({
       featureName: "x",
-      stories: Array.from({ length: MAX_HISTORIAS + 5 }, (_, i) => ({ titulo: `h${i}` })),
+      stories: Array.from({ length: MAX_PASOS + 5 }, (_, i) => ({ tipo: "salida", ref: `n${i}`, hace: "x" })),
       requirements: Array.from({ length: MAX_ITEMS_LISTA + 5 }, (_, i) => ({ texto: `r${i}` })),
     });
-    expect(s?.stories).toHaveLength(MAX_HISTORIAS);
+    expect(s?.stories).toHaveLength(MAX_PASOS);
     expect(s?.requirements).toHaveLength(MAX_ITEMS_LISTA);
   });
 
-  it("preserva la marca de «necesita aclaración» y los escenarios", () => {
+  it("preserva la marca de «necesita aclaración» y los escenarios del paso", () => {
     const s = sanitizeSpec({
       featureName: "x",
       requirements: [{ texto: "algo", needsClarification: true }],
-      stories: [{ titulo: "h", escenarios: [{ given: "a", when: "b", then: "c" }] }],
+      stories: [{ tipo: "entrada", ref: "n-a", escenarios: [{ given: "a", when: "b", then: "c" }] }],
     });
     expect(s?.requirements[0].needsClarification).toBe(true);
     expect(s?.stories[0].escenarios[0]).toMatchObject({ given: "a", when: "b", then: "c" });
@@ -237,12 +254,15 @@ describe("specToMarkdown", () => {
     input: "quiero cobrar la cuota todos los meses",
     stories: [
       {
-        ...nuevaHistoria("P1"),
-        titulo: "Cobrar la cuota",
-        porQue: "sin cobro no hay negocio",
-        pruebaIndependiente: "se prueba con una cuota vencida",
-        escenarios: [{ ...nuevoEscenario(), given: "una cuota vencida", when: "corre el cobro", then: "se marca pagada" }],
+        ...nuevoPaso("entrada"),
+        ref: "n-checkout",
+        hace: "dispara el cobro",
+        detalle: ["valida el saldo", "reserva el cupo"],
+        escenarios: [
+          { ...nuevoEscenario(), given: "una cuota vencida", when: "corre el cobro", then: "se marca pagada" },
+        ],
       },
+      { ...nuevoPaso("salida"), ref: "n-bus", hace: "publica CuotaCobrada" },
     ],
     edgeCases: ["¿y si no hay saldo?"],
     requirements: [
@@ -253,19 +273,27 @@ describe("specToMarkdown", () => {
     criteria: [{ ...nuevoCriterio(), texto: "El 99 % de los cobros se resuelve en un intento" }],
   });
 
-  it("arma la plantilla en orden", () => {
-    const md = specToMarkdown(completa(), "Enrollment API");
+  // Resolutor de nombres del diagrama: id → nombre de la caja.
+  const nombre = (id: string): string =>
+    ({ "n-checkout": "Checkout", "n-bus": "Bus de eventos" })[id] ?? id;
+
+  it("arma la plantilla en orden, con cada paso tipado y su detalle", () => {
+    const md = specToMarkdown(completa(), "Enrollment API", nombre);
     const secciones = [
       "# Feature Specification: Cobro recurrente",
       "**Created**: 2026-08-27",
       "**Status**: Borrador",
       '**Input**: User description: "quiero cobrar la cuota todos los meses"',
-      "## User Stories *(mandatory)*",
-      "### User Story 1 - Cobrar la cuota (Priority: P1)",
-      "**Why this priority**: sin cobro no hay negocio",
-      "**Independent Test**: se prueba con una cuota vencida",
+      "## Flow Steps *(mandatory)*",
+      "### Step 1 — Input: Checkout",
+      "**Does**: dispara el cobro",
+      "**Detail**:",
+      "- valida el saldo",
+      "- reserva el cupo",
       "**Acceptance Scenarios**:",
       "1. **Given** una cuota vencida, **When** corre el cobro, **Then** se marca pagada",
+      "### Step 2 — Output: Bus de eventos",
+      "**Does**: publica CuotaCobrada",
       "### Edge Cases",
       "- ¿y si no hay saldo?",
       "## Requirements *(mandatory)*",
@@ -285,6 +313,12 @@ describe("specToMarkdown", () => {
     }
   });
 
+  it("sin resolutor, el paso cae al id del nodo", () => {
+    const md = specToMarkdown(completa(), "x");
+    expect(md).toContain("### Step 1 — Input: n-checkout");
+    expect(md).toContain("### Step 2 — Output: n-bus");
+  });
+
   it("marca los requisitos que necesitan aclaración", () => {
     const md = specToMarkdown(completa(), "x");
     expect(md).toContain("- **FR-002**: El sistema MUST avisar el fallo [NEEDS CLARIFICATION]");
@@ -299,7 +333,18 @@ describe("specToMarkdown", () => {
     const md = specToMarkdown(conDatos(), "x");
     expect(md).not.toContain("### Edge Cases");
     expect(md).not.toContain("### Key Entities");
-    expect(md).toContain("## User Stories *(mandatory)*");
+    expect(md).toContain("## Flow Steps *(mandatory)*");
+  });
+
+  it("un paso sin qué hace ni detalle omite esas líneas", () => {
+    const md = specToMarkdown(
+      { ...emptySpec(), featureName: "x", stories: [{ ...nuevoPaso("salida"), ref: "n-bus" }] },
+      "x",
+      (id) => (id === "n-bus" ? "Bus" : id)
+    );
+    expect(md).toContain("### Step 1 — Output: Bus");
+    expect(md).not.toContain("**Does**");
+    expect(md).not.toContain("**Detail**");
   });
 
   it("el texto del usuario viaja literal (pipes, almohadillas, asteriscos)", () => {
@@ -344,49 +389,34 @@ describe("specFromLines (borrador de la IA)", () => {
   const salida = [
     "Claro, aquí tienes la especificación:",
     "FEATURE | Cobro recurrente",
-    "HISTORIA | Cobrar la cuota | P1 | sin cobro no hay negocio | con una cuota vencida",
-    "ESCENARIO | una cuota vencida | corre el cobro | queda pagada",
-    "HISTORIA | Avisar el fallo | P2 | el usuario tiene que saber | con la tarjeta rechazada",
     "CASO | ¿y si no hay saldo?",
     "REQUISITO | El sistema MUST cobrar la cuota",
     "ENTIDAD | Cuota | lo que se cobra cada mes",
     "CRITERIO | 99 % de los cobros en un intento",
   ].join("\n");
 
-  it("lee el borrador entero e ignora la prosa del modelo", () => {
+  it("lee lo que la IA sí puede redactar e ignora la prosa del modelo", () => {
     const spec = specFromLines(salida)!;
     expect(spec.featureName).toBe("Cobro recurrente");
-    expect(spec.stories.map((h) => h.prioridad)).toEqual(["P1", "P2"]);
-    expect(spec.stories[0].escenarios).toHaveLength(1);
     expect(spec.edgeCases).toEqual(["¿y si no hay saldo?"]);
     expect(spec.requirements[0].texto).toBe("El sistema MUST cobrar la cuota");
     expect(spec.entities[0]).toMatchObject({ nombre: "Cuota", descripcion: "lo que se cobra cada mes" });
     expect(spec.criteria[0].texto).toBe("99 % de los cobros en un intento");
   });
 
-  it("un escenario colgado antes de cualquier historia se descarta", () => {
-    const spec = specFromLines("ESCENARIO | a | b | c\nREQUISITO | algo")!;
+  it("el FLUJO no lo arma la IA: los pasos los conecta la persona en el lienzo", () => {
+    // Un `PASO`/`ESCENARIO` viejo no tiene id de nodo, así que no genera flujo.
+    const spec = specFromLines(
+      ["FEATURE | X", "PASO | Cobrar la cuota", "ESCENARIO | a | b | c"].join("\n")
+    )!;
     expect(spec.stories).toEqual([]);
-    expect(spec.requirements).toHaveLength(1);
-  });
-
-  it("una historia sin prioridad recibe la siguiente libre", () => {
-    const spec = specFromLines("HISTORIA | Cobrar\nHISTORIA | Avisar")!;
-    expect(spec.stories.map((h) => h.prioridad)).toEqual(["P1", "P2"]);
+    expect(spec.featureName).toBe("X");
   });
 
   it("una respuesta que no dice nada no produce spec", () => {
     expect(specFromLines("No puedo ayudarte con eso.")).toBeUndefined();
     expect(specFromLines("")).toBeUndefined();
     expect(specFromLines("REQUISITO |")).toBeUndefined();
-  });
-
-  it("los escenarios se cuelgan de la ÚLTIMA historia leída", () => {
-    const spec = specFromLines(
-      ["HISTORIA | A | P1", "HISTORIA | B | P2", "ESCENARIO | x | y | z"].join("\n")
-    )!;
-    expect(spec.stories[0].escenarios).toHaveLength(0);
-    expect(spec.stories[1].escenarios).toHaveLength(1);
   });
 });
 
@@ -414,6 +444,25 @@ describe("patchSpec · completar sin reenviar el contrato entero (#239)", () => 
     const una = patchSpec(base(), parche);
     const dos = patchSpec(una, parche);
     expect(dos?.requirements.map((x) => x.texto)).toEqual(una?.requirements.map((x) => x.texto));
+  });
+
+  it("un paso con el mismo tipo+nodo se reemplaza EN SU SITIO (actualizarlo no reordena)", () => {
+    const con = patchSpec(base(), { stories: [{ tipo: "salida", ref: "n-bus", hace: "publica" }] });
+    const act = patchSpec(con, {
+      stories: [{ tipo: "salida", ref: "n-bus", hace: "publica", detalle: ["ahora con detalle"] }],
+    });
+    expect(act?.stories).toHaveLength(1);
+    expect(act?.stories[0]).toMatchObject({ tipo: "salida", ref: "n-bus", detalle: ["ahora con detalle"] });
+  });
+
+  it("mismo nodo pero distinto tipo son pasos distintos (entrada y salida a la misma caja)", () => {
+    const r = patchSpec(base(), {
+      stories: [
+        { tipo: "entrada", ref: "n-x", hace: "me llama" },
+        { tipo: "salida", ref: "n-x", hace: "lo llamo" },
+      ],
+    });
+    expect(r?.stories).toHaveLength(2);
   });
 
   it("un ítem con el mismo texto se reemplaza EN SU SITIO (quitar «por aclarar» no reordena)", () => {

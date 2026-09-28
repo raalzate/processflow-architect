@@ -1287,15 +1287,19 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     stories: z
       .array(
         z.object({
-          titulo: z.string(),
-          prioridad: z.string().optional().describe("P1 es la más crítica."),
-          porQue: z.string().optional().describe("Por qué esa prioridad: qué valor entrega."),
-          pruebaIndependiente: z.string().optional().describe("Cómo se verifica esta historia SOLA."),
+          tipo: z
+            .enum(["entrada", "salida"])
+            .describe("El paso ES una entrada (una caja llama a este elemento) o una salida (este elemento llama a otra)."),
+          ref: z.string().describe("Id del nodo del otro extremo de la conexión (debe existir en el diagrama)."),
+          hace: z.string().optional().describe("Qué hace esta entrada/salida."),
+          detalle: z.array(z.string()).optional().describe("Más detalle de la conexión (líneas libres)."),
           escenarios: z.array(escenarioSchema).optional(),
         })
       )
       .optional()
-      .describe("Historias de usuario priorizadas. Cada una es una tajada entregable por sí sola."),
+      .describe(
+        "Flujo: lista PLANA y EN ORDEN de pasos (la posición es el número de paso). Cada paso es una entrada o una salida a un nodo (por id), con qué hace y cómo se verifica con escenarios."
+      ),
     edgeCases: z.array(z.string()).optional().describe("Qué pasa en el borde."),
     requirements: z
       .array(
@@ -1319,7 +1323,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Escribir la especificación de un elemento",
       description:
-        "Escribe QUÉ DEBE HACER una caja y CÓMO SE VERIFICA (es acá y no en la descripción donde va el detalle): historias de usuario priorizadas con escenarios Given/When/Then, casos límite, requisitos funcionales, entidades clave y criterios de éxito medibles. Es el contrato del elemento y se ve en su ficha dentro de la app, en el tab «Spec». Por defecto REEMPLAZA la especificación anterior; con `merge: true` la COMPLETA sin pisar lo que ya había (es lo que conviene para ir llenando el contrato caja por caja). Una especificación vacía borra la que hubiera. Lo que no decida la fuente NO se inventa: se marca `needsClarification`.",
+        "Escribe QUÉ DEBE HACER una caja y CÓMO SE VERIFICA (es acá y no en la descripción donde va el detalle): un flujo de pasos donde cada paso es una entrada o una salida a un nodo (por id, con qué hace) y sus escenarios Given/When/Then, casos límite, requisitos funcionales, entidades clave y criterios de éxito medibles. Es el contrato del elemento y se ve en su ficha dentro de la app, en el tab «Spec». Por defecto REEMPLAZA la especificación anterior; con `merge: true` la COMPLETA sin pisar lo que ya había (es lo que conviene para ir llenando el contrato caja por caja). Una especificación vacía borra la que hubiera. Lo que no decida la fuente NO se inventa: se marca `needsClarification`.",
       inputSchema: {
         diagramId: diagramIdSchema,
         id: z.string().describe("Id del elemento (nodo o contenedor)."),
@@ -1328,7 +1332,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .boolean()
           .optional()
           .describe(
-            "`true` = PARCHE: lo que mandás pisa (nombre, estado, entrada) o se SUMA (historias, requisitos, criterios, entidades, casos límite) y lo que no mandás se conserva. Un ítem con el mismo texto se reemplaza en su sitio, así reintentar no duplica ni renumera los FR-00N. Usalo para COMPLETAR una spec sin releerla entera ni pisar lo que escribió una persona; sin `merge` la spec se reemplaza."
+            "`true` = PARCHE: lo que mandás pisa (nombre, estado, entrada) o se SUMA (pasos, requisitos, criterios, entidades, casos límite) y lo que no mandás se conserva. Un ítem con el mismo texto (o un paso con el mismo título) se reemplaza en su sitio, así reintentar no duplica ni renumera los FR-00N. Usalo para COMPLETAR una spec sin releerla entera ni pisar lo que escribió una persona; sin `merge` la spec se reemplaza."
           ),
       },
     },
@@ -1351,7 +1355,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
               : `Especificación de "${id}" borrada (llegó vacía).`
           );
         return text(
-          `Especificación de "${id}" guardada: ${guardada.stories.length} historia(s), ${guardada.requirements.length} requisito(s), ${guardada.criteria.length} criterio(s).`
+          `Especificación de "${id}" guardada: ${guardada.stories.length} paso(s), ${guardada.requirements.length} requisito(s), ${guardada.criteria.length} criterio(s).`
         );
       } catch (e: any) {
         return fail(e.message);
@@ -1430,7 +1434,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Qué falta en las especificaciones",
       description:
-        "Reporte de las especificaciones del diagrama: qué elementos no tienen, cuáles tienen requisitos sin ningún criterio de éxito con el que verificarlos, cuáles tienen historias sin escenarios y qué quedó marcado como «necesita aclaración». No bloquea nada: es la lista de lo que hay que terminar antes de que el diagrama llegue a quien construye.",
+        "Reporte de las especificaciones del diagrama: qué elementos no tienen, cuáles tienen requisitos sin ningún criterio de éxito con el que verificarlos, cuáles tienen pasos sin escenarios o con flujo roto (entrada/salida a una caja que ya no existe) y qué quedó marcado como «necesita aclaración». No bloquea nada: es la lista de lo que hay que terminar antes de que el diagrama llegue a quien construye.",
       inputSchema: { diagramId: diagramIdSchema },
     },
     async ({ diagramId: diagramIdEntrada }) => {

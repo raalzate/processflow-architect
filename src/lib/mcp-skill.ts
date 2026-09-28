@@ -353,13 +353,17 @@ el tab «Spec» de su ficha.
 set_element_spec { id: "c4-api-pagos", spec: {
   featureName: "Cobro recurrente",
   input: "<lo que pide el documento, con sus palabras>",
-  stories: [ { titulo: "Cobrar la cuota", prioridad: "P1",
-               porQue: "…", pruebaIndependiente: "…",
-               escenarios: [ { given: "…", when: "…", then: "…" } ] } ],
+  stories: [ { tipo: "entrada", ref: "<id de la caja que lo llama>", hace: "qué hace esta entrada",
+               escenarios: [ { given: "…", when: "…", then: "…" } ] },
+             { tipo: "salida", ref: "<id de la caja a la que llama>", hace: "qué hace esta salida" } ],
   requirements: [ { texto: "El sistema MUST …" } ],
   criteria: [ { texto: "… con un número medible" } ] } }
 \`\`\`
 
+- **El \`stories\` es el FLUJO: una lista PLANA y en ORDEN de pasos.** Cada paso es
+  \`tipo: "entrada"\` (una caja lo llama) o \`tipo: "salida"\` (llama a otra caja),
+  apunta con \`ref\` a un id de nodo que YA EXISTE, dice \`hace\` y puede llevar
+  \`detalle\` y \`escenarios\`. El orden es la secuencia; no hay prioridad.
 - Lo que el documento **no decide, no se inventa**: \`needsClarification: true\` en
   ese requisito, y además registrá la ambigüedad con \`record_ambiguity\`.
 - **Es una pasada propia, después de crear las cajas.** Un portafolio de
@@ -897,17 +901,21 @@ de su ficha. Se escribe con \`set_element_spec\`:
 set_element_spec { id: "c4-api-pagos", spec: {
   featureName: "Cobro recurrente",
   input: "que la cuota se cobre sola cada mes",
-  stories: [ { titulo: "Cobrar la cuota", prioridad: "P1",
-               porQue: "sin cobro no hay negocio",
-               pruebaIndependiente: "con una cuota vencida",
+  stories: [ { tipo: "entrada", ref: "c4-scheduler", hace: "dispara el cobro mensual",
                escenarios: [ { given: "una cuota vencida", when: "corre el cobro",
-                               then: "la cuota queda pagada" } ] } ],
+                               then: "la cuota queda pagada" } ] },
+             { tipo: "salida", ref: "c4-bus-eventos", hace: "publica CuotaCobrada" } ],
   edgeCases: ["¿y si la tarjeta se rechaza?"],
   requirements: [ { texto: "El sistema MUST reintentar el cobro 3 veces" } ],
   entities: [ { nombre: "Cuota", descripcion: "lo que se cobra cada mes" } ],
   criteria: [ { texto: "99 % de los cobros se resuelven en un intento" } ] } }
 \`\`\`
 
+- **El \`stories\` es el FLUJO: una lista PLANA y en ORDEN de pasos.** Cada paso es
+  una \`tipo: "entrada"\` (una caja llama a este elemento) o \`tipo: "salida"\` (este
+  elemento llama a otra), apunta con \`ref\` a un id de nodo que YA EXISTE en el
+  diagrama, dice \`hace\` (qué hace esa conexión) y puede llevar \`detalle\` y
+  \`escenarios\`. El orden de la lista es la secuencia: no hay campo de prioridad.
 - **La spec no es opcional ni es el final del trabajo: es una PASADA propia.**
   Creá primero los elementos y las relaciones; después volvé caja por caja a
   escribir el contrato. Lo que no quepa en el nombre va a la \`description\`, pero
@@ -915,8 +923,9 @@ set_element_spec { id: "c4-api-pagos", spec: {
   descripción la lee el humano de reojo, la spec la lee quien construye.
 - Por defecto **reemplaza** la spec anterior. Para completarla sin reescribirla,
   \`set_element_spec { merge: true }\`: lo que mandás pisa (nombre, estado) o se
-  suma (historias, requisitos, criterios, entidades, casos límite) y lo que no
-  mandás se conserva. Un ítem con el mismo texto se reemplaza en su sitio, así
+  suma (pasos, requisitos, criterios, entidades, casos límite) y lo que no
+  mandás se conserva. Un ítem con el mismo texto (o un paso con el mismo tipo +
+  nodo) se reemplaza en su sitio, así
   reintentar no duplica ni renumera los \`FR-00N\` que alguien ya citó afuera.
   Sin \`merge\`, una spec vacía borra la que hubiera.
 - Lo que la fuente **no decide, no se inventa**: el requisito se marca
@@ -926,8 +935,9 @@ set_element_spec { id: "c4-api-pagos", spec: {
 - \`spec_to_markdown\` devuelve la plantilla lista para pegar en una issue o un PR
   (de un elemento, o de todo el diagrama sin \`id\`).
 - \`review_specs\` dice qué elementos no tienen spec, cuáles tienen requisitos sin
-  ningún criterio con el que verificarlos, cuáles tienen historias sin
-  escenarios, **qué criterio no tiene ningún número** (no se puede medir), **qué
+  ningún criterio con el que verificarlos, cuáles tienen pasos sin
+  escenarios o con flujo roto (entrada/salida a una caja que ya no existe),
+  **qué criterio no tiene ningún número** (no se puede medir), **qué
   requisito nombra una tecnología** (dice el cómo, no el qué) y qué quedó por
   aclarar. **Es el cierre de la pasada de spec: no des el diseño por terminado
   hasta que lo que devuelve sea lista vacía o una excepción que le declarás al
