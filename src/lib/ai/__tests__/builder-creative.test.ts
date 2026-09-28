@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { runCreative, recortarSiNoEntra, contextoMermaid, cuantosElementos } from "../builder-creative";
+import {
+  runCreative,
+  recortarSiNoEntra,
+  contextoMermaid,
+  cuantosElementos,
+  quitarContenedoresVacios,
+} from "../builder-creative";
 import { fromMermaid } from "../../mcp/from-mermaid";
 import type { GraphData } from "../../types";
 
@@ -168,6 +174,64 @@ describe("una propuesta demasiado grande se recorta CON aviso (FR-013)", () => {
   it("lo que entra no se toca", () => {
     const { model } = fromMermaid(MVC, "c4");
     expect(recortarSiNoEntra(model, 40).aviso).toBeUndefined();
+  });
+});
+
+const CON_VACIO = [
+  "flowchart LR",
+  '  subgraph vacio["Sistema Pedido<br><i>Límite de Sistema</i>"]',
+  "  end",
+  '  subgraph lleno["API Gateway<br><i>Límite de Sistema</i>"]',
+  '    api["Servicio API<br><i>Componente</i>"]',
+  "  end",
+  '  db[("PostgreSQL<br><i>Base de Datos</i>")]',
+  '  api -->|"guarda"| db',
+].join("\n");
+
+describe("quitarContenedoresVacios · fuera las bandas fantasma", () => {
+  it("quita el contenedor sin hijos y conserva el que tiene elementos", () => {
+    const { model } = fromMermaid(CON_VACIO, "c4");
+    const r = quitarContenedoresVacios(model);
+    expect(r.quitados).toContain("Sistema Pedido");
+    expect(r.model.nodes.some((n) => n.nombre === "Sistema Pedido")).toBe(false);
+    expect(r.model.nodes.some((n) => n.nombre === "API Gateway")).toBe(true);
+    expect(r.model.nodes.some((n) => n.nombre === "Servicio API")).toBe(true);
+  });
+
+  it("no toca nada cuando todos los contenedores tienen hijos", () => {
+    const { model } = fromMermaid(MVC, "c4");
+    const r = quitarContenedoresVacios(model);
+    expect(r.quitados).toHaveLength(0);
+    expect(r.model).toBe(model);
+  });
+});
+
+describe("el modo creativo NO publica en silencio (surface de avisos)", () => {
+  it("avisa que quitó el contenedor vacío que dejó el modelo", async () => {
+    const generar = vi.fn().mockResolvedValue(CON_VACIO);
+    const aplicar = vi.fn().mockResolvedValue({ ok: true, texto: "Vista reemplazada." });
+    const r = await runCreative({ pedido: "un sistema con API", vista: vistaVacia }, { generar, aplicar });
+    expect(r.kind).toBe("listo");
+    expect(r.kind === "listo" && r.reply).toMatch(/contenedor\(es\) vac[ií]o\(s\)/);
+    expect(r.kind === "listo" && r.reply).toContain("Sistema Pedido");
+    // Y no se publica el contenedor vacío.
+    const graphPublicado = aplicar.mock.calls[0][0] as GraphData;
+    const nombres = (graphPublicado.agregados ?? []).map((a: any) => a.nombre_agregado);
+    expect(nombres).not.toContain("Sistema Pedido");
+  });
+
+  it("muestra el aviso de un nombre que se recortará en el lienzo", async () => {
+    const largo = "Servicio de Procesamiento de Pedidos y Notificaciones al Cliente Final";
+    const conNombreLargo = [
+      "flowchart LR",
+      `  a["${largo}<br><i>Componente</i>"]`,
+      '  b["Base<br><i>Base de Datos</i>"]',
+      '  a -->|"guarda"| b',
+    ].join("\n");
+    const generar = vi.fn().mockResolvedValue(conNombreLargo);
+    const aplicar = vi.fn().mockResolvedValue({ ok: true, texto: "Vista reemplazada." });
+    const r = await runCreative({ pedido: "algo", vista: vistaVacia }, { generar, aplicar });
+    expect(r.kind === "listo" && r.reply).toContain("se recortará");
   });
 });
 
