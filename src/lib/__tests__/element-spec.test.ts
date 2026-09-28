@@ -82,24 +82,28 @@ describe("specWithSeededDate", () => {
 });
 
 describe("nextPriority", () => {
-  it("la primera historia es P1", () => {
-    expect(nextPriority([])).toBe("P1");
+  it("el primer paso pesa 1", () => {
+    expect(nextPriority([])).toBe("1");
   });
 
-  it("propone la siguiente libre", () => {
-    expect(nextPriority([nuevaHistoria("P1"), nuevaHistoria("P2")])).toBe("P3");
+  it("propone el siguiente peso libre", () => {
+    expect(nextPriority([nuevaHistoria("1"), nuevaHistoria("2")])).toBe("3");
   });
 
-  it("rellena el hueco que dejó una historia borrada", () => {
-    expect(nextPriority([nuevaHistoria("P1"), nuevaHistoria("P3")])).toBe("P2");
+  it("rellena el hueco que dejó un paso borrado", () => {
+    expect(nextPriority([nuevaHistoria("1"), nuevaHistoria("3")])).toBe("2");
   });
 
-  it("una prioridad repetida no rompe la propuesta", () => {
-    expect(nextPriority([nuevaHistoria("P1"), nuevaHistoria("P1")])).toBe("P2");
+  it("un peso repetido no rompe la propuesta", () => {
+    expect(nextPriority([nuevaHistoria("1"), nuevaHistoria("1")])).toBe("2");
   });
 
-  it("una prioridad escrita a mano y rara no rompe nada", () => {
-    expect(nextPriority([{ ...nuevaHistoria("P1"), prioridad: "urgente" }])).toBe("P1");
+  it("un peso escrito a mano y raro no ocupa número", () => {
+    expect(nextPriority([{ ...nuevaHistoria("1"), prioridad: "urgente" }])).toBe("1");
+  });
+
+  it("reconoce el formato viejo «P<n>» para no duplicar pesos al migrar", () => {
+    expect(nextPriority([nuevaHistoria("P1"), nuevaHistoria("P2")])).toBe("3");
   });
 });
 
@@ -370,9 +374,9 @@ describe("specFromLines (borrador de la IA)", () => {
     expect(spec.requirements).toHaveLength(1);
   });
 
-  it("una historia sin prioridad recibe la siguiente libre", () => {
+  it("una historia sin peso recibe el siguiente libre", () => {
     const spec = specFromLines("HISTORIA | Cobrar\nHISTORIA | Avisar")!;
-    expect(spec.stories.map((h) => h.prioridad)).toEqual(["P1", "P2"]);
+    expect(spec.stories.map((h) => h.prioridad)).toEqual(["1", "2"]);
   });
 
   it("una respuesta que no dice nada no produce spec", () => {

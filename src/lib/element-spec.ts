@@ -47,7 +47,9 @@ export interface SpecScenario {
 export interface SpecStory {
   id: string;
   titulo: string;
-  /** `P1`, `P2`, … Es texto libre a propósito: el usuario manda sobre su tablero. */
+  /** Peso o prioridad: un número (`1`, `2`, … donde 1 es lo más crítico). Es
+   * texto libre a propósito: el usuario manda sobre su tablero. Archivos viejos
+   * pueden traer el formato `P<n>` y se siguen aceptando. */
   prioridad: string;
   porQue: string;
   pruebaIndependiente: string;
@@ -168,19 +170,20 @@ export function specWithSeededDate(spec: ElementSpec, hoy: string): ElementSpec 
 }
 
 /**
- * Siguiente `P{n}` libre. Rellena huecos (borrar la P2 la vuelve a proponer) y
- * no prohíbe repetir: sólo propone. Una prioridad escrita a mano que no tenga la
- * forma `P<n>` simplemente no ocupa número.
+ * Siguiente peso libre (`1`, `2`, …). Rellena huecos (borrar el peso 2 lo vuelve
+ * a proponer) y no prohíbe repetir: sólo propone. Un peso escrito a mano que no
+ * sea un número simplemente no ocupa lugar. Acepta también el formato viejo
+ * `P<n>` para no duplicar pesos al abrir un archivo anterior al cambio.
  */
 export function nextPriority(stories: readonly SpecStory[]): string {
   const usados = new Set<number>();
   for (const h of stories) {
-    const m = /^P(\d+)$/i.exec((h.prioridad ?? "").trim());
+    const m = /^P?(\d+)$/i.exec((h.prioridad ?? "").trim());
     if (m) usados.add(Number(m[1]));
   }
   let n = 1;
   while (usados.has(n)) n++;
-  return `P${n}`;
+  return `${n}`;
 }
 
 /** Identificador visible de un ítem por su POSICIÓN: `FR-001`, `SC-010`. */
@@ -229,7 +232,7 @@ export function sanitizeSpec(valor: unknown): ElementSpec | undefined {
     .map((h) => ({
       id: typeof h.id === "string" && h.id ? h.id : nuevoId("st"),
       titulo: texto(h.titulo),
-      prioridad: texto(h.prioridad) || "P1",
+      prioridad: texto(h.prioridad) || "1",
       porQue: texto(h.porQue),
       pruebaIndependiente: texto(h.pruebaIndependiente),
       escenarios: objetos(h.escenarios)
@@ -402,7 +405,7 @@ export function specToMarkdown(spec: ElementSpec, fallbackName: string): string 
     const partes = ["## User Stories *(mandatory)*"];
     historias.forEach((h, i) => {
       const titulo = h.titulo.trim() || "(sin título)";
-      const cuerpo = [`### User Story ${i + 1} - ${titulo} (Priority: ${h.prioridad.trim() || "P?"})`];
+      const cuerpo = [`### User Story ${i + 1} - ${titulo} (Priority: ${h.prioridad.trim() || "?"})`];
       if (h.porQue.trim()) cuerpo.push("", `**Why this priority**: ${h.porQue.trim()}`);
       if (h.pruebaIndependiente.trim())
         cuerpo.push("", `**Independent Test**: ${h.pruebaIndependiente.trim()}`);

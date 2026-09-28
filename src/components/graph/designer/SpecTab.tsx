@@ -188,20 +188,20 @@ const HistoriaCard: React.FC<{
           onClick={() => setAbierta((a) => !a)}
           className="mt-1.5 shrink-0 text-muted-foreground hover:text-foreground"
           aria-expanded={abierta}
-          title={abierta ? "Colapsar historia" : "Expandir historia"}
+          title={abierta ? "Colapsar paso" : "Expandir paso"}
         >
           {abierta ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
         <Input
           value={historia.titulo}
           onChange={(e) => set({ titulo: e.target.value })}
-          placeholder={`Historia ${indice + 1} — título breve`}
+          placeholder={`Paso ${indice + 1} — título breve`}
           className="h-8"
         />
         <Input
           value={historia.prioridad}
           onChange={(e) => set({ prioridad: e.target.value })}
-          title="Prioridad (P1 es la más crítica)"
+          title="Peso o prioridad (1 es lo más crítico)"
           className="h-8 w-16 shrink-0 text-center"
         />
         <FilaAcciones
@@ -209,7 +209,7 @@ const HistoriaCard: React.FC<{
           total={total}
           onMover={onMover}
           onQuitar={onQuitar}
-          quitarLabel={accion("eliminar", "historia de usuario")}
+          quitarLabel={accion("eliminar", "paso")}
         />
       </div>
 
@@ -224,7 +224,7 @@ const HistoriaCard: React.FC<{
           <Textarea
             value={historia.pruebaIndependiente}
             onChange={(e) => set({ pruebaIndependiente: e.target.value })}
-            placeholder="Prueba independiente: cómo se verifica esta historia sola, sin las demás"
+            placeholder="Prueba independiente: cómo se verifica este paso solo, sin los demás"
             className="min-h-[56px] text-sm"
           />
 
@@ -245,7 +245,7 @@ const HistoriaCard: React.FC<{
 
           {escenarios.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              Sin escenarios la historia no se puede verificar: agregá al menos uno.
+              Sin escenarios el paso no se puede verificar: agregá al menos uno.
             </p>
           )}
 
@@ -350,7 +350,7 @@ export const SpecTab: React.FC<SpecTabProps> = ({
       <div className="space-y-2 rounded-md border bg-muted/20 p-2">
         <div className="flex items-center justify-between gap-2">
           <Label htmlFor="spec-feature" className="text-xs uppercase tracking-wide text-muted-foreground">
-            Nombre de la feature
+            Nombre
           </Label>
           {suggestButton}
         </div>
@@ -391,7 +391,7 @@ export const SpecTab: React.FC<SpecTabProps> = ({
         </div>
         <div>
           <Label htmlFor="spec-input" className="text-2xs uppercase tracking-wide text-muted-foreground">
-            Entrada del usuario
+            Descripción
           </Label>
           <Textarea
             id="spec-input"
@@ -407,7 +407,7 @@ export const SpecTab: React.FC<SpecTabProps> = ({
       {propuesta && (
         <div className="space-y-2 rounded-md border border-ai-border bg-ai-surface p-2">
           <p className="text-xs text-ai">
-            La IA propone un borrador con {propuesta.stories.length} historia(s) y{" "}
+            La IA propone un borrador con {propuesta.stories.length} paso(s) y{" "}
             {propuesta.requirements.length} requisito(s). Aplicarlo REEMPLAZA lo que hay escrito.
           </p>
           <div className="flex gap-2">
@@ -422,10 +422,10 @@ export const SpecTab: React.FC<SpecTabProps> = ({
       )}
 
       <Seccion
-        titulo="Historias de usuario"
-        ayuda="Cada historia es una tajada entregable por sí sola. P1 es la más crítica."
+        titulo="Flujo o pasos"
+        ayuda="Cada paso es una tajada entregable por sí sola. El peso ordena la prioridad (1 es lo más crítico)."
         cantidad={spec.stories.length}
-        addLabel={accion("agregar", "historia de usuario")}
+        addLabel={accion("agregar", "paso")}
         onAdd={() =>
           spec.stories.length < MAX_HISTORIAS &&
           set({ stories: [...spec.stories, nuevaHistoria(nextPriority(spec.stories))] })
@@ -433,7 +433,7 @@ export const SpecTab: React.FC<SpecTabProps> = ({
       >
         {spec.stories.length === 0 && (
           <p className="text-xs text-muted-foreground">
-            Sin historias no hay especificación: agregá la primera (P1).
+            Sin pasos no hay especificación: agregá el primero.
           </p>
         )}
         {spec.stories.map((h, i) => (
