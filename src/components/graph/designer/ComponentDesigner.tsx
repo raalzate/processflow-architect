@@ -212,6 +212,7 @@ import {
   routingOf,
   flipCurveApex,
   nodeBox,
+  shapeForType,
   AGGREGATE_DEFAULT_WIDTH,
   AGGREGATE_DEFAULT_HEIGHT,
 } from "./link-geom";
@@ -3745,11 +3746,14 @@ export const ComponentDesigner: React.FC<{
         setNodes((prev) => {
           const n = new Map(prev);
           const node = n.get(draggingInfo.id);
-          if (node && isContainerType(node.tipo_elemento)) {
+          // El texto libre se redimensiona para controlar el ancho (y con él, dónde
+          // envuelve); sus mínimos son chicos porque no es una caja con contenido.
+          const esTexto = node ? shapeForType(node.tipo_elemento) === "text" : false;
+          if (node && (isContainerType(node.tipo_elemento) || esTexto)) {
             n.set(draggingInfo.id, {
               ...node,
-              width: Math.max(p.x - node.x, 200),
-              height: Math.max(p.y - node.y, 150),
+              width: Math.max(p.x - node.x, esTexto ? 40 : 200),
+              height: Math.max(p.y - node.y, esTexto ? 24 : 150),
             });
           }
           nodesRef.current = n;
