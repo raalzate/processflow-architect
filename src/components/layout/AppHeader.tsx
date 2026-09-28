@@ -84,7 +84,8 @@ import { isChecked } from "@/lib/graph-filters";
 import { useToast } from "@/hooks/use-toast";
 import { BetaBadge } from "@/components/layout/AppCredits";
 import { buscarNodos, nodosBuscables, MIN_QUERY } from "@/lib/search-nodes";
-import { parseDiagramJson } from "@/lib/import-diagram";
+import { parseBoardFile } from "@/lib/board-file";
+import type { PersistedViews } from "@/lib/views-types";
 import { normalizeProjectName } from "@/lib/project-rename";
 import {
   ORG_TODAS,
@@ -118,7 +119,7 @@ interface AppHeaderProps {
   onFileSelect: (id: string) => void;
   onCreateProject: (nombre: string, notation?: NotationId) => void;
   /** Importa un GraphData ya generado (p. ej. exportado por el MCP / Claude Code). */
-  onImportJson: (nombre: string, content: GraphData) => string | null;
+  onImportJson: (nombre: string, content: GraphData, vistas?: PersistedViews) => string | null;
   onFileDelete: (id: string) => void;
   /** Renombra el proyecto activo; `false` si el nombre no era válido. */
   onRenameProject: (id: string, nombre: string) => boolean;
@@ -385,8 +386,9 @@ const FileManagement: React.FC<
     if (!file) return;
     try {
       const raw = await file.text();
-      const { name, content } = parseDiagramJson(raw, file.name);
-      onImportJson(name, content);
+      // Importa el TABLERO completo (proyecto + vistas); un .json viejo entra igual.
+      const { name, content, vistas } = parseBoardFile(raw, file.name);
+      onImportJson(name, content, vistas);
     } catch (err: any) {
       toast({
         variant: "destructive",

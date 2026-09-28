@@ -28,6 +28,16 @@ export function parseDiagramJson(raw: string, fileName = ""): ParsedDiagram {
   } catch {
     throw new Error("El archivo no es un JSON válido.");
   }
+  return validateGraphData(data, fileName);
+}
+
+/**
+ * Valida un objeto YA parseado como GraphData y propone un nombre. Se separa de
+ * `parseDiagramJson` para que el archivo del tablero (`board-file.ts`) valide su
+ * `proyecto` sin volver a serializar y re-parsear.
+ * @throws Error en español si no parece GraphData.
+ */
+export function validateGraphData(data: unknown, fileName = ""): ParsedDiagram {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     throw new Error("El JSON no es un objeto de diagrama.");
   }
