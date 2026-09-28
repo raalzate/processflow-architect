@@ -40,6 +40,12 @@ export interface ElementStyle {
   fuente?: string;
   /** Tamaño de letra en px. */
   tamano?: number;
+  /**
+   * TRI-ESTADO, y no un `boolean` a secas: ausente = lo que diga la notación
+   * (que hoy pinta TODO nombre en negrita), `false` = el usuario la quitó. Sin
+   * el `false` explícito, apagar la negrita no se podía guardar y el botón
+   * volvía solo a encendido.
+   */
   negrita?: boolean;
   cursiva?: boolean;
   subrayado?: boolean;
@@ -83,10 +89,14 @@ export function clampTamano(valor: unknown): number | undefined {
   return Math.min(TAMANO_MAX, Math.max(TAMANO_MIN, Math.round(n)));
 }
 
-/** true si el estilo no dice nada: no se persiste (igual criterio que la spec vacía). */
+/**
+ * true si el estilo no dice nada: no se persiste (igual criterio que la spec
+ * vacía). Ojo: `false` SÍ es decir algo —«sin negrita, aunque la notación la
+ * ponga»—, así que no cuenta como vacío.
+ */
 export function estiloVacio(estilo: ElementStyle | undefined): boolean {
   if (!estilo) return true;
-  return Object.values(estilo).every((v) => v === undefined || v === null || v === "" || v === false);
+  return Object.values(estilo).every((v) => v === undefined || v === null || v === "");
 }
 
 /**
@@ -100,7 +110,10 @@ export function estiloParaGuardar(estilo: ElementStyle | undefined): ElementStyl
   if (estilo.fuente) out.fuente = estilo.fuente;
   const tamano = clampTamano(estilo.tamano);
   if (tamano !== undefined) out.tamano = tamano;
-  if (estilo.negrita) out.negrita = true;
+  // La negrita guarda también el `false` (ver el tipo). La cursiva y el
+  // subrayado no: ninguna silueta los pone, así que su `false` es la ausencia y
+  // guardarlo sólo engorda el archivo.
+  if (typeof estilo.negrita === "boolean") out.negrita = estilo.negrita;
   if (estilo.cursiva) out.cursiva = true;
   if (estilo.subrayado) out.subrayado = true;
   if (estilo.alineacion) out.alineacion = estilo.alineacion;
@@ -125,7 +138,7 @@ export function normalizarEstilo(valor: unknown): ElementStyle | undefined {
   return estiloParaGuardar({
     fuente: typeof v.fuente === "string" ? v.fuente : undefined,
     tamano: clampTamano(v.tamano),
-    negrita: v.negrita === true,
+    negrita: typeof v.negrita === "boolean" ? v.negrita : undefined,
     cursiva: v.cursiva === true,
     subrayado: v.subrayado === true,
     alineacion,
@@ -150,6 +163,8 @@ export interface EstiloCss {
   color?: string;
   fill?: string;
   textAlign?: "left" | "center" | "right";
+  /** Sólo SVG: en un `<text>` la alineación es el ancla, no `text-align`. */
+  textAnchor?: "start" | "middle" | "end";
   justifyContent?: "flex-start" | "center" | "flex-end";
   alignItems?: "flex-start" | "center" | "flex-end";
 }
@@ -194,13 +209,56 @@ export function estiloTextoHtml(estilo: ElementStyle | undefined): EstiloCss {
   return out;
 }
 
+const ANCLA_SVG: Record<AlineacionH, "start" | "middle" | "end"> = {
+  izquierda: "start",
+  centro: "middle",
+  derecha: "end",
+};
+
 /**
- * Tipografía para un `<text>` de SVG. Mismo estilo, pero el color es `fill`: en
- * SVG `color` no pinta nada y el texto caía a negro.
+ * Tipografía para un `<text>` de SVG. Dos diferencias con el HTML, y las dos
+ * costaron una pasada por la app: el color es `fill` (con `color` el texto salía
+ * negro) y la alineación es `textAnchor` (con `text-align` no pasaba NADA, así
+ * que alinear el nombre de un contenedor parecía un botón roto).
  */
 export function estiloTextoSvg(estilo: ElementStyle | undefined): EstiloCss {
   const { color, textAlign, ...resto } = estiloTextoHtml(estilo);
-  return color ? { ...resto, fill: color } : resto;
+  const out: EstiloCss = color ? { ...resto, fill: color } : resto;
+  if (estilo?.alineacion) out.textAnchor = ANCLA_SVG[estilo.alineacion];
+  return out;
+}
+
+/**
+ * La `x` de un `<text>` de SVG según la alineación. El ancla sola no alcanza:
+ * un `textAnchor="end"` sobre `x = ancho/2` alinea el texto a la MITAD de la
+ * caja, no a su borde derecho. `pad` es el aire contra el borde.
+ */
+export function xSegunAlineacion(
+  estilo: ElementStyle | undefined,
+  ancho: number,
+  pad = 12
+): number {
+  switch (estilo?.alineacion) {
+    case "izquierda":
+      return pad;
+    case "derecha":
+      return ancho - pad;
+    default:
+      return ancho / 2;
+  }
+}
+
+/**
+ * Lo que HEREDAN las líneas secundarias de la caja (descripción, `[Tipo]`, la
+ * línea de tecnologías): la familia y el color, no el tamaño. El tamaño se queda
+ * en el nombre a propósito —subirlo a 30 px no debería inflar también el
+ * `[Comando]`—, pero una caja mitad Georgia y mitad sans se lee como un error.
+ */
+export function estiloHeredado(estilo: ElementStyle | undefined): EstiloCss {
+  const out: EstiloCss = {};
+  if (estilo?.fuente) out.fontFamily = estilo.fuente;
+  if (estilo?.colorTexto) out.color = estilo.colorTexto;
+  return out;
 }
 
 /**
@@ -210,7 +268,9 @@ export function estiloTextoSvg(estilo: ElementStyle | undefined): EstiloCss {
  */
 export function estiloBloque(estilo: ElementStyle | undefined): EstiloCss {
   if (!estilo) return {};
-  const out: EstiloCss = {};
+  // La familia y el color van acá y no sólo en el nombre: así los heredan la
+  // descripción y el `[Tipo]`, y la caja no queda a dos tipografías.
+  const out: EstiloCss = estiloHeredado(estilo);
   if (estilo.alineacionVertical) out.justifyContent = FLEX_V[estilo.alineacionVertical];
   if (estilo.alineacion) {
     out.alignItems = FLEX_H[estilo.alineacion];
