@@ -1243,10 +1243,10 @@ describe("especificación de la caja: ida y vuelta", () => {
     stories: [
       {
         id: "st-1",
-        titulo: "Cobrar la cuota",
-        prioridad: "P1",
-        porQue: "sin cobro no hay negocio",
-        pruebaIndependiente: "con una cuota vencida",
+        tipo: "entrada" as const,
+        ref: "n-scheduler",
+        hace: "dispara el cobro",
+        detalle: ["revisa las cuotas vencidas"],
         escenarios: [{ id: "sc-1", given: "cuota vencida", when: "corre el cobro", then: "queda pagada" }],
       },
     ],
@@ -1325,7 +1325,7 @@ describe("especificación de la caja: ida y vuelta", () => {
             spec: {
               featureName: "Cobro",
               status: "publicada",
-              stories: ["basura", { titulo: "Cobrar" }],
+              stories: ["basura", { tipo: "salida", ref: "n-bus", hace: "publica" }],
               requirements: [{ texto: "" }, { texto: "MUST cobrar" }],
             },
           } as any,

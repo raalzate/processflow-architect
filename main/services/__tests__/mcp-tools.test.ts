@@ -1495,10 +1495,9 @@ describe("especificaciones por MCP", () => {
     input: "el asesor da de alta sin llamar a soporte",
     stories: [
       {
-        titulo: "Dar de alta",
-        prioridad: "P1",
-        porQue: "es el único camino hoy",
-        pruebaIndependiente: "con un asesor y una póliza nueva",
+        tipo: "entrada",
+        ref: "db",
+        hace: "recibe el alta del asesor",
         escenarios: [{ given: "asesor con sesión", when: "envía el alta", then: "la póliza queda vigente" }],
       },
     ],
@@ -1518,7 +1517,7 @@ describe("especificaciones por MCP", () => {
     const diagramId = await diagramaC4(t);
 
     const guardado = await t.textOf("set_element_spec", { diagramId, id: "api", spec });
-    expect(guardado).toContain("1 historia(s)");
+    expect(guardado).toContain("1 paso(s)");
 
     const leido = await t.textOf("get_element_spec", { diagramId, id: "api" });
     expect(JSON.parse(leido).featureName).toBe("Alta de póliza");

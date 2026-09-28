@@ -229,10 +229,10 @@ export const TRANSCRIPT_BUDGET = 1500;
  *
  * La spec entera (con ids internos, campos vacíos y un objeto por escenario) son
  * miles de tokens en un diagrama de 20 cajas. Al agente le sirve el contenido:
- * de qué feature habla, qué historias hay con su prioridad, qué escenarios la
- * verifican —en UNA línea `dado → cuando → entonces`—, qué requisitos y qué
- * criterios. Los ids no le dicen nada y las marcas de «necesita aclaración» sí:
- * son justamente lo que tiene que preguntar.
+ * de qué feature habla, qué pasos tiene el flujo con sus entradas/salidas (ids de
+ * los nodos que lo llaman y a los que llama), qué escenarios lo verifican —en UNA
+ * línea `dado → cuando → entonces`—, qué requisitos y qué criterios. Las marcas
+ * de «necesita aclaración» viajan porque son justo lo que tiene que preguntar.
  *
  * Vive acá y no en `element-spec.ts` porque es una decisión de contexto:
  * `element-spec` no tiene por qué saber que existe un agente.
@@ -242,6 +242,12 @@ export function specToContext(spec: unknown): Record<string, unknown> | undefine
   const texto = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
   const lista = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.filter(isPlainObject) : []);
 
+  const textos = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()) : [];
+
+  // El flujo es una lista PLANA de pasos; cada paso es una entrada o una salida a un
+  // nodo (`nodo` = id, que el agente cruza con la tabla de nodos del grafo). No se
+  // resuelve a nombre acá porque `spec` no ve el grafo entero.
   const historias = lista(spec.stories)
     .map((h) => {
       const escenarios = lista(h.escenarios)
@@ -250,12 +256,15 @@ export function specToContext(spec: unknown): Record<string, unknown> | undefine
           return partes.length ? partes.join(" → ") : "";
         })
         .filter(Boolean);
-      const titulo = texto(h.titulo);
-      if (!titulo && !escenarios.length) return undefined;
+      const ref = texto(h.ref);
+      const hace = texto(h.hace);
+      const detalle = textos(h.detalle);
+      if (!ref && !hace && !detalle.length && !escenarios.length) return undefined;
       return {
-        historia: [texto(h.prioridad), titulo].filter(Boolean).join(" "),
-        porQue: texto(h.porQue),
-        pruebaIndependiente: texto(h.pruebaIndependiente),
+        paso: h.tipo === "salida" ? "salida" : "entrada",
+        nodo: ref,
+        hace,
+        detalle,
         escenarios,
       };
     })

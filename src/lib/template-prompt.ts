@@ -229,10 +229,10 @@ Elemento:
 Reglas: habla de QUÉ debe hacer y CÓMO se verifica, nunca de cómo se implementa; no nombres tecnologías, frameworks ni bases de datos; los criterios de éxito llevan un número medible.
 Responde SOLO líneas con este formato, una por línea, sin numerar y sin texto adicional:
 FEATURE | nombre corto de la funcionalidad
-HISTORIA | título | P1 | por qué esa prioridad | cómo se prueba sola
+PASO | título del paso del flujo (en el orden en que ocurren)
 ESCENARIO | estado inicial | acción | resultado esperado
 CASO | qué pasa en un caso límite
 REQUISITO | El sistema MUST …
 ENTIDAD | nombre | qué representa
 CRITERIO | medida verificable con número
-Escribe entre 2 y 3 HISTORIA (cada una con 1 o 2 ESCENARIO justo debajo), 2 CASO, entre 3 y 5 REQUISITO, hasta 3 ENTIDAD y 2 CRITERIO.`;
+Escribe entre 2 y 3 PASO (cada uno con 1 o 2 ESCENARIO justo debajo), 2 CASO, entre 3 y 5 REQUISITO, hasta 3 ENTIDAD y 2 CRITERIO. Las entradas y salidas del flujo (quién llama a cada paso y a qué llama) las conecta la persona en el lienzo: no las declares acá.`;

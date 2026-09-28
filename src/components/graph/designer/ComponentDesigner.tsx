@@ -1154,6 +1154,11 @@ const FuenteCitada: React.FC<{ descripcion?: string; docs: SourceDoc[] }> = ({ d
 
 const EditNodeDialog: React.FC<{
   node: DesignerNode | null;
+  /** Todos los nodos del lienzo: resuelven el nombre de las entradas/salidas de
+   * cada paso de la spec (que se guardan por id). */
+  nodes: Map<string, DesignerNode>;
+  /** Todas las aristas: de acá salen los vecinos que el picker de flujo ofrece. */
+  links: Map<string, DesignerLink>;
   /** Tipos de elemento de la notación activa (para el Select de tipo). */
   elementTypes: string[];
   /** Notación de la vista: dirige las sugerencias de IA (tipos, rol, nombres). */
@@ -1172,10 +1177,30 @@ const EditNodeDialog: React.FC<{
   /** Autoguardado: llega el PARCHE (sólo los campos editados) del elemento `id`. */
   onSave: (id: string, cambios: Partial<DesignerNode>) => void;
   onCreateNext: (fromNode: DesignerNode, sug: { tipo: string; nombre: string; relacion: string }) => void;
-}> = ({ node, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext }) => {
+}> = ({ node, nodes, links, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext }) => {
   const [draft, setDraft] = useState<DesignerNode | null>(null);
   const { run, busy } = useAi();
   const { toast } = useToast();
+
+  // Nombre de cualquier caja por su id, para los chips y el markdown de la spec.
+  const resolveNodeName = useCallback((id: string) => nodes.get(id)?.nombre ?? id, [nodes]);
+  // Vecinos de ESTA caja: entrantes = quién la llama (aristas → node); salientes =
+  // a quién llama (aristas node →). Es lo único que el picker de flujo ofrece: la
+  // spec describe conexiones que ya existen en el lienzo, no las inventa. Se
+  // deduplica por id (varias aristas al mismo vecino cuentan una vez) y se ignora
+  // el bucle a sí mismo.
+  const flujoVecinos = useMemo(() => {
+    const id = node?.id;
+    if (!id) return { entrantes: [], salientes: [] };
+    const entrantes = new Map<string, string>();
+    const salientes = new Map<string, string>();
+    for (const l of links.values()) {
+      if (l.targetId === id && l.sourceId !== id) entrantes.set(l.sourceId, resolveNodeName(l.sourceId));
+      if (l.sourceId === id && l.targetId !== id) salientes.set(l.targetId, resolveNodeName(l.targetId));
+    }
+    const aLista = (m: Map<string, string>) => [...m].map(([id, nombre]) => ({ id, nombre }));
+    return { entrantes: aLista(entrantes), salientes: aLista(salientes) };
+  }, [node?.id, links, resolveNodeName]);
   // Campo cuya sugerencia se está ejecutando: sólo ESE botón muestra el spinner.
   const [busyField, setBusyField] = useState<string | null>(null);
   // Tab visible. Vive FUERA del borrador a propósito: al saltar de un elemento
@@ -1803,6 +1828,8 @@ const EditNodeDialog: React.FC<{
                 value={draft.spec}
                 onChange={(spec) => setDraft((d) => (d ? { ...d, spec } : d))}
                 elementName={draft.nombre}
+                flujoVecinos={flujoVecinos}
+                resolveNodeName={resolveNodeName}
                 suggestButton={
                   <SugBtn field="spec" onClick={suggestSpec} disabled={!draft.descripcion?.trim()} />
                 }
@@ -5247,6 +5274,8 @@ export const ComponentDesigner: React.FC<{
 
       <EditNodeDialog
         node={editingNode}
+        nodes={nodes}
+        links={links}
         elementTypes={elementTypes}
         notation={notationId}
         subViews={subViewOptions}

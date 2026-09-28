@@ -62,15 +62,18 @@ export function getElementSpec(model: DiagramModel, id: string): ElementSpec | u
  * ficha, así que lo que se pegue en una issue se ve igual venga de donde venga.
  */
 export function specMarkdown(model: DiagramModel, id?: string): string {
+  // Las entradas/salidas de cada paso son ids de nodos: se resuelven al nombre de
+  // la caja para que el markdown se lea, sin depender de recordar los ids.
+  const nombreDe = (nid: string): string => model.nodes.find((n) => n.id === nid)?.nombre ?? nid;
   if (id) {
     const target = model.nodes.find((n) => n.id === id);
     if (!target) throw new Error(`No existe el elemento "${id}". Los que hay: ${idsDisponibles(model)}.`);
-    return target.spec ? specToMarkdown(target.spec, target.nombre) : "";
+    return target.spec ? specToMarkdown(target.spec, target.nombre, nombreDe) : "";
   }
   const partes: string[] = [];
   for (const n of model.nodes) {
     if (!n.spec || isSpecEmpty(n.spec)) continue;
-    partes.push(`<!-- ${n.nombre} (${n.id}) -->`, specToMarkdown(n.spec, n.nombre));
+    partes.push(`<!-- ${n.nombre} (${n.id}) -->`, specToMarkdown(n.spec, n.nombre, nombreDe));
   }
   return partes.join("\n");
 }
@@ -107,8 +110,12 @@ export interface SpecEstado {
   requisitosSinCriterios: boolean;
   /** Requisitos marcados «necesita aclaración». */
   porAclarar: string[];
-  /** Historias sin ningún escenario: no se pueden verificar. */
-  historiasSinEscenarios: string[];
+  /** Pasos sin ningún escenario: no se pueden verificar. */
+  pasosSinEscenarios: string[];
+  /** Pasos cuyo flujo referencia un id de nodo que ya no está en el diagrama
+   * (una caja borrada). Se informa con el título del paso: la referencia quedó
+   * colgada y hay que reconectarla o quitarla. */
+  pasosConFlujoRoto: string[];
   /** Criterios de éxito sin ningún número: no se pueden medir. */
   criteriosSinNumero: string[];
   /** Requisitos que nombran una tecnología (dicen el CÓMO, no el QUÉ). */
@@ -137,6 +144,12 @@ export interface SpecReport {
  * esto llegue a quien construye.
  */
 export function specReport(model: DiagramModel): SpecReport {
+  // Ids que existen HOY en el diagrama: contra esto se mide si el flujo de un
+  // paso apunta a una caja que ya se borró.
+  const idsDelDiagrama = new Set(model.nodes.map((n) => n.id));
+  const nombreEnDiagrama = (id: string): string => model.nodes.find((x) => x.id === id)?.nombre ?? id;
+  // Un paso no tiene título: se nombra por su conexión, «entrada: Checkout».
+  const etiquetaPaso = (h: { tipo: string; ref: string }): string => `${h.tipo}: ${nombreEnDiagrama(h.ref)}`;
   const estados: SpecEstado[] = model.nodes.map((n) => {
     const spec = n.spec;
     const tiene = !!spec && !isSpecEmpty(spec);
@@ -148,9 +161,12 @@ export function specReport(model: DiagramModel): SpecReport {
       tiene,
       requisitosSinCriterios: tiene && requisitos.length > 0 && criterios.length === 0,
       porAclarar: requisitos.filter((r) => r.needsClarification).map((r) => r.texto.trim()),
-      historiasSinEscenarios: (spec?.stories ?? [])
-        .filter((h) => h.titulo.trim() && !h.escenarios.some((e) => e.given || e.when || e.then))
-        .map((h) => h.titulo.trim()),
+      pasosSinEscenarios: (spec?.stories ?? [])
+        .filter((h) => h.ref.trim() && !h.escenarios.some((e) => e.given || e.when || e.then))
+        .map(etiquetaPaso),
+      pasosConFlujoRoto: (spec?.stories ?? [])
+        .filter((h) => h.ref.trim() && !idsDelDiagrama.has(h.ref))
+        .map(etiquetaPaso),
       criteriosSinNumero: criterios.map((c) => c.texto.trim()).filter((t) => !criterioEsMedible(t)),
       requisitosConTecnologia: requisitos
         .map((r) => ({ texto: r.texto.trim(), tecnologias: tecnologiasEn(r.texto) }))
@@ -185,8 +201,12 @@ export function specReport(model: DiagramModel): SpecReport {
     const faltas: string[] = [];
     if (e.requisitosSinCriterios)
       faltas.push("tiene requisitos pero ningún criterio de éxito con el que verificarlos");
-    if (e.historiasSinEscenarios.length)
-      faltas.push(`historias sin escenarios: ${e.historiasSinEscenarios.join(", ")}`);
+    if (e.pasosSinEscenarios.length)
+      faltas.push(`pasos sin escenarios: ${e.pasosSinEscenarios.join(", ")}`);
+    if (e.pasosConFlujoRoto.length)
+      faltas.push(
+        `pasos con flujo roto (entrada/salida a una caja que ya no existe): ${e.pasosConFlujoRoto.join(", ")}`
+      );
     if (e.criteriosSinNumero.length)
       faltas.push(`criterios sin número (no se pueden medir): ${e.criteriosSinNumero.join(" · ")}`);
     if (e.requisitosConTecnologia.length)
@@ -202,7 +222,8 @@ export function specReport(model: DiagramModel): SpecReport {
   const completas = conSpec.filter(
     (e) =>
       !e.requisitosSinCriterios &&
-      !e.historiasSinEscenarios.length &&
+      !e.pasosSinEscenarios.length &&
+      !e.pasosConFlujoRoto.length &&
       !e.porAclarar.length &&
       !e.criteriosSinNumero.length &&
       !e.requisitosConTecnologia.length

@@ -43,16 +43,36 @@ export interface SpecScenario {
   then: string;
 }
 
-/** Historia de usuario: la unidad que se prioriza y se entrega. */
-export interface SpecStory {
+/** Un paso del flujo ES una entrada (algo lo llama) o una salida (llama a algo). */
+export type SpecStepKind = "entrada" | "salida";
+
+export const SPEC_STEP_KINDS: readonly { value: SpecStepKind; label: string }[] = [
+  { value: "entrada", label: "Entrada" },
+  { value: "salida", label: "Salida" },
+] as const;
+
+/**
+ * Paso del flujo. El flujo es una lista PLANA y ORDENADA de pasos; cada paso es,
+ * de por sí, una entrada (una caja llama a este elemento) o una salida (este
+ * elemento llama a otra). Su POSICIÓN es el número de paso (1, 2, …), así que
+ * reordenar redefine el flujo y borrar el del medio no deja hueco —lo mismo que
+ * los `FR-00N`.
+ *
+ * `ref` es el id del nodo del otro extremo, elegido entre las cajas ya conectadas
+ * en el lienzo (§ SpecTab): la spec describe el flujo, no lo dibuja. Se guarda por
+ * id y no por nombre porque el nombre cambia y el id no. `hace` dice qué hace esa
+ * conexión (el id sin la acción deja el flujo a medias) y `detalle` la amplía.
+ */
+export interface SpecStep {
   id: string;
-  titulo: string;
-  /** Peso o prioridad: un número (`1`, `2`, … donde 1 es lo más crítico). Es
-   * texto libre a propósito: el usuario manda sobre su tablero. Archivos viejos
-   * pueden traer el formato `P<n>` y se siguen aceptando. */
-  prioridad: string;
-  porQue: string;
-  pruebaIndependiente: string;
+  /** Entrada = una caja llama a este elemento; salida = este elemento llama a otra. */
+  tipo: SpecStepKind;
+  /** Id del nodo del otro extremo de la conexión. */
+  ref: string;
+  /** Qué hace esta entrada/salida. */
+  hace: string;
+  /** Más detalle de la conexión: líneas libres que la amplían. */
+  detalle: string[];
   escenarios: SpecScenario[];
 }
 
@@ -85,7 +105,11 @@ export interface ElementSpec {
   status: SpecStatus;
   /** La entrada original del usuario, tal como la escribió. */
   input: string;
-  stories: SpecStory[];
+  /** Pasos del flujo. La clave persistida sigue siendo `stories` para no perder
+   * el título y los escenarios de proyectos guardados antes del cambio a pasos;
+   * los campos que ya no existen (prioridad, porQué, prueba) simplemente se
+   * ignoran al leer un archivo viejo. */
+  stories: SpecStep[];
   edgeCases: string[];
   requirements: SpecRequirement[];
   entities: SpecEntity[];
@@ -98,8 +122,8 @@ export interface ElementSpec {
  * puede ser un archivo ya guardado, y perder el archivo entero por una lista
  * larga sería peor que quedarse con las primeras.
  */
-export const MAX_HISTORIAS = 50;
-export const MAX_ESCENARIOS_POR_HISTORIA = 20;
+export const MAX_PASOS = 50;
+export const MAX_ESCENARIOS_POR_PASO = 20;
 export const MAX_ITEMS_LISTA = 200;
 export const MAX_TEXTO_CHARS = 2000;
 
@@ -108,13 +132,14 @@ export const MAX_TEXTO_CHARS = 2000;
 let secuencia = 0;
 const nuevoId = (prefijo: string): string => `${prefijo}-${++secuencia}`;
 
-/** Historia nueva, vacía, con la prioridad que se le pida. */
-export const nuevaHistoria = (prioridad: string): SpecStory => ({
+/** Paso nuevo del flujo, del tipo pedido (entrada por defecto) y sin nodo aún.
+ * El número de paso lo da la posición, no un campo. */
+export const nuevoPaso = (tipo: SpecStepKind = "entrada"): SpecStep => ({
   id: nuevoId("st"),
-  titulo: "",
-  prioridad,
-  porQue: "",
-  pruebaIndependiente: "",
+  tipo,
+  ref: "",
+  hace: "",
+  detalle: [],
   escenarios: [],
 });
 
@@ -152,9 +177,9 @@ export function isSpecEmpty(spec?: ElementSpec | null): boolean {
   if (spec.criteria?.some((c) => hayTexto(c.texto))) return false;
   return !spec.stories?.some(
     (h) =>
-      hayTexto(h.titulo) ||
-      hayTexto(h.porQue) ||
-      hayTexto(h.pruebaIndependiente) ||
+      hayTexto(h.ref) ||
+      hayTexto(h.hace) ||
+      h.detalle?.some(hayTexto) ||
       h.escenarios?.some((e) => hayTexto(e.given) || hayTexto(e.when) || hayTexto(e.then))
   );
 }
@@ -167,23 +192,6 @@ export function isSpecEmpty(spec?: ElementSpec | null): boolean {
 export function specWithSeededDate(spec: ElementSpec, hoy: string): ElementSpec {
   if (spec.createdAt || isSpecEmpty(spec)) return spec;
   return { ...spec, createdAt: hoy };
-}
-
-/**
- * Siguiente peso libre (`1`, `2`, …). Rellena huecos (borrar el peso 2 lo vuelve
- * a proponer) y no prohíbe repetir: sólo propone. Un peso escrito a mano que no
- * sea un número simplemente no ocupa lugar. Acepta también el formato viejo
- * `P<n>` para no duplicar pesos al abrir un archivo anterior al cambio.
- */
-export function nextPriority(stories: readonly SpecStory[]): string {
-  const usados = new Set<number>();
-  for (const h of stories) {
-    const m = /^P?(\d+)$/i.exec((h.prioridad ?? "").trim());
-    if (m) usados.add(Number(m[1]));
-  }
-  let n = 1;
-  while (usados.has(n)) n++;
-  return `${n}`;
 }
 
 /** Identificador visible de un ítem por su POSICIÓN: `FR-001`, `SC-010`. */
@@ -211,6 +219,10 @@ const listaDeTextos = (v: unknown): string[] =>
         .slice(0, MAX_ITEMS_LISTA)
     : [];
 
+/** Tipo de paso válido; cualquier otra cosa cae en `entrada`. */
+const tipoDePaso = (v: unknown): SpecStepKind =>
+  SPEC_STEP_KINDS.some((k) => k.value === v) ? (v as SpecStepKind) : "entrada";
+
 const objetos = (v: unknown): Record<string, unknown>[] =>
   Array.isArray(v) ? (v.filter((x) => !!x && typeof x === "object") as Record<string, unknown>[]) : [];
 
@@ -228,13 +240,14 @@ export function sanitizeSpec(valor: unknown): ElementSpec | undefined {
   if (!valor || typeof valor !== "object" || Array.isArray(valor)) return undefined;
   const cruda = valor as Record<string, unknown>;
 
-  const stories: SpecStory[] = objetos(cruda.stories)
+  const stories: SpecStep[] = objetos(cruda.stories)
     .map((h) => ({
       id: typeof h.id === "string" && h.id ? h.id : nuevoId("st"),
-      titulo: texto(h.titulo),
-      prioridad: texto(h.prioridad) || "1",
-      porQue: texto(h.porQue),
-      pruebaIndependiente: texto(h.pruebaIndependiente),
+      tipo: tipoDePaso(h.tipo),
+      // `ref` es la clave canónica; `nodeId` se acepta por si un agente la usa.
+      ref: typeof h.ref === "string" ? h.ref.trim() : typeof h.nodeId === "string" ? h.nodeId.trim() : "",
+      hace: texto(h.hace),
+      detalle: listaDeTextos(h.detalle),
       escenarios: objetos(h.escenarios)
         .map((e) => ({
           id: typeof e.id === "string" && e.id ? e.id : nuevoId("sc"),
@@ -243,13 +256,10 @@ export function sanitizeSpec(valor: unknown): ElementSpec | undefined {
           then: texto(e.then),
         }))
         .filter((e) => hayTexto(e.given) || hayTexto(e.when) || hayTexto(e.then))
-        .slice(0, MAX_ESCENARIOS_POR_HISTORIA),
+        .slice(0, MAX_ESCENARIOS_POR_PASO),
     }))
-    .filter(
-      (h) =>
-        hayTexto(h.titulo) || hayTexto(h.porQue) || hayTexto(h.pruebaIndependiente) || h.escenarios.length > 0
-    )
-    .slice(0, MAX_HISTORIAS);
+    .filter((h) => hayTexto(h.ref) || hayTexto(h.hace) || h.detalle.length > 0 || h.escenarios.length > 0)
+    .slice(0, MAX_PASOS);
 
   const requirements: SpecRequirement[] = objetos(cruda.requirements)
     .map((r) => ({
@@ -333,7 +343,12 @@ export function patchSpec(base: ElementSpec | undefined, parcial: unknown): Elem
   // Clave de identidad de cada lista: el texto es lo que el humano lee, así que
   // es lo que decide si un ítem "ya estaba". Los ids son internos y cambian.
   const claveDe: Record<string, (x: unknown) => string> = {
-    stories: (x) => String((x as { titulo?: unknown })?.titulo ?? ""),
+    // Un paso se identifica por su conexión: tipo + nodo. Reenviar el mismo paso
+    // (misma entrada/salida a la misma caja) lo reemplaza en su sitio, no duplica.
+    stories: (x) => {
+      const s = x as { tipo?: unknown; ref?: unknown };
+      return `${String(s?.tipo ?? "")}|${String(s?.ref ?? "")}`;
+    },
     edgeCases: (x) => String(x ?? ""),
     requirements: (x) => String((x as { texto?: unknown })?.texto ?? ""),
     entities: (x) => String((x as { nombre?: unknown })?.nombre ?? ""),
@@ -383,7 +398,14 @@ const item = (marca: string, texto: string): string =>
  * OMITEN: un documento lleno de encabezados vacíos se lee como si faltara
  * trabajo cuando lo que falta es contenido. Una spec vacía devuelve `""`.
  */
-export function specToMarkdown(spec: ElementSpec, fallbackName: string): string {
+export function specToMarkdown(
+  spec: ElementSpec,
+  fallbackName: string,
+  // Resuelve el id de un nodo a su nombre para las entradas/salidas de cada paso.
+  // Por defecto devuelve el id: quien tiene el diagrama (la ficha, el MCP) pasa el
+  // resolutor; un id suelto igual se lee mejor que nada.
+  resolveName: (id: string) => string = (id) => id
+): string {
   if (isSpecEmpty(spec)) return "";
   const nombre = spec.featureName.trim() || fallbackName.trim() || "(sin nombre)";
   const bloques: string[] = [];
@@ -394,21 +416,26 @@ export function specToMarkdown(spec: ElementSpec, fallbackName: string): string 
   if (spec.input.trim()) cabecera.push(`**Input**: User description: "${spec.input.trim()}"`);
   bloques.push(cabecera.join("\n"));
 
+  const kindLabel = (t: SpecStepKind): string => (t === "entrada" ? "Input" : "Output");
+
   const historias = spec.stories.filter(
     (h) =>
-      hayTexto(h.titulo) ||
-      hayTexto(h.porQue) ||
-      hayTexto(h.pruebaIndependiente) ||
+      hayTexto(h.ref) ||
+      hayTexto(h.hace) ||
+      h.detalle.some(hayTexto) ||
       h.escenarios.some((e) => hayTexto(e.given) || hayTexto(e.when) || hayTexto(e.then))
   );
   if (historias.length) {
-    const partes = ["## User Stories *(mandatory)*"];
+    const partes = ["## Flow Steps *(mandatory)*"];
     historias.forEach((h, i) => {
-      const titulo = h.titulo.trim() || "(sin título)";
-      const cuerpo = [`### User Story ${i + 1} - ${titulo} (Priority: ${h.prioridad.trim() || "?"})`];
-      if (h.porQue.trim()) cuerpo.push("", `**Why this priority**: ${h.porQue.trim()}`);
-      if (h.pruebaIndependiente.trim())
-        cuerpo.push("", `**Independent Test**: ${h.pruebaIndependiente.trim()}`);
+      const nom = resolveName(h.ref).trim() || h.ref.trim() || "(sin conexión)";
+      const cuerpo = [`### Step ${i + 1} — ${kindLabel(h.tipo)}: ${nom}`];
+      if (h.hace.trim()) cuerpo.push("", `**Does**: ${h.hace.trim()}`);
+      const detalle = h.detalle.filter(hayTexto);
+      if (detalle.length) {
+        cuerpo.push("", "**Detail**:", "");
+        detalle.forEach((d) => cuerpo.push(item("- ", d.trim())));
+      }
       const escenarios = h.escenarios.filter(
         (e) => hayTexto(e.given) || hayTexto(e.when) || hayTexto(e.then)
       );
@@ -504,14 +531,14 @@ export function specFileName(spec: ElementSpec, fallbackName: string): string {
  * pequeño y un JSON con comas y llaves se rompe cada dos por tres, mientras que
  * una línea mal formada acá sólo se descarta y el resto del borrador sobrevive.
  *
- * Un `ESCENARIO` se cuelga de la última `HISTORIA` leída; si llega antes de
- * cualquier historia, se descarta (no hay a qué colgarlo). La salida pasa por
- * `sanitizeSpec`, así que una respuesta basura devuelve `undefined` en vez de
- * reventar.
+ * El FLUJO (pasos entrada/salida) NO lo arma la IA: cada paso apunta a un id de
+ * nodo que un modelo chico no acierta, y ese id sale de las aristas del lienzo, no
+ * del texto. Por eso el borrador trae feature, casos límite, requisitos, entidades
+ * y criterios; los pasos los conecta la persona en la ficha. La salida pasa por
+ * `sanitizeSpec`, así que una respuesta basura devuelve `undefined` en vez de reventar.
  */
 export function specFromLines(raw: string): ElementSpec | undefined {
   const spec = emptySpec();
-  let ultima: SpecStory | undefined;
 
   for (const linea of (raw ?? "").split("\n")) {
     const partes = linea.split("|").map((p) => p.trim());
@@ -522,24 +549,6 @@ export function specFromLines(raw: string): ElementSpec | undefined {
     switch (marca) {
       case "FEATURE":
         spec.featureName = campos[0] ?? "";
-        break;
-      case "HISTORIA":
-        ultima = {
-          ...nuevaHistoria(campos[1] || nextPriority(spec.stories)),
-          titulo: campos[0] ?? "",
-          porQue: campos[2] ?? "",
-          pruebaIndependiente: campos[3] ?? "",
-        };
-        spec.stories.push(ultima);
-        break;
-      case "ESCENARIO":
-        if (!ultima) break;
-        ultima.escenarios.push({
-          ...nuevoEscenario(),
-          given: campos[0] ?? "",
-          when: campos[1] ?? "",
-          then: campos[2] ?? "",
-        });
         break;
       case "CASO":
         spec.edgeCases.push(campos[0] ?? "");

@@ -262,13 +262,13 @@ describe("la spec viaja compacta al contexto", () => {
     stories: [
       {
         id: "st-1",
-        titulo: "Dar de alta",
-        prioridad: "P1",
-        porQue: "es el único camino",
-        pruebaIndependiente: "con un asesor",
+        tipo: "entrada",
+        ref: "n-portal",
+        hace: "solicita el alta",
+        detalle: ["valida el rut"],
         escenarios: [{ id: "sc-1", given: "asesor con sesión", when: "envía el alta", then: "queda vigente" }],
       },
-      { id: "st-2", titulo: "", prioridad: "P2", porQue: "", pruebaIndependiente: "", escenarios: [] },
+      { id: "st-2", tipo: "salida", ref: "", hace: "", detalle: [], escenarios: [] },
     ],
     edgeCases: ["sin saldo", "  "],
     requirements: [{ id: "fr-1", texto: "MUST registrar el alta", needsClarification: true }],
@@ -276,12 +276,14 @@ describe("la spec viaja compacta al contexto", () => {
     criteria: [{ id: "cr-1", texto: "99 % en un intento" }],
   };
 
-  it("lleva la feature, las historias con su prioridad y los escenarios en una línea", () => {
+  it("lleva la feature, los pasos tipados con su nodo/detalle y los escenarios en una línea", () => {
     const ctx = specToContext(spec as never)!;
     const texto = JSON.stringify(ctx);
     expect(texto).toContain("Alta de póliza");
-    expect(texto).toContain("P1");
-    expect(texto).toContain("Dar de alta");
+    expect(texto).toContain("entrada");
+    // El nodo es un id que viaja para que el agente lo cruce con la tabla de nodos.
+    expect(texto).toContain("n-portal");
+    expect(texto).toContain("valida el rut");
     expect(texto).toMatch(/asesor con sesión.*envía el alta.*queda vigente/);
   });
 
@@ -331,7 +333,7 @@ describe("el grafo con specs y propiedades entra al contexto sin ruido", () => {
             featureName: "Alta de póliza",
             status: "borrador",
             input: "",
-            stories: [{ id: "s1", titulo: "Dar de alta", prioridad: "P1", porQue: "", pruebaIndependiente: "", escenarios: [] }],
+            stories: [{ id: "s1", tipo: "entrada", ref: "portal", hace: "da de alta", detalle: [], escenarios: [] }],
             edgeCases: [],
             requirements: [{ id: "r1", texto: "MUST registrar el alta" }],
             entities: [],

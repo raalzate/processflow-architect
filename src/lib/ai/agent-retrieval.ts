@@ -483,8 +483,11 @@ export function formatSpec(spec: unknown): string[] {
   if (typeof c.estado === "string") lineas.push(`Estado de la spec: ${c.estado}`);
   if (typeof c.pedido === "string") lineas.push(`Pedido original: ${c.pedido}`);
   for (const h of (Array.isArray(c.historias) ? c.historias : []) as Record<string, unknown>[]) {
-    lineas.push(`Historia ${String(h.historia ?? "")}`);
-    if (h.porQue) lineas.push(`  porque: ${String(h.porQue)}`);
+    const tipo = String(h.paso ?? "entrada");
+    const nodo = String(h.nodo ?? "");
+    const hace = String(h.hace ?? "");
+    lineas.push(`Paso [${tipo}]${nodo ? ` ${nodo}` : ""}${hace ? ` — ${hace}` : ""}`);
+    for (const d of lista(h.detalle)) lineas.push(`  detalle: ${d}`);
     for (const e of lista(h.escenarios)) lineas.push(`  escenario: ${e}`);
   }
   const bloque = (titulo: string, items: string[]) => {
