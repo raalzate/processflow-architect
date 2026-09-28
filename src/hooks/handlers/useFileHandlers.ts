@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { SavedFile, GraphData, ArchitectureDriversOutput, ConstraintsRisksOutput, RoadmapOutput, TechnicalElementsOutput } from "@/lib/types";
 import { emptyGraphData } from "@/components/graph/designer/serialize";
+import { normalizeImportedGraphData } from "@/lib/import-diagram";
 import { normalizeProjectName, renameSavedFile } from "@/lib/project-rename";
 import type { NotationId } from "@/lib/notations";
 
@@ -61,29 +62,11 @@ export function useFileHandlers(deps: FileHandlersDeps) {
     // dominio que produce la IA desde documentos) y lo carga en el lienzo.
     const handleCreateProjectFromContent = useCallback((nombre: string, content: GraphData) => {
         const name = (nombre || "").trim() || "Diseño IA";
-        // El modelo de la IA (DomainAnalysis) no trae los campos escalares de proyecto;
-        // los rellenamos con defaults para obtener un GraphData válido y renderizable.
-        const raw: any = content || {};
-        const fullContent: GraphData = {
-            nombre_proyecto: raw.nombre_proyecto || name,
-            version: raw.version || "1.0.0",
-            // Preserva la notación del modelo importado para que la vista "Modelo"
-            // del proyecto use la paleta correcta (BPMN/C4/UML) y no caiga a DDD.
-            notation: raw.notation,
-            fecha_analisis: raw.fecha_analisis || new Date().toISOString().slice(0, 10),
-            big_picture: {
-                descripcion: raw.big_picture?.descripcion || "",
-                hotspots: raw.big_picture?.hotspots || [],
-                nodos: raw.big_picture?.nodos || [],
-                aristas: raw.big_picture?.aristas || [],
-            } as any,
-            agregados: raw.agregados || [],
-            read_models: raw.read_models || [],
-            politicas_inter_agregados: raw.politicas_inter_agregados || [],
-            responsables: raw.responsables || [],
-            notas: raw.notas || "",
-            transcript: raw.transcript || "",
-        };
+        // Rellena defaults SIN perder campos: un GraphData exportado completo
+        // (con `defaultRouting`/`source_docs`) o el modelo parcial de la IA
+        // (`DomainAnalysis`, sin escalares) pasan ambos por la misma función pura.
+        // Reconstruir con lista blanca aquí perdía campos en el round-trip (#423).
+        const fullContent: GraphData = normalizeImportedGraphData(content, name);
         const newFile: SavedFile = { id: `${name}-${new Date().getTime()}`, name: `${name}.json`, content: fullContent };
         try {
             const res = loadFile(newFile);
