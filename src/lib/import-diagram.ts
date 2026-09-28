@@ -48,6 +48,51 @@ export function parseDiagramJson(raw: string, fileName = ""): ParsedDiagram {
   return { name, content: obj as unknown as GraphData };
 }
 
+/**
+ * Rellena un GraphData importado con los defaults mínimos SIN perder campos.
+ *
+ * Lo usan tanto la importación de un `.json` exportado (un GraphData completo)
+ * como la carga de contenido generado por la IA (`DomainAnalysis`, que llega sin
+ * los escalares del proyecto). La clave es partir de `raw` y sólo COMPLETAR lo
+ * ausente: si en vez de eso se reconstruye con una lista blanca de campos, el
+ * round-trip export→import pierde en silencio `defaultRouting` y `source_docs`
+ * —y cualquier campo futuro de GraphData— (issue #423). Los documentos fuente
+ * viajan DENTRO del proyecto justo para que las citas «Fuente: …» se resuelvan
+ * tras exportar/compartir/importar.
+ *
+ * @param raw          Contenido parseado (puede ser parcial).
+ * @param fallbackName Nombre para el proyecto si el JSON no trae `nombre_proyecto`.
+ */
+export function normalizeImportedGraphData(
+  raw: Partial<GraphData> | null | undefined,
+  fallbackName: string
+): GraphData {
+  const obj = (raw ?? {}) as Partial<GraphData>;
+  const bp = (obj.big_picture ?? {}) as Partial<GraphData["big_picture"]>;
+  return {
+    // Preserva todo lo que traiga el documento (notation, defaultRouting,
+    // source_docs y cualquier campo nuevo); los defaults de abajo sólo pisan lo
+    // que falte o venga vacío.
+    ...obj,
+    nombre_proyecto: (obj.nombre_proyecto || "").trim() || fallbackName,
+    version: obj.version || "1.0.0",
+    fecha_analisis: obj.fecha_analisis || new Date().toISOString().slice(0, 10),
+    big_picture: {
+      ...bp,
+      descripcion: bp.descripcion || "",
+      hotspots: bp.hotspots || [],
+      nodos: bp.nodos || [],
+      aristas: bp.aristas || [],
+    },
+    agregados: obj.agregados || [],
+    read_models: obj.read_models || [],
+    politicas_inter_agregados: obj.politicas_inter_agregados || [],
+    responsables: obj.responsables || [],
+    notas: obj.notas || "",
+    transcript: obj.transcript || "",
+  };
+}
+
 /** ¿El archivo (por nombre/tipo MIME) parece un JSON importable? */
 export function isJsonFile(file: { name?: string; type?: string }): boolean {
   if (file.type === "application/json") return true;
