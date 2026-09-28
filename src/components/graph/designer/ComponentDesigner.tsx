@@ -62,6 +62,7 @@ import {
   type TableColumn,
 } from "@/lib/mer/table-box";
 import { accion } from "@/lib/action-labels";
+import { debeResembrar } from "@/lib/designer-reseed";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -3152,6 +3153,13 @@ export const ComponentDesigner: React.FC<{
   // --- Carga de la fuente (proyecto activo o grafo de la vista) ---
   const loadedFileId = useRef<string | null>(null);
   const skipFirstSave = useRef(true);
+  // Lo ÚLTIMO que este lienzo emitió por autoguardado y lo último que sembró.
+  // Sirven para distinguir el round-trip propio (mismo objeto de vuelta) de un
+  // REEMPLAZO EXTERNO —p.ej. `set_view_graph` del constructor—, que llega como un
+  // objeto nuevo que este lienzo nunca emitió y por eso debe re-sembrarse (#bug
+  // "el diagrama entra a la vista pero el lienzo no lo pinta").
+  const lastEmittedRef = useRef<GraphData | null>(null);
+  const seededContentRef = useRef<GraphData | null>(null);
   useEffect(() => {
     if (!sourceContent || !sourceKey) {
       if (!isViewMode) {
@@ -3162,8 +3170,23 @@ export const ComponentDesigner: React.FC<{
       }
       return;
     }
-    if (loadedFileId.current === sourceKey) return;
+    // Se re-siembra si cambió la fuente O si el contenido entrante es uno que este
+    // lienzo NO produjo (reemplazo externo). La decisión es pura y está probada.
+    const mismaFuente = loadedFileId.current === sourceKey;
+    if (
+      !debeResembrar({
+        loadedKey: loadedFileId.current,
+        sourceKey,
+        incoming: sourceContent,
+        lastEmitted: lastEmittedRef.current,
+        lastSeeded: seededContentRef.current,
+      })
+    ) {
+      return;
+    }
+    if (mismaFuente) fittedKeyRef.current = null; // reemplazo externo: re-encuadrar
     loadedFileId.current = sourceKey;
+    seededContentRef.current = sourceContent;
     skipFirstSave.current = true; // no guardar el contenido recién cargado
 
     // Al ABRIR se normaliza la pertenencia: lo guardado puede venir de una
@@ -3241,6 +3264,7 @@ export const ComponentDesigner: React.FC<{
     }
     setSaveState("saving");
     const content = buildContent(nodesRef.current, linksRef.current, meta, notationId);
+    lastEmittedRef.current = content; // lo propio: no re-sembrar en el round-trip
     if (onChangeRef.current) onChangeRef.current(content);
     else if (currentFileId) handleDesignUpdate(currentFileId, content);
     const t = setTimeout(() => setSaveState("saved"), 400);
