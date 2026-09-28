@@ -1882,6 +1882,24 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         connecting={connecting}
         onStartConnect={onStartConnect}
       />
+      {/* Grip de resize del texto libre: deja estirar el ancho para acomodar el
+          rótulo en una línea (o varias). Sólo cuando está seleccionado, para no
+          ensuciar un rótulo sin caja. #415/#417. */}
+      {shape === "text" && isSelected && (
+        <g onMouseDown={onResizeMouseDown} className="cursor-nwse-resize">
+          <rect x={nodeW - 12} y={nodeH - 12} width="12" height="12" className="fill-transparent" />
+          <path
+            d={`M${nodeW - 10},${nodeH} L${nodeW},${nodeH - 10}`}
+            className="stroke-gray-400 dark:stroke-zinc-500"
+            strokeWidth="2"
+          />
+          <path
+            d={`M${nodeW - 6},${nodeH} L${nodeW},${nodeH - 6}`}
+            className="stroke-gray-400 dark:stroke-zinc-500"
+            strokeWidth="2"
+          />
+        </g>
+      )}
     </g>
   );
 };
