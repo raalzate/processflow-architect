@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyIntent } from "../builder-intent";
+import { classifyIntent, destinoDe, nombreLibre } from "../builder-intent";
 import { notationTypes } from "../../notations";
 
 const vacia = { elementos: 0, tipos: notationTypes("c4", { includeContainers: true }) };
@@ -59,5 +59,45 @@ describe("classifyIntent · lo que extrae del pedido", () => {
 
   it("un pedido vacío no se adivina", () => {
     expect(classifyIntent("   ", vacia).modo).toBe("ambiguo");
+  });
+});
+
+/**
+ * El DESTINO del pedido (#431): «una nueva vista» es una pestaña nueva; el modo
+ * creativo publicaba siempre sobre la activa y pedía confirmación para pisar
+ * «Modelo» cuando el humano había dicho «nueva».
+ */
+describe("destinoDe", () => {
+  it("«nueva vista» → pestaña nueva, con el nombre sacado del pedido", () => {
+    expect(destinoDe("crear una nueva vista que hable sobre arquitectura hexagonal, usando spring boot y rabbitmq")).toEqual({
+      kind: "nueva",
+      nombre: "Arquitectura hexagonal, usando spring bo",
+    });
+    expect(destinoDe("hacé otra pestaña con el flujo de alta")).toEqual({ kind: "nueva", nombre: "El flujo de alta" });
+    expect(destinoDe("creá una vista nueva")).toEqual({ kind: "nueva", nombre: "Propuesta" });
+    expect(destinoDe("Una vista aparte de logística")).toEqual({ kind: "nueva", nombre: "Logística" });
+  });
+
+  it("«en la vista Pagos» → esa vista, con sus tildes; «en la vista actual» → la activa", () => {
+    expect(destinoDe("agregá la capa de persistencia en la vista Pagos")).toEqual({ kind: "vista", nombre: "Pagos" });
+    expect(destinoDe("completá en la vista Logística, por favor")).toEqual({ kind: "vista", nombre: "Logística" });
+    expect(destinoDe("agrega un nuevo elemento en la vista actual, elemento persona")).toEqual({ kind: "activa" });
+  });
+
+  it("sin pista, la activa", () => {
+    expect(destinoDe("crear un ejemplo MVC de Spring Boot")).toEqual({ kind: "activa" });
+  });
+
+  it("un texto en NFD da el mismo nombre que en NFC", () => {
+    const nfd = "completá en la vista Logística".normalize("NFD");
+    expect(destinoDe(nfd)).toEqual({ kind: "vista", nombre: "Logística" });
+  });
+});
+
+describe("nombreLibre", () => {
+  it("deja el nombre si está libre y numera si choca (sin mirar mayúsculas ni tildes)", () => {
+    expect(nombreLibre("Pagos", ["Modelo"])).toBe("Pagos");
+    expect(nombreLibre("Pagos", ["pagos"])).toBe("Pagos (2)");
+    expect(nombreLibre("Logística", ["Logistica", "Logística (2)"])).toBe("Logística (3)");
   });
 });
