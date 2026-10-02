@@ -1096,6 +1096,77 @@ describe("export_as_view · replace", () => {
 });
 
 // -----------------------------------------------------------------------------
+// #431 — un grafo ya armado (modo creativo) entra como pestaña sin pasar por el workspace.
+// -----------------------------------------------------------------------------
+
+describe("export_as_view · graph directo (#431)", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-vista-graph-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  const grafo = (nodos: { id: string; nombre: string; tipo_elemento: string }[]) =>
+    JSON.stringify({
+      nombre_proyecto: "Hexagonal",
+      version: "1.0.0",
+      notation: "c4",
+      fecha_analisis: "2026-10-02",
+      big_picture: { descripcion: "", hotspots: [], nodos, aristas: [] },
+      agregados: [],
+      read_models: [],
+      politicas_inter_agregados: [],
+      responsables: [],
+      notas: "",
+      transcript: "",
+    });
+
+  function servidor() {
+    const entregas: { name: string; notation: string; replace?: boolean }[] = [];
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: ws,
+      getAppState: () => null,
+      exportViewToApp: async (name: string, _g: any, notation: string, replace?: boolean) => {
+        entregas.push({ name, notation, replace });
+        return true;
+      },
+    } as any);
+    return { tools, entregas };
+  }
+
+  it("crea la pestaña con el grafo, sin diagrama en el workspace", async () => {
+    const { tools, entregas } = servidor();
+    const res = await tools.get("export_as_view")!.handler({
+      viewName: "Arquitectura hexagonal",
+      notation: "c4",
+      graph: grafo([{ id: "api", nombre: "API", tipo_elemento: "Contenedor" }]),
+    });
+    expect(res.isError).toBeUndefined();
+    expect(entregas).toEqual([{ name: "Arquitectura hexagonal", notation: "c4", replace: undefined }]);
+    expect(res.content[0].text).toContain("creada");
+    expect(res.content[0].text).toContain("1 elemento");
+  });
+
+  it("sin notación, sin nombre, JSON roto o sin elementos: no entrega nada", async () => {
+    const { tools, entregas } = servidor();
+    const lleno = grafo([{ id: "api", nombre: "API", tipo_elemento: "Contenedor" }]);
+    for (const args of [
+      { viewName: "X", graph: lleno },
+      { notation: "c4", graph: lleno },
+      { viewName: "X", notation: "c4", graph: "{roto" },
+      { viewName: "X", notation: "c4", graph: grafo([]) },
+    ]) {
+      const res = await tools.get("export_as_view")!.handler(args);
+      expect(res.isError).toBe(true);
+    }
+    expect(entregas).toHaveLength(0);
+  });
+});
+
+// -----------------------------------------------------------------------------
 // #149 — la herramienta contesta la verdad: ids llamables y borrados que ocurren.
 // -----------------------------------------------------------------------------
 

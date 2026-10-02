@@ -2579,9 +2579,43 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             .describe(
               "true actualiza la pestaña existente con ese nombre. Si no existe ninguna, avisa con las que hay en vez de crearla: rediseñar y entregar dos veces no debería dejar dos pestañas iguales."
             ),
+          graph: z
+            .string()
+            .optional()
+            .describe(
+              "GraphData completo en JSON: se entrega tal cual como pestaña, sin pasar por el workspace. Si viene, gana sobre diagramId y exige `viewName` y `notation`."
+            ),
+          notation: NOTATION.optional().describe("Notación del `graph` (obligatoria con él)."),
         },
       },
-      async ({ diagramId: diagramIdEntrada, viewName, replace }) => {
+      async ({ diagramId: diagramIdEntrada, viewName, replace, graph: graphEntrada, notation }) => {
+      // Un grafo ya armado (modo creativo del constructor, #431) va directo a la
+      // pestaña: convertirlo en diagrama del workspace sólo para exportarlo dejaba
+      // basura ahí. Mismo puente, mismas garantías: nada vacío, nada que pisar sin `replace`.
+      if (graphEntrada?.trim()) {
+        if (!notation) return fail("Con `graph` hace falta `notation`: es con lo que se leen los tipos.");
+        if (!viewName?.trim()) return fail("Con `graph` hace falta `viewName`: es el nombre de la pestaña.");
+        let directo: GraphData;
+        try {
+          directo = JSON.parse(graphEntrada);
+        } catch (e: any) {
+          return fail(`El grafo no es JSON válido: ${String(e?.message ?? e)}`);
+        }
+        const elementos = fromGraphData(directo, notation as NotationId).nodes.length;
+        if (!elementos) return fail("El grafo no tiene elementos: no se crea una pestaña vacía.");
+        const nombre = viewName.trim();
+        if (replace) {
+          const vistas = opts.getAppState?.()?.views ?? [];
+          if (!resolveViewRef(nombre, vistas).existe) return fail(vistaInexistente(nombre, vistas));
+        }
+        const entregada = await opts.exportViewToApp!(nombre, directo, notation as NotationId, replace);
+        if (!entregada) {
+          return fail("La app no tiene ventana activa; abre Processflow Architect y reintenta.");
+        }
+        return text(
+          `✅ Vista "${nombre}" (${notation}) ${replace ? "ACTUALIZADA" : "creada"} en el proyecto activo con ${elementos} elemento(s).`
+        );
+      }
       // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
       // configuración, o el único del workspace (`active-diagram.ts`).
       let diagramId: string;
