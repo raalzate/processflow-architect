@@ -464,9 +464,45 @@ describe("lectura de la app (list_artifacts · get_artifact · list_views · get
 
   it("sin readApp (modo stdio) las herramientas NO se registran", () => {
     const { tools } = toolsFor();
-    for (const t of ["list_artifacts", "get_artifact", "list_views", "get_view"]) {
+    for (const t of ["list_artifacts", "get_artifact", "list_views", "get_view", "get_focused_element"]) {
       expect(tools.has(t)).toBe(false);
     }
+  });
+
+  // Feature 019: la caja con la ficha abierta, entera, en una llamada.
+  it("get_focused_element sirve la ficha que contesta la app y su error cuando no hay foco", async () => {
+    const pedidos: any[] = [];
+    const { textOf, call } = toolsFor({
+      readApp: async (req: any) => {
+        pedidos.push(req);
+        if (pedidos.length > 1) return { ok: false, error: "No hay ninguna ficha abierta en la app.", options: ["Modelo"] };
+        return {
+          ok: true,
+          project: "Seguros",
+          kind: "focused",
+          element: {
+            view: "Modelo",
+            id: "pagar",
+            name: "Pagar pedido",
+            type: "Comando",
+            description: "Cobra",
+            attachments: "",
+            incoming: [],
+            outgoing: [{ name: "Pedido pagado", label: "emite" }],
+          },
+        };
+      },
+    });
+    const out = await textOf("get_focused_element");
+    expect(pedidos[0]).toEqual({ kind: "focused" });
+    expect(out).toContain("Pagar pedido");
+    expect(out).toContain("Pedido pagado");
+    expect(out).toContain("set_view_element_spec");
+
+    const res = await call("get_focused_element");
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("ninguna ficha abierta");
+    expect(res.content[0].text).toContain("Modelo");
   });
 
   it("lista los artefactos del proyecto activo con su revisión", async () => {
@@ -1840,6 +1876,26 @@ describe("registerProcessflowTools · herramientas que editan la vista abierta (
     // Sin `view`, la acción no nombra vista: el destino lo decide la app (la abierta).
     expect(pedidos[1].view).toBeUndefined();
     expect(pedidos[4]).toMatchObject({ invert: true });
+  });
+
+  // Feature 019: el contrato de la caja se escribe donde el humano la ve.
+  it("`set_view_element_spec` traduce a la acción set-spec con merge y vista", async () => {
+    const { tools, pedidos } = conApp();
+    expect(tools.has("set_view_element_spec")).toBe(true);
+    const res = await tools.get("set_view_element_spec")!.handler({
+      name: "Pagar pedido",
+      spec: { requirements: [{ texto: "Cobra en 500 ms" }] },
+      merge: true,
+      view: "Pagos",
+    });
+    expect(res.isError).toBeUndefined();
+    expect(pedidos[0]).toMatchObject({
+      kind: "set-spec",
+      name: "Pagar pedido",
+      merge: true,
+      view: "Pagos",
+      spec: { requirements: [{ texto: "Cobra en 500 ms" }] },
+    });
   });
 
   it("`set_view_graph` recibe el grafo como JSON y rechaza el que no lo es", async () => {

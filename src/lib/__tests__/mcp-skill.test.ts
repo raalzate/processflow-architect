@@ -14,6 +14,7 @@ import {
   SKILL_INSTALL_PATH,
   SKILL_EXAMPLES_PATH,
   SKILL_IDS,
+  DESIGN_SKILL_IDS,
   listSkills,
   getSkill,
   renderSkillFiles,
@@ -34,7 +35,7 @@ describe("skills embebidos", () => {
     }
   });
 
-  it("entrega los dos skills, con SKILL.md primero", () => {
+  it("entrega todos los skills, con SKILL.md primero", () => {
     expect(listSkills().map((s) => s.id)).toEqual([...SKILL_IDS]);
     for (const s of listSkills()) {
       expect(s.files[0].path).toBe("SKILL.md");
@@ -146,18 +147,33 @@ describe("contrato del arnés dentro del skill", () => {
     "export_to_app",
   ];
 
-  it("los dos skills nombran cada paso del arnés", () => {
-    for (const s of listSkills()) {
+  // Sólo los skills que DISEÑAN diagramas recorren el arnés entero; el de pulir
+  // una caja (019) no crea ni exporta nada y tiene su propio contrato abajo.
+  const deDiseno = () => listSkills().filter((s) => (DESIGN_SKILL_IDS as readonly string[]).includes(s.id));
+
+  it("los skills de diseño nombran cada paso del arnés", () => {
+    expect(deDiseno().map((s) => s.id)).toEqual([...DESIGN_SKILL_IDS]);
+    for (const s of deDiseno()) {
       for (const paso of pasos) {
         expect(s.files[0].content, `${s.id} no menciona ${paso}`).toContain(paso);
       }
     }
   });
 
-  it("los dos skills documentan el material adjunto de la caja (#366)", () => {
+  it("el skill de pulir una caja lee la ficha, propone antes de escribir y no exporta (019)", () => {
+    const md = getSkill("pulir-elemento")!.files[0].content;
+    for (const tool of ["get_app_state", "get_focused_element", "set_view_element_spec", "read_element_doc", "needsClarification", "merge: true"]) {
+      expect(md, `pulir-elemento no menciona ${tool}`).toContain(tool);
+    }
+    // Proponer va antes que escribir: es la regla de todo el arnés.
+    expect(md.indexOf("Proponer")).toBeLessThan(md.indexOf("set_view_element_spec"));
+    expect(md).not.toContain("export_to_app");
+  });
+
+  it("los skills de diseño documentan el material adjunto de la caja (#366)", () => {
     // Una tool que el agente externo no ve, no la usa: el skill es su única
     // forma de enterarse de que la caja puede llevar su contrato.
-    for (const s of listSkills()) {
+    for (const s of deDiseno()) {
       for (const tool of [
         "attach_element_doc",
         "list_element_docs",
@@ -175,10 +191,11 @@ describe("contrato del arnés dentro del skill", () => {
 });
 
 describe("metadatos en la guía del agente", () => {
-  it("los dos skills explican `metadata` con ejemplo y lo distinguen de `source`", () => {
+  it("los skills de diseño explican `metadata` con ejemplo y lo distinguen de `source`", () => {
     // Sin esto la propiedad existe y nadie la usa: el agente sólo sabe lo que la
-    // skill y las descripciones de las tools le dicen (FR-008).
-    for (const skill of listSkills()) {
+    // skill y las descripciones de las tools le dicen (FR-008). El skill de pulir
+    // una caja (019) no escribe metadatos: su contrato es la spec.
+    for (const skill of listSkills().filter((s) => (DESIGN_SKILL_IDS as readonly string[]).includes(s.id))) {
       const md = skill.files[0].content;
       expect(md, skill.id).toMatch(/metadata/);
       expect(md, skill.id).toContain("repo");

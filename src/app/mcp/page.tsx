@@ -116,6 +116,8 @@ const TOOLS: { name: string; desc: string }[] = [
   { name: "add_view_element / update_view_element / remove_view_element", desc: "Editar el grafo de la vista ABIERTA sin reemplazar la pestaña: agregar, corregir o quitar UN elemento, nombrándolo como se llama en el lienzo. Sin «view», cae en la vista que estás mirando." },
   { name: "add_view_edge / update_view_edge / remove_view_edge", desc: "Lo mismo con las relaciones: conectar, reetiquetar, invertir («invert») o borrar. Encuentra la relación aunque la nombres al revés de como está dibujada." },
   { name: "set_view_graph", desc: "Reemplazar el contenido de una vista con un GraphData completo, conservando la posición que le diste a lo que ya estaba (se reconcilia por nombre). Es la puerta del modo creativo del constructor; un grafo sin elementos se rechaza." },
+  { name: "get_focused_element", desc: "La caja cuya ficha tenés ABIERTA, entera: tipo, descripción, spec, metadatos, adjuntos y vecinos. Es lo que hace que «pulí esta caja» no necesite dictarle el nombre al agente; el botón «Enviar al agente» de la ficha le deja el prompt listo." },
+  { name: "set_view_element_spec", desc: "Escribir la especificación de UNA caja de la vista abierta, nombrándola como en el lienzo; con «merge» completa sin pisar lo que escribiste vos. La ficha la muestra al momento en su tab Spec." },
 ];
 
 const STEPS: { icon: React.ElementType; title: string; body: string }[] = [

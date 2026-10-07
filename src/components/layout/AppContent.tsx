@@ -101,7 +101,7 @@ const McpImportBridge = () => {
     allNodes,
     orgFilter,
   } = useGraphContext();
-  const { createView, views, activeView, updateViewGraph, setViewNotation, setActiveView, deleteView, renameView } =
+  const { createView, views, activeView, updateViewGraph, setViewNotation, setActiveView, deleteView, renameView, focus } =
     useViews();
   const { toast } = useToast();
 
@@ -118,9 +118,11 @@ const McpImportBridge = () => {
         // El agente ve lo mismo que el humano tiene filtrado: si el header está en
         // una organización, `get_app_state` no debe ofrecerle proyectos de otra.
         org: orgFilter === ORG_TODAS ? undefined : orgFilter,
+        // La ficha abierta (feature 019): «esta caja» para el agente externo.
+        focus,
       })
     );
-  }, [graphData, views, savedFiles, orgFilter]);
+  }, [graphData, views, savedFiles, orgFilter, focus]);
 
   // Lectura bajo demanda (`list_artifacts`, `get_artifact`, `list_views`,
   // `get_view`): el main pregunta y este efecto contesta. El proyecto activo sale
@@ -138,6 +140,7 @@ const McpImportBridge = () => {
     const ctx: AppReadContext = {
       active: activo,
       projects: proyectos,
+      focus,
       viewsOf: (projectId) => {
         // El proyecto activo ya tiene sus vistas resueltas en el contexto (con el
         // grafo vivo del lienzo, que puede diferir de lo persistido).
@@ -195,7 +198,7 @@ const McpImportBridge = () => {
       }
     });
     return off;
-  }, [currentFileId, graphData, savedFiles, views, allNodes]);
+  }, [currentFileId, graphData, savedFiles, views, allNodes, focus]);
 
   // Acciones del agente sobre las pestañas del proyecto (borrar, renombrar). La
   // regla —qué vista toca y cuándo NO se hace nada— es pura y vive en

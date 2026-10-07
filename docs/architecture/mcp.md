@@ -43,7 +43,7 @@ Guía /mcp (playground) ─memoria─▶ main/services/mcp-playground.ts ──�
 barrel `src/lib/mcp/index.ts`: `export *` no sobrevive la interop CJS de tsx/esbuild y los
 nombres se pierden en silencio.
 
-## Las herramientas (30)
+## Las herramientas (32)
 
 Agrupadas por fase del ciclo. Las marcadas **app** sólo se registran cuando el transporte
 las puede cumplir (existe el callback correspondiente en `McpToolsOptions`), así el cliente
@@ -162,6 +162,22 @@ en `applyViewEdit` (`src/lib/mcp/view-edit.ts`), que hace la ida y vuelta por `D
 y **reaplica** lo que esa conversión no lleva: la geometría que el humano movió, el `viewRef`
 del drill-down y los quiebres y anclas que dibujó a mano (#344).
 
+### 5d · Pulir la caja que el humano tiene abierta (feature 019, #433)
+
+La integración «desde el componente». Antes el agente externo no sabía qué caja miraba el
+humano, y escribir la spec de una caja del lienzo exigía `get_view importAs` →
+`set_element_spec` → `export_as_view replace`, que pisa la pestaña entera. El modelo
+Claude-in-Chrome no aplica: esa extensión habla por *native messaging*, que Electron no
+soporta (electron #40380); el equivalente de escritorio es este servidor MCP.
+
+| Pieza | Qué hace |
+|---|---|
+| `AppState.focus` | la ficha abierta (vista, elemento, tab). La publica la ficha vía `ViewsContext.setFocus` y `get_app_state` la imprime como «Ficha abierta». |
+| `get_focused_element` **app** | la ficha ENTERA en una lectura (`{ kind: "focused" }` en `app-read.ts`): tipo, descripción, estado, metadatos, spec, índice de adjuntos y vecinos. Sin foco, lo dice y ofrece las vistas. |
+| `set_view_element_spec` **app** | escribe la spec de una caja de la vista abierta (`ViewEdit set-spec`, con `setElementSpec`): `merge: true` parchea, vacío sin merge borra, homónimos ⇒ opciones. |
+| Botón «Enviar al agente» (ficha) | enciende el servidor MCP si está apagado y copia el prompt de entrega (`src/lib/mcp/handoff.ts`). Es el tope: la app no puede abrir Claude Code ni empujarle un prompt. |
+| Skill `pulir-elemento` | el arnés corto: leer la ficha → proponer → confirmar → escribir. No diseña ni exporta. |
+
 ### 5b · Configuración del servidor
 
 Además del workspace, el servidor acepta dos defaults para no repetir lo mismo en cada llamada:
@@ -194,8 +210,10 @@ Precedencia del proyecto: **`project` de la llamada → `use_project` → config
 | `list_skills` | skills instalables, qué traen y dónde van. |
 | `install_skill` | los escribe en `.claude/skills` (proyecto) o `~/.claude/skills` (usuario) **con la config del transporte real inyectada**: URL o stdio, herramientas realmente disponibles, workspace, notación por defecto y límites. Sin `overwrite` no pisa, pero **compara**: avisa cuál difiere del que generaría en vez de saltarlo en silencio. |
 
-Hoy hay dos (`SKILL_IDS` en `src/lib/mcp-skill.ts`): `documento-a-processflow` (documento →
-portafolio de diagramas) y `disenar-diagrama` (un diagrama trazado a su fuente). El
+Hoy hay tres (`SKILL_IDS` en `src/lib/mcp-skill.ts`): `documento-a-processflow` (documento →
+portafolio de diagramas), `disenar-diagrama` (un diagrama trazado a su fuente) y
+`pulir-elemento` (una caja: leer la ficha, proponer, escribir con aprobación; no recorre el
+arnés de diseño, por eso el test del arnés completo sólo barre `DESIGN_SKILL_IDS`). El
 embed de `.claude/skills/**` en ese módulo lo verifica el gate
 (`node scripts/sync-skills.mjs --check`): editar el skill del repo sin re-sincronizar
 falla.

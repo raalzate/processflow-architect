@@ -17,7 +17,10 @@
 
 import type { NotationId } from "../notations";
 import type { GraphData } from "../types";
-import { countGraph } from "./app-state";
+import type { ElementSpec } from "../element-spec";
+import { formatDocsIndex } from "../element-docs";
+import { countGraph, type AppFocus } from "./app-state";
+import { fromGraphData } from "./diagram-builder";
 
 /* -------------------------------------------------------------------------- */
 /* Petición y respuesta                                                       */
@@ -32,7 +35,30 @@ export type AppReadRequest =
   | { kind: "artifacts"; project?: string }
   | { kind: "artifact"; title: string; project?: string; revision?: number }
   | { kind: "views"; project?: string }
-  | { kind: "view"; name: string; project?: string };
+  | { kind: "view"; name: string; project?: string }
+  /** La caja cuya ficha tiene abierta el humano (feature 019). Siempre del proyecto activo. */
+  | { kind: "focused" };
+
+/**
+ * La ficha entera de la caja en foco, en UNA lectura: lo que el agente externo
+ * necesita para pulirla sin encadenar `get_view` → buscar el nodo → leer la spec.
+ */
+export interface FocusedElement {
+  view: string;
+  id: string;
+  name: string;
+  type: string;
+  container?: string;
+  description?: string;
+  estado?: string;
+  tags?: string[];
+  spec?: ElementSpec;
+  metadata?: { clave: string; valor: string }[];
+  /** Índice del material adjunto (nombre, tipo, tamaño): el contenido se pide con `read_element_doc`. */
+  attachments: string;
+  incoming: { name: string; label?: string }[];
+  outgoing: { name: string; label?: string }[];
+}
 
 export interface ArtifactBrief {
   title: string;
@@ -74,6 +100,7 @@ export type AppReadResult =
   | { ok: true; project: string; kind: "artifact"; artifact: ArtifactPayload }
   | { ok: true; project: string; kind: "views"; views: ViewBrief[] }
   | { ok: true; project: string; kind: "view"; view: ViewPayload }
+  | { ok: true; project: string; kind: "focused"; element: FocusedElement }
   /** `options` = qué SÍ existe, para que el agente no adivine en el siguiente turno. */
   | { ok: false; error: string; options?: string[] };
 
@@ -319,6 +346,68 @@ export interface AppReadContext {
   projects: { id: string; name: string }[];
   viewsOf: (projectId: string) => ViewInput[];
   artifactsOf: (projectId: string) => ArtifactInput[];
+  /** Ficha abierta en la app (feature 019); null o ausente = ninguna. */
+  focus?: AppFocus | null;
+}
+
+/**
+ * La ficha de la caja en foco, armada desde el grafo de su vista. Devuelve
+ * null si la caja ya no está (se borró con la ficha abierta): el llamador lo
+ * dice en vez de inventar una caja vacía.
+ */
+export function focusedElement(view: ViewInput, focus: AppFocus): FocusedElement | null {
+  if (!view.graph) return null;
+  // El mismo camino que el resto del MCP: el modelo del constructor unifica nodos
+  // y contenedores (id `agg-<nombre>`, igual que el lienzo) y trae spec, metadatos
+  // y adjuntos ya saneados.
+  const model = fromGraphData(view.graph, view.notation ?? view.graph.notation ?? "ddd");
+  // Sólo por id: con homónimos, caer al nombre devolvería OTRA caja que la que
+  // el humano tenía abierta (y que quizá borró).
+  const node = model.nodes.find((n) => n.id === focus.elementId);
+  if (!node) return null;
+  const nombreDe = (id: string) => model.nodes.find((n) => n.id === id)?.nombre ?? id;
+  const vecinos = (propios: (e: { fuente: string; destino: string }) => boolean, otro: (e: { fuente: string; destino: string }) => string) =>
+    model.edges
+      .filter((e) => propios(e) && e.fuente !== e.destino)
+      .map((e) => ({ name: nombreDe(otro(e)), ...(e.descripcion ? { label: e.descripcion } : {}) }));
+  return {
+    view: view.name,
+    id: node.id,
+    name: node.nombre,
+    type: node.tipo_elemento,
+    ...(node.container ? { container: node.container } : {}),
+    ...(node.descripcion ? { description: node.descripcion } : {}),
+    ...(node.estado_comparativo ? { estado: node.estado_comparativo } : {}),
+    ...(node.tags_tecnologia?.length ? { tags: node.tags_tecnologia } : {}),
+    ...(node.spec ? { spec: node.spec } : {}),
+    ...(node.metadata?.length ? { metadata: node.metadata.map((m) => ({ clave: m.clave, valor: m.valor })) } : {}),
+    attachments: formatDocsIndex(node.adjuntos ?? []),
+    incoming: vecinos((e) => e.destino === node.id, (e) => e.fuente),
+    outgoing: vecinos((e) => e.fuente === node.id, (e) => e.destino),
+  };
+}
+
+/** La ficha en foco como la lee el agente: todo lo que hay, y qué hacer con ello. */
+export function formatFocusedElement(project: string, el: FocusedElement): string {
+  const lista = (v: { name: string; label?: string }[]) =>
+    v.length ? v.map((x) => `"${x.name}"${x.label ? ` (${x.label})` : ""}`).join(", ") : "—";
+  const lines = [
+    `# ${el.name} (${el.type}) · id "${el.id}"`,
+    `Proyecto "${project}" · vista "${el.view}"${el.container ? ` · dentro de "${el.container}"` : ""}${el.estado ? ` · estado ${el.estado}` : ""}`,
+    `Descripción: ${el.description?.trim() || "(sin descripción)"}`,
+  ];
+  if (el.tags?.length) lines.push(`Tags: ${el.tags.join(", ")}`);
+  if (el.metadata?.length) lines.push(`Metadatos: ${el.metadata.map((m) => `${m.clave} = ${m.valor}`).join(" · ")}`);
+  lines.push(`Entrantes (quién la llama): ${lista(el.incoming)}`, `Salientes (a quién llama): ${lista(el.outgoing)}`);
+  lines.push(
+    el.spec ? `Spec actual (JSON):\n${JSON.stringify(el.spec, null, 2)}` : "Spec: todavía no tiene."
+  );
+  lines.push(el.attachments ? `Adjuntos (pedilos con read_element_doc):\n${el.attachments}` : "Adjuntos: ninguno.");
+  lines.push(
+    "",
+    `Para escribir su contrato donde el humano lo ve: \`set_view_element_spec\` con name "${el.name}" (merge: true conserva lo que ya escribió una persona). Mostrá la propuesta antes de escribir.`
+  );
+  return lines.join("\n");
 }
 
 /** Nombres disponibles, para que el error diga qué SÍ se puede pedir. */
@@ -349,6 +438,37 @@ export function resolveAppRead(req: AppReadRequest, ctx: AppReadContext): AppRea
 
   if (req.kind === "artifacts") {
     return { ok: true, project: proyecto.name, kind: "artifacts", artifacts: artifactBriefs(ctx.artifactsOf(proyecto.id)) };
+  }
+
+  if (req.kind === "focused") {
+    const focus = ctx.focus;
+    const vistas = ctx.viewsOf(proyecto.id);
+    if (!focus) {
+      return {
+        ok: false,
+        error:
+          "No hay ninguna ficha abierta en la app. Pedile al humano que abra la caja (doble clic en el lienzo) o que la nombre, y usá get_view para leerla.",
+        options: nombres(vistas, (v) => v.name),
+      };
+    }
+    // La vista del foco, por nombre exacto (es el que publicó la propia app).
+    const vista = vistas.find((v) => v.name === focus.viewName) ?? selectView(vistas, focus.viewName);
+    if (!vista?.graph) {
+      return {
+        ok: false,
+        error: `La ficha abierta es de "${focus.elementName}" en la vista "${focus.viewName}", pero esa vista no tiene un grafo que leer (¿es Mermaid?).`,
+        options: nombres(vistas, (v) => v.name),
+      };
+    }
+    const element = focusedElement(vista, focus);
+    if (!element) {
+      return {
+        ok: false,
+        error: `La ficha abierta era de "${focus.elementName}", pero esa caja ya no está en la vista "${vista.name}".`,
+        options: nombres(vistas, (v) => v.name),
+      };
+    }
+    return { ok: true, project: proyecto.name, kind: "focused", element };
   }
 
   if (req.kind === "artifact") {

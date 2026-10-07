@@ -27,9 +27,28 @@ export interface AppViewInfo {
   elements: number;
 }
 
+/**
+ * Lo que el humano tiene ABIERTO en la ficha de un elemento (feature 019).
+ *
+ * Sin esto, «pulí esta caja» obliga al humano a dictarle al agente externo el
+ * nombre del elemento y de la vista: el agente trabajaba a ciegas sobre lo que
+ * el humano estaba mirando. Es el «acá» de la ficha, como `activeView` es el
+ * «acá» del lienzo.
+ */
+export interface AppFocus {
+  viewId: string;
+  viewName: string;
+  elementId: string;
+  elementName: string;
+  /** Tab visible de la ficha ("elemento" | "spec"), si la ficha lo informa. */
+  tab?: string;
+}
+
 export interface AppState {
   /** Proyecto ACTIVO en el lienzo (null = la app está en la pantalla de bienvenida). */
   projectName: string | null;
+  /** Elemento con la ficha abierta, o null si no hay ninguna. */
+  focus?: AppFocus | null;
   /** Notación del proyecto activo. */
   notation?: NotationId;
   counts: { containers: number; nodes: number; edges: number };
@@ -76,12 +95,15 @@ export function describeAppState(input: {
    * distancia.
    */
   org?: string | null;
+  /** Ficha abierta (feature 019). Ausente o null = ninguna. */
+  focus?: AppFocus | null;
 }): AppState {
-  const { graph, views, savedFiles = [], viewsLimit, now, org } = input;
+  const { graph, views, savedFiles = [], viewsLimit, now, org, focus } = input;
   const visibles =
     org === undefined ? savedFiles : savedFiles.filter((f) => (f.orgId ?? null) === org);
   return {
     projectName: graph?.nombre_proyecto ?? null,
+    focus: focus ?? null,
     notation: graph?.notation as NotationId | undefined,
     counts: countGraph(graph),
     views: views.map((v) => ({
@@ -138,6 +160,19 @@ export function formatAppState(state: AppState | null): string {
 
   if (state.projects.length > 1) {
     lines.push(`Otros proyectos guardados: ${state.projects.join(", ")}.`);
+  }
+
+  // El foco va aunque no haya ficha abierta: «ninguna» también es información.
+  // Es lo que evita que el agente pregunte «¿cuál caja?» cuando el humano la
+  // tiene delante.
+  if (state.focus) {
+    lines.push(
+      `Ficha abierta: el humano está mirando "${state.focus.elementName}" en la vista "${state.focus.viewName}"${
+        state.focus.tab ? ` (tab ${state.focus.tab})` : ""
+      }. Es «esta caja» cuando te pida pulirla: \`get_focused_element\` la trae entera y \`set_view_element_spec\` escribe su spec donde la ve.`
+    );
+  } else if (state.projectName) {
+    lines.push("Ficha abierta: ninguna (si el humano habla de «esta caja», pedile que la abra o que la nombre).");
   }
 
   lines.push(`Estado publicado: ${state.updatedAt}.`);

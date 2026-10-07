@@ -31,6 +31,7 @@ import {
   type DiagramModel,
 } from "./diagram-builder";
 import { mergeProjectGraph } from "./project-update";
+import { setElementSpec } from "./element-spec-tools";
 import { normalizarTipo, plano } from "./tipo-notacion";
 
 /** Operación de edición sobre el grafo de una vista. */
@@ -57,7 +58,16 @@ export type ViewEdit =
       invert?: boolean;
     }
   | { kind: "remove-edge"; from: string; to: string }
-  | { kind: "set-graph"; graph: GraphData };
+  | { kind: "set-graph"; graph: GraphData }
+  /**
+   * Escribe la SPEC de un elemento de la vista (feature 019). Antes la única
+   * forma de que un agente externo escribiera el contrato de una caja del lienzo
+   * era el ciclo largo `get_view importAs` → `set_element_spec` →
+   * `export_as_view replace`, que pisa la pestaña entera para cambiar una ficha.
+   * `merge: true` parchea (lo del humano se conserva); una spec vacía sin merge
+   * borra la que hubiera, igual que en la ficha.
+   */
+  | { kind: "set-spec"; name: string; spec: unknown; merge?: boolean };
 
 export type ViewEditResult =
   | { ok: true; graph: GraphData; message: string }
@@ -332,6 +342,20 @@ export function applyViewEdit(
         if ("error" in r) return { ok: false, error: r.error };
         nuevo = removeNode(model, r.node.id);
         message = `"${r.node.nombre}" eliminado de la vista.`;
+        break;
+      }
+      case "set-spec": {
+        const r = porNombre(model, edit.name);
+        if ("error" in r) return { ok: false, error: r.error };
+        // La misma regla que `set_element_spec` sobre el workspace: lo que llega
+        // de un agente se sanea, y `merge` parchea en vez de pisar.
+        nuevo = setElementSpec(model, r.node.id, edit.spec, edit.merge === true);
+        const guardada = nuevo.nodes.find((n) => n.id === r.node.id)?.spec;
+        message = !guardada
+          ? edit.merge
+            ? `El parche de "${r.node.nombre}" no traía nada: la especificación quedó como estaba.`
+            : `Especificación de "${r.node.nombre}" borrada (llegó vacía).`
+          : `Especificación de "${r.node.nombre}" guardada en la vista: ${guardada.stories.length} paso(s), ${guardada.requirements.length} requisito(s), ${guardada.criteria.length} criterio(s).`;
         break;
       }
       case "add-edge": {
