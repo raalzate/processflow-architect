@@ -31,6 +31,7 @@ import { focusSystemPrompt } from "@/lib/agent-cli/prompt";
 import { CLI_INFO, type ChatEvent, type CliStatus } from "@/lib/agent-cli/types";
 import {
   CHAT_ENGINES,
+  engineHabilitado,
   engineLabel,
   esCli,
   fallbackNotice,
@@ -39,6 +40,7 @@ import {
   type ChatEngine,
 } from "@/lib/agent-cli/engine";
 import { readMcpPrefs } from "@/lib/mcp-settings";
+import { estadoCli, publicarEstadoCli } from "@/lib/agent-cli/capability";
 
 const CLI_CHOICE_KEY = "agent_cli_choice";
 /** Carpetas de contexto adjuntas (#460): se recuerdan entre fichas y sesiones. */
@@ -140,7 +142,20 @@ export function AgentCliChat(props: AgentCliChatProps) {
       /* sin localStorage: la IA de la app por defecto */
     }
     setDirs(leerCarpetas());
-    if (electron?.agentCliStatus) electron.agentCliStatus().then(setStatus).catch(() => setStatus([]));
+    // Qué CLI hay ya lo publicó la app al arrancar (`AppContent`): se reusa. Con
+    // el chat siempre montado (#461), preguntarlo acá lanzaba `claude --version`
+    // y `codex --version` en CADA ficha abierta. Sólo si todavía no se publicó se
+    // pregunta, una vez, y se publica para las siguientes.
+    const conocido = estadoCli();
+    if (conocido) setStatus(conocido);
+    else if (electron?.agentCliStatus)
+      electron
+        .agentCliStatus()
+        .then((s) => {
+          publicarEstadoCli(s);
+          setStatus(s);
+        })
+        .catch(() => setStatus([]));
     // Sin Electron no hay CLI: se sabe ya, y el chat cae a la IA de la app.
     else setStatus([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -369,9 +384,14 @@ export function AgentCliChat(props: AgentCliChatProps) {
           </SelectTrigger>
           <SelectContent>
             {CHAT_ENGINES.map((e) => (
-              <SelectItem key={e} value={e} className="text-xs">
+              // Codex se ve pero no se elige: sin barrera de herramientas verificada (#461).
+              <SelectItem key={e} value={e} className="text-xs" disabled={!engineHabilitado(e)}>
                 {engineLabel(e)}
-                {esCli(e) && status && !status.find((s) => s.cli === e)?.installed ? " (no instalado)" : ""}
+                {!engineHabilitado(e)
+                  ? " (pronto)"
+                  : esCli(e) && status && !status.find((s) => s.cli === e)?.installed
+                    ? " (no instalado)"
+                    : ""}
               </SelectItem>
             ))}
           </SelectContent>

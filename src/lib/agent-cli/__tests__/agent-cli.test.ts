@@ -347,3 +347,20 @@ describe("#461 — el agente escribe la spec por id, no por nombre", () => {
     expect(focusSystemPrompt({ elementName: "RabbitMQ", viewName: "V", hasSpec: false })).toContain('name "RabbitMQ"');
   });
 });
+
+// #461 (segunda revisión): Codex no tiene barrera de herramientas verificada.
+import { engineHabilitado, CHAT_CLIS_HABILITADOS } from "../engine";
+
+describe("#461 — Codex deshabilitado en el chat hasta verificar su barrera", () => {
+  it("aunque esté instalado, cae a la IA de la app y lo explica", () => {
+    const ambos = [{ cli: "claude" as const, installed: true }, { cli: "codex" as const, installed: true }];
+    expect(CHAT_CLIS_HABILITADOS).toEqual(["claude"]);
+    expect(engineHabilitado("codex")).toBe(false);
+    expect(engineHabilitado("claude")).toBe(true);
+    expect(engineHabilitado("app")).toBe(true);
+    expect(resolveChatEngine("codex", ambos)).toEqual({ engine: "app", fallback: true });
+    expect(resolveChatEngine("codex", null)).toEqual({ engine: "app", fallback: true });
+    expect(fallbackNotice("codex")).toMatch(/Codex todavía no está habilitado/);
+    expect(fallbackNotice("claude")).toMatch(/no está instalado/);
+  });
+});

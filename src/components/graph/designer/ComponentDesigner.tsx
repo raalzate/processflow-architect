@@ -1362,7 +1362,8 @@ const EditNodeDialog: React.FC<{
         estado = arranque;
       }
       const prompt = handoffPrompt({
-        elementName: actual.nombre,
+        // El nombre GUARDADO (#461): el del borrador puede no existir todavía.
+        elementName: nodeRef.current?.nombre ?? actual.nombre,
         viewName: vistaActivaNombre,
         url: estado.url,
         hasSpec: !isSpecEmpty(actual.spec),

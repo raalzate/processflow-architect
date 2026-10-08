@@ -29,7 +29,20 @@ export interface EngineChoice {
  * Motor efectivo. `estados` null = todavía no se sabe qué hay: se respeta la
  * elección (no se cae antes de saber, o el selector parpadearía al abrir).
  */
+/**
+ * CLIs habilitados en el chat. Codex queda FUERA hasta verificar una barrera
+ * de herramientas (#461, revisión): a Claude se le pasa una allowlist del MCP y
+ * el CLI deniega el resto (verificado en vivo con `delete_view`); a Codex no hay
+ * forma verificada de restringirlo, y con `codex exec` podría llamar tools
+ * destructivas sin confirmación. Seguimiento en #462.
+ */
+export const CHAT_CLIS_HABILITADOS: readonly CliId[] = ["claude"] as const;
+
+export const engineHabilitado = (e: ChatEngine): boolean => !esCli(e) || CHAT_CLIS_HABILITADOS.includes(e);
+
 export function resolveChatEngine(elegido: ChatEngine, estados: CliStatus[] | null): EngineChoice {
+  // Un CLI deshabilitado cae a la IA de la app aunque esté instalado.
+  if (!engineHabilitado(elegido)) return { engine: "app", fallback: true };
   if (!esCli(elegido) || estados === null) return { engine: elegido, fallback: false };
   const instalado = estados.some((s) => s.cli === elegido && s.installed);
   return instalado ? { engine: elegido, fallback: false } : { engine: "app", fallback: true };
@@ -46,5 +59,8 @@ export function nombreCarpeta(ruta: string): string {
 
 /** Aviso cuando hubo caída, para que el humano sepa quién le contesta. */
 export function fallbackNotice(elegido: ChatEngine): string {
-  return `${engineLabel(elegido)} no está instalado: te contesta la IA de la app (no escribe en el lienzo; aplicá lo que te proponga desde el tab Spec).`;
+  const motivo = engineHabilitado(elegido)
+    ? `${engineLabel(elegido)} no está instalado`
+    : `${engineLabel(elegido)} todavía no está habilitado en el chat (falta verificar que no pueda usar herramientas que borran)`;
+  return `${motivo}: te contesta la IA de la app (no escribe en el lienzo; aplicá lo que te proponga desde el tab Spec).`;
 }
