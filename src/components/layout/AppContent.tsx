@@ -39,6 +39,7 @@ import {
   publicarEstadoIaLocal,
   razonarEstadoLocal,
 } from "@/lib/ai/local-capability";
+import { publicarEstadoCli } from "@/lib/agent-cli/capability";
 import { loadAiSettings } from "@/lib/ai/remote-settings";
 import { CommandPalette } from "@/components/CommandPalette";
 
@@ -614,6 +615,11 @@ export function AppContent() {
       if (!mounted) return;
       const estado = razonarEstadoLocal({ enElectron, webgpu });
       publicarEstadoIaLocal(estado);
+      // Qué CLI de agente hay (feature 021): el router lo lee en sincrónico para
+      // el modo «Claude Code». Sin Electron no hay CLI que publicar.
+      (window as any).electronAPI?.agentCliStatus?.()
+        .then((s: Parameters<typeof publicarEstadoCli>[0]) => mounted && publicarEstadoCli(s))
+        .catch(() => {});
       setDetectando(false);
       // La llave vive en el main: sin preguntarle, "modo remoto" no significa que
       // la nube funcione, y el aviso prometería una salida que no existe.

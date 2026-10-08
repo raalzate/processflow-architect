@@ -38,8 +38,8 @@ import { initAppActionBridge } from './services/mcp-app-action';
 import type { AppState } from '../src/lib/mcp/app-state';
 import { getSystemInfo } from './services/system-info';
 import { playgroundListTools, playgroundCallTool } from './services/mcp-playground';
-import { cancelAgentCli, cliStatus, runAgentCli } from './services/agent-cli';
-import type { LaunchInput } from '../src/lib/agent-cli/args';
+import { cancelAgentCli, cliStatus, generateWithCli, runAgentCli } from './services/agent-cli';
+import type { GenerateInput, LaunchInput } from '../src/lib/agent-cli/args';
 
 /**
  * IPC del proceso main. La IA local corre en el RENDERER (LiteRT-LM / WebGPU);
@@ -100,6 +100,8 @@ export function registerIpcHandlers() {
     })
   );
   ipcMain.handle('agent-cli-cancel', async (_e, runId: string) => cancelAgentCli(runId));
+  // Feature 021: el CLI como motor de texto del router (razona el CLI, actúa la app).
+  ipcMain.handle('agent-cli-generate', async (_e, input: GenerateInput) => generateWithCli(input));
 
   // --- Servidor MCP embebido (HTTP, opt-in desde Ajustes) ---
   ipcMain.handle('mcp-server-start', async (_e, port?: number) => startMcpHttp(port));

@@ -74,13 +74,18 @@ export function mensajeIaLocal(
   // La nube atiende TODO: no hay hueco que avisar.
   if (modo === "remote" && conLlave) return undefined;
 
-  const nubeLista = modo !== "local" && conLlave;
-  const salida = nubeLista
-    ? "Estás en modo híbrido: las sugerencias ligeras también irán a tu proveedor de nube."
-    : modo !== "local"
-      ? "Elegiste un proveedor de nube pero todavía no hay llave: agregala en Ajustes."
-      : "Si querés sugerencias, activá un proveedor de IA en la nube en Ajustes (con tu propia llave).";
-  const persistente = !nubeLista;
+  // Modo CLI (feature 021): razona el CLI del usuario; el motor local era sólo el
+  // respaldo. Se avisa una vez, sin quedarse pegado.
+  const cli = modo === "cli";
+  const nubeLista = (modo === "hybrid" || modo === "remote") && conLlave;
+  const salida = cli
+    ? "Estás en modo Claude Code: las sugerencias razonan en tu CLI, y sin él no habrá respaldo local."
+    : nubeLista
+      ? "Estás en modo híbrido: las sugerencias ligeras también irán a tu proveedor de nube."
+      : modo !== "local"
+        ? "Elegiste un proveedor de nube pero todavía no hay llave: agregala en Ajustes."
+        : "Si querés sugerencias, activá un proveedor de IA en la nube en Ajustes (con tu propia llave).";
+  const persistente = !nubeLista && !cli;
 
   if (estado === "sin-webgpu") {
     return {

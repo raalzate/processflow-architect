@@ -20,8 +20,8 @@ import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildLaunch, type LaunchInput } from "../../src/lib/agent-cli/args";
-import { parseLine, splitLines } from "../../src/lib/agent-cli/parse";
+import { buildGenerateLaunch, buildLaunch, type GenerateInput, type LaunchInput } from "../../src/lib/agent-cli/args";
+import { parseLine, resultText, splitLines } from "../../src/lib/agent-cli/parse";
 import { CLI_IDS, CLI_INFO, type ChatEvent, type CliId, type CliStatus } from "../../src/lib/agent-cli/types";
 
 /** Sin eventos durante este tiempo se da por colgado y se mata. */
@@ -36,7 +36,24 @@ export interface Proceso {
   kill(signal?: NodeJS.Signals): boolean;
 }
 
-export type Spawn = (command: string, args: string[], opts: { env: NodeJS.ProcessEnv }) => Proceso;
+export type Spawn = (
+  command: string,
+  args: string[],
+  opts: { env: NodeJS.ProcessEnv; stdio: ["ignore", "pipe", "pipe"]; cwd: string }
+) => Proceso;
+
+/**
+ * - stdin CERRADO: con un stdin abierto, `claude -p` espera 3 s por datos antes
+ *   de arrancar y lo avisa por stderr; ese aviso tapaba el error real.
+ * - cwd NEUTRAL: el CLI lee el CLAUDE.md y los hooks del directorio donde
+ *   arranca; heredar el de la app (en desarrollo, el repo) le metía reglas
+ *   ajenas al razonamiento. Verificado en vivo con 2.1.293 el 2026-10-07.
+ */
+const opciones = (deps: Deps) => ({
+  env: envConPath(deps),
+  stdio: ["ignore", "pipe", "pipe"] as ["ignore", "pipe", "pipe"],
+  cwd: deps.cwd ?? os.tmpdir(),
+});
 
 export interface Deps {
   spawn?: Spawn;
@@ -44,6 +61,8 @@ export interface Deps {
   home?: string;
   env?: NodeJS.ProcessEnv;
   idleTimeoutMs?: number;
+  /** Directorio de trabajo del CLI (por defecto, el temporal del sistema). */
+  cwd?: string;
 }
 
 /** Directorios donde suelen instalarse los CLI y que una app GUI no ve en su PATH. */
@@ -90,7 +109,7 @@ export async function cliStatus(deps: Deps = {}): Promise<CliStatus[]> {
       if (!bin) return { cli, installed: false };
       try {
         const version = await new Promise<string>((resolve, reject) => {
-          const p = spawn(bin, ["--version"], { env: envConPath(deps) });
+          const p = spawn(bin, ["--version"], opciones(deps));
           let out = "";
           p.stdout?.on("data", (d: Buffer | string) => (out += String(d)));
           p.on("error", reject);
@@ -130,7 +149,7 @@ export async function runAgentCli(
   }
   const spawn = deps.spawn ?? (nodeSpawn as unknown as Spawn);
   const launch = buildLaunch(input);
-  const p = spawn(bin, launch.args, { env: envConPath(deps) });
+  const p = spawn(bin, launch.args, opciones(deps));
   corridas.set(runId, p);
 
   let buffer = "";
@@ -167,6 +186,49 @@ export async function runAgentCli(
     };
     p.on("error", (e) => fin(null, e));
     p.on("close", (code) => fin(code));
+  });
+}
+
+/**
+ * Generación de TEXTO PURO para el router de la app (feature 021): el CLI
+ * piensa, la app actúa. Un proceso por llamada, sin tools ni MCP; devuelve el
+ * texto o el error real del CLI (stderr o el `result` de error).
+ */
+export async function generateWithCli(
+  input: GenerateInput,
+  deps: Deps = {}
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const bin = resolveCli(input.cli, deps);
+  if (!bin) return { ok: false, error: `${CLI_INFO[input.cli].label} no está instalado (no encontré \`${CLI_INFO[input.cli].command}\`).` };
+  const spawn = deps.spawn ?? (nodeSpawn as unknown as Spawn);
+  const launch = buildGenerateLaunch(input);
+  const idle = deps.idleTimeoutMs ?? IDLE_TIMEOUT_MS;
+  return new Promise((resolve) => {
+    const p = spawn(bin, launch.args, opciones(deps));
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      p.kill("SIGTERM");
+      resolve({ ok: false, error: `${CLI_INFO[input.cli].label} no respondió en ${Math.round(idle / 1000)} s.` });
+    }, idle);
+    p.stdout?.on("data", (d: Buffer | string) => (stdout += String(d)));
+    p.stderr?.on("data", (d: Buffer | string) => (stderr += String(d)));
+    p.on("error", (e) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: e.message });
+    });
+    p.on("close", (code) => {
+      clearTimeout(timer);
+      const r = resultText(input.cli, stdout);
+      // Si el CLI escribió una respuesta, ésa manda: stderr puede traer avisos
+      // inofensivos y no debe convertir un éxito en error.
+      if ("text" in r) return resolve({ ok: true, text: r.text });
+      // Con stdout que dice POR QUÉ falló, ese motivo manda sobre stderr; si no
+      // hubo respuesta, stderr es lo único que hay (p. ej. «Not logged in»).
+      const hayRespuesta = stdout.trim().length > 0;
+      const motivo = hayRespuesta ? r.error : stderr.trim().slice(-2000) || r.error;
+      resolve({ ok: false, error: motivo || `${CLI_INFO[input.cli].label} terminó con código ${code}.` });
+    });
   });
 }
 

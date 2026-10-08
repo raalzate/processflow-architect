@@ -1,7 +1,10 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Cloud, KeyRound, Check, Loader2, Trash2, ExternalLink, Cpu, Shuffle, PlugZap } from "lucide-react";
+import { Cloud, KeyRound, Check, Loader2, Trash2, ExternalLink, Cpu, Shuffle, PlugZap, Terminal } from "lucide-react";
+import { publicarEstadoCli } from "@/lib/agent-cli/capability";
+import { CLI_INFO, type CliStatus } from "@/lib/agent-cli/types";
+import { DEFAULT_CLI } from "@/lib/ai/providers";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { accion } from "@/lib/action-labels";
@@ -72,6 +75,33 @@ export function RemoteAiConfig() {
     refreshStatus();
   }, [refreshStatus]);
 
+  // Estado del CLI para el modo «Claude Code» (feature 021). Se pregunta al
+  // main en cada apertura: el usuario pudo instalarlo con la app abierta.
+  const [cli, setCli] = useState<CliStatus | null | undefined>(undefined);
+  const [probandoCli, setProbandoCli] = useState(false);
+  useEffect(() => {
+    api()
+      ?.agentCliStatus?.()
+      .then((s) => {
+        publicarEstadoCli(s);
+        setCli(s.find((x) => x.cli === DEFAULT_CLI) ?? null);
+      })
+      .catch(() => setCli(null));
+  }, []);
+
+  // Probar = una generación mínima por el CLI: descubre «sin sesión» antes de
+  // que falle una sugerencia real.
+  const probarCli = async () => {
+    setProbandoCli(true);
+    try {
+      const r = await api()?.agentCliGenerate?.({ cli: DEFAULT_CLI, prompt: "Respondé exactamente: OK" });
+      if (r?.ok) toast({ title: "Claude Code responde", description: `Contestó «${r.text.slice(0, 40)}».` });
+      else toast({ variant: "destructive", title: "Claude Code no respondió", description: r?.error ?? "Sin respuesta." });
+    } finally {
+      setProbandoCli(false);
+    }
+  };
+
   const update = (patch: Partial<AiRemoteSettings>) => {
     const next = { ...settings, ...patch };
     setSettings(next);
@@ -136,12 +166,13 @@ export function RemoteAiConfig() {
       <CardContent className="space-y-5">
         {/* Modo: local / híbrido / remoto — selector principal, ancho completo */}
         <div className="space-y-2">
-          {/* 1 columna en pantallas muy chicas; 3 a partir de sm (responsive). */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {/* 1 columna en pantallas muy chicas; 2 en sm; 4 desde lg (responsive). */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             {([
               ["local", "Local", Cpu, "En tu equipo · privado · sin internet"],
               ["hybrid", "Híbrido", Shuffle, "Ligero local · lo pesado a la nube"],
               ["remote", "Remoto", Cloud, "Todo a la nube · más potente"],
+              ["cli", "Claude Code", Terminal, "Razona tu CLI · actúa la app · sin llave"],
             ] as const).map(([val, lbl, Icon, sub]) => (
               <button
                 key={val}
@@ -167,8 +198,50 @@ export function RemoteAiConfig() {
           )}
         </div>
 
+        {/* Modo «Claude Code» (feature 021): estado del CLI y prueba. Sin llave:
+            el CLI usa la sesión que el usuario ya tiene en su máquina. */}
+        {settings.mode === "cli" && (
+          <div className="space-y-3 rounded-lg border bg-muted/20 p-4 text-sm">
+            <div className="flex items-center gap-2">
+              <Terminal className="h-4 w-4 text-primary" />
+              <span className="font-semibold">Claude Code como motor</span>
+              {cli?.installed ? (
+                <Badge variant="secondary">{cli.version ?? "instalado"}</Badge>
+              ) : cli === undefined ? null : (
+                <Badge variant="destructive">no instalado</Badge>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Las sugerencias, las tareas de IA y el Constructor razonan con tu Claude Code; lo que se
+              escribe en el lienzo lo hace la app con sus propias herramientas y confirmaciones. Sin llave
+              en la app: usa tu sesión. Cada llamada tarda unos segundos y la factura tu cuenta de Claude.
+              El Analista del panel sigue en el motor local.
+            </p>
+            {!isDesktop && (
+              <p className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-warning-foreground">
+                Sólo disponible en la app de escritorio.
+              </p>
+            )}
+            {cli === null && (
+              <p className="text-xs text-destructive">
+                No encontré <code>claude</code>. Instalalo desde{" "}
+                <a className="underline" href={CLI_INFO.claude.installUrl} target="_blank" rel="noreferrer">
+                  {CLI_INFO.claude.installUrl}
+                </a>
+                ; mientras tanto se usa la IA local como respaldo.
+              </p>
+            )}
+            {cli?.installed && (
+              <Button type="button" variant="outline" size="sm" onClick={() => void probarCli()} disabled={probandoCli}>
+                {probandoCli ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlugZap className="mr-2 h-4 w-4" />}
+                Probar Claude Code
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Configuración de nube: SOLO cuando el modo la usa (híbrido/remoto). */}
-        {settings.mode !== "local" && (
+        {(settings.mode === "hybrid" || settings.mode === "remote") && (
           <div className="space-y-5 rounded-lg border bg-muted/20 p-4">
             <div className="flex items-center gap-2">
               <Cloud className="h-4 w-4 text-primary" />

@@ -13,11 +13,16 @@
 // "remote" ya NO es la nube: es el flujo Genkit que corre el MISMO modelo Gemma
 // local (orquestación estructurada en el proceso main). Se conserva el nombre por
 // compatibilidad con el router. Toda la IA es local.
-export type ProviderId = "local" | "remote";
+//  - cli    : Claude Code / Codex como MOTOR DE TEXTO (feature 021): el CLI del
+//             usuario razona con SU sesión (sin llave en la app, sin red desde la
+//             app) y la app actúa con sus propias tools. Un proceso por llamada.
+export type ProviderId = "local" | "remote" | "cli";
 
 import { litertGenerate } from "./litert-engine";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
 import { estadoIaLocal, puedeUsarIaLocal } from "./local-capability";
+import { cliInstalado } from "@/lib/agent-cli/capability";
+import type { CliId } from "@/lib/agent-cli/types";
 
 const api = () => (typeof window !== "undefined" ? (window as any).electronAPI : undefined);
 
@@ -32,6 +37,28 @@ export const localAvailable = (): boolean => !!api() && puedeUsarIaLocal(estadoI
 
 /** IA remota disponible: el main expone generación por proveedor (Gemini/OpenAI/Anthropic). */
 export const remoteAvailable = (): boolean => !!api()?.remoteGenerate;
+
+/** CLI por defecto del motor `cli`. Codex queda declarado sin verificar en vivo. */
+export const DEFAULT_CLI: CliId = "claude";
+
+/**
+ * Motor CLI disponible: el main expone la generación Y el CLI está instalado
+ * según lo que el renderer publicó al arrancar (`agent-cli/capability.ts`).
+ * Afirmarlo sin eso mandaba la tarea a un binario que no existe.
+ */
+export const cliAvailable = (cli: CliId = DEFAULT_CLI): boolean => !!api()?.agentCliGenerate && cliInstalado(cli);
+
+/**
+ * Genera texto con el CLI del usuario (feature 021). El error del CLI (sin
+ * sesión, timeout) se lanza tal cual: el humano lo ve, no se degrada en silencio.
+ */
+export async function runCli(prompt: string, system?: string, cli: CliId = DEFAULT_CLI): Promise<string> {
+  const a = api();
+  if (!a?.agentCliGenerate) throw new Error("El motor por CLI sólo está disponible en la app de escritorio.");
+  const r = await a.agentCliGenerate({ cli, prompt, system });
+  if (!r.ok) throw new Error(r.error);
+  return (r.text || "").trim();
+}
 
 /**
  * Genera texto con la IA local. AHORA vía LiteRT-LM (WebGPU, renderer) — el path

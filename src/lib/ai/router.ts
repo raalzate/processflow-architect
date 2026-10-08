@@ -16,8 +16,10 @@
 
 import {
   type ProviderId,
+  cliAvailable,
   localAvailable,
   remoteAvailable,
+  runCli,
   runLocal,
   runRemoteFlow,
   remoteGenerateText,
@@ -74,6 +76,19 @@ export function chooseProvider(
     return { provider: "remote", fellBack: false, reason: "modo remoto (manual)" };
   }
 
+  // MODO CLI (feature 021): el CLI del usuario razona TODO lo que tenga prompt;
+  // las tareas sólo-flujo (legado) no tienen cómo correr ahí. Sin CLI instalado
+  // cae a local, declarándolo como respaldo (igual que la nube sin llave).
+  if (mode === "cli") {
+    if (task.buildPrompt && cliAvailable()) {
+      return { provider: "cli", fellBack: false, reason: "modo CLI: razona el CLI del usuario" };
+    }
+    if (task.buildPrompt && local) {
+      return { provider: "local", fellBack: true, reason: "CLI no disponible → IA local como respaldo" };
+    }
+    return { provider: null, fellBack: false, reason: "modo CLI: el CLI no está disponible y no hay motor local para esta tarea" };
+  }
+
   // MODO LOCAL: nunca sale a la nube.
   if (mode === "local") {
     if (task.buildPrompt && local) return { provider: "local", fellBack: false, reason: "modo local" };
@@ -110,10 +125,11 @@ export async function route<I, O = string>(
   const { provider, fellBack, reason } = chooseProvider(task as AiTask, inputSize, ctx);
   if (!provider) throw new Error(reason);
 
-  if (provider === "local") {
+  if (provider === "local" || provider === "cli") {
     if (!task.buildPrompt) throw new Error(`La tarea "${task.id}" no define prompt local.`);
     const { prompt, system } = task.buildPrompt(input);
-    const raw = await runLocal(prompt, system);
+    // Mismo prompt que el motor local: el CLI es un generador de texto más.
+    const raw = provider === "cli" ? await runCli(prompt, system) : await runLocal(prompt, system);
     const output = (task.parse ? task.parse(raw, input) : raw) as O;
     return { provider, fellBack, reason, output };
   }

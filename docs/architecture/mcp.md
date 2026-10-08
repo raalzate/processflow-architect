@@ -198,6 +198,28 @@ el contrato documentado y **no se verificó** (no está instalado en la máquina
 No es un `ProviderId`: el CLI no es un motor de inferencia de la app sino un agente ajeno, así
 que `router.ts`, `providers.ts` y `tasks.ts` no cambian.
 
+### 5f · Claude Code como motor de razonamiento de la app (feature 021, #451)
+
+Lo inverso de 5e: el agente es **el de la app** y Claude Code sólo **piensa**. Ajustes → Motor
+de IA gana un cuarto modo, `cli` («Claude Code»): toda tarea con prompt (sugerencias de la
+ficha, tareas de IA, cada turno del Constructor) la razona el CLI del usuario y la app actúa con
+sus propias tools, ciclo y confirmaciones. Es un motor nuevo (`ProviderId = "cli"`,
+`runCli` en `providers.ts`) y por eso sí toca el router (§P5 lo permite); `tasks.ts` no cambia.
+
+| Pieza | Qué hace |
+|---|---|
+| `buildGenerateLaunch` / `resultText` (`src/lib/agent-cli/`) | `claude -p … --output-format json --max-turns 1 --tools "" --mcp-config {} --strict-mcp-config --no-session-persistence --setting-sources ""` con el prompt de sistema de la tarea. |
+| `generateWithCli` + IPC `agent-cli-generate` | un proceso por llamada, stdin cerrado, cwd neutral; devuelve el texto o el error real del CLI. |
+| `agent-cli/capability.ts` | el renderer publica al arrancar qué CLI hay; `cliAvailable()` lo lee en sincrónico. Sin CLI, el modo cae a local declarándolo como respaldo. |
+| `provenance.ts` / badge / Ajustes | la procedencia dice «Claude Code»; la tarjeta muestra versión y «Probar». |
+
+Dos trampas verificadas en vivo (2026-10-07): con stdin abierto el CLI espera 3 s y avisa por
+stderr; y lanzado desde un repo con hooks de Claude Code (un `Stop` que bloquea el cierre) hace
+un segundo turno y termina en `error_max_turns`. Por eso stdin cerrado, cwd neutral y
+`--setting-sources ""` también en el chat de 5e. Costo medido: ~3 a 13 s y ~US$ 0,10 por llamada.
+El **Analista** del panel sigue llamando al motor local directo (no pasa por el router): queda
+declarado como siguiente paso.
+
 ### 5b · Configuración del servidor
 
 Además del workspace, el servidor acepta dos defaults para no repetir lo mismo en cada llamada:

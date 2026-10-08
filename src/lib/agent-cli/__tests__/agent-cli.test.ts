@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { buildLaunch, claudeMcpConfig, DEFAULT_MAX_TURNS } from "../args";
-import { parseLine, splitLines } from "../parse";
+import { buildGenerateLaunch, buildLaunch, claudeMcpConfig, DEFAULT_MAX_TURNS } from "../args";
+import { parseLine, resultText, splitLines } from "../parse";
 import { focusSystemPrompt } from "../prompt";
+import { cliInstalado, estadoCli, publicarEstadoCli, resetEstadoCli } from "../capability";
 import { MCP_SERVER_NAME } from "../types";
 
 const base = { prompt: "pulí esta caja", mcpUrl: "http://127.0.0.1:7331/mcp", systemPrompt: "SYS" };
@@ -18,6 +19,7 @@ describe("buildLaunch — Claude Code", () => {
       mcpServers: { [MCP_SERVER_NAME]: { type: "http", url: base.mcpUrl } },
     });
     expect(l.args).toContain("--strict-mcp-config");
+    expect(l.args[l.args.indexOf("--setting-sources") + 1]).toBe("");
     expect(l.args[l.args.indexOf("--allowedTools") + 1]).toBe(`mcp__${MCP_SERVER_NAME}__*`);
     expect(l.args[l.args.indexOf("--append-system-prompt") + 1]).toBe("SYS");
     expect(l.args[l.args.indexOf("--max-turns") + 1]).toBe(String(DEFAULT_MAX_TURNS));
@@ -92,6 +94,66 @@ describe("parseLine — Codex", () => {
     expect(ev({ type: "turn.completed" })).toEqual([{ type: "result", ok: true, text: "" }]);
     expect(ev({ type: "turn.failed", error: { message: "boom" } })).toEqual([{ type: "result", ok: false, text: "boom" }]);
     expect(ev({ type: "error", message: "sin sesión" })).toEqual([{ type: "error", message: "sin sesión" }]);
+  });
+});
+
+// Feature 021: el CLI como generador de texto para el router (razona el CLI, actúa la app).
+describe("buildGenerateLaunch", () => {
+  it("Claude: un turno, sin tools, sin MCP, sin persistir sesión, con prompt de sistema", () => {
+    const l = buildGenerateLaunch({ cli: "claude", prompt: "P", system: "S" });
+    expect(l.command).toBe("claude");
+    expect(l.args.slice(0, 2)).toEqual(["-p", "P"]);
+    expect(l.args[l.args.indexOf("--output-format") + 1]).toBe("json");
+    expect(l.args[l.args.indexOf("--max-turns") + 1]).toBe("1");
+    expect(l.args[l.args.indexOf("--tools") + 1]).toBe("");
+    expect(JSON.parse(l.args[l.args.indexOf("--mcp-config") + 1])).toEqual({ mcpServers: {} });
+    expect(l.args).toContain("--strict-mcp-config");
+    expect(l.args).toContain("--no-session-persistence");
+    // Sin hooks ni ajustes del repo del usuario: forzaban un 2º turno (error_max_turns).
+    expect(l.args[l.args.indexOf("--setting-sources") + 1]).toBe("");
+    expect(l.args[l.args.indexOf("--append-system-prompt") + 1]).toBe("S");
+    expect(buildGenerateLaunch({ cli: "claude", prompt: "P" }).args).not.toContain("--append-system-prompt");
+  });
+
+  it("Codex: exec --json con el sistema dentro del mensaje", () => {
+    const l = buildGenerateLaunch({ cli: "codex", prompt: "P", system: "S" });
+    expect(l.command).toBe("codex");
+    expect(l.args.slice(0, 2)).toEqual(["exec", "--json"]);
+    expect(l.args[l.args.length - 1]).toContain("S");
+    expect(l.args[l.args.length - 1]).toContain("P");
+  });
+});
+
+describe("resultText", () => {
+  it("Claude: toma `result` del JSON (aunque venga en varias líneas) y el error cuando no fue éxito", () => {
+    expect(resultText("claude", '{\n  "type": "result",\n  "subtype": "success",\n  "result": " OK "\n}\n')).toEqual({ text: "OK" });
+    expect(resultText("claude", JSON.stringify({ type: "result", subtype: "error_max_turns", is_error: true, result: "" }))).toEqual({
+      error: "Claude Code terminó con error_max_turns.",
+    });
+    expect(resultText("claude", "")).toEqual({ error: "Claude Code no devolvió una respuesta." });
+    expect(resultText("claude", "{no json")).toEqual({ error: "La respuesta de Claude Code no es JSON." });
+  });
+
+  it("Codex: junta los agent_message y reporta el error del turno", () => {
+    const ok = [
+      JSON.stringify({ type: "thread.started", thread_id: "t" }),
+      JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "Hola" } }),
+      JSON.stringify({ type: "turn.completed" }),
+    ].join("\n");
+    expect(resultText("codex", ok)).toEqual({ text: "Hola" });
+    expect(resultText("codex", JSON.stringify({ type: "turn.failed", error: { message: "boom" } }))).toEqual({ error: "boom" });
+  });
+});
+
+describe("capability", () => {
+  it("sin publicar no afirma nada; publicado dice qué CLI hay", () => {
+    resetEstadoCli();
+    expect(estadoCli()).toBeNull();
+    expect(cliInstalado("claude")).toBe(false);
+    publicarEstadoCli([{ cli: "claude", installed: true, version: "2" }, { cli: "codex", installed: false }]);
+    expect(cliInstalado("claude")).toBe(true);
+    expect(cliInstalado("codex")).toBe(false);
+    resetEstadoCli();
   });
 });
 

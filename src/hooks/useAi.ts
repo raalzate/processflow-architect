@@ -31,7 +31,9 @@ export function useAi() {
         if (res.fellBack) {
           toast({
             title: "Motor de IA alterno",
-            description: `Se usó ${res.provider === "local" ? "la IA local" : "la IA remota"} como respaldo.`,
+            description: `Se usó ${
+              res.provider === "local" ? "la IA local" : res.provider === "cli" ? "Claude Code" : "la IA remota"
+            } como respaldo. ${res.reason}.`,
           });
         }
         return res.output;

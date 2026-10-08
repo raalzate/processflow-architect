@@ -31,6 +31,54 @@ export interface Launch {
 
 export const DEFAULT_MAX_TURNS = 25;
 
+/**
+ * Sin ajustes de usuario ni de proyecto. Verificado en vivo (2026-10-07): lanzado
+ * desde un repo con hooks de Claude Code (un `Stop` que bloquea el cierre), el
+ * CLI hacía un segundo turno y terminaba en `error_max_turns`. La app no puede
+ * depender de lo que el usuario tenga configurado en su ~/.claude ni en el repo
+ * desde donde se abrió: la sesión (login) sigue funcionando sin ellos.
+ */
+export const SIN_AJUSTES_AJENOS = ["--setting-sources", ""] as const;
+
+/**
+ * Lanzamiento de TEXTO PURO (feature 021): el CLI como generador para el router
+ * de la app. Sin tools, sin MCP, un turno, sin persistir sesión: lo que piensa
+ * vuelve como texto y la app decide qué hacer con él (sus tools, su ciclo).
+ * Medido con Claude Code 2.1.293: ~3 s de pared, ~US$ 0,10 por llamada.
+ */
+export interface GenerateInput {
+  cli: CliId;
+  prompt: string;
+  system?: string;
+}
+
+export function buildGenerateLaunch(input: GenerateInput): Launch {
+  if (input.cli === "claude") {
+    return {
+      command: "claude",
+      args: [
+        "-p",
+        input.prompt,
+        "--output-format",
+        "json",
+        "--max-turns",
+        "1",
+        "--tools",
+        "",
+        "--mcp-config",
+        JSON.stringify({ mcpServers: {} }),
+        "--strict-mcp-config",
+        "--no-session-persistence",
+        ...SIN_AJUSTES_AJENOS,
+        ...(input.system ? ["--append-system-prompt", input.system] : []),
+      ],
+    };
+  }
+  // Codex no tiene prompt de sistema por flag: va dentro del mensaje.
+  const prompt = input.system ? `${input.system}\n\n---\n\n${input.prompt}` : input.prompt;
+  return { command: "codex", args: ["exec", "--json", "--skip-git-repo-check", prompt] };
+}
+
 /** Config MCP inline que entiende `claude --mcp-config`. */
 export function claudeMcpConfig(mcpUrl: string): string {
   return JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: { type: "http", url: mcpUrl } } });
@@ -52,6 +100,7 @@ export function buildLaunch(input: LaunchInput): Launch {
         claudeMcpConfig(input.mcpUrl),
         // Sólo el MCP de la app: lo que el usuario tenga en su ~/.claude no entra.
         "--strict-mcp-config",
+        ...SIN_AJUSTES_AJENOS,
         "--allowedTools",
         `mcp__${MCP_SERVER_NAME}__*`,
         "--append-system-prompt",

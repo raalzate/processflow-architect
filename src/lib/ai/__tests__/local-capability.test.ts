@@ -41,6 +41,13 @@ describe("puedeUsarIaLocal", () => {
 describe("mensajeIaLocal", () => {
   const soloLocal = { modo: "local" as const, conLlave: false };
 
+  // Feature 021: en modo CLI el local es sólo respaldo; se avisa sin quedarse pegado.
+  it("en modo CLI avisa que sin el CLI no hay respaldo, y no es persistente", () => {
+    const m = mensajeIaLocal("sin-webgpu", { modo: "cli", conLlave: false })!;
+    expect(m.detalle).toMatch(/Claude Code/);
+    expect(m.persistente).toBe(false);
+  });
+
   it("sin WebGPU explica qué se pierde y qué se puede hacer", () => {
     const m = mensajeIaLocal("sin-webgpu", soloLocal)!;
     expect(m.titulo).toMatch(/IA local/i);
