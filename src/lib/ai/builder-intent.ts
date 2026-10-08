@@ -201,3 +201,69 @@ export function opcionesDeModo(): { id: string; label: string; detalle?: string 
     { id: "editor", label: "Cambiar algo puntual", detalle: "Decime qué elemento o relación toco." },
   ];
 }
+
+/** Dónde va lo que se propone: una pestaña nueva, una vista nombrada, o la activa. */
+export type Destino =
+  | { kind: "nueva"; nombre: string }
+  | { kind: "vista"; nombre: string }
+  | { kind: "activa" };
+
+/** El arranque vacío de un nombre de pestaña: «que hable sobre», «de», «con»… */
+const ARRANQUE_DE_NOMBRE = /^(que\s+)?(hable|trate|sea|vaya|se\s+trate|explique)?\s*(sobre|de|del|acerca\s+de|para|con)\s+/i;
+
+/** Sin acentos pero SIN recortar (sobre texto NFC): los índices valen sobre el original. */
+const sinAcentos = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+/**
+ * El destino, leído del pedido. «una nueva vista / otra pestaña / vista aparte» es una
+ * pestaña nueva —el modo creativo publicaba SIEMPRE sobre la vista activa y pedía
+ * confirmación para pisar «Modelo» cuando el humano había dicho «nueva» (#431)—;
+ * «en la vista Pagos» es esa; lo demás, la activa.
+ */
+export function destinoDe(entrada: string): Destino {
+  // NFC primero: así quitar acentos no cambia el largo y los índices valen sobre el original.
+  const mensaje = entrada.normalize("NFC");
+  const nueva = /\b(nueva|otra|una)\s+(vista|pestana|tab)\b|\b(vista|pestana)\s+(nueva|aparte|separada)\b/.exec(
+    plano(mensaje)
+  );
+  if (nueva) {
+    // El nombre: lo que sigue a «sobre / de / que hable sobre», con el arranque de
+    // relleno quitado; si no hay nada, «Propuesta».
+    const desde = sinAcentos(mensaje.toLowerCase()).indexOf(nueva[0]) + nueva[0].length;
+    const nombre = mensaje
+      .slice(desde)
+      .replace(/^[\s,:;.-]+/, "")
+      // «una vista nueva»: el calificativo que quedó del otro lado no es el nombre.
+      .replace(/^(nueva|aparte|separada)\b[\s,:;.-]*/i, "")
+      .replace(ARRANQUE_DE_NOMBRE, "")
+      .split(/[.\n]/)[0]
+      .trim();
+    const limpio = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1) : "";
+    return { kind: "nueva", nombre: (limpio || "Propuesta").slice(0, 40).trim() };
+  }
+  const enVista = /\ben\s+la\s+(?:vista|pestana)\s+([^,.;\n]+)/i.exec(sinAcentos(mensaje));
+  if (enVista) {
+    // El nombre se corta del ORIGINAL: «Logística» tiene que llegar con su tilde.
+    const fin = enVista.index + enVista[0].length;
+    const nombre = mensaje
+      .slice(fin - enVista[1].length, fin)
+      .trim()
+      .replace(/\s+(actual|activa|abierta)$/i, "");
+    if (!nombre || /^(actual|activa|abierta)$/i.test(nombre)) return { kind: "activa" };
+    return { kind: "vista", nombre };
+  }
+  return { kind: "activa" };
+}
+
+/**
+ * Un nombre de pestaña que no choque con las que hay: «Pagos», «Pagos (2)»… Dos
+ * pestañas con el mismo nombre no se distinguen en la barra ni por `view`.
+ */
+export function nombreLibre(nombre: string, existentes: readonly string[]): string {
+  const usados = new Set(existentes.map(plano));
+  if (!usados.has(plano(nombre))) return nombre;
+  for (let n = 2; ; n++) {
+    const candidato = `${nombre} (${n})`;
+    if (!usados.has(plano(candidato))) return candidato;
+  }
+}

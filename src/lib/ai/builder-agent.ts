@@ -54,7 +54,7 @@ import type { VistaConocida } from "../mcp/app-actions";
 import type { GraphData } from "../types";
 import type { NotationId } from "../notations";
 import { notationTypes } from "../notations";
-import { classifyIntent, opcionesDeModo, type Intencion } from "./builder-intent";
+import { classifyIntent, destinoDe, nombreLibre, opcionesDeModo, type Intencion } from "./builder-intent";
 import { planEditorCall } from "./builder-editor";
 import { runCreative, cuantosElementos, type CreativeResult } from "./builder-creative";
 import { creativeDiagramTask } from "./tasks";
@@ -607,13 +607,20 @@ async function creativo(
   paso: (s: AgentStep) => void
 ): Promise<BuilderAgentResult> {
   const vista = input.vista!;
+  // «una nueva vista» va a una pestaña nueva (#431), con un nombre que no choque.
+  const leido = destinoDe(input.message);
+  const destino =
+    leido.kind === "nueva"
+      ? { ...leido, nombre: nombreLibre(leido.nombre, input.vistas.map((v) => v.name)) }
+      : leido;
   const r: CreativeResult = await runCreative(
-    { pedido: input.message, vista },
+    { pedido: input.message, vista, destino },
     {
       generar: (i) =>
         deps.generarDiagrama(i, { mode: input.mode, provider: input.provider, model: input.model }),
-      aplicar: async (graph) =>
-        deps.callTool("set_view_graph", { graph: JSON.stringify(graph), view: vista.nombre }),
+      aplicar: async (graph, view) => deps.callTool("set_view_graph", { graph: JSON.stringify(graph), view }),
+      crear: async (viewName, graph) =>
+        deps.callTool("export_as_view", { viewName, graph: JSON.stringify(graph), notation: vista.notation }),
       verificar: () => verificarLienzo(deps, input.allow),
     }
   );
@@ -624,7 +631,7 @@ async function creativo(
     // volver a pedírsela al modelo.
     const call: BuilderCall = {
       tool: "set_view_graph",
-      args: { graph: JSON.stringify(r.graph), view: vista.nombre },
+      args: { graph: JSON.stringify(r.graph), view: r.vista },
     };
     const state = pendingConfirmation(startRun(), call, r.texto);
     paso({ type: "question", content: r.texto });
@@ -636,11 +643,15 @@ async function creativo(
     return { reply: r.reply, steps, state: startRun() };
   }
 
-  paso({ type: "action", tool: "set_view_graph", content: `Diagrama publicado en "${vista.nombre}".` });
-  const state = applyObservation(startRun(), { tool: "set_view_graph", args: { view: vista.nombre } }, {
-    ok: true,
-    texto: r.reply,
+  const publicada: BuilderCall = r.nueva
+    ? { tool: "export_as_view", args: { viewName: r.vista } }
+    : { tool: "set_view_graph", args: { view: r.vista } };
+  paso({
+    type: "action",
+    tool: publicada.tool,
+    content: `Diagrama publicado en ${r.nueva ? "la pestaña nueva " : ""}"${r.vista}".`,
   });
+  const state = applyObservation(startRun(), publicada, { ok: true, texto: r.reply });
   return { reply: r.reply, steps, state };
 }
 
