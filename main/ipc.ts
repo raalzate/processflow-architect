@@ -38,6 +38,8 @@ import { initAppActionBridge } from './services/mcp-app-action';
 import type { AppState } from '../src/lib/mcp/app-state';
 import { getSystemInfo } from './services/system-info';
 import { playgroundListTools, playgroundCallTool } from './services/mcp-playground';
+import { cancelAgentCli, cliStatus, runAgentCli } from './services/agent-cli';
+import type { LaunchInput } from '../src/lib/agent-cli/args';
 
 /**
  * IPC del proceso main. La IA local corre en el RENDERER (LiteRT-LM / WebGPU);
@@ -87,6 +89,17 @@ export function registerIpcHandlers() {
   ipcMain.handle('ai-key-delete', async (_e, provider: RemoteProvider) => deleteAiKey(provider));
   ipcMain.handle('ai-key-status', async () => aiKeyStatus());
   ipcMain.handle('ai-remote-generate', async (_e, args: RemoteGenerateArgs) => remoteGenerate(args));
+
+  // --- Chat con un agente externo por CLI (Claude Code / Codex), feature 020 ---
+  // Los eventos del CLI viajan por `agent-cli-event` a medida que llegan, con el
+  // runId que mandó el renderer; `invoke` resuelve cuando el proceso termina.
+  ipcMain.handle('agent-cli-status', async () => cliStatus());
+  ipcMain.handle('agent-cli-send', async (event: IpcMainInvokeEvent, runId: string, input: LaunchInput) =>
+    runAgentCli(runId, input, (e) => {
+      if (!event.sender.isDestroyed()) event.sender.send('agent-cli-event', { runId, event: e });
+    })
+  );
+  ipcMain.handle('agent-cli-cancel', async (_e, runId: string) => cancelAgentCli(runId));
 
   // --- Servidor MCP embebido (HTTP, opt-in desde Ajustes) ---
   ipcMain.handle('mcp-server-start', async (_e, port?: number) => startMcpHttp(port));

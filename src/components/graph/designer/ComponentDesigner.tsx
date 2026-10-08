@@ -175,6 +175,7 @@ import { useViews } from "@/context/ViewsContext";
 import { useReference } from "@/context/ReferenceContext";
 import { MCP_ENABLED_KEY, readMcpPrefs } from "@/lib/mcp-settings";
 import { handoffPrompt } from "@/lib/mcp/handoff";
+import { AgentCliChat } from "./AgentCliChat";
 import { buildEmbedMap, wouldCreateCycle } from "@/lib/view-embeds";
 import { ReferenceContextDialog } from "./ReferenceContextDialog";
 import { CanvasContextMenu, type CanvasMenuItem } from "./CanvasContextMenu";
@@ -1194,7 +1195,12 @@ const EditNodeDialog: React.FC<{
   /** Autoguardado: llega el PARCHE (sólo los campos editados) del elemento `id`. */
   onSave: (id: string, cambios: Partial<DesignerNode>) => void;
   onCreateNext: (fromNode: DesignerNode, sug: { tipo: string; nombre: string; relacion: string }) => void;
-}> = ({ node, nodes, links, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext }) => {
+  /** Nombre del proyecto: contexto del chat con el agente externo (feature 020). */
+  projectName?: string;
+}> = ({ node, nodes, links, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext, projectName }) => {
+  // El chat con un agente externo y el botón de entrega sólo existen en la app
+  // de escritorio: el CLI y el servidor MCP corren en el proceso main.
+  const electronDisponible = typeof window !== "undefined" && !!window.electronAPI;
   const [draft, setDraft] = useState<DesignerNode | null>(null);
   const { run, busy } = useAi();
   const { toast } = useToast();
@@ -1228,7 +1234,7 @@ const EditNodeDialog: React.FC<{
   // Tab visible. Vive FUERA del borrador a propósito: al saltar de un elemento
   // a otro sin cerrar la ficha se sigue viendo el mismo tab (si se reiniciara,
   // revisar la spec de cinco cajas obligaría a volver a entrar cinco veces).
-  const [tab, setTab] = useState<"elemento" | "spec">("elemento");
+  const [tab, setTab] = useState<"elemento" | "spec" | "agente">("elemento");
   // Borrador de spec propuesto por la IA, en espera de «Aplicar»/«Descartar».
   // Nunca se escribe solo: pisar lo que el usuario redactó a mano sería el peor
   // resultado posible de un botón de sugerencia.
@@ -1554,7 +1560,7 @@ const EditNodeDialog: React.FC<{
             <div className="flex shrink-0 items-center gap-1">
               {/* Entregar la caja a un agente externo (feature 019). Sólo en la app
                   de escritorio: el servidor MCP corre en el proceso main. */}
-              {typeof window !== "undefined" && !!window.electronAPI && (
+              {electronDisponible && (
                 <IconAction
                   type="button"
                   variant="ghost"
@@ -1588,10 +1594,10 @@ const EditNodeDialog: React.FC<{
               pie —Siguiente paso · Cerrar— queda FUERA: aplica a las dos. */}
           <Tabs
             value={tab}
-            onValueChange={(v) => setTab(v as "elemento" | "spec")}
+            onValueChange={(v) => setTab(v as "elemento" | "spec" | "agente")}
             className="flex min-h-0 flex-1 flex-col"
           >
-            <TabsList className="mx-4 mt-3 grid w-auto grid-cols-2">
+            <TabsList className={cn("mx-4 mt-3 grid w-auto", electronDisponible ? "grid-cols-3" : "grid-cols-2")}>
               <TabsTrigger value="elemento">Elemento</TabsTrigger>
               <TabsTrigger value="spec">
                 Spec
@@ -1600,7 +1606,20 @@ const EditNodeDialog: React.FC<{
                   <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
                 )}
               </TabsTrigger>
+              {/* Chat con Claude Code / Codex (feature 020): sólo en la app de
+                  escritorio, donde el CLI corre en el proceso main. */}
+              {electronDisponible && <TabsTrigger value="agente">Agente</TabsTrigger>}
             </TabsList>
+            {electronDisponible && (
+              <TabsContent value="agente" className="mt-0 min-h-0 flex-1 overflow-hidden">
+                <AgentCliChat
+                  elementName={draft.nombre}
+                  viewName={vistaActivaNombre}
+                  projectName={projectName}
+                  hasSpec={!isSpecEmpty(draft.spec)}
+                />
+              </TabsContent>
+            )}
             <TabsContent value="elemento" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">
             {/* Ensanchada, la ficha usa las DOS columnas que este layout ya tenía
                 pensadas (identidad · clasificación); en Normal siguen apiladas. */}
@@ -5411,6 +5430,7 @@ export const ComponentDesigner: React.FC<{
           })
         }
         onCreateNext={createNextElement}
+        projectName={graphData?.nombre_proyecto}
       />
       <EditLinkDialog
         link={editingLink}

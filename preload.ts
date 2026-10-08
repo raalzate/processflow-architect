@@ -30,6 +30,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('litert-model-progress', listener);
   },
 
+  // --- Chat con un agente externo por CLI (Claude Code / Codex), feature 020 ---
+  agentCliStatus: (): Promise<any[]> => ipcRenderer.invoke('agent-cli-status'),
+  agentCliSend: (runId: string, input: any): Promise<{ ok: boolean; exitCode: number | null; stderr?: string }> =>
+    ipcRenderer.invoke('agent-cli-send', runId, input),
+  agentCliCancel: (runId: string): Promise<boolean> => ipcRenderer.invoke('agent-cli-cancel', runId),
+  onAgentCliEvent: (handler: (payload: { runId: string; event: any }) => void) => {
+    const listener = (_e: any, payload: any) => handler(payload);
+    ipcRenderer.on('agent-cli-event', listener);
+    return () => ipcRenderer.removeListener('agent-cli-event', listener);
+  },
+
   // --- Servidor MCP embebido (HTTP): activar/estado + diagramas entrantes ---
   mcpServerStart: (port?: number): Promise<{ running: boolean; port: number; url: string; error?: string }> =>
     ipcRenderer.invoke('mcp-server-start', port),
