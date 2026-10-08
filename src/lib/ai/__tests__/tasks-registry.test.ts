@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as tasks from "@/lib/ai/tasks";
 import { chooseProvider, type AiTask } from "@/lib/ai/router";
 import { publicarEstadoIaLocal, resetEstadoIaLocal } from "@/lib/ai/local-capability";
+import { publicarEstadoCli, resetEstadoCli } from "@/lib/agent-cli/capability";
 import type { AiMode } from "@/lib/ai/remote-settings";
 
 const declaradas = Object.entries(tasks).filter(
@@ -64,19 +65,36 @@ describe("registro de AiTask (P5)", () => {
     }
   });
 
-  it("el router rutea TODA tarea declarada en los tres modos, sin conocerla", () => {
+  it("el router rutea TODA tarea declarada en los cuatro modos, sin conocerla", () => {
     for (const [nombre, t] of declaradas) {
-      for (const mode of ["local", "hybrid", "remote"] as AiMode[]) {
+      for (const mode of ["local", "hybrid", "remote", "cli"] as AiMode[]) {
         const { provider, reason } = chooseProvider(t, 10, { mode });
-        // En modo local, una tarea heavy/estructurada legítimamente no tiene motor:
-        // lo que no se admite es quedarse sin explicación.
+        // En modo local (y en modo CLI, que sin CLI cae a local), una tarea
+        // heavy/estructurada legítimamente no tiene motor: lo que no se admite
+        // es quedarse sin explicación.
         if (provider === null) {
           expect(reason, `${nombre} en modo ${mode}: sin proveedor y sin motivo`).not.toBe("");
-          expect(mode === "local" || t.tier === "heavy" || Boolean(t.structured), `${nombre} en modo ${mode}: sin proveedor`).toBe(true);
+          expect(mode === "local" || mode === "cli" || t.tier === "heavy" || Boolean(t.structured), `${nombre} en modo ${mode}: sin proveedor`).toBe(true);
         } else {
-          expect(["local", "remote"]).toContain(provider);
+          expect(["local", "remote", "cli"]).toContain(provider);
         }
       }
+    }
+  });
+
+  // Feature 021: con el CLI instalado, TODA tarea con prompt razona en el CLI.
+  it("en modo CLI toda tarea con prompt va al CLI cuando está disponible", () => {
+    publicarEstadoCli([{ cli: "claude", installed: true, version: "x" }]);
+    vi.stubGlobal("window", { electronAPI: { agentCliGenerate: () => {} } });
+    try {
+      for (const [nombre, t] of declaradas) {
+        if (!t.buildPrompt) continue;
+        const { provider } = chooseProvider(t, 10, { mode: "cli" });
+        expect(provider, `${nombre}: en modo CLI no fue al CLI`).toBe("cli");
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      resetEstadoCli();
     }
   });
 

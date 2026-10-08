@@ -39,6 +39,8 @@ const LOCAL: EngineDescription = {
 /** Lo que se sabe del motor local (ver `local-capability.ts`). */
 export interface ContextoLocal {
   estadoLocal: EstadoIaLocal;
+  /** ¿El CLI del modo `cli` está instalado? Omitido = se asume que sí (feature 021). */
+  cliDisponible?: boolean;
 }
 
 /** No hay motor: ni local (el equipo no puede) ni nube (no hay llave). */
@@ -77,6 +79,28 @@ export function describeEngine(
 
   if (settings.mode === "local") {
     return hayLocal ? LOCAL : sinIa(`${motivoSinLocal} Activá un proveedor de nube en Ajustes si querés sugerencias.`);
+  }
+
+  // Modo CLI (feature 021): razona el CLI del usuario (Claude Code), actúa la app.
+  // No es "local" (el texto sale de Anthropic por la sesión del CLI) ni "nube
+  // con llave de la app": es su propia procedencia, y el badge la nombra.
+  if (settings.mode === "cli") {
+    const hayCli = ctx?.cliDisponible ?? true;
+    if (hayCli) {
+      return {
+        available: true,
+        isLocal: false,
+        label: "Claude Code",
+        detail: "Razona tu Claude Code (con tu sesión, sin llave en la app); las acciones las hace la app",
+      };
+    }
+    if (!hayLocal) return sinIa(`Claude Code no está instalado y no hay motor local. ${motivoSinLocal}`);
+    return {
+      available: true,
+      isLocal: true,
+      label: "IA local (respaldo)",
+      detail: "Claude Code no está instalado en este equipo: se usa la IA local",
+    };
   }
 
   const info = providerInfo(settings.provider);
@@ -129,6 +153,11 @@ export function describeEngine(
  * «nube» por tener una llave configurada — eso hacía creer que un pedido fallido
  * lo había atendido el proveedor remoto (#358). Los ajustes entran sólo para
  * mantener la firma del badge; lo único que decide es si el equipo tiene motor.
+ *
+ * Feature 021: el CONSTRUCTOR sí pasa por el router (`deps.generate → route`),
+ * así que en modo `cli` razona en Claude Code; el ANALISTA sigue llamando al
+ * motor local directo (declarado como siguiente paso). El badge del panel
+ * describe el peor caso honesto: lo que seguro corre local.
  */
 export function describeAgentEngine(
   _settings: AiRemoteSettings,

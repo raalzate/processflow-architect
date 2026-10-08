@@ -10,7 +10,10 @@
 // local  → todo en el modelo local.
 // remote → todo en el proveedor de nube elegido.
 // hybrid → local para sugerencias ligeras; nube para lo complejo o entradas grandes.
-export type AiMode = "local" | "remote" | "hybrid";
+// cli    → todo lo razona el CLI del usuario (Claude Code / Codex, con SU sesión,
+//          sin llave en la app); las acciones siguen siendo de la app (feature 021).
+export type AiMode = "local" | "remote" | "hybrid" | "cli";
+export const AI_MODES: readonly AiMode[] = ["local", "hybrid", "remote", "cli"] as const;
 export type RemoteProvider = "gemini" | "openai" | "anthropic";
 
 export interface RemoteProviderInfo {
@@ -81,7 +84,7 @@ export function isRemoteActive(settings: AiRemoteSettings, keys: KeyStatus): boo
 /** Normaliza un objeto arbitrario a AiRemoteSettings válido (sanea persistencia). */
 export function normalizeSettings(raw: unknown): AiRemoteSettings {
   const r = (raw ?? {}) as Partial<AiRemoteSettings>;
-  const mode: AiMode = r.mode === "remote" ? "remote" : r.mode === "hybrid" ? "hybrid" : "local";
+  const mode: AiMode = AI_MODES.includes(r.mode as AiMode) ? (r.mode as AiMode) : "local";
   const provider: RemoteProvider = REMOTE_PROVIDERS.some((p) => p.id === r.provider)
     ? (r.provider as RemoteProvider)
     : "gemini";

@@ -4,15 +4,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/ai/providers", () => ({
   localAvailable: vi.fn(),
   remoteAvailable: vi.fn(),
+  cliAvailable: vi.fn(),
   runLocal: vi.fn(),
+  runCli: vi.fn(),
   runRemoteFlow: vi.fn(),
   remoteGenerateText: vi.fn(),
 }));
 
 import { chooseProvider, route, type AiTask } from "@/lib/ai/router";
 import {
+  cliAvailable,
   localAvailable,
   remoteAvailable,
+  runCli,
   runLocal,
   runRemoteFlow,
   remoteGenerateText,
@@ -20,15 +24,69 @@ import {
 
 const mLocalAvailable = vi.mocked(localAvailable);
 const mRemoteAvailable = vi.mocked(remoteAvailable);
+const mCliAvailable = vi.mocked(cliAvailable);
 const mRunLocal = vi.mocked(runLocal);
+const mRunCli = vi.mocked(runCli);
 const mRunRemoteFlow = vi.mocked(runRemoteFlow);
 const mRemoteGenerateText = vi.mocked(remoteGenerateText);
 
 /** Set both availability flags in one call. */
-function setAvailability(local: boolean, remote: boolean) {
+function setAvailability(local: boolean, remote: boolean, cli = false) {
   mLocalAvailable.mockReturnValue(local);
   mRemoteAvailable.mockReturnValue(remote);
+  mCliAvailable.mockReturnValue(cli);
 }
+
+// Feature 021: el CLI del usuario como motor de texto (razona el CLI, actúa la app).
+describe("modo cli", () => {
+  const light: AiTask<{ t: string }> = {
+    id: "t-light",
+    tier: "light",
+    maxLocalChars: 100,
+    buildPrompt: (i) => ({ prompt: i.t, system: "S" }),
+  };
+  const heavy: AiTask<{ t: string }> = { id: "t-heavy", tier: "heavy", structured: true, buildPrompt: (i) => ({ prompt: i.t }) };
+  const soloFlujo: AiTask<unknown> = { id: "t-flow", tier: "heavy", remoteFlow: "x" };
+
+  beforeEach(() => vi.resetAllMocks());
+
+  it("con CLI disponible toda tarea con prompt —ligera o pesada— va al CLI", () => {
+    setAvailability(true, true, true);
+    expect(chooseProvider(light, 1, { mode: "cli" }).provider).toBe("cli");
+    expect(chooseProvider(heavy, 1, { mode: "cli" }).provider).toBe("cli");
+  });
+
+  it("sin CLI cae a local declarándolo como respaldo; sin local tampoco, explica", () => {
+    setAvailability(true, false, false);
+    const r = chooseProvider(light, 1, { mode: "cli" });
+    expect(r).toMatchObject({ provider: "local", fellBack: true });
+    setAvailability(false, false, false);
+    const sin = chooseProvider(light, 1, { mode: "cli" });
+    expect(sin.provider).toBeNull();
+    expect(sin.reason).toContain("CLI");
+  });
+
+  it("una tarea sólo-flujo no corre en el CLI", () => {
+    setAvailability(true, true, true);
+    expect(chooseProvider(soloFlujo, 1, { mode: "cli" }).provider).toBeNull();
+  });
+
+  it("route usa runCli con el MISMO prompt y sistema que el motor local, y parsea", async () => {
+    setAvailability(true, false, true);
+    mRunCli.mockResolvedValue(" hola ");
+    const tarea: AiTask<{ t: string }, string> = { ...light, parse: (raw) => raw.toUpperCase() };
+    const r = await route(tarea, { t: "P" }, { mode: "cli" });
+    expect(mRunCli).toHaveBeenCalledWith("P", "S");
+    expect(mRunLocal).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ provider: "cli", output: " HOLA " });
+  });
+
+  it("el error del CLI sube tal cual: no se degrada en silencio", async () => {
+    setAvailability(true, false, true);
+    mRunCli.mockRejectedValue(new Error("Not logged in"));
+    await expect(route(light, { t: "P" }, { mode: "cli" })).rejects.toThrow("Not logged in");
+  });
+});
 
 // --- Realistic task fixtures built from the exported AiTask type ---
 

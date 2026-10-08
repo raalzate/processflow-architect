@@ -1,4 +1,4 @@
-import { app, ipcMain, IpcMainInvokeEvent, clipboard, BrowserWindow } from 'electron';
+import { app, ipcMain, IpcMainInvokeEvent, clipboard, BrowserWindow, dialog } from 'electron';
 import { handleMdToPdf } from './services/pdf';
 import { popupAppMenu } from './window';
 import {
@@ -38,8 +38,9 @@ import { initAppActionBridge } from './services/mcp-app-action';
 import type { AppState } from '../src/lib/mcp/app-state';
 import { getSystemInfo } from './services/system-info';
 import { playgroundListTools, playgroundCallTool } from './services/mcp-playground';
-import { cancelAgentCli, cliStatus, runAgentCli } from './services/agent-cli';
-import type { LaunchInput } from '../src/lib/agent-cli/args';
+import { cancelAgentCli, cliStatus, generateWithCli, runAgentCli } from './services/agent-cli';
+import { validarGenerate, validarLaunch } from '../src/lib/agent-cli/validate';
+import type { ChatEvent } from '../src/lib/agent-cli/types';
 
 /**
  * IPC del proceso main. La IA local corre en el RENDERER (LiteRT-LM / WebGPU);
@@ -94,12 +95,37 @@ export function registerIpcHandlers() {
   // Los eventos del CLI viajan por `agent-cli-event` a medida que llegan, con el
   // runId que mandó el renderer; `invoke` resuelve cuando el proceso termina.
   ipcMain.handle('agent-cli-status', async () => cliStatus());
-  ipcMain.handle('agent-cli-send', async (event: IpcMainInvokeEvent, runId: string, input: LaunchInput) =>
-    runAgentCli(runId, input, (e) => {
+  // #461: lo que llega del renderer se valida ANTES de tocar un proceso: un
+  // `cli` desconocido reventaba y `mcpUrl` se metía sin escapar en el -c de Codex.
+  ipcMain.handle('agent-cli-send', async (event: IpcMainInvokeEvent, runId: unknown, input: unknown) => {
+    const emitir = (e: unknown) => {
       if (!event.sender.isDestroyed()) event.sender.send('agent-cli-event', { runId, event: e });
-    })
-  );
-  ipcMain.handle('agent-cli-cancel', async (_e, runId: string) => cancelAgentCli(runId));
+    };
+    const v = validarLaunch(input);
+    if (typeof runId !== 'string' || !runId || !v.ok) {
+      emitir({ type: 'error', message: v.ok ? 'Corrida sin identificador.' : v.error });
+      return { ok: false, exitCode: null };
+    }
+    return runAgentCli(runId, v.input, emitir as (e: ChatEvent) => void);
+  });
+  ipcMain.handle('agent-cli-cancel', async (_e, runId: unknown) => typeof runId === 'string' && cancelAgentCli(runId));
+  // Feature 021: el CLI como motor de texto del router (razona el CLI, actúa la app).
+  ipcMain.handle('agent-cli-generate', async (_e, input: unknown) => {
+    const v = validarGenerate(input);
+    return v.ok ? generateWithCli(v.input) : { ok: false, error: v.error };
+  });
+  // Carpeta de contexto para el chat del agente (#460): el selector NATIVO de
+  // carpetas, así el humano nunca escribe una ruta a mano. null = canceló.
+  ipcMain.handle('agent-cli-pick-dir', async (event: IpcMainInvokeEvent) => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    const opts = {
+      title: 'Carpeta de contexto para el agente',
+      buttonLabel: 'Adjuntar carpeta',
+      properties: ['openDirectory'] as Array<'openDirectory'>,
+    };
+    const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+    return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+  });
 
   // --- Servidor MCP embebido (HTTP, opt-in desde Ajustes) ---
   ipcMain.handle('mcp-server-start', async (_e, port?: number) => startMcpHttp(port));

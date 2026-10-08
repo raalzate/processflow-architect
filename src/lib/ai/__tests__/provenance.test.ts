@@ -4,6 +4,26 @@ import type { AiRemoteSettings } from "../remote-settings";
 
 const base: AiRemoteSettings = { mode: "local", provider: "gemini", models: {} };
 
+// Feature 021: el CLI del usuario razona; el badge lo nombra y no miente "local".
+describe("describeEngine — modo cli", () => {
+  const cli: AiRemoteSettings = { ...base, mode: "cli" };
+
+  it("con el CLI instalado dice «Claude Code» y que actúa la app", () => {
+    const d = describeEngine(cli, {}, { estadoLocal: "disponible", cliDisponible: true });
+    expect(d).toMatchObject({ available: true, isLocal: false, label: "Claude Code" });
+    expect(d.detail).toMatch(/sin llave/);
+    expect(d.detail).toMatch(/app/);
+  });
+
+  it("sin CLI cae a local como respaldo, y sin local tampoco hay IA", () => {
+    expect(describeEngine(cli, {}, { estadoLocal: "disponible", cliDisponible: false })).toMatchObject({
+      isLocal: true,
+      label: "IA local (respaldo)",
+    });
+    expect(describeEngine(cli, {}, { estadoLocal: "sin-webgpu", cliDisponible: false }).available).toBe(false);
+  });
+});
+
 describe("describeEngine", () => {
   it("modo local → siempre IA local (aunque haya llave)", () => {
     const d = describeEngine({ ...base, mode: "local" }, { gemini: true });

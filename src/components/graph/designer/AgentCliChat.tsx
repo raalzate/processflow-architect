@@ -1,28 +1,59 @@
 "use client";
 
 /**
- * @fileOverview Tab «Agente» de la ficha: chat con Claude Code o Codex (feature 020, #444).
+ * @fileOverview Tab «Agente» de la ficha: chat sobre la caja abierta (feature 020, #444 · #459).
  *
- * El humano habla con un agente EXTERNO sin salir de la ficha. El CLI corre en
- * el proceso main (`main/services/agent-cli.ts`) con la sesión que el usuario ya
- * tiene en su máquina, conectado al servidor MCP de la app, y restringido a sus
- * tools: lee la caja con `get_focused_element` y escribe con
- * `set_view_element_spec`, así que lo que escribe aparece en el tab Spec sin
- * cerrar nada. Tiene su propio chat chico a propósito: el panel del agente local
- * está atado a su contexto y a su motor.
+ * Tres motores:
+ *  - Claude Code / Codex: agente EXTERNO. El CLI corre en el proceso main
+ *    (`main/services/agent-cli.ts`) con la sesión del usuario, conectado al MCP
+ *    de la app y restringido a sus tools: lee la caja con `get_focused_element`
+ *    y escribe con `set_view_element_spec`, así que lo que escribe aparece en el
+ *    tab Spec sin cerrar nada.
+ *  - IA de la app (#459): el motor de Ajustes vía `elementChatTask`. No tiene
+ *    tools: razona sobre la ficha que le pasa la app y contesta; lo que propone
+ *    lo aplica el humano. Es la caída automática cuando el CLI elegido no está.
+ *
+ * Tiene su propio chat chico a propósito: el panel del agente local está atado a
+ * su contexto y a su motor.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Loader2, Send, Square, Wrench } from "lucide-react";
+import { ChevronDown, Folder, FolderPlus, Loader2, Send, Square, Trash2, Wrench, X } from "lucide-react";
 import { IconAction } from "@/components/ui/icon-action";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { Markdown } from "@/components/ai-panel/Markdown";
+import { AiProvenanceBadge } from "@/components/ai-panel/AiProvenanceBadge";
+import { useAi } from "@/hooks/useAi";
+import { elementChatTask } from "@/lib/ai/tasks";
 import { focusSystemPrompt } from "@/lib/agent-cli/prompt";
-import { CLI_IDS, CLI_INFO, type ChatEvent, type CliId, type CliStatus } from "@/lib/agent-cli/types";
-import { MCP_ENABLED_KEY, readMcpPrefs } from "@/lib/mcp-settings";
+import { CLI_INFO, type ChatEvent, type CliStatus } from "@/lib/agent-cli/types";
+import {
+  CHAT_ENGINES,
+  engineHabilitado,
+  engineLabel,
+  esCli,
+  fallbackNotice,
+  nombreCarpeta,
+  resolveChatEngine,
+  type ChatEngine,
+} from "@/lib/agent-cli/engine";
+import { readMcpPrefs } from "@/lib/mcp-settings";
+import { estadoCli, publicarEstadoCli } from "@/lib/agent-cli/capability";
 
 const CLI_CHOICE_KEY = "agent_cli_choice";
+/** Carpetas de contexto adjuntas (#460): se recuerdan entre fichas y sesiones. */
+const CLI_DIRS_KEY = "agent_cli_dirs";
+
+function leerCarpetas(): string[] {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(CLI_DIRS_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 interface ToolCall {
   name: string;
@@ -36,15 +67,25 @@ interface Msg {
   text: string;
   tools: ToolCall[];
   error?: string;
-  /** Turnos y costo que reporta el CLI al cerrar (H4). */
+  /** Turnos y costo que reporta el CLI al cerrar. */
   meta?: { turns?: number; costUsd?: number };
 }
 
 export interface AgentCliChatProps {
+  /** Id de la caja: identifica la conversación (el nombre cambia al renombrar). */
+  elementId: string;
+  /** Nombre GUARDADO de la caja (no el borrador que se está tecleando). */
   elementName: string;
   viewName: string;
   projectName?: string;
   hasSpec: boolean;
+  /** Ficha de la caja para la IA de la app, que no tiene tools para leerla (#459). */
+  elementType?: string;
+  description?: string;
+  specMarkdown?: string;
+  incoming?: string[];
+  outgoing?: string[];
+  notation?: string;
 }
 
 const api = () => (typeof window !== "undefined" ? window.electronAPI : undefined);
@@ -76,49 +117,104 @@ function ToolLine({ t }: { t: ToolCall }) {
   );
 }
 
-export function AgentCliChat({ elementName, viewName, projectName, hasSpec }: AgentCliChatProps) {
+export function AgentCliChat(props: AgentCliChatProps) {
+  const { elementName, viewName, projectName, hasSpec } = props;
   const electron = api();
+  const { run: runAi } = useAi();
   const [status, setStatus] = useState<CliStatus[] | null>(null);
-  const [cli, setCli] = useState<CliId>("claude");
+  // §P4 (#461): arranca con la IA de la APP, que respeta el modo de Ajustes
+  // (local por defecto). Claude Code o Codex sólo si el humano lo elige.
+  const [elegido, setElegido] = useState<ChatEngine>("app");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [dirs, setDirs] = useState<string[]>([]);
   const runIdRef = useRef<string | null>(null);
   const sessionRef = useRef<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Qué CLI hay en la máquina, y cuál eligió el humano la última vez.
+  // Qué CLI hay en la máquina, y qué motor eligió el humano la última vez.
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem(CLI_CHOICE_KEY) as CliId | null;
-      if (saved && CLI_IDS.includes(saved)) setCli(saved);
+      const saved = window.localStorage.getItem(CLI_CHOICE_KEY) as ChatEngine | null;
+      if (saved && CHAT_ENGINES.includes(saved)) setElegido(saved);
     } catch {
-      /* sin localStorage: Claude Code por defecto */
+      /* sin localStorage: la IA de la app por defecto */
     }
-    electron?.agentCliStatus?.().then(setStatus).catch(() => setStatus([]));
+    setDirs(leerCarpetas());
+    // Qué CLI hay ya lo publicó la app al arrancar (`AppContent`): se reusa. Con
+    // el chat siempre montado (#461), preguntarlo acá lanzaba `claude --version`
+    // y `codex --version` en CADA ficha abierta. Sólo si todavía no se publicó se
+    // pregunta, una vez, y se publica para las siguientes.
+    const conocido = estadoCli();
+    if (conocido) setStatus(conocido);
+    else if (electron?.agentCliStatus)
+      electron
+        .agentCliStatus()
+        .then((s) => {
+          publicarEstadoCli(s);
+          setStatus(s);
+        })
+        .catch(() => setStatus([]));
+    // Sin Electron no hay CLI: se sabe ya, y el chat cae a la IA de la app.
+    else setStatus([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Otra caja = otra conversación: el contexto del prompt de sistema cambió.
-  useEffect(() => {
+  const { engine, fallback } = useMemo(() => resolveChatEngine(elegido, status), [elegido, status]);
+  const version = useMemo(() => (esCli(engine) ? status?.find((s) => s.cli === engine)?.version : undefined), [engine, status]);
+
+  /**
+   * Generación de la conversación (#461). Cada «nueva conversación» —botón o
+   * cambio de caja— la incrementa; un evento o una respuesta de una generación
+   * vieja se descarta. Sin esto, la corrida de la caja A seguía escribiendo en el
+   * hilo de la caja B y su `session_id` hacía que B retomara la sesión de A.
+   */
+  const convRef = useRef(0);
+  const montadoRef = useRef(true);
+
+  /** Empezar de cero: corta lo que esté corriendo, sin mensajes ni sesión del CLI. */
+  const nuevaConversacion = useCallback(() => {
+    const enCurso = runIdRef.current;
+    if (enCurso) void electron?.agentCliCancel?.(enCurso);
+    runIdRef.current = null;
+    convRef.current += 1;
     sessionRef.current = undefined;
     setMessages([]);
-  }, [elementName, viewName]);
+    setBusy(false);
+  }, [electron]);
+
+  // Otra caja = otra conversación. Se identifica por el ID (#461): con el nombre,
+  // renombrar la caja reiniciaba el chat en cada tecla.
+  useEffect(() => nuevaConversacion(), [props.elementId, viewName, nuevaConversacion]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
-  const instalado = useMemo(() => status?.find((s) => s.cli === cli), [status, cli]);
-
-  const elegir = (c: CliId) => {
-    setCli(c);
+  const elegir = (e: ChatEngine) => {
+    setElegido(e);
     sessionRef.current = undefined;
     try {
-      window.localStorage.setItem(CLI_CHOICE_KEY, c);
+      window.localStorage.setItem(CLI_CHOICE_KEY, e);
     } catch {
       /* ignore */
     }
+  };
+
+  const guardarCarpetas = (siguiente: string[]) => {
+    setDirs(siguiente);
+    try {
+      window.localStorage.setItem(CLI_DIRS_KEY, JSON.stringify(siguiente));
+    } catch {
+      /* sin localStorage valen para esta sesión */
+    }
+  };
+
+  /** Selector nativo de carpetas (#460): nunca se escribe una ruta a mano. */
+  const adjuntarCarpeta = async () => {
+    const ruta = await electron?.agentCliPickDir?.();
+    if (ruta && !dirs.includes(ruta)) guardarCarpetas([...dirs, ruta]);
   };
 
   /** Servidor MCP activo (lo enciende si hace falta) y su URL. */
@@ -129,11 +225,8 @@ export function AgentCliChat({ elementName, viewName, projectName, hasSpec }: Ag
       const { port } = readMcpPrefs(window.localStorage);
       s = await electron.mcpServerStart(port);
       if (!s.running) throw new Error(s.error || "No se pudo encender el servidor MCP.");
-      try {
-        window.localStorage.setItem(MCP_ENABLED_KEY, "1");
-      } catch {
-        /* ignore */
-      }
+      // §P4 (#461): se enciende para esta sesión, pero NO se persiste el opt-in.
+      // El auto-arranque del servidor lo decide el humano en Ajustes.
     }
     return s.url;
   }, [electron]);
@@ -182,36 +275,85 @@ export function AgentCliChat({ elementName, viewName, projectName, hasSpec }: Ag
     }
   };
 
+  /** ¿Sigue vigente la conversación `gen`? (no se cambió de caja ni se cerró la ficha). */
+  const vigente = (gen: number) => montadoRef.current && gen === convRef.current;
+
+  /** Un mensaje con el CLI (Claude Code / Codex): streaming de eventos por IPC. */
+  const enviarCli = async (texto: string, runId: string, gen: number) => {
+    if (!electron?.agentCliSend || !esCli(engine)) return;
+    const off = electron.onAgentCliEvent(({ runId: id, event }) => {
+      if (id === runId && vigente(gen)) aplicar(event);
+    });
+    try {
+      const url = await mcpUrl();
+      // Mientras se encendía el MCP pudo cambiar la caja o cerrarse la ficha:
+      // lanzar ahora sería una corrida sin dueño escribiendo en el lienzo.
+      if (!vigente(gen)) return;
+      await electron.agentCliSend(runId, {
+        cli: engine,
+        prompt: texto,
+        mcpUrl: url,
+        systemPrompt: focusSystemPrompt({
+          elementName,
+          elementId: props.elementId,
+          viewName,
+          projectName,
+          hasSpec,
+          dirs,
+        }),
+        sessionId: sessionRef.current,
+        dirs,
+      });
+    } finally {
+      off();
+    }
+  };
+
+  /** Un mensaje con la IA de la app (#459): una respuesta, con la ficha como contexto. */
+  const enviarApp = async (texto: string, previos: Msg[], gen: number) => {
+    const respuesta = await runAi(elementChatTask, {
+      nombre: elementName,
+      tipo: props.elementType ?? "",
+      vista: viewName,
+      notation: props.notation,
+      descripcion: props.description,
+      spec: props.specMarkdown,
+      entrantes: props.incoming,
+      salientes: props.outgoing,
+      historial: previos.filter((m) => m.text).map((m) => ({ role: m.role, text: m.text })),
+      mensaje: texto,
+    });
+    if (!vigente(gen)) return; // otra caja: la respuesta era de la anterior
+    // `useAi` ya mostró el motivo en un toast; acá queda dicho en el hilo.
+    if (respuesta === null) aplicar({ type: "error", message: "La IA de la app no respondió (mirá el aviso)." });
+    else patchLast((m) => ({ ...m, text: respuesta }));
+  };
+
   const enviar = async () => {
     const texto = input.trim();
-    if (!texto || busy || !electron?.agentCliSend) return;
+    if (!texto || busy || status === null) return;
+    const previos = messages;
+    const gen = convRef.current;
     setInput("");
     setBusy(true);
     const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    runIdRef.current = runId;
+    runIdRef.current = esCli(engine) ? runId : null;
     setMessages((prev) => [
       ...prev,
       { id: `${runId}-u`, role: "user", text: texto, tools: [] },
       { id: `${runId}-a`, role: "assistant", text: "", tools: [] },
     ]);
-    const off = electron.onAgentCliEvent(({ runId: id, event }) => {
-      if (id === runId) aplicar(event);
-    });
     try {
-      const url = await mcpUrl();
-      await electron.agentCliSend(runId, {
-        cli,
-        prompt: texto,
-        mcpUrl: url,
-        systemPrompt: focusSystemPrompt({ elementName, viewName, projectName, hasSpec }),
-        sessionId: sessionRef.current,
-      });
+      if (esCli(engine)) await enviarCli(texto, runId, gen);
+      else await enviarApp(texto, previos, gen);
     } catch (e: any) {
-      aplicar({ type: "error", message: String(e?.message ?? e) });
+      if (vigente(gen)) aplicar({ type: "error", message: String(e?.message ?? e) });
     } finally {
-      off();
-      runIdRef.current = null;
-      setBusy(false);
+      // Sólo la conversación vigente libera el estado: una vieja no pisa la nueva.
+      if (vigente(gen)) {
+        runIdRef.current = null;
+        setBusy(false);
+      }
     }
   };
 
@@ -220,58 +362,89 @@ export function AgentCliChat({ elementName, viewName, projectName, hasSpec }: Ag
     if (id) void electron?.agentCliCancel?.(id);
   };
 
-  // Al desmontar (cerrar la ficha) con el agente trabajando: se cancela.
-  useEffect(() => () => detener(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Al desmontar (cerrar la ficha) con el agente trabajando: se cancela, y lo
+  // que llegue después se descarta.
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => {
+      montadoRef.current = false;
+      detener();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!electron) {
-    return <p className="p-4 text-sm text-muted-foreground">El chat con un agente externo sólo está disponible en la app de escritorio.</p>;
-  }
+  const listo = status !== null;
+  const motor = engineLabel(engine);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b px-4 py-2">
-        <Select value={cli} onValueChange={(v) => elegir(v as CliId)}>
+        <Select value={elegido} onValueChange={(v) => elegir(v as ChatEngine)}>
           <SelectTrigger className="h-8 w-40 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {CLI_IDS.map((c) => (
-              <SelectItem key={c} value={c} className="text-xs">
-                {CLI_INFO[c].label}
-                {status && !status.find((s) => s.cli === c)?.installed ? " (no instalado)" : ""}
+            {CHAT_ENGINES.map((e) => (
+              // Codex se ve pero no se elige: sin barrera de herramientas verificada (#461).
+              <SelectItem key={e} value={e} className="text-xs" disabled={!engineHabilitado(e)}>
+                {engineLabel(e)}
+                {!engineHabilitado(e)
+                  ? " (pronto)"
+                  : esCli(e) && status && !status.find((s) => s.cli === e)?.installed
+                    ? " (no instalado)"
+                    : ""}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <span className="truncate text-xs text-muted-foreground">
-          {status === null
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {!listo
             ? "Buscando CLI…"
-            : instalado?.installed
-              ? `${instalado.version ?? "instalado"} · habla de «${elementName}»`
-              : `${CLI_INFO[cli].label} no está instalado.`}
+            : esCli(engine)
+              ? `${version ?? "instalado"} · habla de «${elementName}»`
+              : `habla de «${elementName}»`}
         </span>
+        {/* Qué motor contesta cuando es la IA de la app (local, nube o Claude Code como motor). */}
+        {listo && !esCli(engine) && <AiProvenanceBadge />}
+        <IconAction
+          type="button"
+          variant="ghost"
+          className="h-7 w-7"
+          onClick={nuevaConversacion}
+          disabled={busy || messages.length === 0}
+          label="Nueva conversación (borra el chat)"
+          icon={<Trash2 className="h-4 w-4" />}
+        />
       </div>
 
-      {status && !instalado?.installed && (
-        <div className="m-4 rounded-md border bg-muted/40 p-3 text-sm">
-          <p>
-            No encontré <code>{CLI_INFO[cli].command}</code> en esta máquina. Instalalo y volvé a abrir la ficha:
-          </p>
-          <a className="text-primary underline" href={CLI_INFO[cli].installUrl} target="_blank" rel="noreferrer">
-            {CLI_INFO[cli].installUrl}
-          </a>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Si ya lo usás en la terminal pero acá no aparece, está fuera de las rutas que la app mira
-            (~/.local/bin, /opt/homebrew/bin, /usr/local/bin).
-          </p>
+      {fallback && (
+        <div className="mx-4 mt-3 rounded-md border bg-muted/40 p-3 text-xs">
+          <p>{fallbackNotice(elegido)}</p>
+          {esCli(elegido) && (
+            <p className="mt-1 text-muted-foreground">
+              Para usar {CLI_INFO[elegido].label}, instalalo desde{" "}
+              <a className="text-primary underline" href={CLI_INFO[elegido].installUrl} target="_blank" rel="noreferrer">
+                {CLI_INFO[elegido].installUrl}
+              </a>{" "}
+              y volvé a abrir la ficha.
+            </p>
+          )}
         </div>
       )}
 
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-        {messages.length === 0 && instalado?.installed && (
+        {messages.length === 0 && listo && (
           <p className="text-sm text-muted-foreground">
-            El agente ya sabe que estás en «{elementName}» ({viewName}). Probá: <em>pulí esta caja</em> o{" "}
-            <em>completá la spec con criterios medibles</em>. Te muestra la propuesta antes de escribir.
+            {esCli(engine) ? (
+              <>
+                {motor} ya sabe que estás en «{elementName}» ({viewName}). Probá: <em>pulí esta caja</em> o{" "}
+                <em>completá la spec con criterios medibles</em>. Te muestra la propuesta antes de escribir.
+              </>
+            ) : (
+              <>
+                La IA de la app conoce la ficha de «{elementName}». Probá: <em>¿qué le falta a la spec?</em> o{" "}
+                <em>proponé criterios medibles</em>. No escribe en el lienzo: aplicá lo que te sirva desde el tab Spec.
+              </>
+            )}
           </p>
         )}
         {messages.map((m) => (
@@ -285,7 +458,14 @@ export function AgentCliChat({ elementName, viewName, projectName, hasSpec }: Ag
               {m.tools.map((t, i) => (
                 <ToolLine key={i} t={t} />
               ))}
-              {m.text && <p className="whitespace-pre-wrap">{m.text}</p>}
+              {/* El agente escribe Markdown (negritas, listas, código): se dibuja con el
+                  mismo renderizador del chat del agente local. Lo del humano va tal cual. */}
+              {m.text &&
+                (m.role === "assistant" ? (
+                  <Markdown content={m.text} className="break-words text-sm leading-relaxed" />
+                ) : (
+                  <p className="whitespace-pre-wrap">{m.text}</p>
+                ))}
               {m.role === "assistant" && !m.text && !m.error && busy && (
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               )}
@@ -301,7 +481,47 @@ export function AgentCliChat({ elementName, viewName, projectName, hasSpec }: Ag
         ))}
       </div>
 
-      <div className="flex items-end gap-2 border-t p-3">
+      {/* Carpetas de contexto adjuntas (#460): nombre visible, ruta en el tooltip. */}
+      {dirs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t px-3 pt-2">
+          {dirs.map((d) => (
+            <span
+              key={d}
+              title={d}
+              className="inline-flex max-w-[14rem] items-center gap-1 rounded-full border bg-muted/50 py-0.5 pl-2 pr-0.5 text-xs"
+            >
+              <Folder className="h-3 w-3 shrink-0 text-muted-foreground" />
+              <span className="truncate">{nombreCarpeta(d)}</span>
+              <IconAction
+                type="button"
+                variant="ghost"
+                className="h-5 w-5"
+                onClick={() => guardarCarpetas(dirs.filter((x) => x !== d))}
+                disabled={busy}
+                label={`Quitar la carpeta ${nombreCarpeta(d)}`}
+                icon={<X className="h-3 w-3" />}
+              />
+            </span>
+          ))}
+          {!esCli(engine) && (
+            <span className="text-xs text-muted-foreground">
+              La IA de la app no lee carpetas: elegí Claude Code para usarlas.
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className={cn("flex items-end gap-2 p-3", dirs.length === 0 && "border-t")}>
+        {electron?.agentCliPickDir && (
+          <IconAction
+            type="button"
+            variant="ghost"
+            onClick={() => void adjuntarCarpeta()}
+            disabled={busy}
+            label="Adjuntar carpeta como contexto (sólo lectura)"
+            icon={<FolderPlus className="h-4 w-4" />}
+          />
+        )}
         <Textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -311,20 +531,20 @@ export function AgentCliChat({ elementName, viewName, projectName, hasSpec }: Ag
               void enviar();
             }
           }}
-          placeholder={instalado?.installed ? `Decile a ${CLI_INFO[cli].label} qué hacer con «${elementName}»…` : "Instalá el CLI para chatear"}
-          disabled={!instalado?.installed || busy}
+          placeholder={listo ? `Decile a ${motor} qué hacer con «${elementName}»…` : "Buscando CLI…"}
+          disabled={!listo || busy}
           className="min-h-[40px] max-h-32 resize-none text-sm"
           rows={1}
         />
-        {busy ? (
+        {busy && esCli(engine) ? (
           <IconAction type="button" variant="outline" onClick={detener} label="Detener al agente" icon={<Square className="h-4 w-4" />} />
         ) : (
           <IconAction
             type="button"
             onClick={() => void enviar()}
-            disabled={!input.trim() || !instalado?.installed}
+            disabled={!input.trim() || !listo || busy}
             label="Enviar (Enter)"
-            icon={<Send className="h-4 w-4" />}
+            icon={busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           />
         )}
       </div>

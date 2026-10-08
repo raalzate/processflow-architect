@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Cloud, Cpu, CircleSlash } from "lucide-react";
+import { Cloud, Cpu, CircleSlash, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadAiSettings, type KeyStatus } from "@/lib/ai/remote-settings";
 import { describeEngine, describeAgentEngine } from "@/lib/ai/provenance";
 import { estadoIaLocal } from "@/lib/ai/local-capability";
+import { cliInstalado, estadoCli } from "@/lib/agent-cli/capability";
+import { DEFAULT_CLI } from "@/lib/ai/providers";
 
 /**
  * Badge de PROCEDENCIA de la IA: dice si lo que se genera saldrá del motor local
@@ -47,8 +49,13 @@ export function AiProvenanceBadge({
   // El estado del motor local entra en la descripción: en un equipo sin WebGPU
   // el badge no puede decir «IA local» (#202).
   const describir = agente ? describeAgentEngine : describeEngine;
-  const engine = describir(loadAiSettings(), keys, { estadoLocal: estadoIaLocal() });
-  const Icon = !engine.available ? CircleSlash : engine.isLocal ? Cpu : Cloud;
+  // Sin estado publicado del CLI no se afirma que falte (feature 021).
+  const clis = estadoCli();
+  const engine = describir(loadAiSettings(), keys, {
+    estadoLocal: estadoIaLocal(),
+    cliDisponible: clis ? cliInstalado(DEFAULT_CLI, clis) : undefined,
+  });
+  const Icon = !engine.available ? CircleSlash : engine.isLocal ? Cpu : engine.label === "Claude Code" ? Terminal : Cloud;
 
   return (
     <span

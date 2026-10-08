@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { candidateDirs, cancelAgentCli, cliStatus, resolveCli, runAgentCli, type Proceso, type Spawn } from "../agent-cli";
+import { candidateDirs, cancelAgentCli, cliStatus, generateWithCli, resolveCli, runAgentCli, type Proceso, type Spawn } from "../agent-cli";
 
 /** Proceso falso: emite lo que el test le diga y registra el kill. */
 function procesoFalso() {
@@ -36,6 +36,17 @@ describe("resolveCli / candidateDirs", () => {
   });
 });
 
+// #461: en Windows se busca el `.exe` del instalador nativo y NUNCA un `.cmd`
+// (lanzarlo exigiría shell, y el prompt quedaría expuesto a inyección).
+describe("resolveCli en Windows", () => {
+  it("encuentra claude.exe y no el shim .cmd ni el script sin extensión", () => {
+    const win = (existe: (p: string) => boolean) =>
+      resolveCli("claude", { exists: existe, home: "/home/u", env: { PATH: "", NODE_ENV: "test" } as NodeJS.ProcessEnv, platform: "win32" });
+    expect(win((p) => p.endsWith("/.local/bin/claude.exe"))).toBe("/home/u/.local/bin/claude.exe");
+    expect(win((p) => p.endsWith("claude.cmd") || p.endsWith("/claude"))).toBeNull();
+  });
+});
+
 describe("cliStatus", () => {
   it("reporta instalado con versión, y no instalado sin binario", async () => {
     const spawn: Spawn = (_c, _a) => {
@@ -51,6 +62,79 @@ describe("cliStatus", () => {
       { cli: "claude", installed: true, version: "2.1.293 (Claude Code)" },
       { cli: "codex", installed: false },
     ]);
+  });
+});
+
+// Feature 021: el CLI como generador de texto puro para el router.
+describe("generateWithCli", () => {
+  const input = { cli: "claude" as const, prompt: "P", system: "S" };
+
+  it("devuelve el texto del `result` cuando el proceso termina bien", async () => {
+    let args: string[] = [];
+    const spawn: Spawn = (_c, a) => {
+      args = a;
+      const { p, stdout } = procesoFalso();
+      setTimeout(() => {
+        stdout.emit("data", '{"type":"result","subtype":"success","result":"Hola"}\n');
+        p.emit("close", 0);
+      }, 0);
+      return p;
+    };
+    const r = await generateWithCli(input, deps(spawn));
+    expect(r).toEqual({ ok: true, text: "Hola" });
+    expect(args).toContain("--no-session-persistence");
+    expect(args[args.indexOf("--tools") + 1]).toBe("");
+  });
+
+  it("lanza con stdin cerrado y un aviso en stderr no tapa la respuesta", async () => {
+    let opts: any;
+    const spawn: Spawn = (_c, _a, o) => {
+      opts = o;
+      const { p, stdout, stderr } = procesoFalso();
+      setTimeout(() => {
+        stderr.emit("data", "Warning: no stdin data received in 3s\n");
+        stdout.emit("data", '{"type":"result","subtype":"success","result":"Hola"}');
+        p.emit("close", 0);
+      }, 0);
+      return p;
+    };
+    expect(await generateWithCli(input, deps(spawn))).toEqual({ ok: true, text: "Hola" });
+    expect(opts.stdio[0]).toBe("ignore");
+    // cwd neutral: el CLI no hereda CLAUDE.md ni hooks del directorio de la app.
+    expect(opts.cwd).toBe(require("node:os").tmpdir());
+  });
+
+  it("con respuesta de error, manda el motivo del CLI y no el aviso de stderr", async () => {
+    const spawn: Spawn = () => {
+      const { p, stdout, stderr } = procesoFalso();
+      setTimeout(() => {
+        stderr.emit("data", "Warning: algo\n");
+        stdout.emit("data", JSON.stringify({ type: "result", subtype: "error_max_turns", is_error: true, result: "" }));
+        p.emit("close", 1);
+      }, 0);
+      return p;
+    };
+    expect(await generateWithCli(input, deps(spawn))).toEqual({ ok: false, error: "Claude Code terminó con error_max_turns." });
+  });
+
+  it("con el CLI roto, el stderr es el error", async () => {
+    const spawn: Spawn = () => {
+      const { p, stderr } = procesoFalso();
+      setTimeout(() => {
+        stderr.emit("data", "Not logged in\n");
+        p.emit("close", 1);
+      }, 0);
+      return p;
+    };
+    const r = await generateWithCli(input, deps(spawn));
+    expect(r).toEqual({ ok: false, error: "Not logged in" });
+  });
+
+  it("sin binario no lanza nada", async () => {
+    const spawn = vi.fn();
+    const r = await generateWithCli({ ...input, cli: "codex" }, deps(spawn as any));
+    expect(r.ok).toBe(false);
+    expect(spawn).not.toHaveBeenCalled();
   });
 });
 
@@ -75,6 +159,28 @@ describe("runAgentCli", () => {
     expect(eventos.map((e) => e.type)).toEqual(["session", "text", "result"]);
     expect(eventos[1].delta).toBe("Hola");
     expect(args).toContain("--append-system-prompt");
+  });
+
+  // #460: una carpeta adjunta que ya no existe no lanza al agente a ciegas.
+  it("con carpetas adjuntas: las válidas van como --add-dir; una inexistente frena con aviso", async () => {
+    let args: string[] = [];
+    const spawn: Spawn = (_c, a) => {
+      args = a;
+      const { p } = procesoFalso();
+      setTimeout(() => p.emit("close", 0), 0);
+      return p;
+    };
+    const isDir = (p: string) => p === "/repo";
+    const ok = await runAgentCli("d1", { ...input, dirs: ["/repo"] }, () => {}, deps(spawn, { isDir }));
+    expect(ok.ok).toBe(true);
+    expect(args[args.indexOf("--add-dir") + 1]).toBe("/repo");
+
+    const nada = vi.fn() as unknown as Spawn;
+    const eventos: any[] = [];
+    const mal = await runAgentCli("d2", { ...input, dirs: ["/repo", "/se-borro"] }, (e) => eventos.push(e), deps(nada, { isDir }));
+    expect(mal.ok).toBe(false);
+    expect(eventos[0]).toMatchObject({ type: "error", message: expect.stringContaining("«/se-borro»") });
+    expect(nada).not.toHaveBeenCalled();
   });
 
   it("sin binario emite error y no lanza nada", async () => {

@@ -173,7 +173,7 @@ import { ACCEPTED_REFERENCE_TYPES, extractFileText } from "@/lib/pdf-text";
 import { applyGraphFilters, hasActiveFilters } from "@/lib/graph-filters";
 import { useViews } from "@/context/ViewsContext";
 import { useReference } from "@/context/ReferenceContext";
-import { MCP_ENABLED_KEY, readMcpPrefs } from "@/lib/mcp-settings";
+import { readMcpPrefs } from "@/lib/mcp-settings";
 import { handoffPrompt } from "@/lib/mcp/handoff";
 import { AgentCliChat } from "./AgentCliChat";
 import { buildEmbedMap, wouldCreateCycle } from "@/lib/view-embeds";
@@ -244,7 +244,7 @@ import {
 } from "./export-canvas";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SpecTab } from "./SpecTab";
-import { isSpecEmpty, type ElementSpec } from "@/lib/element-spec";
+import { isSpecEmpty, specToMarkdown, type ElementSpec } from "@/lib/element-spec";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1357,15 +1357,13 @@ const EditNodeDialog: React.FC<{
           toast({ variant: "destructive", title: "No se pudo encender el servidor MCP", description: arranque.error });
           return;
         }
+        // §P4 (#461): encendido para esta sesión; el auto-arranque persistente
+        // lo decide el humano en Ajustes, no un botón de la ficha.
         estado = arranque;
-        try {
-          window.localStorage.setItem(MCP_ENABLED_KEY, "1");
-        } catch {
-          /* sin localStorage el servidor vale para esta sesión y basta */
-        }
       }
       const prompt = handoffPrompt({
-        elementName: actual.nombre,
+        // El nombre GUARDADO (#461): el del borrador puede no existir todavía.
+        elementName: nodeRef.current?.nombre ?? actual.nombre,
         viewName: vistaActivaNombre,
         url: estado.url,
         hasSpec: !isSpecEmpty(actual.spec),
@@ -1611,12 +1609,33 @@ const EditNodeDialog: React.FC<{
               {electronDisponible && <TabsTrigger value="agente">Agente</TabsTrigger>}
             </TabsList>
             {electronDisponible && (
-              <TabsContent value="agente" className="mt-0 min-h-0 flex-1 overflow-hidden">
+              // `forceMount` (#461): el chat NO se desmonta al ir a Spec o a Elemento.
+              // Desmontarlo cancelaba la corrida del agente y borraba la conversación
+              // justo cuando el humano iba a mirar la spec que estaba escribiendo.
+              <TabsContent
+                value="agente"
+                forceMount
+                className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden"
+              >
                 <AgentCliChat
-                  elementName={draft.nombre}
+                  elementId={draft.id}
+                  // El nombre GUARDADO (#461): el del borrador cambia con cada tecla y
+                  // el agente no encontraría la caja por un nombre que aún no existe.
+                  elementName={node?.nombre ?? draft.nombre}
                   viewName={vistaActivaNombre}
                   projectName={projectName}
                   hasSpec={!isSpecEmpty(draft.spec)}
+                  // La ficha para la IA de la app, que no tiene tools para leerla (#459).
+                  elementType={draft.tipo_elemento}
+                  description={draft.descripcion}
+                  specMarkdown={
+                    draft.spec && !isSpecEmpty(draft.spec)
+                      ? specToMarkdown(draft.spec, draft.nombre, resolveNodeName)
+                      : undefined
+                  }
+                  incoming={flujoVecinos.entrantes.map((v) => v.nombre)}
+                  outgoing={flujoVecinos.salientes.map((v) => v.nombre)}
+                  notation={notation}
                 />
               </TabsContent>
             )}

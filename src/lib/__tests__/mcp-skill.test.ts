@@ -35,6 +35,14 @@ describe("skills embebidos", () => {
     }
   });
 
+  // La exención del arnés de diseño la decide una constante de producción: sacar
+  // un skill de DESIGN_SKILL_IDS lo liberaría del contrato sin tocar este test.
+  // Se fija la partición (revisión de #461).
+  it("la partición de skills es exacta: los de diseño más pulir-elemento", () => {
+    expect([...SKILL_IDS].sort()).toEqual([...DESIGN_SKILL_IDS, "pulir-elemento"].sort());
+    expect(DESIGN_SKILL_IDS).toEqual(["documento-a-processflow", "disenar-diagrama"]);
+  });
+
   it("entrega todos los skills, con SKILL.md primero", () => {
     expect(listSkills().map((s) => s.id)).toEqual([...SKILL_IDS]);
     for (const s of listSkills()) {

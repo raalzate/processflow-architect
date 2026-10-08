@@ -196,7 +196,49 @@ el contrato documentado y **no se verificó** (no está instalado en la máquina
 | Tab «Agente» (`AgentCliChat.tsx`) | selector Claude Code · Codex, chat con streaming, tools plegables, Detener, turnos y costo; enciende el MCP si está apagado. Sólo en la app de escritorio. |
 
 No es un `ProviderId`: el CLI no es un motor de inferencia de la app sino un agente ajeno, así
-que `router.ts`, `providers.ts` y `tasks.ts` no cambian.
+que este chat no pasa por `router.ts`. (El modo `cli` del router es otra cosa: ver 5f.)
+
+**Por defecto, la IA de la app (#461, §P4).** El tab arranca con la IA de Ajustes (`local` por
+defecto); Claude Code o Codex sólo si el humano los elige, y se recuerda. El chat enciende el
+servidor MCP para la sesión pero no persiste su auto-arranque. Otras garantías de #461: el prompt
+va al final detrás de `--` (un «- item» ya no es un flag); el chat usa una lista explícita de
+tools (`CHAT_MCP_TOOLS`: leer la caja y su contexto, escribir sólo su spec; nada que borre o
+reemplace); el main valida `cli`, `mcpUrl`, `sessionId` y `dirs` (`validate.ts`); la
+conversación se identifica por el id de la caja, sobrevive al cambio de tab (`forceMount`) y una
+corrida vieja no escribe en la caja nueva. En Windows sólo se busca `claude.exe`, nunca un
+`.cmd` (exigiría shell).
+
+**Carpetas de contexto (#460).** El botón «Adjuntar carpeta» del chat abre el selector nativo
+(IPC `agent-cli-pick-dir`); la carpeta queda como etiqueta y se recuerda. Claude Code la recibe
+con `--add-dir` y sólo `Read`/`Glob`/`Grep` además del MCP; `Bash`, `Write`, `Edit` y
+`NotebookEdit` van en `--disallowedTools`. El main verifica que cada ruta sea un directorio
+existente antes de lanzar (`carpetasValidas` descarta relativas y las que parecen flags).
+Verificado en vivo: buscó con `Grep`, leyó con `Read`, citó el archivo, y no pudo escribir.
+Codex usa la primera carpeta como `-C` con `--sandbox read-only` (sin verificar). La IA de la app
+no tiene herramientas para leer carpetas: el chat lo avisa.
+
+### 5f · Claude Code como motor de razonamiento de la app (feature 021, #451)
+
+Lo inverso de 5e: el agente es **el de la app** y Claude Code sólo **piensa**. Ajustes → Motor
+de IA gana un cuarto modo, `cli` («Claude Code»): toda tarea con prompt (sugerencias de la
+ficha, tareas de IA, cada turno del Constructor) la razona el CLI del usuario y la app actúa con
+sus propias tools, ciclo y confirmaciones. Es un motor nuevo (`ProviderId = "cli"`,
+`runCli` en `providers.ts`) y por eso sí toca el router (§P5 lo permite). `tasks.ts` gana
+`elementChatTask` (#459), que es una `AiTask` más y la rutea el router como cualquier otra.
+
+| Pieza | Qué hace |
+|---|---|
+| `buildGenerateLaunch` / `resultText` (`src/lib/agent-cli/`) | `claude -p … --output-format json --max-turns 1 --tools "" --mcp-config {} --strict-mcp-config --no-session-persistence --setting-sources ""` con el prompt de sistema de la tarea. |
+| `generateWithCli` + IPC `agent-cli-generate` | un proceso por llamada, stdin cerrado, cwd neutral; devuelve el texto o el error real del CLI. |
+| `agent-cli/capability.ts` | el renderer publica al arrancar qué CLI hay; `cliAvailable()` lo lee en sincrónico. Sin CLI, el modo cae a local declarándolo como respaldo. |
+| `provenance.ts` / badge / Ajustes | la procedencia dice «Claude Code»; la tarjeta muestra versión y «Probar». |
+
+Dos trampas verificadas en vivo (2026-10-07): con stdin abierto el CLI espera 3 s y avisa por
+stderr; y lanzado desde un repo con hooks de Claude Code (un `Stop` que bloquea el cierre) hace
+un segundo turno y termina en `error_max_turns`. Por eso stdin cerrado, cwd neutral y
+`--setting-sources ""` también en el chat de 5e. Costo medido: ~3 a 13 s y ~US$ 0,10 por llamada.
+El **Analista** del panel sigue llamando al motor local directo (no pasa por el router): queda
+declarado como siguiente paso.
 
 ### 5b · Configuración del servidor
 

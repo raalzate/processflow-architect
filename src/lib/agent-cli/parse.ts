@@ -103,6 +103,41 @@ export function parseLine(cli: CliId, line: string): ChatEvent[] {
 }
 
 /**
+ * Texto final de una corrida de TEXTO PURO (feature 021) a partir de todo el
+ * stdout: con `--output-format json` Claude escribe UN objeto `result`; Codex
+ * escribe líneas `item.completed` con `agent_message`. Devuelve `{ text }` o
+ * `{ error }` con el motivo que dio el CLI, para que el router lo muestre tal
+ * cual en vez de degradar en silencio.
+ */
+export function resultText(cli: CliId, stdout: string): { text: string } | { error: string } {
+  if (cli === "claude") {
+    // El objeto puede venir en varias líneas (pretty) o en una: se busca el JSON entero.
+    const inicio = stdout.indexOf("{");
+    if (inicio === -1) return { error: "Claude Code no devolvió una respuesta." };
+    try {
+      const j = JSON.parse(stdout.slice(inicio));
+      if (j.is_error || (j.subtype && j.subtype !== "success")) {
+        return { error: str(j.result) || `Claude Code terminó con ${str(j.subtype) || "error"}.` };
+      }
+      return { text: str(j.result).trim() };
+    } catch {
+      return { error: "La respuesta de Claude Code no es JSON." };
+    }
+  }
+  const partes: string[] = [];
+  let error = "";
+  for (const line of stdout.split("\n")) {
+    for (const e of parseLine("codex", line)) {
+      if (e.type === "text") partes.push(e.delta);
+      if (e.type === "error") error = e.message;
+      if (e.type === "result" && !e.ok) error = e.text || "Codex terminó con error.";
+    }
+  }
+  if (partes.length) return { text: partes.join("\n").trim() };
+  return { error: error || "Codex no devolvió una respuesta." };
+}
+
+/**
  * Acumula stdout por trozos (un `data` del proceso puede cortar una línea a la
  * mitad) y devuelve las líneas completas. El resto queda para el próximo trozo.
  */

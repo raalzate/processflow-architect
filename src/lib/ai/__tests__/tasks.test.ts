@@ -384,3 +384,45 @@ describe("creativeDiagramTask · el diagrama entero en una inferencia (015, #337
     expect(creativeDiagramTask.buildPrompt).toBeTypeOf("function");
   });
 });
+
+// #459: el chat de la ficha con la IA de la app (sin Claude Code ni Codex).
+import { elementChatTask, ELEMENT_CHAT_MAX_TURNOS } from "@/lib/ai/tasks";
+
+describe("elementChatTask", () => {
+  const base = { nombre: "RabbitMQ", tipo: "Sistema Externo", vista: "Modelo", notation: "c4", mensaje: "pulila" };
+
+  it("es light con techo, y el prompt lleva la ficha entera y el mensaje", () => {
+    expect(elementChatTask.tier).toBe("light");
+    expect(typeof elementChatTask.maxLocalChars).toBe("number");
+    const { prompt, system } = elementChatTask.buildPrompt!({
+      ...base,
+      descripcion: "Broker",
+      spec: "## Requisitos\n- FR-001 algo",
+      entrantes: ["API de Pedidos"],
+      salientes: ["API de Pagos"],
+    });
+    for (const s of ['"RabbitMQ"', "Sistema Externo", '"Modelo"', "Broker", "FR-001", '"API de Pedidos"', '"API de Pagos"', "HUMANO: pulila"]) {
+      expect(prompt).toContain(s);
+    }
+    expect(system).toMatch(/No podés modificar el diagrama/);
+    expect(system).toMatch(/Markdown/);
+  });
+
+  it("sin ficha dice que falta en vez de dejar huecos", () => {
+    const { prompt } = elementChatTask.buildPrompt!(base);
+    expect(prompt).toContain("(sin descripción)");
+    expect(prompt).toContain("(sin spec)");
+    expect(prompt).toContain("LA LLAMAN: ninguno");
+  });
+
+  it("sólo entran los últimos turnos de la conversación", () => {
+    const historial = Array.from({ length: ELEMENT_CHAT_MAX_TURNOS + 3 }, (_, i) => ({
+      role: (i % 2 ? "assistant" : "user") as "user" | "assistant",
+      text: `turno-${i}`,
+    }));
+    const { prompt } = elementChatTask.buildPrompt!({ ...base, historial });
+    expect(prompt).not.toContain("turno-0");
+    expect(prompt).toContain(`turno-${ELEMENT_CHAT_MAX_TURNOS + 2}`);
+    expect(elementChatTask.parse!("  hola  ", base as any)).toBe("hola");
+  });
+});
