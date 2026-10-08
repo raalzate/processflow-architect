@@ -246,3 +246,76 @@ describe("auxiliares", () => {
     expect(contextoMermaid({ ...vistaVacia, graph: conContenido() })).toContain("flowchart");
   });
 });
+
+/**
+ * El DESTINO (#431): «una nueva vista» publicaba sobre la activa y pedía permiso
+ * para pisar «Modelo». Una pestaña nueva no pisa nada; otra vista nombrada sí.
+ */
+describe("runCreative · el destino del pedido (#431)", () => {
+  const conModelo = { ...vistaVacia, nombre: "Modelo", graph: conContenido() };
+
+  it("pestaña nueva: se crea SIN confirmar aunque la activa tenga contenido", async () => {
+    const aplicar = vi.fn();
+    const crear = vi.fn().mockResolvedValue({ ok: true, texto: "Vista creada." });
+    const r = await runCreative(
+      { pedido: "una nueva vista sobre hexagonal", vista: conModelo, destino: { kind: "nueva", nombre: "Hexagonal" } },
+      { generar: async () => MVC, aplicar, crear }
+    );
+    expect(r.kind).toBe("listo");
+    expect(aplicar).not.toHaveBeenCalled();
+    expect(crear).toHaveBeenCalledTimes(1);
+    expect(crear.mock.calls[0][0]).toBe("Hexagonal");
+    expect(r.kind === "listo" && r.nueva && r.vista).toBe("Hexagonal");
+    expect(r.kind === "listo" && r.reply).toContain('la pestaña nueva "Hexagonal"');
+  });
+
+  it("pestaña nueva: el contenido de la activa NO es contexto (no se extiende «Modelo»)", async () => {
+    const generar = vi.fn().mockResolvedValue(MVC);
+    await runCreative(
+      { pedido: "x", vista: conModelo, destino: { kind: "nueva", nombre: "Otra" } },
+      { generar, aplicar: vi.fn(), crear: async () => ({ ok: true, texto: "ok" }) }
+    );
+    expect(generar.mock.calls[0][0].existente).toBeUndefined();
+  });
+
+  it("pestaña nueva sin `crear`: error, y nada se publica en la activa", async () => {
+    const aplicar = vi.fn();
+    const generar = vi.fn();
+    const r = await runCreative(
+      { pedido: "x", vista: conModelo, destino: { kind: "nueva", nombre: "Otra" } },
+      { generar, aplicar }
+    );
+    expect(r.kind).toBe("error");
+    expect(generar).not.toHaveBeenCalled();
+    expect(aplicar).not.toHaveBeenCalled();
+  });
+
+  it("otra vista nombrada: se confirma SIEMPRE, apuntando a esa vista", async () => {
+    const aplicar = vi.fn();
+    const r = await runCreative(
+      { pedido: "x", vista: vistaVacia, destino: { kind: "vista", nombre: "Pagos" } },
+      { generar: async () => MVC, aplicar }
+    );
+    expect(r.kind).toBe("confirmar");
+    expect(r.kind === "confirmar" && r.vista).toBe("Pagos");
+    expect(r.kind === "confirmar" && r.texto).toContain('"Pagos"');
+    expect(aplicar).not.toHaveBeenCalled();
+  });
+
+  it("«en la vista Modelo» siendo Modelo la activa: como la activa", async () => {
+    const aplicar = vi.fn().mockResolvedValue({ ok: true, texto: "ok" });
+    const r = await runCreative(
+      { pedido: "x", vista: { ...vistaVacia, nombre: "Modelo" }, destino: { kind: "vista", nombre: "modelo" } },
+      { generar: async () => MVC, aplicar }
+    );
+    // Vacía: se publica sin preguntar, y en la vista de nombre «Modelo».
+    expect(r.kind).toBe("listo");
+    expect(aplicar.mock.calls[0][1]).toBe("modelo");
+  });
+
+  it("sin destino, `aplicar` recibe la vista activa", async () => {
+    const aplicar = vi.fn().mockResolvedValue({ ok: true, texto: "ok" });
+    await runCreative({ pedido: "x", vista: vistaVacia }, { generar: async () => MVC, aplicar });
+    expect(aplicar.mock.calls[0][1]).toBe("Vista");
+  });
+});

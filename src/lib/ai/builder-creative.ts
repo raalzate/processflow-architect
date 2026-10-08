@@ -24,6 +24,8 @@ import { toMermaid } from "../mcp/to-mermaid";
 import { fromGraphData, toGraphData, validate, type DiagramModel } from "../mcp/diagram-builder";
 import { qualityFindings, MAX_NODES } from "../mcp/quality";
 import { isContainerType } from "../mcp/catalog";
+import { plano } from "../mcp/tipo-notacion";
+import type { Destino } from "./builder-intent";
 
 export interface CreativeDeps {
   /** Pide el Mermaid al modelo (la `AiTask` `creative-diagram`). */
@@ -33,8 +35,10 @@ export interface CreativeDeps {
     notation?: string;
     hallazgos?: string[];
   }) => Promise<string>;
-  /** Deja el grafo en la vista del humano (`set_view_graph`). */
-  aplicar: (graph: GraphData) => Promise<{ ok: boolean; texto: string }>;
+  /** Deja el grafo en una vista que ya existe (`set_view_graph`). */
+  aplicar: (graph: GraphData, vista: string) => Promise<{ ok: boolean; texto: string }>;
+  /** Abre una pestaña NUEVA con el grafo (`export_as_view`). Sin esto, no hay destino `nueva`. */
+  crear?: (nombre: string, graph: GraphData) => Promise<{ ok: boolean; texto: string }>;
   /** Comprobación contra la app para el cierre (opcional). */
   verificar?: () => Promise<string | undefined>;
 }
@@ -47,13 +51,16 @@ export interface CreativeInput {
     /** Grafo actual de la vista (vacío/ausente = vista sin contenido). */
     graph?: GraphData | null;
   };
+  /** Dónde publicar (`destinoDe`): por defecto, la vista activa. */
+  destino?: Destino;
   /** true → el humano ya aceptó que se pise el contenido de la vista. */
   confirmado?: boolean;
 }
 
+/** `vista` es dónde quedó (o quedaría) la propuesta: el cierre y la confirmación la nombran. */
 export type CreativeResult =
-  | { kind: "listo"; graph: GraphData; reply: string; hallazgos: string[] }
-  | { kind: "confirmar"; texto: string; graph: GraphData; hallazgos: string[] }
+  | { kind: "listo"; graph: GraphData; reply: string; hallazgos: string[]; vista: string; nueva: boolean }
+  | { kind: "confirmar"; texto: string; graph: GraphData; hallazgos: string[]; vista: string }
   | { kind: "error"; reply: string; hallazgos: string[] };
 
 /** Cuántos elementos tiene hoy la vista (contenedores incluidos). */
@@ -166,7 +173,18 @@ export async function runCreative(
   input: CreativeInput,
   deps: CreativeDeps
 ): Promise<CreativeResult> {
-  const existente = contextoMermaid(input.vista);
+  const destino = input.destino ?? { kind: "activa" };
+  const nueva = destino.kind === "nueva";
+  const nombre = destino.kind === "activa" ? input.vista.nombre : destino.nombre;
+  // «en la vista X» con X = la activa es la activa: se confirma con lo que se ve.
+  const otra = destino.kind === "vista" && plano(destino.nombre) !== plano(input.vista.nombre);
+  if (nueva && !deps.crear) {
+    return { kind: "error", reply: "No puedo abrir una pestaña nueva desde acá.", hallazgos: [] };
+  }
+
+  // Lo que hay en la activa sólo es contexto si la propuesta va AHÍ: para una
+  // pestaña nueva u otra vista, mostrárselo empuja al modelo a extenderlo.
+  const existente = nueva || otra ? undefined : contextoMermaid(input.vista);
   let hallazgos: string[] = [];
   let model: DiagramModel | null = null;
   let aviso: string | undefined;
@@ -190,7 +208,7 @@ export async function runCreative(
       continue;
     }
 
-    const parsed = fromMermaid(mermaid, input.vista.notation, { nombre: input.vista.nombre });
+    const parsed = fromMermaid(mermaid, input.vista.notation, { nombre });
     const recortado = recortarSiNoEntra(parsed.model);
     model = recortado.model;
     aviso = recortado.aviso;
@@ -227,7 +245,9 @@ export async function runCreative(
         .join(", ")}.`
     : "";
   const resumen = [
-    `Propuesta: ${model.nodes.length} elemento(s) y ${model.edges.length} relación(es) en "${input.vista.nombre}".`,
+    `Propuesta: ${model.nodes.length} elemento(s) y ${model.edges.length} relación(es) en ${
+      nueva ? "la pestaña nueva " : ""
+    }"${nombre}".`,
     aviso,
     notaLimpieza,
     (() => {
@@ -238,26 +258,43 @@ export async function runCreative(
     .filter(Boolean)
     .join("\n\n");
 
-  // Pisar lo que el humano tiene dibujado lo decide el humano (§P10, FR-012).
-  if (cuantosElementos(input.vista.graph) && !input.confirmado) {
-    return {
-      kind: "confirmar",
-      texto: `La vista "${input.vista.nombre}" ya tiene ${cuantosElementos(
-        input.vista.graph
-      )} elemento(s) y esto la reemplaza (lo que se repita por nombre conserva su posición). ¿La publico?`,
-      graph,
-      hallazgos,
-    };
+  // Pisar lo que el humano tiene dibujado lo decide el humano (§P10, FR-012). Una
+  // pestaña nueva no pisa nada, así que no se pregunta (#431). Otra vista nombrada
+  // se pregunta SIEMPRE: su contenido no se ve desde acá.
+  if (!nueva && !input.confirmado) {
+    if (otra) {
+      return {
+        kind: "confirmar",
+        texto: `Esto reemplaza el contenido de la vista "${nombre}" (lo que se repita por nombre conserva su posición). ¿La publico?`,
+        graph,
+        hallazgos,
+        vista: nombre,
+      };
+    }
+    if (cuantosElementos(input.vista.graph)) {
+      return {
+        kind: "confirmar",
+        texto: `La vista "${nombre}" ya tiene ${cuantosElementos(
+          input.vista.graph
+        )} elemento(s) y esto la reemplaza (lo que se repita por nombre conserva su posición). ¿La publico?`,
+        graph,
+        hallazgos,
+        vista: nombre,
+      };
+    }
   }
 
-  const r = await deps.aplicar(graph);
+  const r = nueva ? await deps.crear!(nombre, graph) : await deps.aplicar(graph, nombre);
   if (!r.ok) return { kind: "error", reply: `No pude publicarlo: ${r.texto}`, hallazgos };
 
-  const verificacion = await deps.verificar?.();
+  // La verificación mira la vista ACTIVA: para una pestaña nueva hablaría de otra cosa.
+  const verificacion = nueva ? undefined : await deps.verificar?.();
   return {
     kind: "listo",
     graph,
     reply: [resumen, r.texto, verificacion].filter(Boolean).join("\n\n"),
     hallazgos,
+    vista: nombre,
+    nueva,
   };
 }
