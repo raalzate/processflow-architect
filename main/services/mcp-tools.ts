@@ -108,6 +108,7 @@ import {
 import {
   formatArtifact,
   formatArtifactList,
+  formatFocusedElement,
   formatViewList,
   type AppReadRequest,
   type AppReadResult,
@@ -2329,6 +2330,25 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         return text(partes.join("\n"));
       }
     );
+
+    // Feature 019: la caja que el humano tiene ABIERTA. Sin esto, «pulí esta
+    // caja» obligaba a dictarle al agente el nombre y la vista y a encadenar
+    // get_view → buscar el nodo → leer la spec.
+    server.registerTool(
+      "get_focused_element",
+      {
+        title: "La caja cuya ficha está abierta",
+        description:
+          "La ficha ENTERA del elemento que el humano tiene abierto en la app (lo dice get_app_state en «Ficha abierta»): tipo, descripción, estado, metadatos, spec actual, índice de adjuntos y vecinos entrantes/salientes, en una sola lectura. Es la primera llamada cuando te piden «pulí esta caja» o «completá la spec de este elemento». Después, mostrá tu propuesta y escribila con set_view_element_spec (merge: true para no pisar lo que escribió una persona). Si no hay ficha abierta, lo dice: pedile al humano que la abra o que nombre la caja y usá get_view.",
+        inputSchema: {},
+      },
+      async () => {
+        const r = await opts.readApp!({ kind: "focused" });
+        if (!r.ok) return noSePudo(r);
+        if (r.kind !== "focused") return fail("Respuesta inesperada.");
+        return text(formatFocusedElement(r.project, r.element));
+      }
+    );
   }
 
   // -- 4d. Skills: el arnés del agente externo -----------------------------------
@@ -2897,6 +2917,25 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         }
         return editar({ kind: "set-graph", graph: parsed as any, view });
       }
+    );
+
+    // Feature 019: escribir el CONTRATO de una caja del lienzo sin pasar por el
+    // workspace del MCP ni reemplazar la pestaña (antes: get_view importAs →
+    // set_element_spec → export_as_view replace, que pisa la vista entera).
+    server.registerTool(
+      "set_view_element_spec",
+      {
+        title: "Escribir la spec de un elemento de la vista",
+        description:
+          "Escribe la especificación de UN elemento de una vista de la app, nombrándolo como se llama en el lienzo, y la ficha la muestra al momento en su tab «Spec». Misma forma que set_element_spec (pasos con escenarios Given/When/Then, requisitos, criterios medibles, entidades, casos límite), pero sobre lo que el humano está mirando, no sobre el diagrama del workspace. Por defecto REEMPLAZA; con `merge: true` COMPLETA sin pisar lo que ya escribió una persona (es lo que conviene tras get_focused_element). Una spec vacía sin merge borra la que hubiera. Dos elementos con ese nombre ⇒ no elige: te lo dice. Lo que la fuente no decide NO se inventa: `needsClarification`.",
+        inputSchema: {
+          name: z.string().describe("Nombre del elemento tal como está en el lienzo (o su id)."),
+          spec: specSchema.describe("La especificación (completa, o el parche si `merge` es true)."),
+          merge: z.boolean().optional().describe("`true` = PARCHE: suma a lo que había y conserva lo que no mandás."),
+          ...vista,
+        },
+      },
+      async ({ name, spec, merge, view }) => editar({ kind: "set-spec", name, spec, merge, view })
     );
   }
 

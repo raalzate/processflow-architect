@@ -4,6 +4,7 @@ import {
   clampBody,
   formatArtifact,
   formatArtifactList,
+  formatFocusedElement,
   formatViewList,
   normalizeRef,
   resolveAppRead,
@@ -207,6 +208,84 @@ describe("resolveAppRead", () => {
         : [{ name: "Cobros", kind: "graph", notation: "bpmn", graph: graph(6) }],
     artifactsOf: (id) => (id === "f1" ? [art()] : [art({ title: "ADR Banca", lineageId: "lin-9" })]),
     ...over,
+  });
+
+  // Feature 019: la caja cuya ficha tiene abierta el humano, entera, en una lectura.
+  describe("focused", () => {
+    const conFoco = (focus: AppReadContext["focus"]) =>
+      ctx({
+        focus,
+        viewsOf: () => [
+          {
+            name: "Modelo",
+            kind: "design",
+            notation: "ddd",
+            builtin: true,
+            graph: {
+              ...graph(0),
+              big_picture: {
+                descripcion: "",
+                hotspots: [],
+                nodos: [
+                  { id: "pagar", nombre: "Pagar pedido", tipo_elemento: "Comando", descripcion: "Cobra", estado_comparativo: "nuevo",
+                    spec: { requirements: [{ id: "fr-1", texto: "Cobra en 500 ms" }] },
+                    metadata: [{ clave: "repo", valor: "acme/pagos" }],
+                    adjuntos: [{ nombre: "contrato.yaml", tipo: "openapi", texto: "a\nb", bytes: 3 }] },
+                  { id: "pagado", nombre: "Pedido pagado", tipo_elemento: "Evento", estado_comparativo: "nuevo" },
+                ],
+                aristas: [{ fuente: "pagar", destino: "pagado", descripcion: "emite" }],
+              },
+              agregados: [
+                { nombre_agregado: "Pedidos", entidad_raiz: "Pedido", descripcion: "", nodos: [], aristas: [] },
+              ],
+            } as any,
+          },
+        ],
+      });
+    const foco = { viewId: "design", viewName: "Modelo", elementId: "pagar", elementName: "Pagar pedido", tab: "spec" };
+
+    it("trae la ficha entera: tipo, descripción, spec, metadatos, adjuntos y vecinos", () => {
+      const r = resolveAppRead({ kind: "focused" }, conFoco(foco));
+      expect(r.ok).toBe(true);
+      if (!r.ok || r.kind !== "focused") return;
+      expect(r.element).toMatchObject({
+        view: "Modelo",
+        id: "pagar",
+        name: "Pagar pedido",
+        type: "Comando",
+        description: "Cobra",
+        metadata: [{ clave: "repo", valor: "acme/pagos" }],
+        outgoing: [{ name: "Pedido pagado", label: "emite" }],
+        incoming: [],
+      });
+      expect(r.element.spec?.requirements[0].texto).toBe("Cobra en 500 ms");
+      expect(r.element.attachments).toContain("contrato.yaml");
+      const out = formatFocusedElement(r.project, r.element);
+      expect(out).toContain("Pagar pedido");
+      expect(out).toContain("set_view_element_spec");
+      expect(out).toContain("read_element_doc");
+    });
+
+    it("un contenedor en foco también se lee (id agg-<nombre>, como en el lienzo)", () => {
+      const r = resolveAppRead(
+        { kind: "focused" },
+        conFoco({ viewId: "design", viewName: "Modelo", elementId: "agg-Pedidos", elementName: "Pedidos" })
+      );
+      expect(r.ok && r.kind === "focused" && r.element.type).toBe("Agregado");
+    });
+
+    it("sin ficha abierta lo dice y ofrece las vistas", () => {
+      const r = resolveAppRead({ kind: "focused" }, conFoco(null));
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.error).toContain("ninguna ficha abierta");
+      expect(!r.ok && r.options).toEqual(["Modelo"]);
+    });
+
+    it("si la caja ya no está en la vista, no inventa una", () => {
+      const r = resolveAppRead({ kind: "focused" }, conFoco({ ...foco, elementId: "borrada", elementName: "Borrada" }));
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.error).toContain("ya no está");
+    });
   });
 
   it("sin `project` responde sobre el proyecto ACTIVO", () => {

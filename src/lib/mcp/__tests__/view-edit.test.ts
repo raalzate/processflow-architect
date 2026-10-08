@@ -89,6 +89,52 @@ describe("applyViewEdit — elementos", () => {
   });
 });
 
+// Feature 019: el agente externo escribe el contrato de la caja DONDE el humano
+// la ve, sin pasar por el workspace del MCP ni reemplazar la pestaña.
+describe("applyViewEdit — spec de un elemento", () => {
+  const spec = { requirements: [{ texto: "Responde en 500 ms" }], criteria: [{ texto: "p95 < 500 ms" }] };
+
+  it("escribe la spec por nombre y conserva la geometría de la caja", () => {
+    const r = applyViewEdit(vista(), { kind: "set-spec", name: "api", spec }, "c4");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const api = nodos(r.graph).find((n) => n.id === "api");
+    expect(api?.spec?.requirements.map((q) => q.texto)).toEqual(["Responde en 500 ms"]);
+    expect(api?.spec?.criteria.map((c) => c.texto)).toEqual(["p95 < 500 ms"]);
+    expect(api).toMatchObject({ x: 10, y: 20 });
+    expect(r.message).toContain("1 requisito(s)");
+  });
+
+  it("con merge suma a lo que escribió el humano en vez de pisarlo", () => {
+    const g = vista();
+    g.big_picture.nodos[1].spec = { requirements: [{ id: "fr-1", texto: "Lo escribió una persona" }] } as any;
+    const r = applyViewEdit(g, { kind: "set-spec", name: "API", spec, merge: true }, "c4");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const textos = nodos(r.graph).find((n) => n.id === "api")?.spec?.requirements.map((q) => q.texto);
+    expect(textos).toEqual(["Lo escribió una persona", "Responde en 500 ms"]);
+  });
+
+  it("una spec vacía sin merge borra la que había", () => {
+    const g = vista();
+    g.big_picture.nodos[1].spec = { requirements: [{ id: "fr-1", texto: "x" }] } as any;
+    const r = applyViewEdit(g, { kind: "set-spec", name: "API", spec: {} }, "c4");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(nodos(r.graph).find((n) => n.id === "api")?.spec).toBeUndefined();
+    expect(r.message).toContain("borrada");
+  });
+
+  it("dos cajas homónimas no se eligen solas", () => {
+    const g = vista();
+    g.big_picture.nodos.push(nodo("web2", "Web", "Componente"));
+    const r = applyViewEdit(g, { kind: "set-spec", name: "Web", spec }, "c4");
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toContain("Preguntá cuál");
+  });
+});
+
 describe("applyViewEdit — relaciones", () => {
   it("agrega, actualiza e invierte una relación nombrando las cajas", () => {
     const r1 = applyViewEdit(vista(), { kind: "add-edge", from: "API", to: "Web", label: "responde" }, "c4");

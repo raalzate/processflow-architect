@@ -78,6 +78,31 @@ describe("formatAppState", () => {
     expect(out).toContain("Beta");
   });
 
+  // Feature 019: el agente externo tiene que saber qué caja tiene abierta el
+  // humano para que «pulí esta caja» no necesite dictarle el nombre.
+  it("publica la ficha abierta con vista, elemento y tab", () => {
+    const s = describeAppState({
+      graph: graph("Aurora"),
+      views: [...BUILTIN_VIEWS, vista()],
+      viewsLimit: MAX_CUSTOM_VIEWS,
+      now: "x",
+      focus: { viewId: "v1", viewName: "Proceso de pago", elementId: "b", elementName: "B", tab: "spec" },
+    });
+    expect(s.focus).toEqual({ viewId: "v1", viewName: "Proceso de pago", elementId: "b", elementName: "B", tab: "spec" });
+    const out = formatAppState(s);
+    expect(out).toContain('"B"');
+    expect(out).toContain('"Proceso de pago"');
+    expect(out).toContain("tab spec");
+    expect(out).toContain("get_focused_element");
+    expect(out).toContain("set_view_element_spec");
+  });
+
+  it("sin ficha abierta lo dice en vez de callarse", () => {
+    const s = describeAppState({ graph: graph("Aurora"), views: [], viewsLimit: 50, now: "x" });
+    expect(s.focus).toBeNull();
+    expect(formatAppState(s)).toContain("Ficha abierta: ninguna");
+  });
+
   it("sin proyecto activo dice que export_as_view no tiene dónde colgar", () => {
     const out = formatAppState(
       describeAppState({ graph: null, views: [], viewsLimit: 50, now: "x" })

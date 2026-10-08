@@ -39,6 +39,7 @@ import {
 import { DEFAULT_NOTATION_ID, INITIAL_NOTATION_ID, type NotationId } from "@/lib/notations";
 import { emptyGraphData } from "@/components/graph/designer/serialize";
 import type { GraphData } from "@/lib/types";
+import type { AppFocus } from "@/lib/mcp/app-state";
 import { openTabIds, viewAfterClosing, type EmbedView } from "@/lib/view-embeds";
 import { DEFAULT_MERMAID_CODE } from "@/lib/mermaid/templates";
 import type { ViewKind } from "@/lib/views-types";
@@ -166,7 +167,20 @@ export interface ViewsContextType {
    * en vez de no reaccionar.
    */
   revealNode: (container: string | undefined, type: string | undefined) => void;
+
+  /* --- Ficha abierta (feature 019) ------------------------------------- */
+  /**
+   * Elemento cuya ficha está abierta, con la vista en la que se abrió. Lo
+   * publica `AppContent` al MCP (`get_app_state` → «Ficha abierta») para que un
+   * agente externo sepa qué es «esta caja» sin que el humano se lo dicte. Es
+   * estado de navegación: no se persiste.
+   */
+  focus: ElementFocus | null;
+  setFocus: (focus: ElementFocus | null) => void;
 }
+
+/** La ficha abierta: qué caja, en qué vista, en qué tab. Es la misma forma que publica el MCP. */
+export type ElementFocus = AppFocus;
 
 const ViewsContext = createContext<ViewsContextType | undefined>(undefined);
 
@@ -187,10 +201,14 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
   // persiste: es estado de navegación efímero, no del documento.
   const [drillStack, setDrillStack] = useState<string[]>([]);
   const [rawOpenViewIds, setRawOpenViewIds] = useState<string[]>([]);
+  // Ficha abierta (feature 019). Se limpia al cambiar de proyecto: la caja era
+  // del anterior y publicarla sería mentirle al agente.
+  const [focus, setFocus] = useState<ElementFocus | null>(null);
 
   // Carga al cambiar de proyecto.
   useEffect(() => {
     setDrillStack([]);
+    setFocus(null);
     if (!currentFileId) {
       setCustomViews([]);
       setActiveViewId("design");
@@ -594,6 +612,8 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     setTypeVisible,
     clearFilters,
     revealNode,
+    focus,
+    setFocus,
   };
 
   return <ViewsContext.Provider value={value}>{children}</ViewsContext.Provider>;

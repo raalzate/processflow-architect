@@ -52,6 +52,7 @@ import {
   AlignVerticalJustifyStart,
   AlignVerticalJustifyCenter,
   AlignVerticalJustifyEnd,
+  Plug,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -172,10 +173,16 @@ import { ACCEPTED_REFERENCE_TYPES, extractFileText } from "@/lib/pdf-text";
 import { applyGraphFilters, hasActiveFilters } from "@/lib/graph-filters";
 import { useViews } from "@/context/ViewsContext";
 import { useReference } from "@/context/ReferenceContext";
+import { MCP_ENABLED_KEY, readMcpPrefs } from "@/lib/mcp-settings";
+import { handoffPrompt } from "@/lib/mcp/handoff";
 import { buildEmbedMap, wouldCreateCycle } from "@/lib/view-embeds";
 import { ReferenceContextDialog } from "./ReferenceContextDialog";
 import { CanvasContextMenu, type CanvasMenuItem } from "./CanvasContextMenu";
-import { draftPatch, hasDraftChanges, parseTagList } from "./inspector-draft";
+import { changedKeys, draftPatch, hasDraftChanges, parseTagList } from "./inspector-draft";
+
+/** Igualdad de spec con la misma regla que el borrador (`changedKeys`), para no duplicar la comparación. */
+const igualSpec = (a: ElementSpec | undefined, b: ElementSpec | undefined): boolean =>
+  changedKeys({ spec: a }, { spec: b }).length === 0;
 import { CANVAS_CHROME } from "@/lib/canvas-chrome";
 import {
   FUENTES,
@@ -1191,6 +1198,11 @@ const EditNodeDialog: React.FC<{
   const [draft, setDraft] = useState<DesignerNode | null>(null);
   const { run, busy } = useAi();
   const { toast } = useToast();
+  // Ficha abierta → foco publicado al MCP (feature 019). El nombre de la vista
+  // sale del contexto: la ficha no sabe en qué pestaña vive y el agente externo
+  // necesita las dos cosas para encontrar la caja.
+  const { setFocus, views: vistasDelProyecto, activeViewId: vistaActivaId } = useViews();
+  const vistaActivaNombre = vistasDelProyecto.find((v) => v.id === vistaActivaId)?.name ?? "Modelo";
 
   // Nombre de cualquier caja por su id, para los chips y el markdown de la spec.
   const resolveNodeName = useCallback((id: string) => nodes.get(id)?.nombre ?? id, [nodes]);
@@ -1269,6 +1281,16 @@ const EditNodeDialog: React.FC<{
     // tecleando. Sólo se reinicia al cambiar de elemento o al cerrar.
     if (node && nodeRef.current && node.id === nodeRef.current.id) {
       nodeRef.current = node;
+      // Spec escrita desde AFUERA con la ficha abierta (un agente externo por
+      // `set_view_element_spec`, feature 019): se adopta sólo si el humano no
+      // tocó la spec en el borrador. Si no, la ficha seguiría mostrando la
+      // vieja y el próximo autoguardado pisaría lo que escribió el agente.
+      const original = originalRef.current;
+      const borrador = draftRef.current;
+      if (original && !igualSpec(node.spec, original.spec) && borrador && igualSpec(borrador.spec, original.spec)) {
+        originalRef.current = { ...original, spec: node.spec };
+        setDraft((d) => (d ? { ...d, spec: node.spec } : d));
+      }
       return;
     }
     flush();
@@ -1284,6 +1306,73 @@ const EditNodeDialog: React.FC<{
     const t = setTimeout(flush, 400);
     return () => clearTimeout(t);
   }, [draft, flush]);
+  // Publica qué caja está abierta (y en qué tab); al cerrar, o al desmontar la
+  // ficha, el foco se va: un agente que lea «ficha abierta» con la ficha cerrada
+  // escribiría sobre una caja que el humano ya no mira. Se sigue el nombre del
+  // NODO (no del borrador) para no republicar por tecla.
+  useEffect(() => {
+    if (!node) {
+      setFocus(null);
+      return;
+    }
+    setFocus({
+      viewId: vistaActivaId,
+      viewName: vistaActivaNombre,
+      elementId: node.id,
+      elementName: node.nombre,
+      tab,
+    });
+    // Dependencias por PRIMITIVOS: el autoguardado devuelve un `node` nuevo tras
+    // cada edición y por identidad republicaría el foco en cada rebote.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node?.id, node?.nombre, tab, vistaActivaId, vistaActivaNombre, setFocus]);
+  useEffect(() => () => setFocus(null), [setFocus]);
+
+  /**
+   * «Enviar al agente» (feature 019): la app no puede abrir Claude Code ni
+   * empujarle un prompt, así que el tope es dejar todo listo en un clic:
+   * servidor MCP encendido (con el puerto que el humano eligió en Ajustes) y
+   * el prompt de entrega en el portapapeles.
+   */
+  const enviarAlAgente = async () => {
+    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    const actual = draftRef.current;
+    if (!actual) return;
+    if (!electron?.mcpServerStatus || !electron.mcpServerStart) {
+      toast({ title: "Sólo en la app de escritorio", description: "El servidor MCP corre dentro de la app Electron." });
+      return;
+    }
+    try {
+      let estado = await electron.mcpServerStatus();
+      if (!estado.running) {
+        const { port } = readMcpPrefs(window.localStorage);
+        const arranque = await electron.mcpServerStart(port);
+        if (!arranque.running) {
+          toast({ variant: "destructive", title: "No se pudo encender el servidor MCP", description: arranque.error });
+          return;
+        }
+        estado = arranque;
+        try {
+          window.localStorage.setItem(MCP_ENABLED_KEY, "1");
+        } catch {
+          /* sin localStorage el servidor vale para esta sesión y basta */
+        }
+      }
+      const prompt = handoffPrompt({
+        elementName: actual.nombre,
+        viewName: vistaActivaNombre,
+        url: estado.url,
+        hasSpec: !isSpecEmpty(actual.spec),
+      });
+      await navigator.clipboard.writeText(prompt);
+      toast({
+        title: "Listo para el agente",
+        description: `Servidor MCP activo en ${estado.url}. El prompt está en el portapapeles: pegalo en Claude Code o Codex.`,
+      });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "No se pudo preparar la entrega", description: String(e?.message ?? e) });
+    }
+  };
   if (!draft) return null;
 
   // El tipo del nodo puede venir de OTRA notación (p. ej. diagrama BPMN/C4
@@ -1463,6 +1552,18 @@ const EditNodeDialog: React.FC<{
               </DrawerPrimitive.Description>
             </div>
             <div className="flex shrink-0 items-center gap-1">
+              {/* Entregar la caja a un agente externo (feature 019). Sólo en la app
+                  de escritorio: el servidor MCP corre en el proceso main. */}
+              {typeof window !== "undefined" && !!window.electronAPI && (
+                <IconAction
+                  type="button"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  onClick={() => void enviarAlAgente()}
+                  label="Enviar al agente externo (Claude Code / Codex): enciende el servidor MCP y copia el prompt"
+                  icon={<Plug className="h-4 w-4" />}
+                />
+              )}
               {/* Ensanchar: el rótulo dice a qué ancho se PASA, no en cuál se está. */}
               <IconAction
                 type="button"
