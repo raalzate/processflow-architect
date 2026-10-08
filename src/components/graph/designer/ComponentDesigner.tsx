@@ -1622,7 +1622,9 @@ const EditNodeDialog: React.FC<{
                   // El nombre GUARDADO (#461): el del borrador cambia con cada tecla y
                   // el agente no encontraría la caja por un nombre que aún no existe.
                   elementName={node?.nombre ?? draft.nombre}
+                  viewId={vistaActivaId}
                   viewName={vistaActivaNombre}
+                  activo={tab === "agente"}
                   projectName={projectName}
                   hasSpec={!isSpecEmpty(draft.spec)}
                   // La ficha para la IA de la app, que no tiene tools para leerla (#459).

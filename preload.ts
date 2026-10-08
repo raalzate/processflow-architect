@@ -35,7 +35,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   agentCliSend: (runId: string, input: any): Promise<{ ok: boolean; exitCode: number | null; stderr?: string }> =>
     ipcRenderer.invoke('agent-cli-send', runId, input),
   agentCliCancel: (runId: string): Promise<boolean> => ipcRenderer.invoke('agent-cli-cancel', runId),
-  agentCliGenerate: (input: any): Promise<{ ok: true; text: string } | { ok: false; error: string }> =>
+  agentCliGenerate: (
+    input: any
+  ): Promise<{ ok: true; text: string; costUsd?: number } | { ok: false; error: string; costUsd?: number }> =>
     ipcRenderer.invoke('agent-cli-generate', input),
   agentCliPickDir: (): Promise<string | null> => ipcRenderer.invoke('agent-cli-pick-dir'),
   onAgentCliEvent: (handler: (payload: { runId: string; event: any }) => void) => {

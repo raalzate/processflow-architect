@@ -22,6 +22,7 @@ import { litertGenerate } from "./litert-engine";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
 import { estadoIaLocal, puedeUsarIaLocal } from "./local-capability";
 import { cliInstalado } from "@/lib/agent-cli/capability";
+import { dentroDelTope, gastoSesion, leerTope, mensajeTope, sumarGasto } from "@/lib/agent-cli/cost";
 import type { CliId } from "@/lib/agent-cli/types";
 
 const api = () => (typeof window !== "undefined" ? (window as any).electronAPI : undefined);
@@ -55,7 +56,12 @@ export const cliAvailable = (cli: CliId = DEFAULT_CLI): boolean => !!api()?.agen
 export async function runCli(prompt: string, system?: string, cli: CliId = DEFAULT_CLI): Promise<string> {
   const a = api();
   if (!a?.agentCliGenerate) throw new Error("El motor por CLI sólo está disponible en la app de escritorio.");
+  // #462: tope de gasto por sesión. Se mira ANTES de llamar: una vez lanzada,
+  // la llamada ya se cobra.
+  const tope = leerTope(typeof localStorage === "undefined" ? undefined : localStorage);
+  if (!dentroDelTope(gastoSesion(), tope)) throw new Error(mensajeTope(gastoSesion(), tope as number));
   const r = await a.agentCliGenerate({ cli, prompt, system });
+  sumarGasto(r.costUsd); // también lo gastado en una llamada que falló
   if (!r.ok) throw new Error(r.error);
   return (r.text || "").trim();
 }

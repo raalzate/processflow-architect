@@ -40,4 +40,6 @@ export interface CliStatus {
   cli: CliId;
   installed: boolean;
   version?: string;
+  /** ¿Hay sesión iniciada? (sólo Claude, por `claude auth status`; #462). Ausente = no se sabe. */
+  loggedIn?: boolean;
 }

@@ -74,7 +74,10 @@ export interface ElectronAPI {
   agentCliSend: (runId: string, input: LaunchInput) => Promise<{ ok: boolean; exitCode: number | null; stderr?: string }>;
   agentCliCancel: (runId: string) => Promise<boolean>;
   /** Texto puro con el CLI como motor del router (feature 021). */
-  agentCliGenerate: (input: GenerateInput) => Promise<{ ok: true; text: string } | { ok: false; error: string }>;
+  /** `costUsd`: lo que informa el CLI, para el tope de gasto de la sesión (#462). */
+  agentCliGenerate: (
+    input: GenerateInput
+  ) => Promise<{ ok: true; text: string; costUsd?: number } | { ok: false; error: string; costUsd?: number }>;
   /** Selector nativo de carpetas para adjuntar contexto al chat (#460). null = canceló. */
   agentCliPickDir: () => Promise<string | null>;
   onAgentCliEvent: (handler: (payload: { runId: string; event: ChatEvent }) => void) => () => void;

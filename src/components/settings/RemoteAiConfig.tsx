@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Cloud, KeyRound, Check, Loader2, Trash2, ExternalLink, Cpu, Shuffle, PlugZap, Terminal } from "lucide-react";
 import { publicarEstadoCli } from "@/lib/agent-cli/capability";
+import { DEFAULT_COST_CAP_USD, formatoUsd, gastoSesion, guardarTope, leerTope, sumarGasto } from "@/lib/agent-cli/cost";
 import { CLI_INFO, type CliStatus } from "@/lib/agent-cli/types";
 import { DEFAULT_CLI } from "@/lib/ai/providers";
 import { Button } from "@/components/ui/button";
@@ -79,6 +80,16 @@ export function RemoteAiConfig() {
   // main en cada apertura: el usuario pudo instalarlo con la app abierta.
   const [cli, setCli] = useState<CliStatus | null | undefined>(undefined);
   const [probandoCli, setProbandoCli] = useState(false);
+  // Tope de gasto del CLI (#462): se lee al montar y se guarda al cambiarlo.
+  const [topeCli, setTopeCli] = useState<number | null>(() =>
+    leerTope(typeof window === "undefined" ? undefined : window.localStorage)
+  );
+  const [gastoCli, setGastoCli] = useState(0);
+  useEffect(() => setGastoCli(gastoSesion()), [probandoCli]);
+  const cambiarTope = (t: number | null) => {
+    setTopeCli(t);
+    guardarTope(typeof window === "undefined" ? undefined : window.localStorage, t);
+  };
   useEffect(() => {
     api()
       ?.agentCliStatus?.()
@@ -95,6 +106,7 @@ export function RemoteAiConfig() {
     setProbandoCli(true);
     try {
       const r = await api()?.agentCliGenerate?.({ cli: DEFAULT_CLI, prompt: "Respondé exactamente: OK" });
+      sumarGasto(r?.costUsd); // la prueba también se cobra (#462)
       if (r?.ok) toast({ title: "Claude Code responde", description: `Contestó «${r.text.slice(0, 40)}».` });
       else toast({ variant: "destructive", title: "Claude Code no respondió", description: r?.error ?? "Sin respuesta." });
     } finally {
@@ -231,12 +243,55 @@ export function RemoteAiConfig() {
                 ; mientras tanto se usa la IA local como respaldo.
               </p>
             )}
+            {/* #462: instalado no implica sesión iniciada. */}
+            {cli?.installed && cli.loggedIn === false && (
+              <p className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning-foreground">
+                Claude Code está instalado pero sin sesión iniciada: abrí una terminal, corré <code>claude</code> y
+                entrá con tu cuenta.
+              </p>
+            )}
             {cli?.installed && (
               <Button type="button" variant="outline" size="sm" onClick={() => void probarCli()} disabled={probandoCli}>
                 {probandoCli ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlugZap className="mr-2 h-4 w-4" />}
                 Probar Claude Code
               </Button>
             )}
+            {/* #462: tope de gasto por sesión, para el router y el chat de la ficha. */}
+            <div className="space-y-1.5 border-t pt-3">
+              <Label htmlFor="cli-cost-cap" className="text-xs">
+                Tope de gasto por sesión de la app
+              </Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  id="cli-cost-cap"
+                  type="number"
+                  min={0.1}
+                  step={0.5}
+                  value={topeCli ?? ""}
+                  placeholder="sin tope"
+                  disabled={topeCli === null}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (Number.isFinite(n) && n > 0) cambiarTope(n);
+                  }}
+                  className="h-8 w-28"
+                />
+                <span className="text-xs text-muted-foreground">US$</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => cambiarTope(topeCli === null ? DEFAULT_COST_CAP_USD : null)}
+                >
+                  {topeCli === null ? "Poner tope" : "Sin tope"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Gastado en esta sesión: {formatoUsd(gastoCli)}
+                {topeCli !== null ? ` de ${formatoUsd(topeCli)}` : ""}. Al llegar al tope, la app deja de llamar a
+                Claude Code hasta que lo subas o reinicies la app.
+              </p>
+            </div>
           </div>
         )}
 

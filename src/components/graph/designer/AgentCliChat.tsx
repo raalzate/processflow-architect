@@ -41,6 +41,9 @@ import {
 } from "@/lib/agent-cli/engine";
 import { readMcpPrefs } from "@/lib/mcp-settings";
 import { estadoCli, publicarEstadoCli } from "@/lib/agent-cli/capability";
+import { aplicarEvento, sesionDeEvento, type ChatMsg, type ToolCall } from "@/lib/agent-cli/chat-state";
+import { dentroDelTope, formatoUsd, gastoSesion, leerTope, mensajeTope, sumarGasto } from "@/lib/agent-cli/cost";
+import { urlConAlcance } from "@/lib/mcp/focus-scope";
 
 const CLI_CHOICE_KEY = "agent_cli_choice";
 /** Carpetas de contexto adjuntas (#460): se recuerdan entre fichas y sesiones. */
@@ -55,28 +58,19 @@ function leerCarpetas(): string[] {
   }
 }
 
-interface ToolCall {
-  name: string;
-  input: unknown;
-  result?: string;
-}
-
-interface Msg {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  tools: ToolCall[];
-  error?: string;
-  /** Turnos y costo que reporta el CLI al cerrar. */
-  meta?: { turns?: number; costUsd?: number };
-}
+// El hilo y cómo lo cambia cada evento viven en `chat-state.ts` (puro, con test: #462).
+type Msg = ChatMsg;
 
 export interface AgentCliChatProps {
   /** Id de la caja: identifica la conversación (el nombre cambia al renombrar). */
   elementId: string;
   /** Nombre GUARDADO de la caja (no el borrador que se está tecleando). */
   elementName: string;
+  /** Id de la vista: identifica la conversación (renombrar la vista no la reinicia, #462). */
+  viewId: string;
   viewName: string;
+  /** ¿El tab está visible? Con `forceMount` el chat vive oculto: al mostrarse, baja al final (#462). */
+  activo?: boolean;
   projectName?: string;
   hasSpec: boolean;
   /** Ficha de la caja para la IA de la app, que no tiene tools para leerla (#459). */
@@ -186,13 +180,19 @@ export function AgentCliChat(props: AgentCliChatProps) {
 
   // Otra caja = otra conversación. Se identifica por el ID (#461): con el nombre,
   // renombrar la caja reiniciaba el chat en cada tecla.
-  useEffect(() => nuevaConversacion(), [props.elementId, viewName, nuevaConversacion]);
+  // La vista también por ID (#462): renombrarla reiniciaba la conversación.
+  useEffect(() => nuevaConversacion(), [props.elementId, props.viewId, nuevaConversacion]);
 
+  // Al final del hilo cuando llega algo y cuando el tab se vuelve visible: con
+  // `forceMount` el chat vive oculto, y un scroll hecho oculto no cuenta (#462).
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages]);
+  }, [messages, props.activo]);
 
   const elegir = (e: ChatEngine) => {
+    // Cambiar de motor corta lo que esté corriendo (#462): la respuesta del motor
+    // anterior no tiene que aparecer en la conversación con el nuevo.
+    if (busy) nuevaConversacion();
     setElegido(e);
     sessionRef.current = undefined;
     try {
@@ -228,52 +228,24 @@ export function AgentCliChat(props: AgentCliChatProps) {
       // §P4 (#461): se enciende para esta sesión, pero NO se persiste el opt-in.
       // El auto-arranque del servidor lo decide el humano en Ajustes.
     }
-    return s.url;
-  }, [electron]);
+    // #462: con el alcance de la caja abierta, el servidor sólo deja escribir ESA
+    // spec. Antes «sólo esta caja» lo sostenía el prompt.
+    return urlConAlcance(s.url, props.elementId);
+  }, [electron, props.elementId]);
 
-  const patchLast = (fn: (m: Msg) => Msg) =>
-    setMessages((prev) => {
-      if (!prev.length) return prev;
-      const copia = [...prev];
-      copia[copia.length - 1] = fn(copia[copia.length - 1]);
-      return copia;
-    });
-
+  /** Aplica un evento del agente: la sesión va aparte; el hilo lo decide `chat-state.ts`. */
   const aplicar = (e: ChatEvent) => {
-    switch (e.type) {
-      case "session":
-        sessionRef.current = e.sessionId;
-        return;
-      case "text":
-        patchLast((m) => ({ ...m, text: m.text + e.delta }));
-        return;
-      case "tool_use":
-        patchLast((m) => ({ ...m, tools: [...m.tools, { name: e.name, input: e.input }] }));
-        return;
-      case "tool_result":
-        patchLast((m) => {
-          const i = m.tools.findIndex((t) => t.result === undefined);
-          if (i === -1) return m;
-          const tools = [...m.tools];
-          tools[i] = { ...tools[i], result: e.text };
-          return { ...m, tools };
-        });
-        return;
-      case "result":
-        if (e.sessionId) sessionRef.current = e.sessionId;
-        patchLast((m) => ({
-          ...m,
-          // Codex manda el texto completo en `result`; Claude ya lo mandó por deltas.
-          text: m.text || e.text,
-          meta: { turns: e.turns, costUsd: e.costUsd },
-          ...(e.ok ? {} : { error: e.text || "El agente terminó con error." }),
-        }));
-        return;
-      case "error":
-        patchLast((m) => ({ ...m, error: [m.error, e.message].filter(Boolean).join("\n") }));
-        return;
-    }
+    const sesion = sesionDeEvento(e);
+    if (sesion) sessionRef.current = sesion;
+    if (e.type === "result") sumarGasto(e.costUsd); // #462: tope de gasto de la sesión
+    setMessages((prev) => aplicarEvento(prev, e));
   };
+
+  /** Reemplaza el texto del mensaje en curso (la respuesta entera de la IA de la app). */
+  const ponerTexto = (texto: string) =>
+    setMessages((prev) =>
+      prev.length ? [...prev.slice(0, -1), { ...prev[prev.length - 1], text: texto }] : prev
+    );
 
   /** ¿Sigue vigente la conversación `gen`? (no se cambió de caja ni se cerró la ficha). */
   const vigente = (gen: number) => montadoRef.current && gen === convRef.current;
@@ -326,12 +298,24 @@ export function AgentCliChat(props: AgentCliChatProps) {
     if (!vigente(gen)) return; // otra caja: la respuesta era de la anterior
     // `useAi` ya mostró el motivo en un toast; acá queda dicho en el hilo.
     if (respuesta === null) aplicar({ type: "error", message: "La IA de la app no respondió (mirá el aviso)." });
-    else patchLast((m) => ({ ...m, text: respuesta }));
+    else ponerTexto(respuesta);
   };
 
   const enviar = async () => {
     const texto = input.trim();
     if (!texto || busy || status === null) return;
+    // #462: con el CLI, el tope de gasto se mira ANTES (una vez lanzada, la
+    // corrida ya se cobra). La IA de la app pasa por el router, que lo mira solo.
+    if (esCli(engine)) {
+      const tope = leerTope(window.localStorage);
+      if (!dentroDelTope(gastoSesion(), tope)) {
+        setMessages((prev) => [
+          ...prev,
+          { id: `tope-${Date.now()}`, role: "assistant", text: "", tools: [], error: mensajeTope(gastoSesion(), tope as number) },
+        ]);
+        return;
+      }
+    }
     const previos = messages;
     const gen = convRef.current;
     setInput("");
@@ -400,7 +384,8 @@ export function AgentCliChat(props: AgentCliChatProps) {
           {!listo
             ? "Buscando CLI…"
             : esCli(engine)
-              ? `${version ?? "instalado"} · habla de «${elementName}»`
+              ? // #462: lo gastado en la sesión, a la vista; no sólo al final de cada respuesta.
+                `${version ?? "instalado"} · ${formatoUsd(gastoSesion())} en esta sesión`
               : `habla de «${elementName}»`}
         </span>
         {/* Qué motor contesta cuando es la IA de la app (local, nube o Claude Code como motor). */}
@@ -428,6 +413,15 @@ export function AgentCliChat(props: AgentCliChatProps) {
               y volvé a abrir la ficha.
             </p>
           )}
+        </div>
+      )}
+
+      {/* #462: «instalado» no implica sesión iniciada; sin ella cada mensaje fallaba
+          con «Not logged in» como si fuera un error del agente. */}
+      {esCli(engine) && status?.find((s) => s.cli === engine)?.loggedIn === false && (
+        <div className="mx-4 mt-3 rounded-md border border-warning-border bg-warning-surface p-3 text-xs text-warning-foreground">
+          {CLI_INFO[engine].label} está instalado pero sin sesión iniciada. Abrí una terminal, corré{" "}
+          <code>{CLI_INFO[engine].command}</code> y entrá con tu cuenta; después volvé a abrir la ficha.
         </div>
       )}
 
