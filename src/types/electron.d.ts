@@ -13,6 +13,8 @@ import type { AppState } from "@/lib/mcp/app-state";
 import type { EstadoUpdate } from "@/lib/update-check";
 import type { AppReadRequest, AppReadResult } from "@/lib/mcp/app-read";
 import type { AppActionRequest, AppActionResult } from "@/lib/mcp/app-actions";
+import type { ChatEvent, CliStatus } from "@/lib/agent-cli/types";
+import type { LaunchInput } from "@/lib/agent-cli/args";
 
 export interface McpServerStatus {
   running: boolean;
@@ -65,6 +67,13 @@ export interface ElectronAPI {
   litertModelDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
   litertModelReveal: (id: string) => Promise<{ ok: boolean; error?: string }>;
   onLitertModelProgress: (callback: (data: { id: string; percent: number }) => void) => () => void;
+
+  // Chat con un agente externo por CLI (Claude Code / Codex) desde la ficha (feature 020).
+  // El CLI corre en el main con la sesión del usuario; la app no guarda credenciales.
+  agentCliStatus: () => Promise<CliStatus[]>;
+  agentCliSend: (runId: string, input: LaunchInput) => Promise<{ ok: boolean; exitCode: number | null; stderr?: string }>;
+  agentCliCancel: (runId: string) => Promise<boolean>;
+  onAgentCliEvent: (handler: (payload: { runId: string; event: ChatEvent }) => void) => () => void;
 
   // Servidor MCP embebido (HTTP, opt-in): Claude Code/Codex se conectan a la app.
   mcpServerStart: (port?: number) => Promise<McpServerStatus & { error?: string }>;

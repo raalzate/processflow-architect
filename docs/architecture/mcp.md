@@ -178,6 +178,26 @@ soporta (electron #40380); el equivalente de escritorio es este servidor MCP.
 | Botón «Enviar al agente» (ficha) | enciende el servidor MCP si está apagado y copia el prompt de entrega (`src/lib/mcp/handoff.ts`). Es el tope: la app no puede abrir Claude Code ni empujarle un prompt. |
 | Skill `pulir-elemento` | el arnés corto: leer la ficha → proponer → confirmar → escribir. No diseña ni exporta. |
 
+### 5e · Chat con Claude Code o Codex dentro de la ficha (feature 020, #444)
+
+El humano pidió hablar con el agente **desde la ficha**, no pegar un prompt en otra ventana. Los
+dos CLI tienen modo headless: `claude -p … --output-format stream-json --mcp-config <http>
+--allowedTools "mcp__processflow__*"` y `codex exec --json -c mcp_servers.processflow.url=…`.
+El proceso main los lanza apuntando al servidor MCP de la app, traduce su stdout a eventos y
+los reenvía al renderer; el CLI usa la sesión que el usuario ya tiene en su máquina (§P4: sin
+SDKs ni llaves; la app no toca la red). Verificado en vivo con Claude Code 2.1.293; Codex sigue
+el contrato documentado y **no se verificó** (no está instalado en la máquina de desarrollo).
+
+| Pieza | Qué hace |
+|---|---|
+| `src/lib/agent-cli/` (puro) | `args.ts` arma el lanzamiento por CLI (MCP de la app, tools restringidas, `--resume`); `parse.ts` traduce el stream JSON de cada CLI a `ChatEvent`; `prompt.ts` escribe el prompt de sistema con la caja en foco (leer → proponer → escribir con aprobación). |
+| `main/services/agent-cli.ts` | resuelve el binario (una app GUI no hereda el PATH: mira `~/.local/bin`, `/opt/homebrew/bin`…), `spawn` con stdout progresivo, cancelación por `runId`, timeout sin eventos, stderr como error legible. |
+| IPC `agent-cli-status/send/cancel` + `agent-cli-event` | `main/ipc.ts`, `preload.ts`, `src/types/electron.d.ts`. |
+| Tab «Agente» (`AgentCliChat.tsx`) | selector Claude Code · Codex, chat con streaming, tools plegables, Detener, turnos y costo; enciende el MCP si está apagado. Sólo en la app de escritorio. |
+
+No es un `ProviderId`: el CLI no es un motor de inferencia de la app sino un agente ajeno, así
+que `router.ts`, `providers.ts` y `tasks.ts` no cambian.
+
 ### 5b · Configuración del servidor
 
 Además del workspace, el servidor acepta dos defaults para no repetir lo mismo en cada llamada:
