@@ -150,6 +150,28 @@ describe("runAgentCli", () => {
     expect(args).toContain("--append-system-prompt");
   });
 
+  // #460: una carpeta adjunta que ya no existe no lanza al agente a ciegas.
+  it("con carpetas adjuntas: las válidas van como --add-dir; una inexistente frena con aviso", async () => {
+    let args: string[] = [];
+    const spawn: Spawn = (_c, a) => {
+      args = a;
+      const { p } = procesoFalso();
+      setTimeout(() => p.emit("close", 0), 0);
+      return p;
+    };
+    const isDir = (p: string) => p === "/repo";
+    const ok = await runAgentCli("d1", { ...input, dirs: ["/repo"] }, () => {}, deps(spawn, { isDir }));
+    expect(ok.ok).toBe(true);
+    expect(args[args.indexOf("--add-dir") + 1]).toBe("/repo");
+
+    const nada = vi.fn() as unknown as Spawn;
+    const eventos: any[] = [];
+    const mal = await runAgentCli("d2", { ...input, dirs: ["/repo", "/se-borro"] }, (e) => eventos.push(e), deps(nada, { isDir }));
+    expect(mal.ok).toBe(false);
+    expect(eventos[0]).toMatchObject({ type: "error", message: expect.stringContaining("«/se-borro»") });
+    expect(nada).not.toHaveBeenCalled();
+  });
+
   it("sin binario emite error y no lanza nada", async () => {
     const spawn = vi.fn();
     const eventos: any[] = [];

@@ -35,6 +35,15 @@ export function resolveChatEngine(elegido: ChatEngine, estados: CliStatus[] | nu
   return instalado ? { engine: elegido, fallback: false } : { engine: "app", fallback: true };
 }
 
+/**
+ * Nombre visible de una carpeta adjunta (#460): la última parte de la ruta, en
+ * POSIX o Windows. La ruta entera va en el tooltip; la etiqueta tiene que caber.
+ */
+export function nombreCarpeta(ruta: string): string {
+  const partes = ruta.split(/[\\/]+/).filter(Boolean);
+  return partes[partes.length - 1] ?? ruta;
+}
+
 /** Aviso cuando hubo caída, para que el humano sepa quién le contesta. */
 export function fallbackNotice(elegido: ChatEngine): string {
   return `${engineLabel(elegido)} no está instalado: te contesta la IA de la app (no escribe en el lienzo; aplicá lo que te proponga desde el tab Spec).`;

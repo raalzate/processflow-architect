@@ -22,6 +22,27 @@ export interface LaunchInput {
   sessionId?: string;
   /** Tope de turnos por mensaje: un agente que se va de tema no corre sin fin. */
   maxTurns?: number;
+  /**
+   * Carpetas que el humano adjuntó como contexto (#460): rutas ABSOLUTAS. El
+   * agente las puede LEER (Read, Glob, Grep) y nada más.
+   */
+  dirs?: string[];
+}
+
+/** Herramientas de sólo lectura que se habilitan cuando hay carpetas adjuntas (#460). */
+export const READ_ONLY_TOOLS = ["Read", "Glob", "Grep"] as const;
+
+/** Lo que el agente nunca puede hacer en una carpeta adjunta: escribir ni ejecutar. */
+export const DENIED_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit"] as const;
+
+/**
+ * Carpetas utilizables: absolutas, sin repetir. Una relativa dependería del cwd
+ * del CLI (que es neutral a propósito) y una que empieza con «-» la leería el CLI
+ * como un flag: las dos se descartan acá y no llegan al lanzamiento.
+ */
+export function carpetasValidas(dirs: readonly string[] | undefined): string[] {
+  const absolutas = (dirs ?? []).map((d) => d.trim()).filter((d) => /^(\/|[A-Za-z]:[\\/])/.test(d));
+  return [...new Set(absolutas)];
 }
 
 export interface Launch {
@@ -86,6 +107,7 @@ export function claudeMcpConfig(mcpUrl: string): string {
 
 export function buildLaunch(input: LaunchInput): Launch {
   const maxTurns = String(input.maxTurns ?? DEFAULT_MAX_TURNS);
+  const dirs = carpetasValidas(input.dirs);
   if (input.cli === "claude") {
     return {
       command: "claude",
@@ -101,8 +123,14 @@ export function buildLaunch(input: LaunchInput): Launch {
         // Sólo el MCP de la app: lo que el usuario tenga en su ~/.claude no entra.
         "--strict-mcp-config",
         ...SIN_AJUSTES_AJENOS,
+        // Carpetas adjuntas (#460): acceso de LECTURA y nada más. `--add-dir` es
+        // variádico; cada ruta va con su propio flag para no tragarse lo que sigue.
+        ...dirs.flatMap((d) => ["--add-dir", d]),
         "--allowedTools",
         `mcp__${MCP_SERVER_NAME}__*`,
+        ...(dirs.length ? READ_ONLY_TOOLS : []),
+        "--disallowedTools",
+        ...DENIED_TOOLS,
         "--append-system-prompt",
         input.systemPrompt,
         "--max-turns",
@@ -113,7 +141,9 @@ export function buildLaunch(input: LaunchInput): Launch {
   }
   // Codex: el MCP se pasa como override de config (no hay flag inline de JSON).
   const mcp = ["-c", `mcp_servers.${MCP_SERVER_NAME}.url="${input.mcpUrl}"`];
-  const comunes = ["--json", ...mcp];
+  // Codex lee desde su directorio de trabajo (sandbox de sólo lectura por defecto
+  // en `exec`): la primera carpeta adjunta es ese directorio. Sin verificar en vivo.
+  const comunes = ["--json", ...mcp, ...(dirs[0] ? ["-C", dirs[0], "--sandbox", "read-only"] : [])];
   return {
     command: "codex",
     args: input.sessionId

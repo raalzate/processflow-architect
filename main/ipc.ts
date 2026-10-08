@@ -1,4 +1,4 @@
-import { app, ipcMain, IpcMainInvokeEvent, clipboard, BrowserWindow } from 'electron';
+import { app, ipcMain, IpcMainInvokeEvent, clipboard, BrowserWindow, dialog } from 'electron';
 import { handleMdToPdf } from './services/pdf';
 import { popupAppMenu } from './window';
 import {
@@ -102,6 +102,18 @@ export function registerIpcHandlers() {
   ipcMain.handle('agent-cli-cancel', async (_e, runId: string) => cancelAgentCli(runId));
   // Feature 021: el CLI como motor de texto del router (razona el CLI, actúa la app).
   ipcMain.handle('agent-cli-generate', async (_e, input: GenerateInput) => generateWithCli(input));
+  // Carpeta de contexto para el chat del agente (#460): el selector NATIVO de
+  // carpetas, así el humano nunca escribe una ruta a mano. null = canceló.
+  ipcMain.handle('agent-cli-pick-dir', async (event: IpcMainInvokeEvent) => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    const opts = {
+      title: 'Carpeta de contexto para el agente',
+      buttonLabel: 'Adjuntar carpeta',
+      properties: ['openDirectory'] as Array<'openDirectory'>,
+    };
+    const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+    return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+  });
 
   // --- Servidor MCP embebido (HTTP, opt-in desde Ajustes) ---
   ipcMain.handle('mcp-server-start', async (_e, port?: number) => startMcpHttp(port));

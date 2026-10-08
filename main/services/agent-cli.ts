@@ -17,10 +17,19 @@
  */
 
 import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildGenerateLaunch, buildLaunch, type GenerateInput, type LaunchInput } from "../../src/lib/agent-cli/args";
+import { buildGenerateLaunch, buildLaunch, carpetasValidas, type GenerateInput, type LaunchInput } from "../../src/lib/agent-cli/args";
+
+/** ¿Directorio existente? Nunca lanza: una ruta rara es «no». */
+function esDirectorio(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
 import { parseLine, resultText, splitLines } from "../../src/lib/agent-cli/parse";
 import { CLI_IDS, CLI_INFO, type ChatEvent, type CliId, type CliStatus } from "../../src/lib/agent-cli/types";
 
@@ -58,6 +67,8 @@ const opciones = (deps: Deps) => ({
 export interface Deps {
   spawn?: Spawn;
   exists?: (p: string) => boolean;
+  /** ¿La ruta es un directorio existente? (para las carpetas adjuntas, #460). */
+  isDir?: (p: string) => boolean;
   home?: string;
   env?: NodeJS.ProcessEnv;
   idleTimeoutMs?: number;
@@ -147,8 +158,18 @@ export async function runAgentCli(
     onEvent({ type: "error", message: `${CLI_INFO[input.cli].label} no está instalado (no encontré \`${CLI_INFO[input.cli].command}\`).` });
     return { ok: false, exitCode: null };
   }
+  // Carpetas adjuntas (#460): la ruta llega del renderer, así que se verifica
+  // acá que exista y sea un directorio. Una que ya no está (se movió, se
+  // desmontó el disco) se dice en el chat en vez de lanzar al agente a ciegas.
+  const isDir = deps.isDir ?? esDirectorio;
+  const pedidas = carpetasValidas(input.dirs);
+  const faltan = pedidas.filter((d) => !isDir(d));
+  if (faltan.length) {
+    onEvent({ type: "error", message: `No encuentro ${faltan.length === 1 ? "la carpeta" : "las carpetas"} ${faltan.map((d) => `«${d}»`).join(", ")}. Quitala del chat o volvé a adjuntarla.` });
+    return { ok: false, exitCode: null };
+  }
   const spawn = deps.spawn ?? (nodeSpawn as unknown as Spawn);
-  const launch = buildLaunch(input);
+  const launch = buildLaunch({ ...input, dirs: pedidas });
   const p = spawn(bin, launch.args, opciones(deps));
   corridas.set(runId, p);
 

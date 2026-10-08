@@ -18,7 +18,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Loader2, Send, Square, Trash2, Wrench } from "lucide-react";
+import { ChevronDown, Folder, FolderPlus, Loader2, Send, Square, Trash2, Wrench, X } from "lucide-react";
 import { IconAction } from "@/components/ui/icon-action";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -34,12 +34,24 @@ import {
   engineLabel,
   esCli,
   fallbackNotice,
+  nombreCarpeta,
   resolveChatEngine,
   type ChatEngine,
 } from "@/lib/agent-cli/engine";
 import { MCP_ENABLED_KEY, readMcpPrefs } from "@/lib/mcp-settings";
 
 const CLI_CHOICE_KEY = "agent_cli_choice";
+/** Carpetas de contexto adjuntas (#460): se recuerdan entre fichas y sesiones. */
+const CLI_DIRS_KEY = "agent_cli_dirs";
+
+function leerCarpetas(): string[] {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(CLI_DIRS_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 interface ToolCall {
   name: string;
@@ -109,6 +121,7 @@ export function AgentCliChat(props: AgentCliChatProps) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [dirs, setDirs] = useState<string[]>([]);
   const runIdRef = useRef<string | null>(null);
   const sessionRef = useRef<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -121,6 +134,7 @@ export function AgentCliChat(props: AgentCliChatProps) {
     } catch {
       /* sin localStorage: Claude Code por defecto */
     }
+    setDirs(leerCarpetas());
     if (electron?.agentCliStatus) electron.agentCliStatus().then(setStatus).catch(() => setStatus([]));
     // Sin Electron no hay CLI: se sabe ya, y el chat cae a la IA de la app.
     else setStatus([]);
@@ -151,6 +165,21 @@ export function AgentCliChat(props: AgentCliChatProps) {
     } catch {
       /* ignore */
     }
+  };
+
+  const guardarCarpetas = (siguiente: string[]) => {
+    setDirs(siguiente);
+    try {
+      window.localStorage.setItem(CLI_DIRS_KEY, JSON.stringify(siguiente));
+    } catch {
+      /* sin localStorage valen para esta sesión */
+    }
+  };
+
+  /** Selector nativo de carpetas (#460): nunca se escribe una ruta a mano. */
+  const adjuntarCarpeta = async () => {
+    const ruta = await electron?.agentCliPickDir?.();
+    if (ruta && !dirs.includes(ruta)) guardarCarpetas([...dirs, ruta]);
   };
 
   /** Servidor MCP activo (lo enciende si hace falta) y su URL. */
@@ -226,8 +255,9 @@ export function AgentCliChat(props: AgentCliChatProps) {
         cli: engine,
         prompt: texto,
         mcpUrl: url,
-        systemPrompt: focusSystemPrompt({ elementName, viewName, projectName, hasSpec }),
+        systemPrompt: focusSystemPrompt({ elementName, viewName, projectName, hasSpec, dirs }),
         sessionId: sessionRef.current,
+        dirs,
       });
     } finally {
       off();
@@ -389,7 +419,47 @@ export function AgentCliChat(props: AgentCliChatProps) {
         ))}
       </div>
 
-      <div className="flex items-end gap-2 border-t p-3">
+      {/* Carpetas de contexto adjuntas (#460): nombre visible, ruta en el tooltip. */}
+      {dirs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t px-3 pt-2">
+          {dirs.map((d) => (
+            <span
+              key={d}
+              title={d}
+              className="inline-flex max-w-[14rem] items-center gap-1 rounded-full border bg-muted/50 py-0.5 pl-2 pr-0.5 text-xs"
+            >
+              <Folder className="h-3 w-3 shrink-0 text-muted-foreground" />
+              <span className="truncate">{nombreCarpeta(d)}</span>
+              <IconAction
+                type="button"
+                variant="ghost"
+                className="h-5 w-5"
+                onClick={() => guardarCarpetas(dirs.filter((x) => x !== d))}
+                disabled={busy}
+                label={`Quitar la carpeta ${nombreCarpeta(d)}`}
+                icon={<X className="h-3 w-3" />}
+              />
+            </span>
+          ))}
+          {!esCli(engine) && (
+            <span className="text-xs text-muted-foreground">
+              La IA de la app no lee carpetas: elegí Claude Code para usarlas.
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className={cn("flex items-end gap-2 p-3", dirs.length === 0 && "border-t")}>
+        {electron?.agentCliPickDir && (
+          <IconAction
+            type="button"
+            variant="ghost"
+            onClick={() => void adjuntarCarpeta()}
+            disabled={busy}
+            label="Adjuntar carpeta como contexto (sólo lectura)"
+            icon={<FolderPlus className="h-4 w-4" />}
+          />
+        )}
         <Textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}

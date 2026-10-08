@@ -75,6 +75,8 @@ export interface ElectronAPI {
   agentCliCancel: (runId: string) => Promise<boolean>;
   /** Texto puro con el CLI como motor del router (feature 021). */
   agentCliGenerate: (input: GenerateInput) => Promise<{ ok: true; text: string } | { ok: false; error: string }>;
+  /** Selector nativo de carpetas para adjuntar contexto al chat (#460). null = canceló. */
+  agentCliPickDir: () => Promise<string | null>;
   onAgentCliEvent: (handler: (payload: { runId: string; event: ChatEvent }) => void) => () => void;
 
   // Servidor MCP embebido (HTTP, opt-in): Claude Code/Codex se conectan a la app.

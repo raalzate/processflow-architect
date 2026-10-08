@@ -198,6 +198,15 @@ el contrato documentado y **no se verificó** (no está instalado en la máquina
 No es un `ProviderId`: el CLI no es un motor de inferencia de la app sino un agente ajeno, así
 que `router.ts`, `providers.ts` y `tasks.ts` no cambian.
 
+**Carpetas de contexto (#460).** El botón «Adjuntar carpeta» del chat abre el selector nativo
+(IPC `agent-cli-pick-dir`); la carpeta queda como etiqueta y se recuerda. Claude Code la recibe
+con `--add-dir` y sólo `Read`/`Glob`/`Grep` además del MCP; `Bash`, `Write`, `Edit` y
+`NotebookEdit` van en `--disallowedTools`. El main verifica que cada ruta sea un directorio
+existente antes de lanzar (`carpetasValidas` descarta relativas y las que parecen flags).
+Verificado en vivo: buscó con `Grep`, leyó con `Read`, citó el archivo, y no pudo escribir.
+Codex usa la primera carpeta como `-C` con `--sandbox read-only` (sin verificar). La IA de la app
+no tiene herramientas para leer carpetas: el chat lo avisa.
+
 ### 5f · Claude Code como motor de razonamiento de la app (feature 021, #451)
 
 Lo inverso de 5e: el agente es **el de la app** y Claude Code sólo **piensa**. Ajustes → Motor

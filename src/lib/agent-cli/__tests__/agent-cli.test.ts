@@ -214,3 +214,57 @@ describe("resolveChatEngine", () => {
     expect(CHAT_ENGINES.map(engineLabel)).toEqual(["Claude Code", "Codex", "IA de la app"]);
   });
 });
+
+// #460: carpetas adjuntas como contexto, sólo lectura.
+import { carpetasValidas, DENIED_TOOLS, READ_ONLY_TOOLS } from "../args";
+
+describe("carpetas adjuntas", () => {
+  const conCarpeta = { ...base, dirs: ["/Users/u/repo", "/Users/u/docs"] };
+
+  it("Claude: cada carpeta con su --add-dir y herramientas de lectura; escribir y ejecutar denegados", () => {
+    const l = buildLaunch({ cli: "claude", ...conCarpeta });
+    const i = l.args.indexOf("--add-dir");
+    expect(l.args.slice(i, i + 4)).toEqual(["--add-dir", "/Users/u/repo", "--add-dir", "/Users/u/docs"]);
+    const allowed = l.args.slice(l.args.indexOf("--allowedTools") + 1, l.args.indexOf("--disallowedTools"));
+    expect(allowed).toEqual([`mcp__${MCP_SERVER_NAME}__*`, ...READ_ONLY_TOOLS]);
+    const denied = l.args.slice(l.args.indexOf("--disallowedTools") + 1, l.args.indexOf("--append-system-prompt"));
+    expect(denied).toEqual([...DENIED_TOOLS]);
+  });
+
+  it("sin carpetas no hay --add-dir ni herramientas de lectura, pero escribir sigue denegado", () => {
+    const l = buildLaunch({ cli: "claude", ...base });
+    expect(l.args).not.toContain("--add-dir");
+    expect(l.args).not.toContain("Read");
+    expect(l.args).toContain("--disallowedTools");
+  });
+
+  it("Codex: la primera carpeta es su directorio, en sandbox de sólo lectura", () => {
+    const l = buildLaunch({ cli: "codex", ...conCarpeta });
+    expect(l.args[l.args.indexOf("-C") + 1]).toBe("/Users/u/repo");
+    expect(l.args[l.args.indexOf("--sandbox") + 1]).toBe("read-only");
+  });
+
+  it("descarta rutas relativas, las que parecen flags y las repetidas", () => {
+    expect(carpetasValidas(["docs", "-rf", " /a ", "/a", "C:\\proy"])).toEqual(["/a", "C:\\proy"]);
+    expect(carpetasValidas(undefined)).toEqual([]);
+  });
+
+  it("el prompt nombra las carpetas, pide citar el archivo y prohíbe escribir", () => {
+    const p = focusSystemPrompt({ elementName: "A", viewName: "V", hasSpec: false, dirs: ["/Users/u/repo"] });
+    expect(p).toContain('"/Users/u/repo"');
+    expect(p).toMatch(/sólo lectura/);
+    expect(p).toMatch(/citá el archivo/);
+    expect(focusSystemPrompt({ elementName: "A", viewName: "V", hasSpec: false })).not.toMatch(/carpetas adjuntas/);
+  });
+});
+
+import { nombreCarpeta } from "../engine";
+
+describe("nombreCarpeta", () => {
+  it("muestra la última parte de la ruta, en macOS/Linux y en Windows", () => {
+    expect(nombreCarpeta("/Users/u/proyectos/pagos-svc")).toBe("pagos-svc");
+    expect(nombreCarpeta("/Users/u/docs/")).toBe("docs");
+    expect(nombreCarpeta("C:\\proy\\api")).toBe("api");
+    expect(nombreCarpeta("/")).toBe("/");
+  });
+});
