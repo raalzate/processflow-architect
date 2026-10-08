@@ -11,7 +11,8 @@ describe("buildLaunch — Claude Code", () => {
   it("lanza headless con stream-json, el MCP de la app inline y sólo sus tools", () => {
     const l = buildLaunch({ cli: "claude", ...base });
     expect(l.command).toBe("claude");
-    expect(l.args.slice(0, 2)).toEqual(["-p", "pulí esta caja"]);
+    // #461: el prompt va al FINAL detrás de `--`, nunca como argumento suelto.
+    expect(l.args.slice(-3)).toEqual(["-p", "--", "pulí esta caja"]);
     expect(l.args).toContain("stream-json");
     expect(l.args).toContain("--include-partial-messages");
     const i = l.args.indexOf("--mcp-config");
@@ -20,7 +21,10 @@ describe("buildLaunch — Claude Code", () => {
     });
     expect(l.args).toContain("--strict-mcp-config");
     expect(l.args[l.args.indexOf("--setting-sources") + 1]).toBe("");
-    expect(l.args[l.args.indexOf("--allowedTools") + 1]).toBe(`mcp__${MCP_SERVER_NAME}__*`);
+    // #461: allowlist explícita, nunca el comodín del servidor.
+    const allowed = l.args.slice(l.args.indexOf("--allowedTools") + 1, l.args.indexOf("--disallowedTools"));
+    expect(allowed).toEqual(chatMcpAllowlist());
+    expect(l.args).not.toContain(`mcp__${MCP_SERVER_NAME}__*`);
     expect(l.args[l.args.indexOf("--append-system-prompt") + 1]).toBe("SYS");
     expect(l.args[l.args.indexOf("--max-turns") + 1]).toBe(String(DEFAULT_MAX_TURNS));
     expect(l.args).not.toContain("--resume");
@@ -28,7 +32,8 @@ describe("buildLaunch — Claude Code", () => {
 
   it("con sesión previa reanuda la conversación", () => {
     const l = buildLaunch({ cli: "claude", ...base, sessionId: "abc" });
-    expect(l.args.slice(-2)).toEqual(["--resume", "abc"]);
+    expect(l.args[l.args.indexOf("--resume") + 1]).toBe("abc");
+    expect(l.args.indexOf("--resume")).toBeLessThan(l.args.indexOf("--"));
   });
 
   it("la config MCP es JSON válido con la URL dada", () => {
@@ -102,7 +107,7 @@ describe("buildGenerateLaunch", () => {
   it("Claude: un turno, sin tools, sin MCP, sin persistir sesión, con prompt de sistema", () => {
     const l = buildGenerateLaunch({ cli: "claude", prompt: "P", system: "S" });
     expect(l.command).toBe("claude");
-    expect(l.args.slice(0, 2)).toEqual(["-p", "P"]);
+    expect(l.args.slice(-3)).toEqual(["-p", "--", "P"]);
     expect(l.args[l.args.indexOf("--output-format") + 1]).toBe("json");
     expect(l.args[l.args.indexOf("--max-turns") + 1]).toBe("1");
     expect(l.args[l.args.indexOf("--tools") + 1]).toBe("");
@@ -226,7 +231,7 @@ describe("carpetas adjuntas", () => {
     const i = l.args.indexOf("--add-dir");
     expect(l.args.slice(i, i + 4)).toEqual(["--add-dir", "/Users/u/repo", "--add-dir", "/Users/u/docs"]);
     const allowed = l.args.slice(l.args.indexOf("--allowedTools") + 1, l.args.indexOf("--disallowedTools"));
-    expect(allowed).toEqual([`mcp__${MCP_SERVER_NAME}__*`, ...READ_ONLY_TOOLS]);
+    expect(allowed).toEqual([...chatMcpAllowlist(), ...READ_ONLY_TOOLS]);
     const denied = l.args.slice(l.args.indexOf("--disallowedTools") + 1, l.args.indexOf("--append-system-prompt"));
     expect(denied).toEqual([...DENIED_TOOLS]);
   });
@@ -266,5 +271,79 @@ describe("nombreCarpeta", () => {
     expect(nombreCarpeta("/Users/u/docs/")).toBe("docs");
     expect(nombreCarpeta("C:\\proy\\api")).toBe("api");
     expect(nombreCarpeta("/")).toBe("/");
+  });
+});
+
+// #461: bloqueantes de la validación previa a la entrega.
+import { chatMcpAllowlist, CHAT_MCP_TOOLS } from "../args";
+import { validarGenerate, validarLaunch } from "../validate";
+
+describe("#461 — un prompt que empieza con «-» no es un flag", () => {
+  for (const prompt of ["- agregá un criterio", "--permission-mode=bypassPermissions", "--add-dir=/"]) {
+    it(`«${prompt}» queda detrás de \`--\` en los cuatro lanzamientos`, () => {
+      const lanzamientos = [
+        buildLaunch({ cli: "claude", ...base, prompt }),
+        buildLaunch({ cli: "codex", ...base, prompt }),
+        buildLaunch({ cli: "codex", ...base, prompt, sessionId: "s1" }),
+        buildGenerateLaunch({ cli: "claude", prompt }),
+      ];
+      for (const l of lanzamientos) {
+        const fin = l.args.indexOf("--");
+        expect(fin).toBeGreaterThan(-1);
+        expect(l.args.slice(fin + 1)).toEqual([prompt]);
+        // Ningún flag del pedido aparece ANTES del `--`.
+        expect(l.args.slice(0, fin)).not.toContain(prompt);
+      }
+    });
+  }
+});
+
+describe("#461 — el chat sólo puede usar tools no destructivas del MCP", () => {
+  it("la allowlist no incluye nada que borre o reemplace", () => {
+    for (const t of ["delete_view", "set_view_graph", "remove_view_element", "remove_view_edge", "delete_org", "install_skill", "export_to_app", "rename_view"]) {
+      expect(CHAT_MCP_TOOLS as readonly string[]).not.toContain(t);
+    }
+    expect(CHAT_MCP_TOOLS).toContain("set_view_element_spec");
+    expect(chatMcpAllowlist().every((t) => t.startsWith(`mcp__${MCP_SERVER_NAME}__`) && !t.endsWith("*"))).toBe(true);
+  });
+});
+
+describe("#461 — validación de lo que llega por IPC", () => {
+  const ok = { cli: "claude", prompt: "hola", mcpUrl: "http://127.0.0.1:7331/mcp", systemPrompt: "S" };
+
+  it("acepta la entrada de la app", () => {
+    expect(validarLaunch(ok).ok).toBe(true);
+    expect(validarLaunch({ ...ok, sessionId: "1a5a06c0-a512-4351", dirs: ["/a"], maxTurns: 25 }).ok).toBe(true);
+    expect(validarGenerate({ cli: "codex", prompt: "p", system: "s" }).ok).toBe(true);
+  });
+
+  it("rechaza agente desconocido, URL ajena o inyectable, sesión rara y carpetas mal formadas", () => {
+    const casos: [Record<string, unknown>, RegExp][] = [
+      [{ ...ok, cli: "bash" }, /desconocido/],
+      [{ ...ok, prompt: "  " }, /vacío/],
+      [{ ...ok, mcpUrl: "http://evil.com/mcp" }, /no es la de la app/],
+      [{ ...ok, mcpUrl: 'http://127.0.0.1:7331/mcp" -c x="y' }, /no es la de la app/],
+      [{ ...ok, mcpUrl: "http://127.0.0.1:80/mcp" }, /fuera de rango/],
+      [{ ...ok, sessionId: "a b" }, /sesión/],
+      [{ ...ok, sessionId: "--fork-session" }, /sesión/],
+      [{ ...ok, dirs: "/a" }, /carpetas/],
+      [{ ...ok, maxTurns: 999 }, /turnos/],
+    ];
+    for (const [entrada, error] of casos) {
+      const r = validarLaunch(entrada);
+      expect(r.ok, JSON.stringify(entrada)).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(error);
+    }
+    expect(validarGenerate({ cli: "x", prompt: "p" }).ok).toBe(false);
+    expect(validarGenerate(null).ok).toBe(false);
+  });
+});
+
+describe("#461 — el agente escribe la spec por id, no por nombre", () => {
+  it("con id, set_view_element_spec usa el id; sin id, cae al nombre", () => {
+    const conId = focusSystemPrompt({ elementName: "RabbitMQ", elementId: "mq", viewName: "V", hasSpec: false });
+    expect(conId).toContain('set_view_element_spec con name "mq"');
+    expect(conId).toContain('"RabbitMQ"');
+    expect(focusSystemPrompt({ elementName: "RabbitMQ", viewName: "V", hasSpec: false })).toContain('name "RabbitMQ"');
   });
 });

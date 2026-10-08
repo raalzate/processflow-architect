@@ -36,6 +36,17 @@ describe("resolveCli / candidateDirs", () => {
   });
 });
 
+// #461: en Windows se busca el `.exe` del instalador nativo y NUNCA un `.cmd`
+// (lanzarlo exigiría shell, y el prompt quedaría expuesto a inyección).
+describe("resolveCli en Windows", () => {
+  it("encuentra claude.exe y no el shim .cmd ni el script sin extensión", () => {
+    const win = (existe: (p: string) => boolean) =>
+      resolveCli("claude", { exists: existe, home: "/home/u", env: { PATH: "", NODE_ENV: "test" } as NodeJS.ProcessEnv, platform: "win32" });
+    expect(win((p) => p.endsWith("/.local/bin/claude.exe"))).toBe("/home/u/.local/bin/claude.exe");
+    expect(win((p) => p.endsWith("claude.cmd") || p.endsWith("/claude"))).toBeNull();
+  });
+});
+
 describe("cliStatus", () => {
   it("reporta instalado con versión, y no instalado sin binario", async () => {
     const spawn: Spawn = (_c, _a) => {

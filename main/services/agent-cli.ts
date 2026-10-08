@@ -74,6 +74,8 @@ export interface Deps {
   idleTimeoutMs?: number;
   /** Directorio de trabajo del CLI (por defecto, el temporal del sistema). */
   cwd?: string;
+  /** Plataforma (para las pruebas de Windows). */
+  platform?: NodeJS.Platform;
 }
 
 /** Directorios donde suelen instalarse los CLI y que una app GUI no ve en su PATH. */
@@ -95,10 +97,16 @@ export function resolveCli(cli: CliId, deps: Deps = {}): string | null {
   const exists = deps.exists ?? existsSync;
   const home = deps.home ?? os.homedir();
   const env = deps.env ?? process.env;
-  const cmd = CLI_INFO[cli].command;
+  // Windows (#461): el instalador nativo deja `claude.exe`. Los shims `.cmd` de
+  // npm global NO se buscan: lanzarlos exige `shell: true`, y eso abriría
+  // inyección por el prompt. Sin `.exe`, el CLI figura «no instalado» con la
+  // guía de instalación (declarado en #462; sin verificar en Windows real).
+  const nombres = (deps.platform ?? process.platform) === "win32" ? [`${CLI_INFO[cli].command}.exe`] : [CLI_INFO[cli].command];
   for (const dir of candidateDirs(home, env.PATH)) {
-    const p = path.join(dir, cmd);
-    if (exists(p)) return p;
+    for (const nombre of nombres) {
+      const p = path.join(dir, nombre);
+      if (exists(p)) return p;
+    }
   }
   return null;
 }

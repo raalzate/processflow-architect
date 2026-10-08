@@ -3,8 +3,9 @@
  *
  * Claude Code y Codex tienen modo headless: un proceso que recibe el mensaje,
  * trabaja con las herramientas MCP de la app y escribe eventos JSON por línea.
- * Esto NO es un proveedor de inferencia de la app (no toca `ProviderId`, el
- * router ni las tareas): es un agente ajeno al que la ficha le abre un chat.
+ * En el chat de la ficha el CLI es un agente ajeno (no pasa por el router). El
+ * mismo CLI es además el motor `cli` del router (feature 021), como generador
+ * de texto puro: ver `args.ts` (`buildGenerateLaunch`) y `ai/providers.ts`.
  * La app no autentica ni guarda nada: el CLI usa la sesión que el usuario ya
  * tiene en su máquina (§P4: sin SDKs de nube, sin llaves).
  */

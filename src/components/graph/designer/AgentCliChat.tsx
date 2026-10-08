@@ -38,7 +38,7 @@ import {
   resolveChatEngine,
   type ChatEngine,
 } from "@/lib/agent-cli/engine";
-import { MCP_ENABLED_KEY, readMcpPrefs } from "@/lib/mcp-settings";
+import { readMcpPrefs } from "@/lib/mcp-settings";
 
 const CLI_CHOICE_KEY = "agent_cli_choice";
 /** Carpetas de contexto adjuntas (#460): se recuerdan entre fichas y sesiones. */
@@ -70,6 +70,9 @@ interface Msg {
 }
 
 export interface AgentCliChatProps {
+  /** Id de la caja: identifica la conversación (el nombre cambia al renombrar). */
+  elementId: string;
+  /** Nombre GUARDADO de la caja (no el borrador que se está tecleando). */
   elementName: string;
   viewName: string;
   projectName?: string;
@@ -117,7 +120,9 @@ export function AgentCliChat(props: AgentCliChatProps) {
   const electron = api();
   const { run: runAi } = useAi();
   const [status, setStatus] = useState<CliStatus[] | null>(null);
-  const [elegido, setElegido] = useState<ChatEngine>("claude");
+  // §P4 (#461): arranca con la IA de la APP, que respeta el modo de Ajustes
+  // (local por defecto). Claude Code o Codex sólo si el humano lo elige.
+  const [elegido, setElegido] = useState<ChatEngine>("app");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -132,7 +137,7 @@ export function AgentCliChat(props: AgentCliChatProps) {
       const saved = window.localStorage.getItem(CLI_CHOICE_KEY) as ChatEngine | null;
       if (saved && CHAT_ENGINES.includes(saved)) setElegido(saved);
     } catch {
-      /* sin localStorage: Claude Code por defecto */
+      /* sin localStorage: la IA de la app por defecto */
     }
     setDirs(leerCarpetas());
     if (electron?.agentCliStatus) electron.agentCliStatus().then(setStatus).catch(() => setStatus([]));
@@ -144,14 +149,29 @@ export function AgentCliChat(props: AgentCliChatProps) {
   const { engine, fallback } = useMemo(() => resolveChatEngine(elegido, status), [elegido, status]);
   const version = useMemo(() => (esCli(engine) ? status?.find((s) => s.cli === engine)?.version : undefined), [engine, status]);
 
-  /** Empezar de cero: sin mensajes ni sesión del CLI (el agente olvida lo hablado). */
+  /**
+   * Generación de la conversación (#461). Cada «nueva conversación» —botón o
+   * cambio de caja— la incrementa; un evento o una respuesta de una generación
+   * vieja se descarta. Sin esto, la corrida de la caja A seguía escribiendo en el
+   * hilo de la caja B y su `session_id` hacía que B retomara la sesión de A.
+   */
+  const convRef = useRef(0);
+  const montadoRef = useRef(true);
+
+  /** Empezar de cero: corta lo que esté corriendo, sin mensajes ni sesión del CLI. */
   const nuevaConversacion = useCallback(() => {
+    const enCurso = runIdRef.current;
+    if (enCurso) void electron?.agentCliCancel?.(enCurso);
+    runIdRef.current = null;
+    convRef.current += 1;
     sessionRef.current = undefined;
     setMessages([]);
-  }, []);
+    setBusy(false);
+  }, [electron]);
 
-  // Otra caja = otra conversación: el contexto del prompt de sistema cambió.
-  useEffect(() => nuevaConversacion(), [elementName, viewName, nuevaConversacion]);
+  // Otra caja = otra conversación. Se identifica por el ID (#461): con el nombre,
+  // renombrar la caja reiniciaba el chat en cada tecla.
+  useEffect(() => nuevaConversacion(), [props.elementId, viewName, nuevaConversacion]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -190,11 +210,8 @@ export function AgentCliChat(props: AgentCliChatProps) {
       const { port } = readMcpPrefs(window.localStorage);
       s = await electron.mcpServerStart(port);
       if (!s.running) throw new Error(s.error || "No se pudo encender el servidor MCP.");
-      try {
-        window.localStorage.setItem(MCP_ENABLED_KEY, "1");
-      } catch {
-        /* ignore */
-      }
+      // §P4 (#461): se enciende para esta sesión, pero NO se persiste el opt-in.
+      // El auto-arranque del servidor lo decide el humano en Ajustes.
     }
     return s.url;
   }, [electron]);
@@ -243,19 +260,32 @@ export function AgentCliChat(props: AgentCliChatProps) {
     }
   };
 
+  /** ¿Sigue vigente la conversación `gen`? (no se cambió de caja ni se cerró la ficha). */
+  const vigente = (gen: number) => montadoRef.current && gen === convRef.current;
+
   /** Un mensaje con el CLI (Claude Code / Codex): streaming de eventos por IPC. */
-  const enviarCli = async (texto: string, runId: string) => {
+  const enviarCli = async (texto: string, runId: string, gen: number) => {
     if (!electron?.agentCliSend || !esCli(engine)) return;
     const off = electron.onAgentCliEvent(({ runId: id, event }) => {
-      if (id === runId) aplicar(event);
+      if (id === runId && vigente(gen)) aplicar(event);
     });
     try {
       const url = await mcpUrl();
+      // Mientras se encendía el MCP pudo cambiar la caja o cerrarse la ficha:
+      // lanzar ahora sería una corrida sin dueño escribiendo en el lienzo.
+      if (!vigente(gen)) return;
       await electron.agentCliSend(runId, {
         cli: engine,
         prompt: texto,
         mcpUrl: url,
-        systemPrompt: focusSystemPrompt({ elementName, viewName, projectName, hasSpec, dirs }),
+        systemPrompt: focusSystemPrompt({
+          elementName,
+          elementId: props.elementId,
+          viewName,
+          projectName,
+          hasSpec,
+          dirs,
+        }),
         sessionId: sessionRef.current,
         dirs,
       });
@@ -265,7 +295,7 @@ export function AgentCliChat(props: AgentCliChatProps) {
   };
 
   /** Un mensaje con la IA de la app (#459): una respuesta, con la ficha como contexto. */
-  const enviarApp = async (texto: string, previos: Msg[]) => {
+  const enviarApp = async (texto: string, previos: Msg[], gen: number) => {
     const respuesta = await runAi(elementChatTask, {
       nombre: elementName,
       tipo: props.elementType ?? "",
@@ -278,6 +308,7 @@ export function AgentCliChat(props: AgentCliChatProps) {
       historial: previos.filter((m) => m.text).map((m) => ({ role: m.role, text: m.text })),
       mensaje: texto,
     });
+    if (!vigente(gen)) return; // otra caja: la respuesta era de la anterior
     // `useAi` ya mostró el motivo en un toast; acá queda dicho en el hilo.
     if (respuesta === null) aplicar({ type: "error", message: "La IA de la app no respondió (mirá el aviso)." });
     else patchLast((m) => ({ ...m, text: respuesta }));
@@ -287,6 +318,7 @@ export function AgentCliChat(props: AgentCliChatProps) {
     const texto = input.trim();
     if (!texto || busy || status === null) return;
     const previos = messages;
+    const gen = convRef.current;
     setInput("");
     setBusy(true);
     const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -297,13 +329,16 @@ export function AgentCliChat(props: AgentCliChatProps) {
       { id: `${runId}-a`, role: "assistant", text: "", tools: [] },
     ]);
     try {
-      if (esCli(engine)) await enviarCli(texto, runId);
-      else await enviarApp(texto, previos);
+      if (esCli(engine)) await enviarCli(texto, runId, gen);
+      else await enviarApp(texto, previos, gen);
     } catch (e: any) {
-      aplicar({ type: "error", message: String(e?.message ?? e) });
+      if (vigente(gen)) aplicar({ type: "error", message: String(e?.message ?? e) });
     } finally {
-      runIdRef.current = null;
-      setBusy(false);
+      // Sólo la conversación vigente libera el estado: una vieja no pisa la nueva.
+      if (vigente(gen)) {
+        runIdRef.current = null;
+        setBusy(false);
+      }
     }
   };
 
@@ -312,8 +347,15 @@ export function AgentCliChat(props: AgentCliChatProps) {
     if (id) void electron?.agentCliCancel?.(id);
   };
 
-  // Al desmontar (cerrar la ficha) con el agente trabajando: se cancela.
-  useEffect(() => () => detener(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Al desmontar (cerrar la ficha) con el agente trabajando: se cancela, y lo
+  // que llegue después se descarta.
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => {
+      montadoRef.current = false;
+      detener();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const listo = status !== null;
   const motor = engineLabel(engine);

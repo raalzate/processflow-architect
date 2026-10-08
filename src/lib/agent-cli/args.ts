@@ -73,13 +73,19 @@ export interface GenerateInput {
   system?: string;
 }
 
+/**
+ * El prompt SIEMPRE al final, detrás de `--` (#461). Como argumento suelto, un
+ * mensaje que empieza con «-» («- agregá un criterio», una lista Markdown) lo
+ * leía el CLI como un flag: `unknown option`, y un `--permission-mode=…` habría
+ * cambiado los permisos del agente. Verificado en vivo con Claude Code 2.1.293.
+ */
+const finDeFlags = (prompt: string): string[] => ["--", prompt];
+
 export function buildGenerateLaunch(input: GenerateInput): Launch {
   if (input.cli === "claude") {
     return {
       command: "claude",
       args: [
-        "-p",
-        input.prompt,
         "--output-format",
         "json",
         "--max-turns",
@@ -92,13 +98,35 @@ export function buildGenerateLaunch(input: GenerateInput): Launch {
         "--no-session-persistence",
         ...SIN_AJUSTES_AJENOS,
         ...(input.system ? ["--append-system-prompt", input.system] : []),
+        "-p",
+        ...finDeFlags(input.prompt),
       ],
     };
   }
   // Codex no tiene prompt de sistema por flag: va dentro del mensaje.
   const prompt = input.system ? `${input.system}\n\n---\n\n${input.prompt}` : input.prompt;
-  return { command: "codex", args: ["exec", "--json", "--skip-git-repo-check", prompt] };
+  return { command: "codex", args: ["exec", "--json", "--skip-git-repo-check", ...finDeFlags(prompt)] };
 }
+
+/**
+ * Tools del MCP de la app que el agente del chat puede usar SIN preguntar
+ * (#461). Antes era `mcp__processflow__*`, y en modo `-p` todo lo permitido se
+ * aprueba solo: un archivo de una carpeta adjunta podía inducirlo a llamar
+ * `delete_view` o `set_view_graph`. Ahora: leer la caja y su contexto, y
+ * escribir SÓLO la spec de una caja. Lo demás queda denegado.
+ */
+export const CHAT_MCP_TOOLS = [
+  "get_app_state",
+  "get_focused_element",
+  "get_view",
+  "list_views",
+  "list_element_docs",
+  "read_element_doc",
+  "search_docs",
+  "set_view_element_spec",
+] as const;
+
+export const chatMcpAllowlist = (): string[] => CHAT_MCP_TOOLS.map((t) => `mcp__${MCP_SERVER_NAME}__${t}`);
 
 /** Config MCP inline que entiende `claude --mcp-config`. */
 export function claudeMcpConfig(mcpUrl: string): string {
@@ -112,8 +140,6 @@ export function buildLaunch(input: LaunchInput): Launch {
     return {
       command: "claude",
       args: [
-        "-p",
-        input.prompt,
         "--output-format",
         "stream-json",
         "--verbose",
@@ -127,7 +153,7 @@ export function buildLaunch(input: LaunchInput): Launch {
         // variádico; cada ruta va con su propio flag para no tragarse lo que sigue.
         ...dirs.flatMap((d) => ["--add-dir", d]),
         "--allowedTools",
-        `mcp__${MCP_SERVER_NAME}__*`,
+        ...chatMcpAllowlist(),
         ...(dirs.length ? READ_ONLY_TOOLS : []),
         "--disallowedTools",
         ...DENIED_TOOLS,
@@ -136,6 +162,8 @@ export function buildLaunch(input: LaunchInput): Launch {
         "--max-turns",
         maxTurns,
         ...(input.sessionId ? ["--resume", input.sessionId] : []),
+        "-p",
+        ...finDeFlags(input.prompt),
       ],
     };
   }
@@ -147,7 +175,7 @@ export function buildLaunch(input: LaunchInput): Launch {
   return {
     command: "codex",
     args: input.sessionId
-      ? ["exec", "resume", input.sessionId, ...comunes, input.prompt]
-      : ["exec", ...comunes, input.prompt],
+      ? ["exec", "resume", input.sessionId, ...comunes, ...finDeFlags(input.prompt)]
+      : ["exec", ...comunes, ...finDeFlags(input.prompt)],
   };
 }

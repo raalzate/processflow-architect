@@ -196,7 +196,17 @@ el contrato documentado y **no se verificó** (no está instalado en la máquina
 | Tab «Agente» (`AgentCliChat.tsx`) | selector Claude Code · Codex, chat con streaming, tools plegables, Detener, turnos y costo; enciende el MCP si está apagado. Sólo en la app de escritorio. |
 
 No es un `ProviderId`: el CLI no es un motor de inferencia de la app sino un agente ajeno, así
-que `router.ts`, `providers.ts` y `tasks.ts` no cambian.
+que este chat no pasa por `router.ts`. (El modo `cli` del router es otra cosa: ver 5f.)
+
+**Por defecto, la IA de la app (#461, §P4).** El tab arranca con la IA de Ajustes (`local` por
+defecto); Claude Code o Codex sólo si el humano los elige, y se recuerda. El chat enciende el
+servidor MCP para la sesión pero no persiste su auto-arranque. Otras garantías de #461: el prompt
+va al final detrás de `--` (un «- item» ya no es un flag); el chat usa una lista explícita de
+tools (`CHAT_MCP_TOOLS`: leer la caja y su contexto, escribir sólo su spec; nada que borre o
+reemplace); el main valida `cli`, `mcpUrl`, `sessionId` y `dirs` (`validate.ts`); la
+conversación se identifica por el id de la caja, sobrevive al cambio de tab (`forceMount`) y una
+corrida vieja no escribe en la caja nueva. En Windows sólo se busca `claude.exe`, nunca un
+`.cmd` (exigiría shell).
 
 **Carpetas de contexto (#460).** El botón «Adjuntar carpeta» del chat abre el selector nativo
 (IPC `agent-cli-pick-dir`); la carpeta queda como etiqueta y se recuerda. Claude Code la recibe
@@ -213,7 +223,8 @@ Lo inverso de 5e: el agente es **el de la app** y Claude Code sólo **piensa**. 
 de IA gana un cuarto modo, `cli` («Claude Code»): toda tarea con prompt (sugerencias de la
 ficha, tareas de IA, cada turno del Constructor) la razona el CLI del usuario y la app actúa con
 sus propias tools, ciclo y confirmaciones. Es un motor nuevo (`ProviderId = "cli"`,
-`runCli` en `providers.ts`) y por eso sí toca el router (§P5 lo permite); `tasks.ts` no cambia.
+`runCli` en `providers.ts`) y por eso sí toca el router (§P5 lo permite). `tasks.ts` gana
+`elementChatTask` (#459), que es una `AiTask` más y la rutea el router como cualquier otra.
 
 | Pieza | Qué hace |
 |---|---|
