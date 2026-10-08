@@ -259,6 +259,63 @@ export const builderTurnTask: AiTask<{ prompt: string; system?: string }, string
   parse: (raw) => raw.trim(),
 };
 
+// --- Chat sobre UNA caja con la IA de la app (#459) ---
+
+/** Turnos previos que entran al prompt: más es ruido y tamaño para el motor local. */
+export const ELEMENT_CHAT_MAX_TURNOS = 6;
+
+/**
+ * El tab «Agente» de la ficha cuando no hay Claude Code ni Codex (o se elige la
+ * IA de la app): conversación sobre la caja abierta con el motor de Ajustes.
+ * No tiene tools: la app le pasa la ficha (tipo, descripción, spec, vecinos) y
+ * el agente contesta; lo que proponga lo aplica el humano. `light` con techo:
+ * en local corre local y en híbrido una conversación larga sale a la nube.
+ */
+export const elementChatTask: AiTask<
+  {
+    nombre: string;
+    tipo: string;
+    vista: string;
+    notation?: string;
+    descripcion?: string;
+    /** La spec actual en markdown (vacío si no tiene). */
+    spec?: string;
+    entrantes?: string[];
+    salientes?: string[];
+    historial?: { role: "user" | "assistant"; text: string }[];
+    mensaje: string;
+  },
+  string
+> = {
+  id: "element-chat",
+  tier: "light",
+  maxLocalChars: BUILDER_LOCAL_MAX_CHARS,
+  buildPrompt: (i) => {
+    const lista = (v?: string[]) => (v?.length ? v.map((x) => `"${x}"`).join(", ") : "ninguno");
+    const previos = (i.historial ?? []).slice(-ELEMENT_CHAT_MAX_TURNOS);
+    return {
+      system: [
+        `Sos un arquitecto que ayuda a pulir UNA caja de un diagrama ${i.notation ?? ""} en Processflow Architect.`.replace("  ", " "),
+        "Respondé en español, corto y concreto, en Markdown. No inventes lo que la ficha no dice: marcalo como pendiente de aclarar.",
+        "No podés modificar el diagrama: si proponés una especificación, escribila para que el humano la aplique desde el tab Spec.",
+      ].join("\n"),
+      prompt: [
+        `CAJA: "${i.nombre}" (${i.tipo}) en la vista "${i.vista}".`,
+        `DESCRIPCIÓN: ${i.descripcion?.trim() || "(sin descripción)"}`,
+        `LA LLAMAN: ${lista(i.entrantes)}`,
+        `LLAMA A: ${lista(i.salientes)}`,
+        `SPEC ACTUAL:\n${i.spec?.trim() || "(sin spec)"}`,
+        ...(previos.length
+          ? ["", "CONVERSACIÓN PREVIA:", ...previos.map((t) => `${t.role === "user" ? "HUMANO" : "VOS"}: ${t.text}`)]
+          : []),
+        "",
+        `HUMANO: ${i.mensaje}`,
+      ].join("\n"),
+    };
+  },
+  parse: (raw) => raw.trim(),
+};
+
 // --- Diagrama COMPLETO en una inferencia (015, #337) ---
 
 /**

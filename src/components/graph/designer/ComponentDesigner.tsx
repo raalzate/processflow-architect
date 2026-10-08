@@ -244,7 +244,7 @@ import {
 } from "./export-canvas";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SpecTab } from "./SpecTab";
-import { isSpecEmpty, type ElementSpec } from "@/lib/element-spec";
+import { isSpecEmpty, specToMarkdown, type ElementSpec } from "@/lib/element-spec";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1617,6 +1617,17 @@ const EditNodeDialog: React.FC<{
                   viewName={vistaActivaNombre}
                   projectName={projectName}
                   hasSpec={!isSpecEmpty(draft.spec)}
+                  // La ficha para la IA de la app, que no tiene tools para leerla (#459).
+                  elementType={draft.tipo_elemento}
+                  description={draft.descripcion}
+                  specMarkdown={
+                    draft.spec && !isSpecEmpty(draft.spec)
+                      ? specToMarkdown(draft.spec, draft.nombre, resolveNodeName)
+                      : undefined
+                  }
+                  incoming={flujoVecinos.entrantes.map((v) => v.nombre)}
+                  outgoing={flujoVecinos.salientes.map((v) => v.nombre)}
+                  notation={notation}
                 />
               </TabsContent>
             )}

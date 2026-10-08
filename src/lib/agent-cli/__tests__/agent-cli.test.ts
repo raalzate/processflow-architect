@@ -186,3 +186,31 @@ describe("focusSystemPrompt", () => {
     expect(focusSystemPrompt({ elementName: "A", viewName: "V", hasSpec: false })).not.toContain("merge: true");
   });
 });
+
+// #459: sin Claude Code ni Codex, el chat cae a la IA de la app.
+import { CHAT_ENGINES, engineLabel, fallbackNotice, resolveChatEngine } from "../engine";
+
+describe("resolveChatEngine", () => {
+  const claudeSi = [{ cli: "claude" as const, installed: true }, { cli: "codex" as const, installed: false }];
+  const ninguno = [{ cli: "claude" as const, installed: false }, { cli: "codex" as const, installed: false }];
+
+  it("respeta el CLI instalado y la elección de la IA de la app", () => {
+    expect(resolveChatEngine("claude", claudeSi)).toEqual({ engine: "claude", fallback: false });
+    expect(resolveChatEngine("app", ninguno)).toEqual({ engine: "app", fallback: false });
+  });
+
+  it("un CLI que no está cae a la IA de la app y lo declara", () => {
+    expect(resolveChatEngine("codex", claudeSi)).toEqual({ engine: "app", fallback: true });
+    expect(resolveChatEngine("claude", ninguno)).toEqual({ engine: "app", fallback: true });
+    expect(fallbackNotice("claude")).toMatch(/Claude Code no está instalado.*IA de la app/);
+  });
+
+  it("sin saber qué hay todavía, no cae (el selector no parpadea al abrir)", () => {
+    expect(resolveChatEngine("claude", null)).toEqual({ engine: "claude", fallback: false });
+  });
+
+  it("ofrece los dos CLI y la IA de la app con su nombre", () => {
+    expect(CHAT_ENGINES).toEqual(["claude", "codex", "app"]);
+    expect(CHAT_ENGINES.map(engineLabel)).toEqual(["Claude Code", "Codex", "IA de la app"]);
+  });
+});
