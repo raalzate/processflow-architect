@@ -18,6 +18,7 @@ import { IconAction } from "@/components/ui/icon-action";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { Markdown } from "@/components/ai-panel/Markdown";
 import { focusSystemPrompt } from "@/lib/agent-cli/prompt";
 import { CLI_IDS, CLI_INFO, type ChatEvent, type CliId, type CliStatus } from "@/lib/agent-cli/types";
 import { MCP_ENABLED_KEY, readMcpPrefs } from "@/lib/mcp-settings";
@@ -285,7 +286,14 @@ export function AgentCliChat({ elementName, viewName, projectName, hasSpec }: Ag
               {m.tools.map((t, i) => (
                 <ToolLine key={i} t={t} />
               ))}
-              {m.text && <p className="whitespace-pre-wrap">{m.text}</p>}
+              {/* El agente escribe Markdown (negritas, listas, código): se dibuja con el
+                  mismo renderizador del chat del agente local. Lo del humano va tal cual. */}
+              {m.text &&
+                (m.role === "assistant" ? (
+                  <Markdown content={m.text} className="break-words text-sm leading-relaxed" />
+                ) : (
+                  <p className="whitespace-pre-wrap">{m.text}</p>
+                ))}
               {m.role === "assistant" && !m.text && !m.error && busy && (
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               )}
