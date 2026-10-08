@@ -730,6 +730,30 @@ describe("humo: constructor en dos modos (015)", () => {
     expect(r.steps.some((s) => s.type === "decision" && s.content.includes("creativo"))).toBe(true);
   });
 
+  it("#431 · «una nueva vista sobre X» abre una pestaña nueva sin preguntar por la activa", async () => {
+    // La activa tiene contenido: antes esto terminaba pidiendo permiso para pisarla.
+    const mcp = mcpDeVista(vistaConMvc());
+    const llamadas: { name: string; args: Record<string, unknown> }[] = [];
+    const callTool = async (name: string, args: Record<string, unknown>) => {
+      llamadas.push({ name, args });
+      return name === "export_as_view" ? { ok: true, texto: "✅ Vista creada." } : mcp.callTool(name, args);
+    };
+    const r = await runBuilderAgent({
+      ...baseVista,
+      // Ya hay una pestaña con ese nombre: la nueva no la pisa ni la duplica.
+      vistas: [...baseVista.vistas, { id: "v1", name: "Arquitectura hexagonal" }],
+      message: "crear una nueva vista que hable sobre arquitectura hexagonal",
+      vista: { nombre: "Modelo", notation: "c4", graph: mcp.estado.graph },
+      deps: { listTools: async () => TOOLS_VISTA, callTool, generate: vi.fn(), generarDiagrama: vi.fn().mockResolvedValue(MERMAID_MVC) },
+    });
+
+    expect(r.pendiente).toBeUndefined();
+    expect(llamadas.map((l) => l.name)).not.toContain("set_view_graph");
+    const exportada = llamadas.find((l) => l.name === "export_as_view")!;
+    expect(exportada.args).toMatchObject({ viewName: "Arquitectura hexagonal (2)", notation: "c4" });
+    expect(r.reply).toContain('la pestaña nueva "Arquitectura hexagonal (2)"');
+  });
+
   it("SC-003 · «agregá un elemento Persona llamado Cliente» cambia la vista abierta en un turno", async () => {
     const mcp = mcpDeVista(vistaConMvc());
     const generate = vi.fn();
