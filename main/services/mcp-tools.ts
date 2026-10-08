@@ -113,6 +113,7 @@ import {
   type AppReadRequest,
   type AppReadResult,
 } from "../../src/lib/mcp/app-read";
+import { ERROR_IMPORT_CON_ALCANCE, errorDeAlcance } from "../../src/lib/mcp/focus-scope";
 import {
   listSkills,
   renderSkillFiles,
@@ -212,6 +213,13 @@ export interface McpToolsOptions {
   transport?: "http" | "stdio";
   /** URL del servidor cuando el transporte es HTTP. */
   serverUrl?: () => string | undefined;
+  /**
+   * Alcance del chat de la ficha (#462): id de la caja abierta, que llega como
+   * `?focus=<id>` en la URL. Con él, `set_view_element_spec` sólo escribe esa
+   * caja y `get_view` no puede importar al workspace. Ausente = sin límite (un
+   * agente externo conectado a `/mcp` conserva todo lo que ya tenía).
+   */
+  focusScope?: string | null;
 }
 
 // --- Helpers de respuesta MCP ---
@@ -2300,6 +2308,8 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         },
       },
       async ({ name, project, importAs }) => {
+        // #462: el chat de la ficha no escribe en el workspace.
+        if (importAs && opts.focusScope) return fail(ERROR_IMPORT_CON_ALCANCE);
         const r = await opts.readApp!({ kind: "view", name, project });
         if (!r.ok) return noSePudo(r);
         if (r.kind !== "view") return fail("Respuesta inesperada.");
@@ -2935,7 +2945,13 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ...vista,
         },
       },
-      async ({ name, spec, merge, view }) => editar({ kind: "set-spec", name, spec, merge, view })
+      async ({ name, spec, merge, view }) => {
+        // #462: con alcance (el chat de la ficha) sólo la caja abierta; antes
+        // eso lo sostenía el prompt y el agente podía pisar la spec de otra.
+        const fueraDeAlcance = errorDeAlcance(opts.focusScope ?? null, name, view);
+        if (fueraDeAlcance) return fail(fueraDeAlcance);
+        return editar({ kind: "set-spec", name, spec, merge, view });
+      }
     );
   }
 

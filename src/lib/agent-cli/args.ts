@@ -48,6 +48,14 @@ export function carpetasValidas(dirs: readonly string[] | undefined): string[] {
 export interface Launch {
   command: string;
   args: string[];
+  /**
+   * Lo que se escribe por stdin y se cierra (#462). Claude recibe el PROMPT por
+   * acá, no como argumento: un argumento tiene tope (Linux 128 KiB, Windows
+   * 32 KiB por la línea entera) y un prompt con el grafo en TOON lo pasaba
+   * (`E2BIG`). Por stdin además no hay forma de que el texto se lea como flag.
+   * Verificado en vivo con Claude Code 2.1.293.
+   */
+  stdin?: string;
 }
 
 export const DEFAULT_MAX_TURNS = 25;
@@ -74,10 +82,9 @@ export interface GenerateInput {
 }
 
 /**
- * El prompt SIEMPRE al final, detrás de `--` (#461). Como argumento suelto, un
- * mensaje que empieza con «-» («- agregá un criterio», una lista Markdown) lo
- * leía el CLI como un flag: `unknown option`, y un `--permission-mode=…` habría
- * cambiado los permisos del agente. Verificado en vivo con Claude Code 2.1.293.
+ * Codex (sin verificar en vivo) sigue recibiendo el prompt como argumento:
+ * SIEMPRE al final, detrás de `--` (#461). Como argumento suelto, un mensaje que
+ * empieza con «-» lo leía el CLI como un flag. Claude lo recibe por stdin (#462).
  */
 const finDeFlags = (prompt: string): string[] => ["--", prompt];
 
@@ -85,9 +92,14 @@ export function buildGenerateLaunch(input: GenerateInput): Launch {
   if (input.cli === "claude") {
     return {
       command: "claude",
+      // Prompt por stdin (#462). `stream-json`: el CLI escribe eventos mientras
+      // trabaja, así el timeout mide INACTIVIDAD y no el total, y el `result`
+      // trae el costo para el tope de gasto.
+      stdin: input.prompt,
       args: [
         "--output-format",
-        "json",
+        "stream-json",
+        "--verbose",
         "--max-turns",
         "1",
         "--tools",
@@ -99,7 +111,6 @@ export function buildGenerateLaunch(input: GenerateInput): Launch {
         ...SIN_AJUSTES_AJENOS,
         ...(input.system ? ["--append-system-prompt", input.system] : []),
         "-p",
-        ...finDeFlags(input.prompt),
       ],
     };
   }
@@ -139,6 +150,7 @@ export function buildLaunch(input: LaunchInput): Launch {
   if (input.cli === "claude") {
     return {
       command: "claude",
+      stdin: input.prompt, // #462: por stdin, sin tope de argv ni riesgo de flag
       args: [
         "--output-format",
         "stream-json",
@@ -163,7 +175,6 @@ export function buildLaunch(input: LaunchInput): Launch {
         maxTurns,
         ...(input.sessionId ? ["--resume", input.sessionId] : []),
         "-p",
-        ...finDeFlags(input.prompt),
       ],
     };
   }

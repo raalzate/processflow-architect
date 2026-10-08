@@ -34,6 +34,8 @@ import {
   planOrgDeletion,
   conflictoBorrado,
 } from "../../src/lib/mcp/orgs";
+import { hostPermitido } from "../../src/lib/mcp/host-guard";
+import { alcanceDeUrl } from "../../src/lib/mcp/focus-scope";
 import { promises as fsp } from "node:fs";
 import type { GraphData } from "../../src/lib/types";
 import type { NotationId } from "../../src/lib/notations";
@@ -90,9 +92,11 @@ async function exportMermaidToApp(name: string, code: string): Promise<boolean> 
 }
 
 /** Construye un servidor MCP con las herramientas registradas (uno por petición). */
-function buildMcpServer(): McpServer {
+function buildMcpServer(focusScope: string | null = null): McpServer {
   const server = new McpServer({ name: "processflow-architect", version: "0.1.0" });
   registerProcessflowTools(server, {
+    // #462: con `?focus=<id>` (el chat de la ficha) sólo se escribe ESA caja.
+    focusScope,
     workspace: appWorkspace(),
     // En la app empaquetada no hay línea de comandos: el default sale del
     // entorno, y lo normal es fijar el diagrama con `use_diagram`.
@@ -130,6 +134,14 @@ function readJsonBody(req: http.IncomingMessage): Promise<unknown | undefined> {
 }
 
 async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
+  // #462: DNS rebinding. Escuchar en 127.0.0.1 no alcanza: una página puede
+  // hacer que su dominio resuelva acá y hablarle al puerto con su propio Host.
+  if (!hostPermitido(req.headers.host, currentPort)) {
+    res.writeHead(403, { "content-type": "application/json" }).end(
+      JSON.stringify({ error: "Host no permitido: el servidor MCP sólo atiende a 127.0.0.1/localhost." })
+    );
+    return;
+  }
   const url = new URL(req.url || "/", `http://127.0.0.1:${currentPort}`);
   if (url.pathname !== "/mcp") {
     res.writeHead(404, { "content-type": "application/json" }).end(
@@ -151,7 +163,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
   // Un servidor+transporte NUEVO por petición (stateless): sin estado en memoria
   // compartido entre clientes; el estado persistente vive en disco.
-  const server = buildMcpServer();
+  const server = buildMcpServer(alcanceDeUrl(url));
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on("close", () => {
     transport.close();

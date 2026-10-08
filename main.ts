@@ -6,6 +6,7 @@ import { setupProdLogger } from './main/logger';
 import { registerPrivilegedSchemes } from './main/schemes';
 import { createMainWindow } from './main/window';
 import { registerIpcHandlers } from './main/ipc';
+import { cancelAllAgentCli } from './main/services/agent-cli';
 import { resumenGpu } from './src/lib/gpu-status';
 
 // Schemes privilegiados: registrar AQUÍ (tras los imports, antes de ready) para
@@ -67,4 +68,12 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// #462: al salir no queda ninguna corrida del agente por CLI viva escribiendo en
+// un servidor MCP que ya no existe (ni una generación huérfana).
+// Sincrónico a propósito: un import dinámico podía resolverse después de que el
+// proceso ya hubiera salido, y la limpieza no corría nunca.
+app.on('before-quit', () => {
+  cancelAllAgentCli();
 });

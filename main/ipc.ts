@@ -39,6 +39,9 @@ import type { AppState } from '../src/lib/mcp/app-state';
 import { getSystemInfo } from './services/system-info';
 import { playgroundListTools, playgroundCallTool } from './services/mcp-playground';
 import { cancelAgentCli, cliStatus, generateWithCli, runAgentCli } from './services/agent-cli';
+import { carpetasPermitidas, initRegistroCarpetas, registrarCarpeta } from './services/agent-cli-dirs';
+import path from 'node:path';
+import { promises as fsp } from 'node:fs';
 import { validarGenerate, validarLaunch } from '../src/lib/agent-cli/validate';
 import type { ChatEvent } from '../src/lib/agent-cli/types';
 
@@ -94,25 +97,33 @@ export function registerIpcHandlers() {
   // --- Chat con un agente externo por CLI (Claude Code / Codex), feature 020 ---
   // Los eventos del CLI viajan por `agent-cli-event` a medida que llegan, con el
   // runId que mandó el renderer; `invoke` resuelve cuando el proceso termina.
-  ipcMain.handle('agent-cli-status', async () => cliStatus());
+  // #462: el CLI corre en un directorio PROPIO dentro de los datos de la app (no
+  // en el temporal compartido del sistema, donde otro usuario podría dejar un
+  // CLAUDE.md), y las carpetas adjuntas sólo valen si salieron del selector.
+  const cwdAgente = path.join(app.getPath('userData'), 'agent-cli');
+  void fsp.mkdir(cwdAgente, { recursive: true }).catch(() => {});
+  void initRegistroCarpetas(app.getPath('userData'));
+  const depsCli = () => ({ cwd: cwdAgente });
+
+  ipcMain.handle('agent-cli-status', async () => cliStatus(depsCli()));
   // #461: lo que llega del renderer se valida ANTES de tocar un proceso: un
   // `cli` desconocido reventaba y `mcpUrl` se metía sin escapar en el -c de Codex.
   ipcMain.handle('agent-cli-send', async (event: IpcMainInvokeEvent, runId: unknown, input: unknown) => {
     const emitir = (e: unknown) => {
       if (!event.sender.isDestroyed()) event.sender.send('agent-cli-event', { runId, event: e });
     };
-    const v = validarLaunch(input);
+    const v = validarLaunch(input, carpetasPermitidas());
     if (typeof runId !== 'string' || !runId || !v.ok) {
       emitir({ type: 'error', message: v.ok ? 'Corrida sin identificador.' : v.error });
       return { ok: false, exitCode: null };
     }
-    return runAgentCli(runId, v.input, emitir as (e: ChatEvent) => void);
+    return runAgentCli(runId, v.input, emitir as (e: ChatEvent) => void, depsCli());
   });
   ipcMain.handle('agent-cli-cancel', async (_e, runId: unknown) => typeof runId === 'string' && cancelAgentCli(runId));
   // Feature 021: el CLI como motor de texto del router (razona el CLI, actúa la app).
   ipcMain.handle('agent-cli-generate', async (_e, input: unknown) => {
     const v = validarGenerate(input);
-    return v.ok ? generateWithCli(v.input) : { ok: false, error: v.error };
+    return v.ok ? generateWithCli(v.input, depsCli()) : { ok: false, error: v.error };
   });
   // Carpeta de contexto para el chat del agente (#460): el selector NATIVO de
   // carpetas, así el humano nunca escribe una ruta a mano. null = canceló.
@@ -124,7 +135,10 @@ export function registerIpcHandlers() {
       properties: ['openDirectory'] as Array<'openDirectory'>,
     };
     const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
-    return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+    if (r.canceled || !r.filePaths[0]) return null;
+    // #462: sólo lo elegido acá se acepta después como carpeta adjunta.
+    await registrarCarpeta(r.filePaths[0]);
+    return r.filePaths[0];
   });
 
   // --- Servidor MCP embebido (HTTP, opt-in desde Ajustes) ---

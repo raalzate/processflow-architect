@@ -109,20 +109,38 @@ export function parseLine(cli: CliId, line: string): ChatEvent[] {
  * `{ error }` con el motivo que dio el CLI, para que el router lo muestre tal
  * cual en vez de degradar en silencio.
  */
-export function resultText(cli: CliId, stdout: string): { text: string } | { error: string } {
+export function resultText(
+  cli: CliId,
+  stdout: string
+): { text: string; costUsd?: number } | { error: string; costUsd?: number } {
   if (cli === "claude") {
-    // El objeto puede venir en varias líneas (pretty) o en una: se busca el JSON entero.
     const inicio = stdout.indexOf("{");
     if (inicio === -1) return { error: "Claude Code no devolvió una respuesta." };
-    try {
-      const j = JSON.parse(stdout.slice(inicio));
-      if (j.is_error || (j.subtype && j.subtype !== "success")) {
-        return { error: str(j.result) || `Claude Code terminó con ${str(j.subtype) || "error"}.` };
+    // Con `stream-json` (#462) llegan varios eventos, uno por línea, y el que
+    // cuenta es el ÚLTIMO de tipo `result`. Con `json` llega un solo objeto,
+    // que puede venir en varias líneas: si ninguna línea es un `result`, se lee
+    // el texto entero.
+    let j: any;
+    for (const linea of stdout.split("\n")) {
+      try {
+        const o = JSON.parse(linea.trim());
+        if (o && o.type === "result") j = o;
+      } catch {
+        /* línea parcial o de otro evento */
       }
-      return { text: str(j.result).trim() };
-    } catch {
-      return { error: "La respuesta de Claude Code no es JSON." };
     }
+    if (!j) {
+      try {
+        j = JSON.parse(stdout.slice(inicio));
+      } catch {
+        return { error: "La respuesta de Claude Code no es JSON." };
+      }
+    }
+    const costo = typeof j.total_cost_usd === "number" ? { costUsd: j.total_cost_usd } : {};
+    if (j.is_error || (j.subtype && j.subtype !== "success")) {
+      return { error: str(j.result) || `Claude Code terminó con ${str(j.subtype) || "error"}.`, ...costo };
+    }
+    return { text: str(j.result).trim(), ...costo };
   }
   const partes: string[] = [];
   let error = "";

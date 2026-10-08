@@ -11,8 +11,10 @@ describe("buildLaunch — Claude Code", () => {
   it("lanza headless con stream-json, el MCP de la app inline y sólo sus tools", () => {
     const l = buildLaunch({ cli: "claude", ...base });
     expect(l.command).toBe("claude");
-    // #461: el prompt va al FINAL detrás de `--`, nunca como argumento suelto.
-    expect(l.args.slice(-3)).toEqual(["-p", "--", "pulí esta caja"]);
+    // #462: el prompt va por STDIN; en los argumentos no aparece (ni tope ni flag).
+    expect(l.args[l.args.length - 1]).toBe("-p");
+    expect(l.stdin).toBe("pulí esta caja");
+    expect(l.args).not.toContain("pulí esta caja");
     expect(l.args).toContain("stream-json");
     expect(l.args).toContain("--include-partial-messages");
     const i = l.args.indexOf("--mcp-config");
@@ -33,7 +35,7 @@ describe("buildLaunch — Claude Code", () => {
   it("con sesión previa reanuda la conversación", () => {
     const l = buildLaunch({ cli: "claude", ...base, sessionId: "abc" });
     expect(l.args[l.args.indexOf("--resume") + 1]).toBe("abc");
-    expect(l.args.indexOf("--resume")).toBeLessThan(l.args.indexOf("--"));
+    expect(l.args.indexOf("--resume")).toBeLessThan(l.args.indexOf("-p"));
   });
 
   it("la config MCP es JSON válido con la URL dada", () => {
@@ -107,8 +109,11 @@ describe("buildGenerateLaunch", () => {
   it("Claude: un turno, sin tools, sin MCP, sin persistir sesión, con prompt de sistema", () => {
     const l = buildGenerateLaunch({ cli: "claude", prompt: "P", system: "S" });
     expect(l.command).toBe("claude");
-    expect(l.args.slice(-3)).toEqual(["-p", "--", "P"]);
-    expect(l.args[l.args.indexOf("--output-format") + 1]).toBe("json");
+    expect(l.args[l.args.length - 1]).toBe("-p");
+    expect(l.stdin).toBe("P");
+    // #462: stream-json para medir inactividad y leer el costo del `result`.
+    expect(l.args[l.args.indexOf("--output-format") + 1]).toBe("stream-json");
+    expect(l.args).toContain("--verbose");
     expect(l.args[l.args.indexOf("--max-turns") + 1]).toBe("1");
     expect(l.args[l.args.indexOf("--tools") + 1]).toBe("");
     expect(JSON.parse(l.args[l.args.indexOf("--mcp-config") + 1])).toEqual({ mcpServers: {} });
@@ -278,24 +283,31 @@ describe("nombreCarpeta", () => {
 import { chatMcpAllowlist, CHAT_MCP_TOOLS } from "../args";
 import { validarGenerate, validarLaunch } from "../validate";
 
-describe("#461 — un prompt que empieza con «-» no es un flag", () => {
+describe("#461/#462 — un prompt que empieza con «-» nunca es un flag", () => {
   for (const prompt of ["- agregá un criterio", "--permission-mode=bypassPermissions", "--add-dir=/"]) {
-    it(`«${prompt}» queda detrás de \`--\` en los cuatro lanzamientos`, () => {
-      const lanzamientos = [
-        buildLaunch({ cli: "claude", ...base, prompt }),
+    it(`«${prompt}»: Claude lo recibe por stdin y Codex detrás de \`--\``, () => {
+      for (const l of [buildLaunch({ cli: "claude", ...base, prompt }), buildGenerateLaunch({ cli: "claude", prompt })]) {
+        expect(l.stdin).toBe(prompt);
+        expect(l.args).not.toContain(prompt);
+      }
+      for (const l of [
         buildLaunch({ cli: "codex", ...base, prompt }),
         buildLaunch({ cli: "codex", ...base, prompt, sessionId: "s1" }),
-        buildGenerateLaunch({ cli: "claude", prompt }),
-      ];
-      for (const l of lanzamientos) {
+      ]) {
         const fin = l.args.indexOf("--");
         expect(fin).toBeGreaterThan(-1);
         expect(l.args.slice(fin + 1)).toEqual([prompt]);
-        // Ningún flag del pedido aparece ANTES del `--`.
         expect(l.args.slice(0, fin)).not.toContain(prompt);
       }
     });
   }
+
+  it("un prompt enorme no viaja por argv (tope de Linux/Windows)", () => {
+    const enorme = "x".repeat(300_000);
+    const l = buildGenerateLaunch({ cli: "claude", prompt: enorme, system: "S" });
+    expect(Math.max(...l.args.map((a) => a.length))).toBeLessThan(32_000);
+    expect(l.stdin?.length).toBe(300_000);
+  });
 });
 
 describe("#461 — el chat sólo puede usar tools no destructivas del MCP", () => {
@@ -362,5 +374,23 @@ describe("#461 — Codex deshabilitado en el chat hasta verificar su barrera", (
     expect(resolveChatEngine("codex", null)).toEqual({ engine: "app", fallback: true });
     expect(fallbackNotice("codex")).toMatch(/Codex todavía no está habilitado/);
     expect(fallbackNotice("claude")).toMatch(/no está instalado/);
+  });
+});
+
+// #462: el modo texto puro usa stream-json — varios eventos y el `result` al final, con costo.
+describe("resultText con stream-json", () => {
+  it("toma el ÚLTIMO result de un stream de eventos, con su costo", () => {
+    const stream = [
+      JSON.stringify({ type: "system", subtype: "init", session_id: "s" }),
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "ho" }] } }),
+      JSON.stringify({ type: "result", subtype: "success", result: " Hola ", total_cost_usd: 0.11 }),
+      "",
+    ].join("\n");
+    expect(resultText("claude", stream)).toEqual({ text: "Hola", costUsd: 0.11 });
+  });
+
+  it("un result de error trae el motivo y el costo gastado igual", () => {
+    const s = JSON.stringify({ type: "result", subtype: "error_max_turns", is_error: true, result: "", total_cost_usd: 0.2 });
+    expect(resultText("claude", s)).toEqual({ error: "Claude Code terminó con error_max_turns.", costUsd: 0.2 });
   });
 });

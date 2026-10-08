@@ -217,6 +217,24 @@ Verificado en vivo: buscó con `Grep`, leyó con `Read`, citó el archivo, y no 
 Codex usa la primera carpeta como `-C` con `--sandbox read-only` (sin verificar). La IA de la app
 no tiene herramientas para leer carpetas: el chat lo avisa.
 
+**Endurecimiento (#462).** Todo verificado en vivo con Claude Code 2.1.294 contra la app:
+
+| Riesgo | Cómo se cerró |
+|---|---|
+| Tope de largo de argv (E2BIG) | Claude recibe el prompt por **stdin** (`Launch.stdin`); un prompt de 225 KB que empieza con «-» pasa. Codex sigue por argv detrás de `--`. |
+| Escribir la spec de OTRA caja | El chat apunta a `…/mcp?focus=<id>` y el servidor (`focus-scope.ts`) sólo deja escribir esa caja y no deja `get_view importAs`. Un agente externo en `/mcp` sin alcance conserva todo. |
+| DNS rebinding contra el MCP | `host-guard.ts`: sólo `Host` 127.0.0.1/localhost en su puerto; otro recibe 403. |
+| Carpetas arbitrarias desde el renderer | Sólo valen las emitidas por el selector nativo (`agent-cli-dirs.ts`, persistido en userData). |
+| CLI invisible con nvm/fnm/asdf | Si no está en las rutas conocidas, se busca con la shell de login (`$SHELL -ilc`), una vez por sesión. |
+| `--version` colgado / sin sesión | Comandos cortos con timeout de 5 s; `claude auth status` informa `loggedIn` y el chat y Ajustes lo avisan. |
+| Procesos huérfanos | Generación rastreada y cancelable, timeout de **inactividad** (`stream-json`), SIGKILL tras 5 s si ignora el SIGTERM, y `before-quit` mata todo. |
+| Costo sin tope | `cost.ts`: gasto de la sesión (lo informa el CLI) y tope configurable en Ajustes (US$ 5 por defecto); se mira antes de cada llamada. |
+| `/tmp` compartido | El CLI corre en `userData/agent-cli`. |
+| Hilo del chat sin pruebas | La lógica pasó a `chat-state.ts` (puro, con test); no se agrega librería de componentes. |
+
+Quedan abiertos: verificar Codex y su barrera de herramientas, Windows real, y pruebas de IPC y
+empaquetado de punta a punta.
+
 ### 5f · Claude Code como motor de razonamiento de la app (feature 021, #451)
 
 Lo inverso de 5e: el agente es **el de la app** y Claude Code sólo **piensa**. Ajustes → Motor

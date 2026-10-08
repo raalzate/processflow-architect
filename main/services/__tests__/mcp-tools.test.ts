@@ -1950,6 +1950,42 @@ describe("registerProcessflowTools · herramientas que editan la vista abierta (
   });
 
   // Feature 019: el contrato de la caja se escribe donde el humano la ve.
+  // #462: el chat de la ficha llega con `?focus=<id>` y sólo puede tocar ESA caja.
+  it("con alcance, `set_view_element_spec` sólo escribe la caja abierta y `get_view` no importa", async () => {
+    const { server, tools } = fakeServer();
+    const pedidos: any[] = [];
+    registerProcessflowTools(server, {
+      workspace: "/tmp/x",
+      focusScope: "mq",
+      actOnApp: async (request) => {
+        pedidos.push(request);
+        return { ok: true, message: "hecho" };
+      },
+      readApp: async () => ({ ok: false, error: "no debería leerse" }) as any,
+    });
+    const spec = { requirements: [{ texto: "x" }] };
+    const otra = await tools.get("set_view_element_spec")!.handler({ name: "API de Pagos", spec });
+    expect(otra.isError).toBe(true);
+    expect(otra.content[0].text).toMatch(/sólo puede escribir la spec de la caja abierta \(id "mq"\)/);
+    const conVista = await tools.get("set_view_element_spec")!.handler({ name: "mq", spec, view: "Otra" });
+    expect(conVista.isError).toBe(true);
+    expect(pedidos).toEqual([]);
+    const ok = await tools.get("set_view_element_spec")!.handler({ name: "mq", spec, merge: true });
+    expect(ok.isError).toBeUndefined();
+    expect(pedidos[0]).toMatchObject({ kind: "set-spec", name: "mq" });
+
+    const importar = await tools.get("get_view")!.handler({ name: "Modelo", importAs: true });
+    expect(importar.isError).toBe(true);
+    expect(importar.content[0].text).toMatch(/no puede crear diagramas en el workspace/);
+  });
+
+  it("sin alcance (agente externo en /mcp) no cambia nada: escribe cualquier caja", async () => {
+    const { tools, pedidos } = conApp();
+    const r = await tools.get("set_view_element_spec")!.handler({ name: "API de Pagos", spec: {}, view: "Pagos" });
+    expect(r.isError).toBeUndefined();
+    expect(pedidos[0]).toMatchObject({ name: "API de Pagos", view: "Pagos" });
+  });
+
   it("`set_view_element_spec` traduce a la acción set-spec con merge y vista", async () => {
     const { tools, pedidos } = conApp();
     expect(tools.has("set_view_element_spec")).toBe(true);
