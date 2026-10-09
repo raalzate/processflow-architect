@@ -18,7 +18,7 @@ principal: quien te invoca necesita la conclusión, no los archivos.
 ## Mapa mental del repo
 
 - `main.ts` + `main/` → proceso Electron (IPC, ventana, servicios, llamadas de nube).
-- `preload.ts` → único puente renderer↔main (`window.electronAPI`).
+- `preload.ts` → único puente renderer↔main (`window.electronAPI`); el renderer lo pide con `hostBridge()` de `src/lib/host-bridge.ts`.
 - `src/app/` rutas Next · `src/components/` UI · `src/context/` estado global · `src/hooks/` handlers.
 - `src/lib/` → lógica pura y testeable: es donde vive la decisión (grafo, IA, notaciones, MCP).
 - `mcp-server/` → servidor MCP de diagramas (tsx).

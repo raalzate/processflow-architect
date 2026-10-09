@@ -14,8 +14,9 @@ import { diagnosticoGpu } from "@/lib/gpu-status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { SystemInfo } from "@/types/electron";
+import { hostBridge } from "@/lib/host-bridge";
 
-const api = () => (typeof window !== "undefined" ? (window as any).electronAPI : undefined);
+const api = () => hostBridge() as any;
 
 interface GpuInfo {
   available: boolean;

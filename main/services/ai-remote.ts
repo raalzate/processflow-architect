@@ -11,8 +11,8 @@ import { app, safeStorage } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
-export type RemoteProvider = 'gemini' | 'openai' | 'anthropic';
-const PROVIDERS: RemoteProvider[] = ['gemini', 'openai', 'anthropic'];
+export type RemoteProvider = 'gemini' | 'openai' | 'anthropic' | 'openrouter';
+const PROVIDERS: RemoteProvider[] = ['gemini', 'openai', 'anthropic', 'openrouter'];
 
 function keysFile(): string {
   return path.join(app.getPath('userData'), 'ai-keys.json');
@@ -62,6 +62,7 @@ export function aiKeyStatus(): Record<RemoteProvider, boolean> {
     gemini: !!store.gemini,
     openai: !!store.openai,
     anthropic: !!store.anthropic,
+    openrouter: !!store.openrouter,
   };
 }
 
@@ -92,7 +93,22 @@ export async function remoteGenerate(args: RemoteGenerateArgs): Promise<string> 
   if (provider === 'gemini') return callGemini(key, model, prompt, system);
   if (provider === 'openai') return callOpenAI(key, model, prompt, system);
   if (provider === 'anthropic') return callAnthropic(key, model, prompt, system);
+  if (provider === 'openrouter') return callOpenRouter(key, model, prompt, system);
   throw new Error('proveedor no soportado');
+}
+
+/**
+ * Cuerpo de chat compatible con OpenAI: lo usan OpenAI y OpenRouter. Separado
+ * para que un proveedor compatible nuevo no copie el armado de mensajes.
+ */
+function chatCompletionBody(model: string, prompt: string, system?: string) {
+  return {
+    model,
+    messages: [
+      ...(system ? [{ role: 'system', content: system }] : []),
+      { role: 'user', content: prompt },
+    ],
+  };
 }
 
 async function callGemini(key: string, model: string, prompt: string, system?: string): Promise<string> {
@@ -117,15 +133,28 @@ async function callOpenAI(key: string, model: string, prompt: string, system?: s
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model,
-      messages: [
-        ...(system ? [{ role: 'system', content: system }] : []),
-        { role: 'user', content: prompt },
-      ],
-    }),
+    body: JSON.stringify(chatCompletionBody(model, prompt, system)),
   });
   if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+  const data: any = await res.json();
+  return (data?.choices?.[0]?.message?.content ?? '').trim();
+}
+
+/**
+ * OpenRouter: API compatible con OpenAI y un catálogo de modelos detrás de una
+ * llave. `X-Title` identifica la app en su panel de uso; no lleva datos del usuario.
+ */
+async function callOpenRouter(key: string, model: string, prompt: string, system?: string): Promise<string> {
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${key}`,
+      'X-Title': 'Processflow Architect',
+    },
+    body: JSON.stringify(chatCompletionBody(model, prompt, system)),
+  });
+  if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
   const data: any = await res.json();
   return (data?.choices?.[0]?.message?.content ?? '').trim();
 }
