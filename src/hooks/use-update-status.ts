@@ -62,12 +62,16 @@ export function useUpdateStatus() {
     const a = api();
     if (!a) return;
     switch (estado.tipo) {
+      case "descargando":
+      case "instalando":
+        return; // la app está trabajando: no hay nada que pulsar
       case "lista":
         void a.installUpdate?.();
         return;
       case "descargada":
-        // Instalar es cosa del humano (macOS sin firma): lo más útil que puede
-        // hacer la app es mostrarle dónde dejó el archivo.
+        // La instalación automática no pudo (macOS sin permisos, bundle de sólo
+        // lectura): lo más útil que puede hacer la app es mostrar dónde dejó el
+        // archivo para terminar a mano.
         void a.revealUpdate?.();
         return;
       case "fallo":

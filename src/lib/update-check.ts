@@ -11,9 +11,10 @@
  *
  *  - **Las versiones se comparan por número, no como texto.** `0.10.0` es más
  *    nueva que `0.9.0`, y ordenarlas alfabéticamente diría lo contrario.
- *  - **macOS no puede auto-instalar** sin firma y notarización de Apple
- *    (Squirrel.Mac las exige). Prometerlo en la interfaz sería mentir, así que la
- *    plataforma decide qué se ofrece.
+ *  - **macOS no puede auto-instalar por `electron-updater`** sin firma y
+ *    notarización de Apple (Squirrel.Mac las exige). Ahí la app baja el `.dmg` y
+ *    recambia el bundle por su cuenta (ver el bloque de «recambio» al final):
+ *    la plataforma decide el camino, no si se instala.
  */
 
 /** Estado del sistema de actualización, tal como lo ve la interfaz. */
@@ -33,6 +34,11 @@ export type EstadoUpdate =
    * lo bajó a Descargas y lo único que queda es abrirlo a mano.
    */
   | { tipo: "descargada"; version: string; ruta: string }
+  /**
+   * Descargada y a punto de aplicarse sola: la app se cierra y vuelve a abrir con
+   * la versión nueva. Dura segundos; el botón se apaga para no pulsar nada encima.
+   */
+  | { tipo: "instalando"; version: string }
   | { tipo: "lista"; version: string }
   | { tipo: "fallo"; motivo: string };
 
@@ -130,12 +136,18 @@ export function etiquetaBoton(estado: EstadoUpdate): string | undefined {
       return `Descargando… ${Math.round(estado.porcentaje)}%`;
     case "descargada":
       return `${estado.version} está en Descargas`;
+    case "instalando":
+      return `Instalando ${estado.version}…`;
     case "lista":
       return `Reiniciar para instalar ${estado.version}`;
     case "fallo":
       return "Reintentar la actualización";
   }
 }
+
+/** Estados en los que pulsar no haría nada útil: el botón se apaga. */
+export const estaOcupado = (estado: EstadoUpdate): boolean =>
+  estado.tipo === "descargando" || estado.tipo === "instalando";
 
 /**
  * Rótulo corto para el aviso del pie del sidebar, al lado de la versión. El botón
@@ -153,6 +165,8 @@ export function etiquetaBreve(estado: EstadoUpdate): string | undefined {
       return `Descargando ${Math.round(estado.porcentaje)}%`;
     case "descargada":
       return "Ver en Descargas";
+    case "instalando":
+      return "Instalando…";
     case "lista":
       return "Reiniciar para instalar";
     case "fallo":
@@ -190,4 +204,65 @@ export function elegirAsset(
     default:
       return undefined;
   }
+}
+
+/**
+ * Instalación automática en macOS sin firma (el `.dmg` ya está en el disco).
+ *
+ * Squirrel.Mac no sirve sin notarización, pero el recambio del bundle sí se puede
+ * hacer a mano: montar el `.dmg`, copiar la `.app` al lado de la instalada, y
+ * cuando la app se cierre, cambiar una por otra y volver a abrirla. Lo que decide
+ * rutas y arma el script vive acá, con pruebas; el main sólo ejecuta.
+ */
+
+/**
+ * La `.app` instalada a partir del ejecutable en marcha
+ * (`…/X.app/Contents/MacOS/X` → `…/X.app`). `undefined` si el ejecutable no
+ * está dentro de un bundle (un build de desarrollo, por ejemplo): ahí no hay
+ * nada que recambiar.
+ */
+export function rutaBundleMac(ejecutable: string): string | undefined {
+  const partes = (ejecutable ?? "").split("/");
+  // […, "X.app", "Contents", "MacOS", "X"]
+  if (partes.length < 4) return undefined;
+  const [bundle, contents, macos] = partes.slice(-4, -1);
+  if (!/\.app$/i.test(bundle) || contents !== "Contents" || macos !== "MacOS") return undefined;
+  return partes.slice(0, -3).join("/");
+}
+
+/** La `.app` dentro del volumen montado del `.dmg` (hay una sola; `undefined` si no). */
+export function elegirApp(nombres: readonly string[]): string | undefined {
+  const apps = nombres.filter((n) => /\.app$/i.test(n));
+  return apps.length === 1 ? apps[0] : undefined;
+}
+
+/** Una ruta entre comillas simples para `sh`: el único carácter especial es la propia comilla. */
+export const comillasSh = (ruta: string): string => `'${ruta.replace(/'/g, `'\\''`)}'`;
+
+/**
+ * Script `sh` que termina la instalación DESPUÉS de que la app se cierre.
+ *
+ * Se lanza desprendido del proceso y espera a que el PID muera: recambiar el
+ * bundle con la app corriendo puede dejarla sin recursos (asar, módulos nativos)
+ * que todavía no cargó. Primero se pone la copia nueva en su lugar y recién
+ * después se abre: si el `mv` falla no se abre nada a medias.
+ */
+export function scriptRecambioMac(opts: {
+  pid: number;
+  /** La `.app` instalada, la que se reemplaza. */
+  destino: string;
+  /** La `.app` nueva, ya copiada al lado de `destino`. */
+  nueva: string;
+}): string {
+  const pid = Math.trunc(opts.pid);
+  if (!Number.isInteger(pid) || pid <= 0) throw new Error("PID inválido para el recambio.");
+  const destino = comillasSh(opts.destino);
+  const nueva = comillasSh(opts.nueva);
+  return [
+    "#!/bin/sh",
+    `while kill -0 ${pid} 2>/dev/null; do sleep 0.2; done`,
+    `rm -rf ${destino}`,
+    `mv ${nueva} ${destino} || exit 1`,
+    `open ${destino}`,
+  ].join("\n");
 }

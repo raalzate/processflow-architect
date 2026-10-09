@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Download, ExternalLink, FolderOpen, Loader2, RefreshCw, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CREDIT_LINE, CREDIT_LINKS, versionLabel } from "@/lib/credits";
-import { etiquetaBreve } from "@/lib/update-check";
+import { estaOcupado, etiquetaBreve } from "@/lib/update-check";
 import { useUpdateStatus } from "@/hooks/use-update-status";
 
 /**
@@ -71,7 +71,8 @@ function UpdateHint() {
   const texto = etiquetaBreve(estado);
   if (!texto) return null;
 
-  const descargando = estado.tipo === "descargando";
+  // Descargando o instalando: la app trabaja sola y el botón sólo informa.
+  const descargando = estaOcupado(estado);
   const Icono =
     estado.tipo === "lista"
       ? RotateCcw
@@ -90,7 +91,7 @@ function UpdateHint() {
         disabled={descargando}
         title={
           estado.tipo === "descargada"
-            ? `El instalador quedó en ${estado.ruta} — abrilo para instalar`
+            ? `La instalación automática no pudo; el instalador quedó en ${estado.ruta} — abrilo para terminar`
             : texto
         }
         className="inline-flex items-center gap-1 align-baseline text-primary hover:underline disabled:cursor-default disabled:no-underline disabled:opacity-70"
