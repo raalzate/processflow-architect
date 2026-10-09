@@ -14,7 +14,14 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     labels: [dependencies]
+    # Una dependencia cae en el PRIMER grupo que la nombra: los pares van antes.
     groups:
+      # Pares que se exigen mutuamente: subidos por separado, `npm ci` muere con
+      # ERESOLVE y el PR nace rojo sin poder arreglarse (#489).
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
+      puppeteer-y-mermaid:
+        patterns: ["puppeteer", "puppeteer-core", "@mermaid-js/mermaid-cli"]
       menores-y-parches:
         update-types: [minor, patch]
     # Electron y Next cambian lo que el arnés protege (WebGPU, schemes, export

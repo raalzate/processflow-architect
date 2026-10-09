@@ -178,6 +178,7 @@ export const formatNodeTreeToMarkdown = (graph: GraphData) => {
 
 import { promptSummarize, SYSTEM_PROMPT_COSMIC } from "./template-prompt";
 import { runLocal } from "./ai/providers";
+import { hostBridge } from "./host-bridge";
 
 export const formatTaskListToMarkdown = async (
   tasks: { new: GraphNode[]; modified: GraphNode[]; deleted?: GraphNode[] },
@@ -195,7 +196,7 @@ export const formatTaskListToMarkdown = async (
     for (const node of tasks.new) {
       let instruction = node.nombre;
       try {
-        if (useAI && typeof window !== 'undefined' && window.electronAPI) {
+        if (useAI && hostBridge()) {
           const prompt = promptSummarize(node);
           const paraphrased = await runLocal(prompt, SYSTEM_PROMPT_COSMIC);
           if (paraphrased) instruction = paraphrased.trim();
@@ -213,7 +214,7 @@ export const formatTaskListToMarkdown = async (
     for (const node of tasks.modified) {
       let instruction = node.nombre;
       try {
-        if (useAI && typeof window !== 'undefined' && window.electronAPI) {
+        if (useAI && hostBridge()) {
           const prompt = promptSummarize(node);
           const paraphrased = await runLocal(prompt, SYSTEM_PROMPT_COSMIC);
           if (paraphrased) instruction = paraphrased.trim();

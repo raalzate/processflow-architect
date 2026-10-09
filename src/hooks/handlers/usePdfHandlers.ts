@@ -8,6 +8,7 @@ import {
     formatTaskListToMarkdown,
     formatProposalToMarkdown,
 } from "@/lib/markdown-utils";
+import { hostBridge } from "@/lib/host-bridge";
 
 type PdfHandlersDeps = {
     graphData: GraphData | null;
@@ -52,7 +53,7 @@ export function usePdfHandlers(deps: PdfHandlersDeps) {
         if (roadmapResult) fullMarkdown += formatRoadmapToMarkdown(roadmapResult, allNodes);
         if (taskListNodes) fullMarkdown += await formatTaskListToMarkdown(taskListNodes, graphData?.notas);
 
-        const runGeneratePdf = (window as any).electronAPI?.generatePdf as ((fullMarkdown: string) => Promise<string>) | undefined;
+        const runGeneratePdf = (hostBridge() as any)?.generatePdf as ((fullMarkdown: string) => Promise<string>) | undefined;
         if (!runGeneratePdf) {
             toast({ variant: "destructive", title: "Función no disponible", description: "Los agentes AI sólo están disponibles en la app de escritorio." });
             return;

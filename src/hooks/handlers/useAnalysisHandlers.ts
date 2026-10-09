@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { hostBridge } from "@/lib/host-bridge";
 import type { SavedFile, GraphData, ArchitectureDriversOutput, ConstraintsRisksOutput, RoadmapOutput, TechnicalElementsOutput } from "@/lib/types";
 
 type AnalysisHandlersDeps = {
@@ -62,7 +63,7 @@ export function useAnalysisHandlers(deps: AnalysisHandlersDeps) {
         let resultToSave: Partial<SavedFile> = {};
 
         try {
-            const runGenkit = (window as any).electronAPI?.runGenkit as ((flow: string, input: any) => Promise<any>) | undefined;
+            const runGenkit = (hostBridge() as any)?.runGenkit as ((flow: string, input: any) => Promise<any>) | undefined;
             if (!runGenkit) {
                 toast({ variant: "destructive", title: "Función no disponible", description: "Los agentes AI sólo están disponibles en la app de escritorio." });
                 return;

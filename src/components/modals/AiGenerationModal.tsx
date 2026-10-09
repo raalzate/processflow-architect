@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { hostBridge } from "@/lib/host-bridge";
 
 interface AiGenerationModalProps {
   isOpen: boolean;
@@ -32,8 +33,9 @@ export function AiGenerationModal({
     if (!content) return;
     
     let success = false;
-    if (window.electronAPI && window.electronAPI.copyToClipboard) {
-        success = await window.electronAPI.copyToClipboard(content);
+    const host = hostBridge();
+    if (host?.copyToClipboard) {
+        success = await host.copyToClipboard(content);
     } else {
         try {
             await navigator.clipboard.writeText(content);

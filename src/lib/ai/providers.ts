@@ -24,8 +24,9 @@ import { estadoIaLocal, puedeUsarIaLocal } from "./local-capability";
 import { cliInstalado } from "@/lib/agent-cli/capability";
 import { dentroDelTope, gastoSesion, leerTope, mensajeTope, sumarGasto } from "@/lib/agent-cli/cost";
 import type { CliId } from "@/lib/agent-cli/types";
+import { hostBridge } from "@/lib/host-bridge";
 
-const api = () => (typeof window !== "undefined" ? (window as any).electronAPI : undefined);
+const api = () => hostBridge() as any;
 
 /**
  * IA local disponible: corre en el renderer (LiteRT-LM / WebGPU) dentro de
