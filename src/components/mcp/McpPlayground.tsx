@@ -16,8 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { PlaygroundTool, PlaygroundCallResult } from "@/types/electron";
+import { hostBridge } from "@/lib/host-bridge";
 
-const api = () => (typeof window !== "undefined" ? (window as any).electronAPI : undefined);
+const api = () => hostBridge() as any;
 
 /** Esqueleto de argumentos a partir del JSON Schema de la herramienta. */
 function schemaSkeleton(schema: unknown): string {

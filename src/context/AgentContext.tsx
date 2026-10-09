@@ -71,6 +71,7 @@ import type {
   AgentDocument,
   ReactAgentOutput,
 } from "@/lib/agent-types";
+import { hostBridge } from "@/lib/host-bridge";
 
 const uid = () =>
   typeof crypto !== "undefined" && crypto.randomUUID
@@ -592,7 +593,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       // ya dice qué generar.
       if ((!trimmed && !requestedKind) || busy) return;
 
-      const api = (window as any).electronAPI;
+      const api = hostBridge() as any;
       // El motor LiteRT-LM corre en el renderer (WebGPU) y carga el modelo .litertlm
       // local vía el protocolo litert-model:// (solo en la app de escritorio).
       if (!api) {

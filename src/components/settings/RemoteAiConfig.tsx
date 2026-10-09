@@ -43,8 +43,9 @@ import {
   veredictoLlaveOk,
   PROMPT_DE_PRUEBA,
 } from "@/lib/ai/key-check";
+import { hostBridge } from "@/lib/host-bridge";
 
-const api = () => (typeof window !== "undefined" ? window.electronAPI : undefined);
+const api = hostBridge;
 
 /**
  * Configuración de IA remota (opcional). Por defecto el sistema es 100% local;

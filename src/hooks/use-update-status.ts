@@ -16,8 +16,9 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { EstadoUpdate } from "@/lib/update-check";
 import { readUpdatePrefs, writeUpdatePrefs } from "@/lib/update-settings";
+import { hostBridge } from "@/lib/host-bridge";
 
-const api = () => (typeof window !== "undefined" ? window.electronAPI : undefined);
+const api = hostBridge;
 
 export function useUpdateStatus() {
   const [estado, setEstado] = useState<EstadoUpdate>({ tipo: "al-dia" });

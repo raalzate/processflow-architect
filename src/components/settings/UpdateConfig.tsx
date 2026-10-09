@@ -22,8 +22,9 @@ import { APP_VERSION } from "@/lib/credits";
 import { etiquetaBoton, type EstadoUpdate } from "@/lib/update-check";
 import { describirUltimaComprobacion, readUpdatePrefs, writeUpdatePrefs } from "@/lib/update-settings";
 import { isMacPlatform } from "@/lib/platform";
+import { hostBridge } from "@/lib/host-bridge";
 
-const api = () => (typeof window !== "undefined" ? window.electronAPI : undefined);
+const api = hostBridge;
 
 export function UpdateConfig() {
   const [auto, setAuto] = useState(true);
