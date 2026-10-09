@@ -48,10 +48,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -109,7 +109,7 @@ jobs:
       # recibe un 404 y el sistema de actualización no existe, aunque el release
       # tenga los tres instaladores.
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: installers-${{ matrix.platform }}
           path: |
@@ -145,7 +145,7 @@ jobs:
       # exige la regla RELEASE del lint: así el borrador nace escrito y revisado
       # en el diff, en vez de redactarse a mano en la web al momento de publicar.
       - name: Checkout (para las notas del release)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download installers from the matrix
         uses: actions/download-artifact@v4

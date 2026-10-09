@@ -165,7 +165,7 @@
     {
       "pattern": "ipcRenderer\\.(invoke|send)\\(",
       "appliesTo": "^src/",
-      "reason": "el renderer habla con main sólo por `window.electronAPI` (puente de preload.ts). Añadí el método ahí, no uses ipcRenderer directo.",
+      "reason": "el renderer habla con el host sólo por `hostBridge()` (src/lib/host-bridge.ts), que en escritorio atiende preload.ts. Añadí el método al preload y a su tipo, no uses ipcRenderer directo.",
       "see": "preload.ts"
     },
     {
@@ -279,6 +279,11 @@
       "vite-tsconfig-paths",
       "vitest"
     ]
+  },
+  "hostBridge": {
+    "$comment": "ADR 0005: el renderer no sabe si corre en Electron o en la web. El host se pide por `module` (hostBridge / capacidadesHost); la regla PUENTE del lint bloquea `window.electronAPI` en cualquier otro archivo de src/. `allow` es sólo la declaración de tipos.",
+    "module": "src/lib/host-bridge.ts",
+    "allow": ["src/types/electron.d.ts"]
   },
   "webgpu": {
     "$comment": "LiteRT-LM no arranca sin GPU. Estos invariantes de main.ts no se tocan.",

@@ -282,6 +282,7 @@ import {
   estiloDeMensaje,
   type SequenceMessageKind,
 } from "@/lib/sequence/messages";
+import { capacidadesHost, hostBridge } from "@/lib/host-bridge";
 
 /** Orden en que se ofrecen los enrutados (el mismo que la ficha del enlace). */
 const ROUTING_ORDER = ["straight", "curved", "orthogonal"] as const;
@@ -1198,9 +1199,13 @@ const EditNodeDialog: React.FC<{
   /** Nombre del proyecto: contexto del chat con el agente externo (feature 020). */
   projectName?: string;
 }> = ({ node, nodes, links, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext, projectName }) => {
-  // El chat con un agente externo y el botón de entrega sólo existen en la app
-  // de escritorio: el CLI y el servidor MCP corren en el proceso main.
-  const electronDisponible = typeof window !== "undefined" && !!window.electronAPI;
+  // El chat con un agente externo y el botón de entrega dependen de capacidades
+  // distintas del host: el CLI y el servidor MCP corren hoy en el proceso main, y
+  // una edición web puede tener uno sin el otro.
+  // El chat también levanta el servidor MCP para que el agente lea la ficha.
+  const host = capacidadesHost();
+  const puedeChatear = host.chatCli && host.mcpServidor;
+  const puedeEntregar = host.mcpServidor;
   const [draft, setDraft] = useState<DesignerNode | null>(null);
   const { run, busy } = useAi();
   const { toast } = useToast();
@@ -1341,7 +1346,7 @@ const EditNodeDialog: React.FC<{
    * el prompt de entrega en el portapapeles.
    */
   const enviarAlAgente = async () => {
-    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    const electron = hostBridge();
     const actual = draftRef.current;
     if (!actual) return;
     if (!electron?.mcpServerStatus || !electron.mcpServerStart) {
@@ -1558,7 +1563,7 @@ const EditNodeDialog: React.FC<{
             <div className="flex shrink-0 items-center gap-1">
               {/* Entregar la caja a un agente externo (feature 019). Sólo en la app
                   de escritorio: el servidor MCP corre en el proceso main. */}
-              {electronDisponible && (
+              {puedeEntregar && (
                 <IconAction
                   type="button"
                   variant="ghost"
@@ -1595,7 +1600,7 @@ const EditNodeDialog: React.FC<{
             onValueChange={(v) => setTab(v as "elemento" | "spec" | "agente")}
             className="flex min-h-0 flex-1 flex-col"
           >
-            <TabsList className={cn("mx-4 mt-3 grid w-auto", electronDisponible ? "grid-cols-3" : "grid-cols-2")}>
+            <TabsList className={cn("mx-4 mt-3 grid w-auto", puedeChatear ? "grid-cols-3" : "grid-cols-2")}>
               <TabsTrigger value="elemento">Elemento</TabsTrigger>
               <TabsTrigger value="spec">
                 Spec
@@ -1606,9 +1611,9 @@ const EditNodeDialog: React.FC<{
               </TabsTrigger>
               {/* Chat con Claude Code / Codex (feature 020): sólo en la app de
                   escritorio, donde el CLI corre en el proceso main. */}
-              {electronDisponible && <TabsTrigger value="agente">Agente</TabsTrigger>}
+              {puedeChatear && <TabsTrigger value="agente">Agente</TabsTrigger>}
             </TabsList>
-            {electronDisponible && (
+            {puedeChatear && (
               // `forceMount` (#461): el chat NO se desmonta al ir a Spec o a Elemento.
               // Desmontarlo cancelaba la corrida del agente y borraba la conversación
               // justo cuando el humano iba a mirar la spec que estaba escribiendo.
@@ -3492,7 +3497,7 @@ export const ComponentDesigner: React.FC<{
   // lee por ref para no re-suscribirse en cada render.
   const accionesRef = useRef<Record<DesignerActionId, () => void> | null>(null);
   useEffect(() => {
-    const api = typeof window !== "undefined" ? window.electronAPI : undefined;
+    const api = hostBridge();
     if (!api?.onDesignerAction) return;
     return api.onDesignerAction((action: string) => {
       accionesRef.current?.[action as DesignerActionId]?.();
@@ -4448,7 +4453,7 @@ export const ComponentDesigner: React.FC<{
   // Exporta un PNG rasterizando la página en el proceso main (capturePage): así
   // sí sale el foreignObject de los nodos. Encuadra todo y oculta overlays antes.
   const handleExportPng = useCallback(async () => {
-    const api = typeof window !== "undefined" ? window.electronAPI : undefined;
+    const api = hostBridge();
     const wrapper = canvasWrapperRef.current;
     if (!api?.captureCanvas || !wrapper) {
       toast({ variant: "destructive", title: "PNG no disponible", description: "Sólo en la app de escritorio." });

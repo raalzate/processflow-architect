@@ -24,6 +24,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import type { Artifact } from "@/lib/agent-types";
+import { hostBridge } from "@/lib/host-bridge";
 
 /** Sufijo de revisión: la v1 no lo lleva (ruido para el caso normal). */
 export function revisionLabel(a: Artifact): string {
@@ -33,7 +34,7 @@ export function revisionLabel(a: Artifact): string {
 /** Copia texto: en Electron por el main (portapapeles nativo), si no por el navegador. */
 async function copyText(text: string): Promise<boolean> {
   try {
-    const api = (window as any).electronAPI;
+    const api = hostBridge();
     if (api?.copyToClipboard) return !!(await api.copyToClipboard(text));
     await navigator.clipboard.writeText(text);
     return true;

@@ -42,6 +42,7 @@ import {
   STORAGE_LAST_FILE_ID,
   STORAGE_TOKEN_USAGE,
 } from "@/lib/graph-constants";
+import { hostBridge } from "@/lib/host-bridge";
 
 interface GraphDataProviderProps {
   children: ReactNode;
@@ -350,8 +351,9 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
   }, [currentFileId, savedFiles, graphData, loadFile]);
 
   useEffect(() => {
-    if (window.electronAPI && (window.electronAPI as any).navigate) {
-      (window.electronAPI as any).navigate((_event: any, route: string) => {
+    const host = hostBridge();
+    if (host?.navigate) {
+      host.navigate((_event: any, route: string) => {
         router.push(route);
       });
     }

@@ -1,6 +1,6 @@
 {
   "name": "processflow-architect",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "private": true,
   "license": "Apache-2.0",
   "description": "A comprehensive application designed to model, visualize, and manage process flows within complex architectural environments. It enables users to define end-to-end workflows",
@@ -14,7 +14,7 @@
     "ts:build": "tsc -p tsconfig.electron.json",
     "ts:watch": "tsc -p tsconfig.electron.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
-    "move-out": "rimraf build/out && mv out build/out || move out build\\out",
+    "move-out": "node scripts/move-out.mjs",
     "electron-dev": "concurrently -k -n NEXT,TS,ELECTRON -c green,cyan,yellow \"npm:next-dev\" \"npm:ts:watch\" \"wait-on http://localhost:3000 && electron .\"",
     "build": "npm run next-build && npm run ts:build && npm run move-out",
     "electron-build:mac": "npm run build && electron-builder --mac",

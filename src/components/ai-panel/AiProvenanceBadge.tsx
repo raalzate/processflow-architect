@@ -8,6 +8,7 @@ import { describeEngine, describeAgentEngine } from "@/lib/ai/provenance";
 import { estadoIaLocal } from "@/lib/ai/local-capability";
 import { cliInstalado, estadoCli } from "@/lib/agent-cli/capability";
 import { DEFAULT_CLI } from "@/lib/ai/providers";
+import { hostBridge } from "@/lib/host-bridge";
 
 /**
  * Badge de PROCEDENCIA de la IA: dice si lo que se genera saldrá del motor local
@@ -35,7 +36,7 @@ export function AiProvenanceBadge({
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    const api = typeof window !== "undefined" ? window.electronAPI : undefined;
+    const api = hostBridge();
     let alive = true;
     api?.getAiKeyStatus?.().then((s) => alive && setKeys(s)).catch(() => {});
     const onFocus = () => setTick((t) => t + 1);
