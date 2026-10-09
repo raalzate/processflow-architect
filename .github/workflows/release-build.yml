@@ -169,7 +169,7 @@ jobs:
           echo "path=$path" >> "$GITHUB_OUTPUT"
 
       - name: Publish to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: true # Coincide con releaseType: draft de package.json; revisá antes de publicar.
           # Un borrador sin instaladores es un release inútil que salía VERDE:
