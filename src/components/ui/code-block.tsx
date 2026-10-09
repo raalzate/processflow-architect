@@ -16,6 +16,7 @@ import { IconAction } from "@/components/ui/icon-action";
 import { accion } from "@/lib/action-labels";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { hostBridge } from "@/lib/host-bridge";
 
 export function CodeBlock({
   code,
@@ -34,7 +35,7 @@ export function CodeBlock({
     try {
       // En la app de escritorio el portapapeles va por el proceso main; en el
       // navegador, por la API estándar.
-      const api = (typeof window !== "undefined" && (window as any).electronAPI) || null;
+      const api = hostBridge();
       if (api?.copyToClipboard) await api.copyToClipboard(code);
       else await navigator.clipboard.writeText(code);
       setCopied(true);

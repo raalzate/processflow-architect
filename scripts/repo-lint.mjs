@@ -19,6 +19,7 @@
  *   BOTONMUDO un botón sólo-icono lleva nombre accesible (usá `IconAction`).
  *   ENRUTADO  el enrutado efectivo de una arista se resuelve con `routingOf`, sin fallback a mano.
  *   PLATAFORMA  detectar el sistema operativo sólo en src/lib/platform.ts (y sin API deprecada).
+ *   PUENTE      el host (Electron o web) se pide sólo por src/lib/host-bridge.ts, nunca `window.electronAPI`.
  *   REGISTRO    consultar un registro con clave de afuera pasa por src/lib/registro.ts (nunca `in`).
  *   DEPS      sin SDKs de nube en package.json (las llamadas van con fetch desde el main).
  *   TILES     el registro de tiles (tessl.json) describe las deps reales: ni tiles huérfanos,
@@ -315,6 +316,25 @@ function checkFile(relPath, contenidoDado = null) {
         lineOf(content, m.index),
         "PLATAFORMA",
         `\`navigator.${m[1]}\` está deprecado y la detección de plataforma vive en \`src/lib/platform.ts\`. Usá \`isMacPlatform()\`, \`modifierLabel()\` o \`hasPlatformModifier()\`.`,
+      );
+    }
+  }
+
+  // PUENTE — el host (preload de Electron o adaptador web) se pide por un solo
+  // módulo. 24 archivos leían `window.electronAPI` a mano: cada uno era un `if`
+  // más para la edición web (ADR 0005). Comentarios aparte: se busca en código.
+  // Se busca la PROPIEDAD con cualquier receptor (`window.`, `globalThis.`, un
+  // alias `w.`) y por corchetes: mirar sólo `window.` dejaba la puerta abierta.
+  const puente = config.hostBridge;
+  if (puente && relPath.startsWith("src/") && !isTest(relPath) && relPath !== puente.module && !puente.allow.includes(relPath)) {
+    const codigo = content.replace(/\/\*[\s\S]*?\*\//g, (s) => s.replace(/[^\n]/g, " ")).replace(/\/\/[^\n]*/g, "");
+    const m = /(?:\.\s*electronAPI\b|\[\s*["'`]electronAPI["'`]\s*\])/.exec(codigo);
+    if (m) {
+      fail(
+        relPath,
+        lineOf(codigo, m.index),
+        "PUENTE",
+        `\`window.electronAPI\` sólo se lee en \`${puente.module}\`. Usá \`hostBridge()\` para llamar al host y \`capacidadesHost()\` para decidir qué mostrar: así la misma pantalla corre en escritorio y en web.`,
       );
     }
   }

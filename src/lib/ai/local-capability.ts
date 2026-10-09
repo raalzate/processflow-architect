@@ -21,7 +21,10 @@ export type EstadoIaLocal = "desconocido" | "disponible" | "sin-webgpu" | "sin-e
 
 /** Lo que se sabe del entorno cuando se razona el estado. */
 export interface EntornoLocal {
-  /** ¿Corre dentro de Electron (hay puente `electronAPI`)? */
+  /**
+   * ¿El host gestiona modelos en disco (`capacidadesHost().modelosLocales`)? Hoy
+   * sólo el escritorio; el nombre queda por los estados que ya lo usan.
+   */
   enElectron: boolean;
   /** ¿Hay adaptador WebGPU? `null` = todavía no se preguntó. */
   webgpu: boolean | null;
