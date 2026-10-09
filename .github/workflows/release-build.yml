@@ -109,7 +109,7 @@ jobs:
       # recibe un 404 y el sistema de actualización no existe, aunque el release
       # tenga los tres instaladores.
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: installers-${{ matrix.platform }}
           path: |
