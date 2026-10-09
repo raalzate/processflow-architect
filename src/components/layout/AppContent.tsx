@@ -42,6 +42,7 @@ import {
 import { publicarEstadoCli } from "@/lib/agent-cli/capability";
 import { loadAiSettings } from "@/lib/ai/remote-settings";
 import { CommandPalette } from "@/components/CommandPalette";
+import { capacidadesHost, hostBridge } from "@/lib/host-bridge";
 
 // --- 1. Wrapper para el Header ---
 // Este componente solo se volverá a renderizar si las props
@@ -107,7 +108,7 @@ const McpImportBridge = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    const electron = hostBridge();
     if (!electron?.mcpPublishAppState) return;
     electron.mcpPublishAppState(
       describeAppState({
@@ -129,7 +130,7 @@ const McpImportBridge = () => {
   // `get_view`): el main pregunta y este efecto contesta. El proyecto activo sale
   // de los contextos; los demás, de localStorage — leerlos NO cambia el lienzo.
   useEffect(() => {
-    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    const electron = hostBridge();
     if (!electron?.onMcpAppRead) return;
 
     const proyectos = savedFiles.map((f) => ({ id: f.id, name: f.name }));
@@ -205,7 +206,7 @@ const McpImportBridge = () => {
   // regla —qué vista toca y cuándo NO se hace nada— es pura y vive en
   // `app-actions.ts`; acá sólo se aplica y se contesta si ocurrió.
   useEffect(() => {
-    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    const electron = hostBridge();
     if (!electron?.onMcpAppAction) return;
 
     const off = electron.onMcpAppAction(({ id, request }) => {
@@ -278,7 +279,7 @@ const McpImportBridge = () => {
   }, [currentFileId, views, activeView, graphData, handleDesignUpdate, updateViewGraph, deleteView, renameView]);
 
   useEffect(() => {
-    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    const electron = hostBridge();
     if (!electron?.onMcpImportDiagram) return;
 
     const off = electron.onMcpImportDiagram(({ name, content, view, mermaid, target }) => {
@@ -610,21 +611,23 @@ export function AppContent() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const enElectron = typeof window !== "undefined" && !!(window as any).electronAPI;
+      // El motor local carga el modelo de disco (`litert-model://`): lo que hace
+      // falta es un host que gestione modelos, no «estar en Electron».
+      const enElectron = capacidadesHost().modelosLocales;
       const webgpu = await webgpuAvailable();
       if (!mounted) return;
       const estado = razonarEstadoLocal({ enElectron, webgpu });
       publicarEstadoIaLocal(estado);
       // Qué CLI de agente hay (feature 021): el router lo lee en sincrónico para
       // el modo «Claude Code». Sin Electron no hay CLI que publicar.
-      (window as any).electronAPI?.agentCliStatus?.()
+      hostBridge()?.agentCliStatus?.()
         .then((s: Parameters<typeof publicarEstadoCli>[0]) => mounted && publicarEstadoCli(s))
         .catch(() => {});
       setDetectando(false);
       // La llave vive en el main: sin preguntarle, "modo remoto" no significa que
       // la nube funcione, y el aviso prometería una salida que no existe.
       const ajustes = loadAiSettings();
-      const llaves = await (window as any).electronAPI?.getAiKeyStatus?.().catch(() => ({}));
+      const llaves = await (hostBridge() as any)?.getAiKeyStatus?.().catch(() => ({}));
       if (!mounted) return;
       const aviso = mensajeIaLocal(estado, {
         modo: ajustes.mode,

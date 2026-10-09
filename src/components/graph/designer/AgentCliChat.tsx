@@ -44,6 +44,7 @@ import { estadoCli, publicarEstadoCli } from "@/lib/agent-cli/capability";
 import { aplicarEvento, sesionDeEvento, type ChatMsg, type ToolCall } from "@/lib/agent-cli/chat-state";
 import { dentroDelTope, formatoUsd, gastoSesion, leerTope, mensajeTope, sumarGasto } from "@/lib/agent-cli/cost";
 import { urlConAlcance } from "@/lib/mcp/focus-scope";
+import { hostBridge } from "@/lib/host-bridge";
 
 const CLI_CHOICE_KEY = "agent_cli_choice";
 /** Carpetas de contexto adjuntas (#460): se recuerdan entre fichas y sesiones. */
@@ -82,7 +83,7 @@ export interface AgentCliChatProps {
   notation?: string;
 }
 
-const api = () => (typeof window !== "undefined" ? window.electronAPI : undefined);
+const api = hostBridge;
 
 /** Nombre corto de una tool MCP (`mcp__processflow__get_x` → `get_x`). */
 const toolShort = (name: string) => name.replace(/^mcp__[^_]+__/, "").replace(/^[^.]+\./, "");

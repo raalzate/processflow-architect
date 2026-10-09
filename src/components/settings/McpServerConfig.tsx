@@ -32,8 +32,9 @@ import {
   MCP_DEFAULT_PORT,
   clientConfigJson,
 } from "@/lib/mcp-settings";
+import { hostBridge } from "@/lib/host-bridge";
 
-const api = () => (typeof window !== "undefined" ? window.electronAPI : undefined);
+const api = hostBridge;
 
 export function McpServerConfig() {
   const { toast } = useToast();
