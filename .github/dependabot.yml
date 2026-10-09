@@ -1,0 +1,32 @@
+# Dependabot: avisa de dependencias vulnerables y abre el PR que las corrige.
+#
+# Los PRs pasan por el mismo gate que cualquier otro (CI corre en todo PR), y los
+# mergea un humano: tocan package-lock.json, que el agente no edita (CONSTITUTION P9).
+#
+# Las de seguridad salen apenas se publican, sin esperar al calendario. Las de
+# versión se agrupan para no inundar la lista: un PR semanal de menores/parches.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    groups:
+      menores-y-parches:
+        update-types: [minor, patch]
+    # Electron y Next cambian lo que el arnés protege (WebGPU, schemes, export
+    # estático): sus saltos mayores se hacen a mano, con su propio PR y prueba.
+    ignore:
+      - dependency-name: electron
+        update-types: ["version-update:semver-major"]
+      - dependency-name: next
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: [dependencies]

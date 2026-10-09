@@ -37,4 +37,5 @@ ningún otro `.md`— apunte a la nada.
 | Archivo | Qué es |
 |---|---|
 | `docs/RELEASE.md` | empaquetado, firma y publicación |
+| `SECURITY.md` | cómo reportar una vulnerabilidad y qué controles tiene la app (con su mecanismo) |
 | `site/index.html` | la página pública del proyecto (GitHub Pages); la despliega `.github/workflows/pages.yml` |
