@@ -113,15 +113,43 @@ describe("checkForUpdates", () => {
 });
 
 describe("downloadUpdate", () => {
-  it("en Windows descarga y deja el updater configurado para NO hacer nada solo", async () => {
+  it("en Windows descarga; nada se baja solo, pero lo bajado sí se aplica al salir", async () => {
     vi.stubGlobal("fetch", releaseLatest("v0.9.0"));
     const { checkForUpdates, downloadUpdate } = await cargar();
     await checkForUpdates();
     await downloadUpdate();
     expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
     expect(autoUpdater.autoDownload).toBe(false);
-    expect(autoUpdater.autoInstallOnAppQuit).toBe(false);
+    // Red de seguridad: si el reinicio inmediato no pudo, la próxima salida instala.
+    expect(autoUpdater.autoInstallOnAppQuit).toBe(true);
     expect(autoUpdater.allowPrerelease).toBe(false);
+  });
+
+  it("al terminar la descarga reinicia e instala sin pedir un segundo clic", async () => {
+    const win = { webContents: { send: vi.fn() } };
+    const { initUpdater, updateStatus } = await cargar();
+    await initUpdater(win as never);
+    const alBajar = autoUpdater.on.mock.calls.find(([ev]) => ev === "update-downloaded")?.[1] as
+      | ((info: { version: string }) => void)
+      | undefined;
+    expect(alBajar).toBeTypeOf("function");
+    alBajar!({ version: "0.9.0" });
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(updateStatus()).toEqual({ tipo: "instalando", version: "0.9.0" });
+  });
+
+  it("si el reinicio falla, queda «lista» para reiniciar a mano", async () => {
+    const win = { webContents: { send: vi.fn() } };
+    autoUpdater.quitAndInstall.mockImplementationOnce(() => {
+      throw new Error("sin permisos");
+    });
+    const { initUpdater, updateStatus } = await cargar();
+    await initUpdater(win as never);
+    const alBajar = autoUpdater.on.mock.calls.find(([ev]) => ev === "update-downloaded")![1] as (
+      info: { version: string }
+    ) => void;
+    alBajar({ version: "0.9.0" });
+    expect(updateStatus()).toEqual({ tipo: "lista", version: "0.9.0" });
   });
 
   it("pulsar dos veces NO lanza dos descargas", async () => {

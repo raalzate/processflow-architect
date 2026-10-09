@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  comillasSh,
   compararVersiones,
+  elegirApp,
   elegirAsset,
+  estaOcupado,
   etiquetaBoton,
   etiquetaBreve,
   hayActualizacion,
   puedeAutoInstalar,
   resolverAutoUpdater,
+  rutaBundleMac,
+  scriptRecambioMac,
   type EstadoUpdate,
 } from "@/lib/update-check";
 
@@ -105,6 +110,12 @@ describe("etiquetaBoton", () => {
     expect(label({ tipo: "lista", version: "0.8.2" })).toMatch(/reiniciar/i);
   });
 
+  it("instalando dice que está instalando y a qué versión", () => {
+    const t = label({ tipo: "instalando", version: "0.8.2" })!;
+    expect(t).toMatch(/instalando/i);
+    expect(t).toContain("0.8.2");
+  });
+
   it("un fallo se puede reintentar: el botón no queda muerto", () => {
     const t = label({ tipo: "fallo", motivo: "sin conexión" })!;
     expect(t).toMatch(/reintentar/i);
@@ -135,6 +146,7 @@ describe("etiquetaBreve (aviso del pie, issue #231)", () => {
       { tipo: "disponible", version: "0.10.12", url: "https://x", instalable: false },
       { tipo: "descargando", porcentaje: 42.7 },
       { tipo: "descargada", version: "0.10.12", ruta: "/a/b.dmg" },
+      { tipo: "instalando", version: "0.10.12" },
       { tipo: "lista", version: "0.10.12" },
       { tipo: "fallo", motivo: "sin conexión" },
     ];
@@ -143,6 +155,80 @@ describe("etiquetaBreve (aviso del pie, issue #231)", () => {
       expect(t, e.tipo).toBeTruthy();
       expect(t.length, `${e.tipo}: «${t}»`).toBeLessThanOrEqual(28);
     }
+  });
+});
+
+describe("estaOcupado (el botón se apaga mientras la app trabaja)", () => {
+  it("descargando e instalando: pulsar no haría nada útil", () => {
+    expect(estaOcupado({ tipo: "descargando", porcentaje: 10 })).toBe(true);
+    expect(estaOcupado({ tipo: "instalando", version: "0.14.0" })).toBe(true);
+  });
+
+  it("los demás estados tienen una acción detrás", () => {
+    expect(estaOcupado({ tipo: "al-dia" })).toBe(false);
+    expect(estaOcupado({ tipo: "disponible", version: "1", url: "https://x", instalable: true })).toBe(false);
+    expect(estaOcupado({ tipo: "descargada", version: "1", ruta: "/a.dmg" })).toBe(false);
+    expect(estaOcupado({ tipo: "lista", version: "1" })).toBe(false);
+    expect(estaOcupado({ tipo: "fallo", motivo: "x" })).toBe(false);
+  });
+});
+
+describe("instalación automática en macOS (recambio del bundle)", () => {
+  const exe = "/Applications/Processflow Architect.app/Contents/MacOS/Processflow Architect";
+
+  it("rutaBundleMac sube del ejecutable a la .app", () => {
+    expect(rutaBundleMac(exe)).toBe("/Applications/Processflow Architect.app");
+  });
+
+  it("rutaBundleMac no inventa un bundle donde no lo hay (build de desarrollo)", () => {
+    expect(rutaBundleMac("/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron")).toBe(
+      "/repo/node_modules/electron/dist/Electron.app"
+    );
+    expect(rutaBundleMac("/usr/local/bin/electron")).toBeUndefined();
+    expect(rutaBundleMac("/a/X.app/Contents/Helpers/X")).toBeUndefined();
+    expect(rutaBundleMac("")).toBeUndefined();
+  });
+
+  it("elegirApp toma la única .app del volumen y nada más", () => {
+    expect(elegirApp(["Processflow Architect.app", "Applications", ".DS_Store"])).toBe(
+      "Processflow Architect.app"
+    );
+    expect(elegirApp(["Applications"])).toBeUndefined();
+    // Dos .app: no se adivina cuál es la buena.
+    expect(elegirApp(["A.app", "B.app"])).toBeUndefined();
+  });
+
+  it("comillasSh deja un espacio o una comilla inofensivos para sh", () => {
+    expect(comillasSh("/Applications/Processflow Architect.app")).toBe(
+      "'/Applications/Processflow Architect.app'"
+    );
+    expect(comillasSh("/Users/o'neil/X.app")).toBe(`'/Users/o'\\''neil/X.app'`);
+  });
+
+  it("el script espera a que la app muera, recambia y recién después abre", () => {
+    const s = scriptRecambioMac({
+      pid: 4242,
+      destino: "/Applications/Processflow Architect.app",
+      nueva: "/Applications/Processflow Architect.app.nueva",
+    });
+    const lineas = s.split("\n");
+    expect(lineas[0]).toBe("#!/bin/sh");
+    // Orden: esperar → borrar la vieja → mover la nueva → abrir. Abrir antes de
+    // mover abriría la versión vieja; mover sin esperar rompe la app que corre.
+    const i = (re: RegExp) => lineas.findIndex((l) => re.test(l));
+    expect(i(/kill -0 4242/)).toBeLessThan(i(/^rm -rf/));
+    expect(i(/^rm -rf/)).toBeLessThan(i(/^mv /));
+    expect(i(/^mv /)).toBeLessThan(i(/^open /));
+    // Si el mv falla, no se abre nada a medias.
+    expect(lineas[i(/^mv /)]).toMatch(/\|\| exit 1$/);
+    // Las rutas con espacio van entre comillas.
+    expect(s).toContain("'/Applications/Processflow Architect.app'");
+    expect(s).toContain("'/Applications/Processflow Architect.app.nueva'");
+  });
+
+  it("el script no acepta un PID basura: esperaría para siempre o a nadie", () => {
+    expect(() => scriptRecambioMac({ pid: 0, destino: "/a.app", nueva: "/a.app.nueva" })).toThrow(/PID/);
+    expect(() => scriptRecambioMac({ pid: NaN, destino: "/a.app", nueva: "/a.app.nueva" })).toThrow(/PID/);
   });
 
   it("descargando redondea el progreso", () => {
