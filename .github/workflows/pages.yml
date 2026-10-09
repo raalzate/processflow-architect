@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # Sin build ni dependencias: la página es un HTML con su CSS adentro.
       - name: Armar el sitio
