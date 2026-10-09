@@ -18,7 +18,13 @@ export const versionLabel = () => `v${APP_VERSION} · ${RELEASE_CHANNEL}`;
 
 /** Autoría individual: no hay logo ni organización detrás, sólo el autor. */
 export const CREDIT_AUTHOR = "Raúl Andrés Alzate Gómez";
-export const CREDIT_EMAIL = "alzategomez.raul@gmail.com";
+/**
+ * Repo público del proyecto: es el canal de contacto (issues, releases, código).
+ * Reemplazó al correo personal en el pie: el correo exponía un dato privado y no
+ * llevaba a nada que el usuario pudiera mirar; el repo sí.
+ */
+export const CREDIT_REPO = "raalzate/processflow-architect";
+export const CREDIT_REPO_URL = `https://github.com/${CREDIT_REPO}`;
 /**
  * Línea del pie. Termina con la versión a propósito (#207): en un reporte de
  * usuario es el primer dato que hace falta y el que nunca viene, y acá está
@@ -35,14 +41,14 @@ export interface CreditLink {
 }
 
 /**
- * Enlaces de crédito. Sólo `mailto:` y `https:`: son los schemes que el
- * `setWindowOpenHandler` de `main/window.ts` delega al sistema; cualquier otro
- * se niega y el clic no haría nada.
+ * Enlaces de crédito. Sólo `https:` (y `mailto:`, si volviera a hacer falta): son
+ * los schemes que el `setWindowOpenHandler` de `main/window.ts` delega al
+ * sistema; cualquier otro se niega y el clic no haría nada.
  */
 export const CREDIT_LINKS: readonly CreditLink[] = [
   {
-    label: CREDIT_EMAIL,
-    href: `mailto:${CREDIT_EMAIL}`,
-    title: `Escribir a ${CREDIT_AUTHOR}`,
+    label: `github.com/${CREDIT_REPO}`,
+    href: CREDIT_REPO_URL,
+    title: `Código, issues y releases de ${CREDIT_AUTHOR} en GitHub`,
   },
 ] as const;
