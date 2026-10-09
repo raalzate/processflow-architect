@@ -12,7 +12,9 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    # Con 5, los saltos mayores sueltos llenaban el cupo y los grupos nuevos no
+    # tenían dónde abrirse (#489). Los grupos ya acotan la cantidad de PRs.
+    open-pull-requests-limit: 10
     labels: [dependencies]
     # Una dependencia cae en el PRIMER grupo que la nombra: los pares van antes.
     groups:
