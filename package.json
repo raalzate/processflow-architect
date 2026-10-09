@@ -89,7 +89,7 @@
     "@electron/notarize": "^3.1.1",
     "@electron/rebuild": "^4.2.0",
     "@types/d3": "^7.4.3",
-    "@types/node": "^20",
+    "@types/node": "^26",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.9",
