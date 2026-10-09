@@ -76,7 +76,9 @@ export interface GraphContextType {
 
   // Estado de PDF
   isGeneratingPdf: boolean;
-  pdfRef: RefObject<HTMLDivElement>;
+  // React 19: `useRef<T>(null)` es `RefObject<T | null>`; el tipo dice la verdad
+  // de que el nodo puede no estar montado.
+  pdfRef: RefObject<HTMLDivElement | null>;
   taskListNodes: { new: GraphNode[]; modified: GraphNode[]; deleted: GraphNode[] };
 
   // Funciones (Callbacks)
