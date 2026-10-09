@@ -4,6 +4,7 @@ import path from 'path';
 import { isDev, appServe } from './config';
 import { titleBarOptions } from '../src/lib/window-chrome';
 import { DESIGNER_MENU, type DesignerMenuItem } from '../src/lib/designer-actions';
+import { permisoPermitido } from './services/security';
 
 export function createMainWindow() {
     const win = new BrowserWindow({
@@ -18,11 +19,23 @@ export function createMainWindow() {
         icon: path.join(__dirname, '..', 'assets', 'icon.png'), // Ajusta ruta
         webPreferences: {
             preload: path.join(__dirname, '..', 'preload.js'), // Ajusta ruta
-            webSecurity: isDev
+            // Explícitos aunque sean el default: que nadie los apague sin verlo.
+            // `webSecurity` estaba en `isDev`, o sea APAGADO justo en el binario
+            // que usa la gente (sin política de mismo origen). Los modelos llegan
+            // por `litert-model://`, que es `corsEnabled` (main/schemes.ts).
+            webSecurity: true,
+            contextIsolation: true,
+            nodeIntegration: false,
         },
     });
 
-    win.webContents.session.setPermissionRequestHandler((wc, permission, cb) => cb(true));
+    // Antes se concedía TODO lo que pidiera la página (cámara, micrófono,
+    // ubicación…). Sólo el portapapeles, y sólo para la propia app.
+    const sesion = win.webContents.session;
+    sesion.setPermissionRequestHandler((wc, permission, cb, details) =>
+        cb(permisoPermitido(permission, details?.requestingUrl ?? wc.getURL(), isDev)));
+    sesion.setPermissionCheckHandler((wc, permission, origin) =>
+        permisoPermitido(permission, origin || wc?.getURL(), isDev));
 
     // Actualizaciones (#208): la ventana es a quien se le reporta el estado. No
     // busca nada por su cuenta — la búsqueda la dispara el renderer, que es quien

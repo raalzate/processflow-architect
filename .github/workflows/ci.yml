@@ -71,3 +71,30 @@ jobs:
           name: coverage
           path: coverage/
           retention-days: 14
+
+  # Vulnerabilidades conocidas en las dependencias que viajan en el instalador.
+  # Job APARTE y que no bloquea, a propósito: el día que se agregó había 30
+  # altas/críticas cuya corrección cambia package-lock.json (ruta protegida: la
+  # decide un humano, normalmente mergeando el PR que abre Dependabot). Un check
+  # rojo permanente se aprende a ignorar; un resumen en cada run, no. Cuando el
+  # conteo llegue a cero, se vuelve bloqueante y entra al gate.
+  audit:
+    name: Audit de dependencias (informativo)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+      - name: npm audit (producción)
+        run: |
+          {
+            echo "## npm audit — dependencias de producción"
+            echo
+            npm audit --omit=dev --json 2>/dev/null \
+              | node -e "const a=JSON.parse(require('fs').readFileSync(0,'utf8'));const v=a.metadata?.vulnerabilities??{};console.log('| crítica | alta | moderada | baja |');console.log('|---|---|---|---|');console.log('| '+[v.critical,v.high,v.moderate,v.low].map(n=>n??0).join(' | ')+' |')"
+            echo
+            echo "Detalle: \`npm audit --omit=dev\`. Las correcciones llegan como PRs de Dependabot."
+          } >> "$GITHUB_STEP_SUMMARY"
+          npm audit --omit=dev --audit-level=high

@@ -3,6 +3,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppTitleBar } from "@/components/layout/AppTitleBar";
 import { scriptAntiDestello } from "@/lib/theme";
+import { politicaCsp } from "@/lib/csp";
+
+// Sólo en el build: `next dev` necesita `eval` para el refresco en caliente, y una
+// CSP que rompe el desarrollo termina apagada «por un rato».
+const CSP = process.env.NODE_ENV === "production" ? politicaCsp() : null;
 
 export const metadata: Metadata = {
   title: "ProcessFlow Architect",
@@ -27,6 +32,8 @@ export default function RootLayout({
     // salte la hidratación: el script la corrige antes de que nadie la vea.
     <html lang="es" className="dark" suppressHydrationWarning>
       <head>
+        {/* Primero en el <head>: una CSP por meta sólo rige lo que viene después. */}
+        {CSP && <meta httpEquiv="Content-Security-Policy" content={CSP} />}
         <script dangerouslySetInnerHTML={{ __html: scriptAntiDestello() }} />
       </head>
       <body className="font-body antialiased">
