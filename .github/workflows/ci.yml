@@ -78,10 +78,12 @@ jobs:
   # decide un humano, normalmente mergeando el PR que abre Dependabot). Un check
   # rojo permanente se aprende a ignorar; un resumen en cada run, no. Cuando el
   # conteo llegue a cero, se vuelve bloqueante y entra al gate.
+  #
+  # El job sale VERDE y avisa con una anotación `::warning::`. `continue-on-error`
+  # no alcanzaba: GitHub igual pinta el check en rojo y el PR queda «inestable».
   audit:
     name: Audit de dependencias (informativo)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -89,12 +91,20 @@ jobs:
           node-version: 20
       - name: npm audit (producción)
         run: |
-          {
-            echo "## npm audit — dependencias de producción"
-            echo
-            npm audit --omit=dev --json 2>/dev/null \
-              | node -e "const a=JSON.parse(require('fs').readFileSync(0,'utf8'));const v=a.metadata?.vulnerabilities??{};console.log('| crítica | alta | moderada | baja |');console.log('|---|---|---|---|');console.log('| '+[v.critical,v.high,v.moderate,v.low].map(n=>n??0).join(' | ')+' |')"
-            echo
-            echo "Detalle: \`npm audit --omit=dev\`. Las correcciones llegan como PRs de Dependabot."
-          } >> "$GITHUB_STEP_SUMMARY"
-          npm audit --omit=dev --audit-level=high
+          # `npm audit` sale con 1 si encuentra algo: se captura y se informa.
+          npm audit --omit=dev --json > audit.json 2>/dev/null || true
+          node - <<'JS'
+          const fs = require("fs");
+          let v = {};
+          try { v = JSON.parse(fs.readFileSync("audit.json", "utf8")).metadata?.vulnerabilities ?? {}; } catch {}
+          const n = (k) => v[k] ?? 0;
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            "## npm audit — dependencias de producción", "",
+            "| crítica | alta | moderada | baja |", "|---|---|---|---|",
+            `| ${n("critical")} | ${n("high")} | ${n("moderate")} | ${n("low")} |`, "",
+            "Detalle: `npm audit --omit=dev`. Las correcciones llegan como PRs de Dependabot.", "",
+          ].join("\n"));
+          // La anotación va por stdout: es de donde el runner lee los comandos.
+          const graves = n("critical") + n("high");
+          if (graves) console.log(`::warning title=npm audit::${graves} vulnerabilidades altas o críticas en dependencias de producción (ver el resumen del run)`);
+          JS
