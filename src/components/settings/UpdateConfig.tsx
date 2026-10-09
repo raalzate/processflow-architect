@@ -19,9 +19,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { APP_VERSION } from "@/lib/credits";
-import { etiquetaBoton, type EstadoUpdate } from "@/lib/update-check";
+import { estaOcupado, etiquetaBoton, type EstadoUpdate } from "@/lib/update-check";
 import { describirUltimaComprobacion, readUpdatePrefs, writeUpdatePrefs } from "@/lib/update-settings";
-import { isMacPlatform } from "@/lib/platform";
 import { hostBridge } from "@/lib/host-bridge";
 
 const api = hostBridge;
@@ -69,18 +68,15 @@ export function UpdateConfig() {
   const accion = useCallback(async () => {
     const a = api();
     if (!a) return;
+    if (estaOcupado(estado)) return;
     if (estado.tipo === "lista") return void a.installUpdate?.();
-    // Ya bajado y sin auto-instalación: lo útil es mostrar dónde quedó (#231).
+    // La instalación automática no pudo: lo útil es mostrar dónde quedó (#231).
     if (estado.tipo === "descargada") return void a.revealUpdate?.();
     const e = await a.downloadUpdate?.();
     if (e) setEstado(e);
   }, [estado]);
 
   const texto = etiquetaBoton(estado);
-  // En macOS la instalación es manual (sin firma no hay auto-instalación); se
-  // dice acá para que no sea una sorpresa al pulsar. La detección del SO vive en
-  // `lib/platform.ts` (regla PLATAFORMA del lint), no en este componente.
-  const manual = isMacPlatform();
 
   return (
     <Card>
@@ -89,10 +85,9 @@ export function UpdateConfig() {
           <Download className="h-5 w-5" /> Actualizaciones
         </CardTitle>
         <CardDescription>
-          Versión instalada: <strong>{APP_VERSION}</strong>. Sólo se ofrecen versiones publicadas;
-          {manual
-            ? " en este sistema la app baja el instalador a Descargas y lo instalás vos."
-            : " la actualización se descarga e instala desde la app."}
+          Versión instalada: <strong>{APP_VERSION}</strong>. Sólo se ofrecen versiones publicadas.
+          Al actualizar, la app descarga la versión nueva, se cierra, la instala y vuelve a abrirse
+          sola: guardá el trabajo antes de pulsar.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -124,7 +119,7 @@ export function UpdateConfig() {
             Buscar ahora
           </Button>
           {texto && (
-            <Button type="button" size="sm" onClick={accion} disabled={estado.tipo === "descargando"}>
+            <Button type="button" size="sm" onClick={accion} disabled={estaOcupado(estado)}>
               {texto}
             </Button>
           )}

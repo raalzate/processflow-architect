@@ -10,30 +10,39 @@
  *
  *  - **Nada se descarga solo** (`autoDownload = false`): abrir la app no puede
  *    gastar la conexión del usuario.
- *  - **Nada se instala solo** (`autoInstallOnAppQuit = false`): reiniciar es una
- *    decisión de quien tiene trabajo abierto en el lienzo.
+ *  - **Pulsar «actualizar» es la única decisión que se pide.** Lo que sigue
+ *    —descargar, cerrar la app, instalar y volver a abrir— pasa solo: quien pidió
+ *    la versión nueva no tiene por qué perseguir el instalador ni un segundo
+ *    botón. `autoInstallOnAppQuit = true` es la red de seguridad por si el
+ *    reinicio inmediato no pudo.
  *  - **En desarrollo no se busca**: `electron-updater` revienta sin
  *    `app-update.yml`, y actualizar un árbol de fuentes no tiene sentido.
  *
- * En macOS NO se INSTALA: Squirrel.Mac exige que la app esté firmada y
- * notarizada, y estos binarios no lo están. Pero sí se descarga: la app baja el
- * `.dmg` del release a la carpeta de Descargas y dice dónde quedó (issue #231);
- * abrirlo y arrastrarlo a Aplicaciones es lo único que queda a mano. Mandar al
- * navegador era hacerle buscar el archivo a quien ya había pedido la versión.
+ * En macOS Squirrel.Mac no sirve: exige firma y notarización, y estos binarios no
+ * las tienen. La app baja el `.dmg` a Descargas (issue #231) y hace el recambio a
+ * mano: monta el `.dmg`, copia la `.app` al lado de la instalada, se cierra y un
+ * script desprendido cambia una por otra y la vuelve a abrir. Si algo de eso no
+ * se puede (bundle de sólo lectura, sin permisos), el `.dmg` queda en Descargas y
+ * se abre para que el usuario arrastre la app: es el camino de antes, como plan B.
  */
 
+import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm, stat } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 import { app, shell, type BrowserWindow } from "electron";
 import {
+  elegirApp,
   elegirAsset,
   hayActualizacion,
   puedeAutoInstalar,
   resolverAutoUpdater,
+  rutaBundleMac,
+  scriptRecambioMac,
   type EstadoUpdate,
 } from "../../src/lib/update-check";
 
@@ -72,7 +81,7 @@ export const updateStatus = (): EstadoUpdate => estado;
 async function autoUpdater() {
   const u = resolverAutoUpdater(await import("electron-updater"));
   u.autoDownload = false;
-  u.autoInstallOnAppQuit = false;
+  u.autoInstallOnAppQuit = true;
   u.allowPrerelease = false;
   return u;
 }
@@ -90,7 +99,15 @@ export async function initUpdater(win: BrowserWindow): Promise<void> {
     );
     u.on("update-downloaded", (info: { version: string }) => {
       descargando = false;
-      publicar({ tipo: "lista", version: info.version });
+      // Bajó: se aplica ya. Si el reinicio no arranca, queda «lista» y el botón
+      // ofrece reiniciar a mano (y `autoInstallOnAppQuit` lo aplica al salir).
+      publicar({ tipo: "instalando", version: info.version });
+      try {
+        u.quitAndInstall(false, true);
+      } catch (e) {
+        console.log("[updater] no se pudo reiniciar para instalar:", (e as Error)?.message);
+        publicar({ tipo: "lista", version: info.version });
+      }
     });
     u.on("error", (e: Error) => {
       descargando = false;
@@ -168,9 +185,9 @@ export async function checkForUpdates(): Promise<EstadoUpdate> {
 }
 
 /**
- * Descarga la versión nueva. Windows y Linux la aplican solas por
- * `electron-updater`; donde eso no se puede (macOS), se baja el instalador a la
- * carpeta de Descargas y ahí termina el trabajo de la app.
+ * Descarga la versión nueva y la aplica. Windows y Linux por `electron-updater`
+ * (el evento `update-downloaded` reinicia e instala); macOS por el recambio del
+ * bundle (`descargarInstalador` → `instalarDmg`).
  */
 export async function downloadUpdate(): Promise<EstadoUpdate> {
   if (!puedeAutoInstalar(process.platform)) {
@@ -191,7 +208,7 @@ export async function downloadUpdate(): Promise<EstadoUpdate> {
 }
 
 /**
- * Baja el instalador de esta plataforma a Descargas, con progreso.
+ * Baja el instalador de esta plataforma a Descargas, con progreso, y lo instala.
  *
  * Se escribe a un `.parte` y se renombra al final: una descarga cortada a la
  * mitad no puede quedar con el nombre del instalador bueno esperando a que
@@ -242,6 +259,7 @@ async function descargarInstalador(): Promise<EstadoUpdate> {
 
     descargando = false;
     publicar({ tipo: "descargada", version, ruta: destino });
+    if (/\.dmg$/i.test(destino)) await instalarDmg(destino, version);
   } catch (e) {
     descargando = false;
     await rm(parcial, { force: true }).catch(() => {});
@@ -251,6 +269,75 @@ async function descargarInstalador(): Promise<EstadoUpdate> {
     });
   }
   return estado;
+}
+
+/** Corre un comando y falla con su stderr: `hdiutil` y `ditto` explican bien qué pasó. */
+function ejecutar(cmd: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let err = "";
+    p.stderr.on("data", (d: Buffer) => (err += d.toString()));
+    p.on("error", reject);
+    p.on("close", (code) =>
+      code === 0 ? resolve() : reject(new Error(`${cmd} salió con ${code}: ${err.trim()}`))
+    );
+  });
+}
+
+/**
+ * Instala el `.dmg` ya descargado reemplazando la `.app` en marcha (macOS).
+ *
+ *  1. Monta el `.dmg` en una carpeta temporal propia (sin Finder, sin verificar:
+ *     el archivo lo acabamos de bajar por HTTPS del release).
+ *  2. Copia la `.app` con `ditto` al lado de la instalada (`X.app.nueva`): misma
+ *     partición, así el `mv` final es atómico. `ditto` conserva los symlinks de
+ *     los frameworks, que `cp` puede romper.
+ *  3. Desmonta y lanza el script de recambio desprendido: espera a que este
+ *     proceso muera, cambia una `.app` por la otra y abre la nueva.
+ *  4. Cierra la app.
+ *
+ * Si algo falla antes del paso 4 se limpia la copia a medias, el `.dmg` queda en
+ * Descargas y se abre: el usuario termina a mano como antes, y la UI sigue en
+ * «descargada» con el botón «Ver en Descargas».
+ */
+async function instalarDmg(dmg: string, version: string): Promise<void> {
+  const destino = rutaBundleMac(app.getPath("exe"));
+  if (!destino) {
+    console.log("[updater] el ejecutable no está en un bundle .app: no hay qué recambiar");
+    await shell.openPath(dmg);
+    return;
+  }
+  const nueva = `${destino}.nueva`;
+  let montaje: string | undefined;
+  try {
+    publicar({ tipo: "instalando", version });
+    montaje = await mkdtemp(path.join(os.tmpdir(), "processflow-update-"));
+    await ejecutar("hdiutil", ["attach", "-nobrowse", "-noautoopen", "-noverify", "-quiet", "-mountpoint", montaje, dmg]);
+    const appEnDmg = elegirApp(await readdir(montaje));
+    if (!appEnDmg) throw new Error("El .dmg no trae una única .app.");
+
+    await rm(nueva, { recursive: true, force: true });
+    await ejecutar("ditto", [path.join(montaje, appEnDmg), nueva]);
+    await ejecutar("hdiutil", ["detach", "-quiet", montaje]);
+    await rm(montaje, { recursive: true, force: true }).catch(() => {});
+    montaje = undefined;
+
+    const script = path.join(os.tmpdir(), `processflow-recambio-${process.pid}.sh`);
+    await writeFile(script, scriptRecambioMac({ pid: process.pid, destino, nueva }), "utf8");
+    await chmod(script, 0o700);
+    spawn("/bin/sh", [script], { detached: true, stdio: "ignore" }).unref();
+    app.quit();
+  } catch (e) {
+    console.log("[updater] no se pudo instalar el .dmg solo:", (e as Error)?.message);
+    if (montaje) {
+      await ejecutar("hdiutil", ["detach", "-quiet", "-force", montaje]).catch(() => {});
+      await rm(montaje, { recursive: true, force: true }).catch(() => {});
+    }
+    await rm(nueva, { recursive: true, force: true }).catch(() => {});
+    // Plan B: el .dmg abierto deja la app a un arrastre de Aplicaciones.
+    publicar({ tipo: "descargada", version, ruta: dmg });
+    await shell.openPath(dmg);
+  }
 }
 
 /** Muestra en el explorador de archivos el instalador ya descargado. */

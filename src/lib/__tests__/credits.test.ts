@@ -8,9 +8,10 @@ import { describe, it, expect } from "vitest";
 import {
   APP_VERSION,
   CREDIT_AUTHOR,
-  CREDIT_EMAIL,
   CREDIT_LINE,
   CREDIT_LINKS,
+  CREDIT_REPO,
+  CREDIT_REPO_URL,
   RELEASE_CHANNEL,
   versionLabel,
 } from "../credits";
@@ -37,13 +38,22 @@ describe("credits", () => {
     expect(CREDIT_LINE).toContain(versionLabel());
     expect(CREDIT_LINE.trim().endsWith(versionLabel())).toBe(true);
     expect(CREDIT_AUTHOR).toBe("Raúl Andrés Alzate Gómez");
-    expect(CREDIT_EMAIL).toBe("alzategomez.raul@gmail.com");
   });
 
   it("no queda rastro del crédito anterior", () => {
     const source = fs.readFileSync(path.join(repoRoot, "src", "lib", "credits.ts"), "utf8");
     expect(source.toLowerCase()).not.toContain("sofka");
     expect(fs.existsSync(path.join(repoRoot, "public", "sofka.png"))).toBe(false);
+  });
+
+  it("el contacto es el repo de GitHub, no un correo personal", () => {
+    // El correo exponía un dato privado y no llevaba a nada mirable; el repo
+    // tiene issues, releases y código. Es el mismo repo del que bajan las
+    // actualizaciones (`main/services/updater.ts`).
+    expect(CREDIT_REPO).toBe("raalzate/processflow-architect");
+    expect(CREDIT_REPO_URL).toBe(`https://github.com/${CREDIT_REPO}`);
+    const source = fs.readFileSync(path.join(repoRoot, "src", "lib", "credits.ts"), "utf8");
+    expect(source).not.toMatch(/mailto:\$\{|@gmail\.com/);
   });
 
   it("los enlaces usan schemes que el main sabe abrir", () => {
@@ -53,6 +63,7 @@ describe("credits", () => {
       expect(link.label.trim()).not.toBe("");
       expect(link.title).toContain(CREDIT_AUTHOR);
     }
-    expect(CREDIT_LINKS.some((l) => l.href === `mailto:${CREDIT_EMAIL}`)).toBe(true);
+    expect(CREDIT_LINKS.some((l) => l.href === CREDIT_REPO_URL)).toBe(true);
+    expect(CREDIT_LINKS.some((l) => l.href.startsWith("mailto:"))).toBe(false);
   });
 });
