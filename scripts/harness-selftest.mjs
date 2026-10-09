@@ -645,6 +645,49 @@ frenoDelLint(
   "PLATAFORMA",
 );
 
+// PUENTE: el renderer no sabe en qué host corre (ADR 0005). Las dos formas en
+// que se leía el preload a mano tienen que morder; el módulo del puerto, no.
+frenoDelLint(
+  "repo-lint: detecta window.electronAPI fuera del puerto del host",
+  "src/components/__selftest-puente.tsx",
+  "export const copiar = (t) => window.electronAPI?.copyToClipboard(t);\n",
+  "PUENTE",
+);
+frenoDelLint(
+  "repo-lint: detecta (window as any).electronAPI fuera del puerto del host",
+  "src/lib/__selftest-puente.ts",
+  "export const api = () => (window as any).electronAPI;\n",
+  "PUENTE",
+);
+frenoDelLint(
+  "repo-lint: detecta electronAPI leído por corchetes",
+  "src/hooks/__selftest-puente.ts",
+  'export const a = () => window["electronAPI"];\n',
+  "PUENTE",
+);
+frenoDelLint(
+  "repo-lint: detecta electronAPI con otro receptor (globalThis, alias)",
+  "src/hooks/__selftest-puente2.ts",
+  "const w = globalThis as any;\nexport const b = () => w.electronAPI;\n",
+  "PUENTE",
+);
+{
+  const { status, salida } = lintVirtual(
+    "src/components/__selftest-puente-ok.tsx",
+    "// window.electronAPI en un comentario no cuenta\nexport const x = hostBridge();\n",
+  );
+  if (status === 0) ok("repo-lint: PUENTE ignora la mención en un comentario");
+  else bad("repo-lint: PUENTE ignora la mención en un comentario", salida.trim().slice(0, 240));
+}
+{
+  const { status, salida } = lintVirtual(
+    config.hostBridge.module,
+    "export const delPreload = () => (window as any).electronAPI;\n",
+  );
+  if (status === 0) ok("repo-lint: el puerto del host sí puede leer el preload");
+  else bad("repo-lint: el puerto del host sí puede leer el preload", salida.trim().slice(0, 240));
+}
+
 // TILES: el registro de tiles describía un package.json viejo (13 huérfanos, 30 deps
 // sin tile — @litert-lm/core entre ellas) y nada moría al divergir: el agente escribía
 // esas APIs de memoria. Las dos direcciones tienen que morder.

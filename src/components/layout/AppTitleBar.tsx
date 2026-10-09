@@ -9,6 +9,7 @@ import {
   reservaControlesDerecha,
   reservaIzquierda,
 } from "@/lib/window-chrome";
+import { hostBridge, hostKind } from "@/lib/host-bridge";
 
 /** Id del hueco donde el header inyecta su buscador (portal). */
 export const TITLEBAR_SEARCH_SLOT = "titlebar-search-slot";
@@ -39,7 +40,9 @@ export function AppTitleBar() {
   const [esMac, setEsMac] = useState(true);
 
   useEffect(() => {
-    const hayBarra = typeof window !== "undefined" && !!window.electronAPI;
+    // Pregunta por el HOST, no por el puente: un adaptador web también es un
+    // puente, pero en el navegador no hay marco nativo que reemplazar.
+    const hayBarra = hostKind() === "desktop";
     setEnElectron(hayBarra);
     setEsMac(isMacPlatform());
     // `h-screen` mide 100vh e ignoraría esta franja: cada pantalla se pasaría de
@@ -75,7 +78,7 @@ export function AppTitleBar() {
           aria-label="Menú de la aplicación"
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
-            window.electronAPI?.windowMenuPopup?.(r.left, r.bottom);
+            hostBridge()?.windowMenuPopup?.(r.left, r.bottom);
           }}
         >
           <MenuIcon className="h-4 w-4" />
