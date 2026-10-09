@@ -105,6 +105,7 @@ import {
   notationContainerLabel,
   type NotationId,
 } from "@/lib/notations";
+import { hostBridge } from "@/lib/host-bridge";
       
 interface AppHeaderProps {
   savedFiles: SavedFile[];
@@ -138,7 +139,7 @@ const McpStatusButton = () => {
   const [url, setUrl] = useState("");
 
   useEffect(() => {
-    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    const electron = hostBridge();
     if (!electron?.mcpServerStatus) return; // web-only: sin indicador
     let alive = true;
     const check = () =>
@@ -241,7 +242,7 @@ const FileManagement: React.FC<
     orgs: [],
   });
   useEffect(() => {
-    const electron = typeof window !== "undefined" ? window.electronAPI : undefined;
+    const electron = hostBridge();
     if (!electron?.mcpOrgsStatus) return;
     let alive = true;
     const check = () =>
@@ -272,7 +273,7 @@ const FileManagement: React.FC<
 
   // CRUD de organizaciones. Vive en el workspace del MCP (la app y el agente comparten
   // esa verdad), así que las tres operaciones van por IPC; en la web no existen.
-  const orgApi = typeof window !== "undefined" ? window.electronAPI : undefined;
+  const orgApi = hostBridge();
   const [orgDialog, setOrgDialog] = useState<null | { modo: "crear" | "renombrar"; valor: string }>(null);
   const [orgBorrar, setOrgBorrar] = useState<string | null>(null);
   // Proyecto pendiente de borrar. Borrar un proyecto reescribe `localStorage` y

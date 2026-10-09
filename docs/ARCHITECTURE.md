@@ -37,7 +37,13 @@ LiteRT-LM necesita WebGPU, que solo existe en un contexto seguro de navegador. P
 ## Superficie IPC
 
 Definida en `preload.ts` (renderer) y `main/ipc.ts` (main). Todo lo que el renderer
-puede pedirle al main:
+puede pedirle al main.
+
+El renderer **no** lee `window.electronAPI` directo: lo pide con `hostBridge()` de
+`src/lib/host-bridge.ts`, y decide qué mostrar con `capacidadesHost()`. Es el puerto
+que deja preparada la edición web ([ADR 0005](decisions/0005-edicion-web-empresarial.md)):
+allí un adaptador inyectado con `setHostBridge` atiende el subconjunto que tenga, sin
+tocar las pantallas. La regla PUENTE del lint impide volver al acceso directo.
 
 | `window.electronAPI` | Canal IPC | Hace |
 |----------------------|-----------|------|

@@ -8,6 +8,7 @@ import {
     formatTaskListToMarkdown,
     formatProposalToMarkdown,
 } from "@/lib/markdown-utils";
+import { hostBridge } from "@/lib/host-bridge";
 
 type UIHandlersDeps = {
     toast: (opts: any) => void;
@@ -50,8 +51,9 @@ export function useUIHandlers(deps: UIHandlersDeps) {
             return;
         }
 
-        if (window.electronAPI && window.electronAPI.copyToClipboard) {
-            const success = await window.electronAPI.copyToClipboard(text);
+        const host = hostBridge();
+        if (host?.copyToClipboard) {
+            const success = await host.copyToClipboard(text);
             if (success) {
                 toast({ title: "Copiado al portapapeles" });
             } else {

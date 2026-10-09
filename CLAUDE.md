@@ -44,7 +44,8 @@ una app Next.js (App Router) en `src/`; la IA corre en el renderer vía WebGPU.
 
 ```
 main.ts ──▶ main/        proceso principal de Electron (IPC, ventana, logger, servicios)
-            preload.ts   puente seguro renderer↔main (expone window.electronAPI)
+            preload.ts   puente seguro renderer↔main (expone window.electronAPI;
+                         el renderer lo pide SOLO con hostBridge() de src/lib/host-bridge.ts)
 src/app/                 rutas Next.js (home · merger · settings)
 src/components/          UI React (graph · ai-panel · canvas · views · ui[shadcn])
 src/context/             estado global (Graph · Agent · Views)
@@ -56,7 +57,7 @@ src/lib/                 lógica pura testeable (grafo, IA, artefactos, notacion
 
 - **La IA es local por defecto; la nube es opt-in.** El motor local es LiteRT-LM en
   el renderer (siempre disponible, offline). El usuario puede activar en Ajustes un
-  proveedor **remoto** (Gemini/OpenAI/Anthropic) y su llave. `ProviderId = "local" |
+  proveedor **remoto** (Gemini/OpenAI/Anthropic/OpenRouter) y su llave. `ProviderId = "local" |
   "remote"`: `local` = LiteRT-LM; `remote` = generación por API de nube desde el
   proceso main (`main/services/ai-remote.ts`). El conmutador vive en
   `src/lib/ai/remote-settings.ts` con tres modos: `local` (todo local), `hybrid`
@@ -66,6 +67,10 @@ src/lib/                 lógica pura testeable (grafo, IA, artefactos, notacion
     peticiones HTTP a los proveedores se hacen SOLO en el main.
   - **No** añadir SDKs de nube como dependencia: las llamadas usan `fetch` nativo.
   - El modo por defecto es `local`: no cambies ese default sin pedirlo el usuario.
+- **El renderer no sabe en qué host corre** (ADR 0005, edición web). Para llamar al
+  main: `hostBridge()`; para decidir qué mostrar: `capacidadesHost()` (`mcpServidor`,
+  `chatCli`, `modelosLocales`…), nunca «¿estoy en Electron?». La regla PUENTE del
+  lint bloquea `window.electronAPI` fuera de `src/lib/host-bridge.ts`.
 - **Añadir una función de IA = declarar una `AiTask`** en `src/lib/ai/tasks.ts`.
   Evita tocar el router (`src/lib/ai/router.ts`) y los proveedores (`providers.ts`)
   salvo para añadir un motor nuevo. Política: modo `local`→local; `remote`→nube;
