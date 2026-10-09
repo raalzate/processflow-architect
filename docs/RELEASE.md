@@ -117,7 +117,10 @@ Para firmas confiables (sin avisos), definí estos secrets del repo
 
 > Windows: SmartScreen solo desaparece con un **cert EV** o con **reputación**
 > acumulada; un OV normal sigue mostrando el aviso hasta que la app tenga
-> descargas. Alternativa más barata que EV: **Azure Trusted Signing**.
+> descargas. **Azure Trusted Signing no aplica**: sólo valida identidades de
+> USA/Canadá/UE/UK. El plan (qué se firma, con qué y en qué orden) está en
+> [ADR 0004](decisions/0004-firma-de-codigo.md): Developer ID + notarización en
+> macOS (US$99/año) y SignPath Foundation (gratis, OSS) en Windows.
 
 ## Instalar la app (usuarios finales)
 
