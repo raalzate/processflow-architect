@@ -22,8 +22,13 @@ updates:
       # ERESOLVE y el PR nace rojo sin poder arreglarse (#489).
       vitest:
         patterns: ["vitest", "@vitest/*"]
+      # @puppeteer/* comparte con puppeteer las dependencias de red: por separado,
+      # Dependabot generó un lockfile al que le faltaban (#494, `npm ci` EUSAGE).
       puppeteer-y-mermaid:
-        patterns: ["puppeteer", "puppeteer-core", "@mermaid-js/mermaid-cli"]
+        patterns: ["puppeteer", "puppeteer-core", "@puppeteer/*", "@mermaid-js/mermaid-cli"]
+      # Los tipos de React piden la misma mayor que React (#500, ERESOLVE).
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
       menores-y-parches:
         update-types: [minor, patch]
     # Electron y Next cambian lo que el arnés protege (WebGPU, schemes, export
@@ -32,6 +37,14 @@ updates:
       - dependency-name: electron
         update-types: ["version-update:semver-major"]
       - dependency-name: next
+        update-types: ["version-update:semver-major"]
+      # Tailwind 4 es una migración (config nueva, otra sintaxis de clases: rompió
+      # el typecheck y los tests de contraste en #495), no una actualización.
+      # tailwind-merge 3 sólo entiende Tailwind 4: compila igual con la 3 pero
+      # combina mal las clases, y eso el gate no lo ve. Los dos van juntos, a mano.
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+      - dependency-name: tailwind-merge
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
