@@ -2,7 +2,7 @@
 // Ajustes de IA REMOTA (conmutador manual global).
 //
 // El sistema es local por defecto (LiteRT-LM). Opcionalmente el usuario puede
-// activar un proveedor remoto (Gemini/OpenAI/Anthropic) y usarlo para TODO.
+// activar un proveedor remoto (Gemini/OpenAI/Anthropic/OpenRouter) y usarlo para TODO.
 // Las llaves NO viven aquí: se guardan cifradas en el proceso main (safeStorage).
 // Este módulo sólo maneja la preferencia (modo, proveedor, modelo) — no secretos.
 // =============================================================================
@@ -14,7 +14,7 @@
 //          sin llave en la app); las acciones siguen siendo de la app (feature 021).
 export type AiMode = "local" | "remote" | "hybrid" | "cli";
 export const AI_MODES: readonly AiMode[] = ["local", "hybrid", "remote", "cli"] as const;
-export type RemoteProvider = "gemini" | "openai" | "anthropic";
+export type RemoteProvider = "gemini" | "openai" | "anthropic" | "openrouter";
 
 export interface RemoteProviderInfo {
   id: RemoteProvider;
@@ -47,6 +47,20 @@ export const REMOTE_PROVIDERS: RemoteProviderInfo[] = [
     models: ["claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5"],
     defaultModel: "claude-sonnet-4-5",
     keysUrl: "https://console.anthropic.com/settings/keys",
+  },
+  {
+    // Una sola llave para muchos modelos. Es el motor de la edición web (ADR 0005):
+    // tenerlo acá deja probado el mismo camino en el escritorio.
+    id: "openrouter",
+    label: "OpenRouter (varios modelos)",
+    models: [
+      "google/gemini-2.5-flash",
+      "openai/gpt-4o-mini",
+      "anthropic/claude-sonnet-4.5",
+      "meta-llama/llama-3.3-70b-instruct",
+    ],
+    defaultModel: "google/gemini-2.5-flash",
+    keysUrl: "https://openrouter.ai/settings/keys",
   },
 ];
 

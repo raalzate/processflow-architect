@@ -58,6 +58,7 @@ import { classifyIntent, destinoDe, nombreLibre, opcionesDeModo, type Intencion 
 import { planEditorCall } from "./builder-editor";
 import { runCreative, cuantosElementos, type CreativeResult } from "./builder-creative";
 import { creativeDiagramTask } from "./tasks";
+import { hostBridge } from "@/lib/host-bridge";
 
 /** La vista que el humano está mirando: el «acá» de sus pedidos (015). */
 export interface VistaActiva {
@@ -102,8 +103,7 @@ export interface BuilderAgentResult {
   pendiente?: { call: BuilderCall; alcance: string };
 }
 
-const electron = (): any =>
-  typeof window !== "undefined" ? (window as any).electronAPI : undefined;
+const electron = (): any => hostBridge();
 
 /** Herramientas y ejecución REALES: el transporte en memoria del proceso main. */
 export const defaultBuilderDeps: BuilderDeps = {

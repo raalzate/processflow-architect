@@ -42,8 +42,9 @@ import { SystemInfoCard } from "@/components/settings/SystemInfoCard";
 import { UpdateConfig } from "@/components/settings/UpdateConfig";
 import { AppearanceConfig } from "@/components/settings/AppearanceConfig";
 import type { LitertModelStatus } from "@/types/electron";
+import { hostBridge } from "@/lib/host-bridge";
 
-const api = () => (typeof window !== "undefined" ? (window as any).electronAPI : undefined);
+const api = () => hostBridge() as any;
 
 // Secciones de la vista: alimentan el sidebar de navegación y los anchors.
 const SECTIONS = [
