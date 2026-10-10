@@ -56,8 +56,17 @@ export interface AppState {
   views: AppViewInfo[];
   /** Cupo de vistas custom del proyecto. */
   viewsLimit: number;
-  /** Otros proyectos guardados (nombres), para no crear duplicados. */
+  /** Otros proyectos guardados (nombres), filtrados como los ve el humano en el header. */
   projects: string[];
+  /**
+   * Selector de organización del header: `undefined` = «Todas», `null` = «Sin
+   * organización». Sin esto el agente veía la lista recortada y no sabía por qué (#534).
+   */
+  appOrg?: string | null;
+  /** Organización del proyecto activo (null = sin organización). */
+  projectOrg?: string | null;
+  /** TODOS los proyectos con su organización, sin el filtro del header. */
+  catalog?: { name: string; org: string | null }[];
   /** ISO del momento en que el renderer publicó el estado. */
   updatedAt: string;
 }
@@ -97,8 +106,10 @@ export function describeAppState(input: {
   org?: string | null;
   /** Ficha abierta (feature 019). Ausente o null = ninguna. */
   focus?: AppFocus | null;
+  /** Organización del proyecto activo (`SavedFile.orgId`). */
+  projectOrg?: string | null;
 }): AppState {
-  const { graph, views, savedFiles = [], viewsLimit, now, org, focus } = input;
+  const { graph, views, savedFiles = [], viewsLimit, now, org, focus, projectOrg } = input;
   const visibles =
     org === undefined ? savedFiles : savedFiles.filter((f) => (f.orgId ?? null) === org);
   return {
@@ -116,16 +127,39 @@ export function describeAppState(input: {
     })),
     viewsLimit,
     projects: visibles.map((f) => f.name),
+    appOrg: org,
+    projectOrg: graph ? projectOrg ?? null : null,
+    catalog: savedFiles.map((f) => ({ name: f.name, org: f.orgId ?? null })),
     updatedAt: now,
   };
 }
+
+/** Dónde queda algo, dicho como lo lee un humano. */
+export const ubicacion = (org: string | null | undefined): string =>
+  org ? `la organización "${org}"` : "sin organización";
+
+/**
+ * Aviso cuando lo que hizo el agente no está en lo que el humano mira. `orgApp`
+ * es el selector del header: `undefined` = «Todas» (lo ve igual), `null` = «Sin
+ * organización» (#534).
+ */
+export function avisoOrganizacion(org: string | null, orgApp: string | null | undefined): string {
+  if (orgApp === undefined || (orgApp ?? null) === (org ?? null)) return "";
+  return `⚠️ En la app el humano está viendo ${ubicacion(orgApp)}: no lo va a ver hasta cambiar el selector a ${ubicacion(org)}.`;
+}
+
+const sinJson = (n: string) => n.replace(/\.json$/i, "");
+
+/** Nombres contra los que resolver `project`: todos, no sólo los del filtro (#534). */
+export const nombresDeProyectos = (state: AppState | null | undefined): string[] =>
+  state?.catalog?.map((p) => p.name) ?? state?.projects ?? [];
 
 /**
  * Formato para la respuesta MCP. Además del retrato dice qué se PUEDE hacer con
  * ese estado: es la diferencia entre informar y evitar el error (exportar una
  * vista sin proyecto activo, duplicar una pestaña que ya existe).
  */
-export function formatAppState(state: AppState | null): string {
+export function formatAppState(state: AppState | null, extra: { mcpOrg?: string | null } = {}): string {
   if (!state) {
     return [
       "La app no ha publicado su estado (no está abierta, o este servidor MCP corre en modo repo/stdio).",
@@ -137,6 +171,19 @@ export function formatAppState(state: AppState | null): string {
   const custom = state.views.filter((v) => !v.builtin);
   const lines: string[] = [];
 
+  // Dos organizaciones que antes no se veían (#534): la que mira el humano y la que
+  // usa el MCP para crear. Si difieren, lo creado no aparece en la pantalla del humano.
+  const enApp =
+    state.appOrg === undefined
+      ? "en la app el selector está en «Todas»"
+      : `en la app el selector está en ${ubicacion(state.appOrg)}`;
+  const enMcp = extra.mcpOrg === undefined ? "" : ` · el MCP tiene fijada ${ubicacion(extra.mcpOrg)}`;
+  lines.push(`Organización: ${enApp}${enMcp}.`);
+  if (extra.mcpOrg !== undefined) {
+    const aviso = avisoOrganizacion(extra.mcpOrg ?? null, state.appOrg);
+    if (aviso) lines.push(`${aviso} (lo que exportes va a ${ubicacion(extra.mcpOrg)}).`);
+  }
+
   if (!state.projectName) {
     lines.push(
       "Proyecto activo: NINGUNO (la app está en la pantalla de bienvenida).",
@@ -144,7 +191,9 @@ export function formatAppState(state: AppState | null): string {
     );
   } else {
     lines.push(
-      `Proyecto activo: "${state.projectName}" (notación ${state.notation ?? "ddd"}).`,
+      `Proyecto activo: "${state.projectName}"${
+        state.projectOrg === undefined ? "" : ` en ${ubicacion(state.projectOrg)}`
+      } (notación ${state.notation ?? "ddd"}).`,
       `Contenido: ${state.counts.containers} contenedor(es) · ${state.counts.nodes} elemento(s) · ${state.counts.edges} relación(es).`,
       // Decía «REEMPLAZA»; desde el modo `update` (default) fusiona (#533).
       "`export_to_app` ACTUALIZA el proyecto activo: fusiona el diseño y conserva la posición y las notas de lo que ya estaba. Con `mode: \"new\"` crea otro proyecto. Para sumar una pestaña con otra notación, `export_as_view`."
@@ -159,7 +208,16 @@ export function formatAppState(state: AppState | null): string {
       : `Sin vistas custom (cupo ${state.viewsLimit}).`
   );
 
-  if (state.projects.length > 1) {
+  if (state.catalog?.length) {
+    // Agrupados por organización y SIN el filtro del header: filtrar en silencio
+    // hizo creer a un agente que sus proyectos nuevos no existían (#534).
+    const grupos = new Map<string | null, string[]>();
+    for (const p of state.catalog) grupos.set(p.org, [...(grupos.get(p.org) ?? []), sinJson(p.name)]);
+    const partes = [...grupos.entries()]
+      .sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : a.localeCompare(b)))
+      .map(([org, nombres]) => `${org ? `"${org}"` : "sin organización"}: ${nombres.join(", ")}`);
+    lines.push(`Proyectos guardados por organización — ${partes.join(" · ")}. Detalle con list_projects.`);
+  } else if (state.projects.length > 1) {
     lines.push(`Otros proyectos guardados: ${state.projects.join(", ")}.`);
   }
 

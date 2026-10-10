@@ -113,3 +113,51 @@ describe("formatAppState", () => {
     expect(out).toContain("export_as_view");
   });
 });
+
+describe("organizaciones visibles en get_app_state (#534)", () => {
+  const base = {
+    views: [...BUILTIN_VIEWS],
+    viewsLimit: MAX_CUSTOM_VIEWS,
+    now: "2026-10-10T10:00:00.000Z",
+    savedFiles: [
+      { name: "EMMA · Conversación.json", orgId: "proyecto-integrador" },
+      { name: "Seguros.json", orgId: "bupa" },
+      { name: "Suelto.json" },
+    ],
+  };
+
+  it("publica la org del selector, la del proyecto activo y TODOS los proyectos con su org", () => {
+    const s = describeAppState({ ...base, graph: graph("EMMA · Conversación"), org: "bupa", projectOrg: "proyecto-integrador" });
+    expect(s.appOrg).toBe("bupa");
+    expect(s.projectOrg).toBe("proyecto-integrador");
+    // `projects` sigue filtrado (lo que el humano ve); el catálogo es completo.
+    expect(s.projects).toEqual(["Seguros.json"]);
+    expect(s.catalog).toEqual([
+      { name: "EMMA · Conversación.json", org: "proyecto-integrador" },
+      { name: "Seguros.json", org: "bupa" },
+      { name: "Suelto.json", org: null },
+    ]);
+  });
+
+  it("el texto dice qué org mira el humano, cuál fijó el MCP, y avisa si difieren", () => {
+    const s = describeAppState({ ...base, graph: graph("EMMA · Conversación"), org: "bupa", projectOrg: "proyecto-integrador" });
+    const out = formatAppState(s, { mcpOrg: "proyecto-integrador" });
+    expect(out).toContain('en la app el selector está en la organización "bupa"');
+    expect(out).toContain('el MCP tiene fijada la organización "proyecto-integrador"');
+    expect(out).toMatch(/⚠️.*no lo va a ver/);
+    expect(out).toContain('Proyecto activo: "EMMA · Conversación" en la organización "proyecto-integrador"');
+  });
+
+  it("los proyectos guardados se listan agrupados por organización, no filtrados en silencio", () => {
+    const s = describeAppState({ ...base, graph: graph("Suelto"), org: "bupa" });
+    const out = formatAppState(s);
+    expect(out).toContain('"bupa": Seguros');
+    expect(out).toContain('"proyecto-integrador": EMMA · Conversación');
+    expect(out).toContain("sin organización: Suelto");
+  });
+
+  it("con el selector en «Todas» no hay aviso", () => {
+    const s = describeAppState({ ...base, graph: graph("Seguros"), projectOrg: "bupa" });
+    expect(formatAppState(s, { mcpOrg: "bupa" })).not.toContain("⚠️");
+  });
+});

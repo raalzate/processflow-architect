@@ -19,10 +19,12 @@ revisión → exportar`.
 ## 0 · Ingesta (antes de crear nada)
 
 1. `list_notations` — comprueba que el MCP responde (si no, ver «Conexión»).
-2. **`get_app_state`** — proyecto activo, su notación, vistas existentes y cupo.
-   Decide con eso si el diagrama va como PROYECTO (`export_to_app`, reemplaza el
-   activo) o como VISTA (`export_as_view`, suma pestaña). Sin esta llamada,
-   exportar es pisar trabajo del usuario a ciegas.
+2. **`get_app_state`** — proyecto activo y su organización, notación, vistas
+   existentes y cupo; qué organización mira el humano en la app y cuál tiene fijada
+   el MCP. Decide con eso si el diagrama va como PROYECTO (`export_to_app`, actualiza
+   uno existente o crea otro con `mode: "new"`) o como VISTA (`export_as_view`, suma
+   pestaña). Si el aviso ⚠️ dice que las organizaciones difieren, lo que crees no lo
+   va a ver el humano: alineá con `use_org` antes de exportar.
 3. **`list_views`** — qué vistas tiene el proyecto (y `list_views` con `project`
    para mirar OTRO proyecto guardado sin abrirlo). Si tu diagrama ya existe como
    vista, `get_view` con `importAs: true` te lo trae como diagrama EDITABLE:
@@ -84,9 +86,9 @@ como «pendiente en la fuente» en la `description`.
 
 ## 3b · Metadatos del proyecto: lo que el humano lee aparte del dibujo
 
-La app tiene un formulario «Metadatos del proyecto» y `export_to_app` **reemplaza
-el proyecto**: lo que no declares desaparece. Antes de exportar sobre algo que ya
-existe, `get_diagram` dice qué hay (hotspots, responsables, notas propias, read
+La app tiene un formulario «Metadatos del proyecto». `export_to_app` **fusiona** las
+notas, hotspots y responsables con los del proyecto, pero lo que no declares no
+aparece. Antes de exportar sobre algo que ya existe, `get_diagram` dice qué hay (hotspots, responsables, notas propias, read
 models); si retomaste el diseño con `import_diagram`, esos campos ya vienen
 cargados y no hay que reescribirlos.
 
@@ -130,9 +132,10 @@ explícito siempre gana.
 `export_to_app` **actualiza** el proyecto de la app —el que diga `project`, el de
 la configuración del servidor, o el abierto— en vez de crear una copia: conserva
 la posición que el humano les dio a las cajas y fusiona sus notas. Usá
-`mode: "new"` sólo cuando de verdad querés un proyecto aparte. Si el proyecto que
-nombraste no existe, la herramienta avisa en vez de inventar uno: mirá
-`get_app_state` antes de entregar.
+`mode: "new"` sólo cuando de verdad querés un proyecto aparte: se crea en la
+organización activa del MCP (o en `org`). Si el proyecto que nombraste no existe, la
+herramienta avisa en vez de inventar uno: mirá `get_app_state` antes de entregar. La
+respuesta llega cuando la app confirmó y dice dónde quedó el proyecto.
 
 `export_as_view` hace lo mismo con las pestañas: `replace: true` actualiza la vista que ya se
 llama así en vez de dejar una segunda igual (y sin gastar cupo de vistas). Si esa pestaña no
@@ -143,6 +146,11 @@ existe, avisa con las que hay en vez de crearla por su cuenta.
 Las pestañas se pueden borrar (`delete_view`) y renombrar (`rename_view`) por nombre exacto. Antes
 sólo se podían crear, así que un duplicado lo limpiaba el humano a mano. Borrar es destructivo: no
 hay coincidencia parcial ni «todas», y las vistas del sistema no se tocan.
+
+Lo mismo con los proyectos: `list_projects` los muestra por organización, y `move_project`,
+`rename_project` y `delete_project` corrigen uno que quedó en el lugar equivocado sin pedirle
+nada al humano (`delete_project` exige el nombre exacto). En el workspace, `list_diagrams`
+marca `[vacío]` y `[copia de la vista …]`, y `delete_diagram` los borra por id.
 
 ### Los ids se copian de `get_diagram`, no del dibujo
 

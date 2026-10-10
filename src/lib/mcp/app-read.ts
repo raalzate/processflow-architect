@@ -22,6 +22,7 @@ import { formatDocsIndex } from "../element-docs";
 import { countGraph, type AppFocus } from "./app-state";
 import { fromGraphData } from "./diagram-builder";
 import { textoConteo } from "./conteo";
+import type { ProyectoBrief } from "./proyectos";
 
 /* -------------------------------------------------------------------------- */
 /* Petición y respuesta                                                       */
@@ -38,7 +39,9 @@ export type AppReadRequest =
   | { kind: "views"; project?: string }
   | { kind: "view"; name: string; project?: string }
   /** La caja cuya ficha tiene abierta el humano (feature 019). Siempre del proyecto activo. */
-  | { kind: "focused" };
+  | { kind: "focused" }
+  /** Todos los proyectos guardados con su organización (`list_projects`, #534). */
+  | { kind: "projects" };
 
 /**
  * La ficha entera de la caja en foco, en UNA lectura: lo que el agente externo
@@ -104,6 +107,7 @@ export type AppReadResult =
   | { ok: true; project: string; kind: "views"; views: ViewBrief[] }
   | { ok: true; project: string; kind: "view"; view: ViewPayload }
   | { ok: true; project: string; kind: "focused"; element: FocusedElement }
+  | { ok: true; project: string; kind: "projects"; projects: ProyectoBrief[] }
   /** `options` = qué SÍ existe, para que el agente no adivine en el siguiente turno. */
   | { ok: false; error: string; options?: string[] };
 
@@ -347,8 +351,8 @@ export function selectView(views: ViewInput[], name: string): ViewPayload | null
 export interface AppReadContext {
   /** Proyecto abierto en el lienzo (null en la pantalla de bienvenida). */
   active: { id: string; name: string } | null;
-  /** Todos los proyectos guardados. */
-  projects: { id: string; name: string }[];
+  /** Todos los proyectos guardados (organización, notación y fecha: para `list_projects`). */
+  projects: { id: string; name: string; org?: string | null; notation?: string; fecha?: string }[];
   viewsOf: (projectId: string) => ViewInput[];
   artifactsOf: (projectId: string) => ArtifactInput[];
   /** Ficha abierta en la app (feature 019); null o ausente = ninguna. */
@@ -419,6 +423,22 @@ export function formatFocusedElement(project: string, el: FocusedElement): strin
 const nombres = <T>(items: T[], nameOf: (i: T) => string) => items.map(nameOf);
 
 export function resolveAppRead(req: AppReadRequest, ctx: AppReadContext): AppReadResult {
+  // El catálogo no depende de un proyecto: sirve también en la bienvenida.
+  if (req.kind === "projects") {
+    return {
+      ok: true,
+      project: ctx.active?.name ?? "",
+      kind: "projects",
+      projects: ctx.projects.map((p) => ({
+        name: p.name,
+        org: p.org ?? null,
+        notation: p.notation,
+        fecha: p.fecha,
+        views: ctx.viewsOf(p.id).filter((v) => !v.builtin).length,
+        activo: p.id === ctx.active?.id,
+      })),
+    };
+  }
   const pedido = (req as { project?: string }).project;
   let proyecto = ctx.active;
   if (pedido) {

@@ -19,6 +19,8 @@
 import { resolveViewRef, vistaInexistente } from "./project-update";
 import type { ViewEdit } from "./view-edit";
 import { plano } from "./tipo-notacion";
+import type { ProjectActionRequest } from "./proyectos";
+import type { GraphData } from "../types";
 
 /**
  * Una edición del grafo de una vista (feature 015, T3 #341). `view` es opcional
@@ -28,14 +30,38 @@ import { plano } from "./tipo-notacion";
  */
 export type ViewEditRequest = ViewEdit & { view?: string };
 
+/**
+ * Entregar un diseño como proyecto, ESPERANDO la respuesta (#534). Antes la
+ * entrega era fire-and-forget: el MCP respondía ✅ y la app procesaba después, así
+ * que durante unos segundos `get_app_state` seguía mostrando el proyecto anterior.
+ */
+export interface ExportProjectRequest {
+  kind: "export-project";
+  name: string;
+  graph: GraphData;
+  mode: "new" | "update";
+  /** Proyecto a actualizar (nombre ya resuelto por el main). */
+  target?: string;
+  /** Organización donde crear el proyecto (null = sin organización). */
+  org: string | null;
+}
+
 export type AppActionRequest =
   | { kind: "delete-view"; name: string }
   | { kind: "rename-view"; name: string; newName: string }
+  | ProjectActionRequest
+  | ExportProjectRequest
   | ViewEditRequest;
 
-/** true → la petición edita el grafo de una vista (y no la vista como pestaña). */
+const DE_PROYECTO = new Set(["move-project", "rename-project", "delete-project", "export-project"]);
+
+/** true → actúa sobre PROYECTOS: no necesita un proyecto abierto. */
+export const esAccionDeProyecto = (r: AppActionRequest): r is ProjectActionRequest | ExportProjectRequest =>
+  DE_PROYECTO.has(r.kind);
+
+/** true → la petición edita el grafo de una vista (y no la vista como pestaña ni un proyecto). */
 export const esEdicionDeVista = (r: AppActionRequest): r is ViewEditRequest =>
-  r.kind !== "delete-view" && r.kind !== "rename-view";
+  r.kind !== "delete-view" && r.kind !== "rename-view" && !esAccionDeProyecto(r);
 
 export type AppActionResult = { ok: true; message: string } | { ok: false; error: string };
 
