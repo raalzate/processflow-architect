@@ -32,9 +32,11 @@ Reglas de oro:
 En este orden, siempre:
 
 1. `list_notations` — confirma que el MCP responde. Si no, ver «Conexión» abajo.
-2. **`get_app_state`** — qué proyecto está activo, con qué notación, qué vistas
-   ya existen y cuánto cupo queda. De aquí sale la decisión de exportar como
-   PROYECTO (`export_to_app`, reemplaza el activo) o como VISTA
+2. **`get_app_state`** — qué proyecto está activo y en qué organización, con qué
+   notación, qué vistas ya existen y cuánto cupo queda; y si la organización que
+   mira el humano es la misma que la del MCP. De aquí sale la decisión de exportar
+   como PROYECTO (`export_to_app`, actualiza uno existente o crea otro con
+   `mode: "new"` en la organización del MCP) o como VISTA
    (`export_as_view`, suma una pestaña). Sin esta llamada estarías pisando
    trabajo del usuario a ciegas.
 3. **`list_views`** — las pestañas que ya existen, con su notación y tamaño. Con

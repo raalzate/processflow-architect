@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { contarModelo, textoConteo } from "../conteo";
+import { contarModelo, marcasDiagrama, textoConteo } from "../conteo";
 import { countGraph } from "../app-state";
 import { toGraphData, type DiagramModel } from "../diagram-builder";
 
@@ -26,5 +26,20 @@ describe("conteo único de un diagrama (#533)", () => {
     expect(textoConteo({ containers: 1, nodes: 3, edges: 1 })).toBe("3 elementos + 1 contenedor");
     expect(textoConteo({ containers: 0, nodes: 1, edges: 0 })).toBe("1 elemento");
     expect(textoConteo({ containers: 2, nodes: 0, edges: 0 })).toBe("0 elementos + 2 contenedores");
+  });
+});
+
+describe("marcasDiagrama · qué limpiar del workspace (#534)", () => {
+  it("un diagrama sin nada se marca vacío", () => {
+    expect(marcasDiagrama({ meta: { nombre_proyecto: "X", notation: "ddd" }, nodes: [], edges: [] })).toEqual(["vacío"]);
+  });
+
+  it("una copia traída con importAs dice de qué vista y proyecto salió", () => {
+    const copia = { ...bpmn, meta: { ...bpmn.meta, importadoDe: { proyecto: "Seguros", vista: "Cobros" } } };
+    expect(marcasDiagrama(copia)).toEqual(['copia de la vista "Cobros" de "Seguros"']);
+  });
+
+  it("un diagrama normal no lleva marcas", () => {
+    expect(marcasDiagrama(bpmn)).toEqual([]);
   });
 });

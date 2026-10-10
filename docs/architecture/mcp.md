@@ -43,7 +43,7 @@ Guía /mcp (playground) ─memoria─▶ main/services/mcp-playground.ts ──�
 barrel `src/lib/mcp/index.ts`: `export *` no sobrevive la interop CJS de tsx/esbuild y los
 nombres se pierden en silencio.
 
-## Las herramientas (32)
+## Las herramientas (37)
 
 Agrupadas por fase del ciclo. Las marcadas **app** sólo se registran cuando el transporte
 las puede cumplir (existe el callback correspondiente en `McpToolsOptions`), así el cliente
@@ -55,7 +55,7 @@ nunca ve una herramienta que su transporte no soporta.
 |---|---|
 | `list_notations` | notaciones soportadas (DDD/Event Storming, BPMN, C4, UML) con su guía de diseño. |
 | `describe_notation` | los `type` válidos de una notación, si son contenedores y su forma. |
-| `get_app_state` **app** | proyecto activo, notación, vistas ya existentes y cupo libre. La **ingesta**: sin esto se exporta a ciegas y se duplican vistas. |
+| `get_app_state` **app** | proyecto activo **con su organización**, notación, vistas ya existentes y cupo libre. Dice qué organización mira el humano en el selector del header y cuál tiene fijada el MCP —y avisa si difieren—, y lista los proyectos guardados **agrupados por organización**, sin el filtro del header (#534). La **ingesta**: sin esto se exporta a ciegas y se duplican vistas. |
 | `list_views` **app** | vistas (pestañas) de un proyecto con notación, origen y tamaño. Acepta `project`: llega a **otro proyecto guardado** sin abrirlo. |
 | `get_view` **app** | contenido de una vista: resumen + Mermaid; con `importAs` la deja como diagrama **editable** en el workspace para continuarla. |
 | `list_artifacts` **app** | artefactos que generó la IA local (drivers, riesgos, propuesta, roadmap, ADRs): título, tipo, revisión vigente, tamaño. |
@@ -88,9 +88,10 @@ ser —no inventar un sinónimo de algo que ya existe en otro grupo—, sólo de
 | Herramienta | Qué hace |
 |---|---|
 | `create_diagram` | abre un modelo nuevo (nombre + notación) → `diagramId`, y lo deja **fijado**. |
-| `list_diagrams` | los modelos en curso del workspace **con su vocabulario** (notación, conteos y nombres de los elementos): es lo que evita construir la segunda versión de la verdad con sinónimos. |
-| `get_diagram` | resumen + vista previa Mermaid. |
-| `import_diagram` | carga un `GraphData` exportado como modelo editable (retomar contexto) y lo deja fijado. |
+| `list_diagrams` | los modelos en curso del workspace **con su vocabulario** (notación, conteos y nombres de los elementos): es lo que evita construir la segunda versión de la verdad con sinónimos. Marca lo que se puede limpiar: `[vacío]` y `[copia de la vista …]` (lo traído con `importAs`). |
+| `get_diagram` | resumen + vista previa Mermaid. Los conteos son los mismos en todas las herramientas: «N elementos + M contenedores» (`src/lib/mcp/conteo.ts`). |
+| `import_diagram` | carga un `.json` como modelo editable y lo deja fijado. Acepta el `GraphData` de la app **y** el formato del workspace (`{meta, nodes, edges}`); un formato desconocido, un nodo incompleto o 0 elementos es un error que dice qué esperaba (`src/lib/mcp/import-format.ts`). Una ruta relativa se resuelve contra el workspace. |
+| `delete_diagram` | borra un diagrama del workspace por id **exacto**. Si el id se repite en dos organizaciones, pide `org`. No toca la app. |
 | `use_diagram` | fija el modelo sobre el que actúan las demás herramientas cuando no pasás `diagramId`. Se guarda en el workspace: sobrevive reinicios y el modo HTTP, que es **stateless**. |
 | `use_project` **app** | fija el PROYECTO destino de `export_to_app`. Es la única forma de elegirlo en HTTP, donde el cliente sólo abre una URL y no hay argumentos que pasar. |
 
@@ -135,11 +136,26 @@ recortan al dibujar.
 
 | Herramienta | Qué hace |
 |---|---|
-| `export_to_app` | escribe el `.json` (`GraphData`) y —en modo app— lo entrega al lienzo por IPC. Por defecto **ACTUALIZA** un proyecto existente (`project`, o el de la configuración, o el abierto): conserva la geometría que el humano movió y fusiona sus notas (`src/lib/mcp/project-update.ts`). `mode: "new"` crea uno aparte. `projectName` nombra el diseño. En stdio queda el archivo para «Importar diagrama». |
+| `export_to_app` | escribe el `.json` (`GraphData`) y —en modo app— lo entrega al lienzo. Por defecto **ACTUALIZA** un proyecto existente (`project`, o el de la configuración, o el abierto): conserva la geometría que el humano movió y fusiona sus notas (`src/lib/mcp/project-update.ts`). El nombre se acepta con o sin `.json`, sin mayúsculas ni acentos, y nunca adivina entre dos. `mode: "new"` crea uno aparte en `org` (por defecto la organización activa del MCP). La entrega **espera la confirmación de la app** —un solo intento: reintentar un «crear» lo duplicaría— y responde con el proyecto y la organización donde quedó, avisando si el humano mira otra (#534). `projectName` nombra el diseño. En stdio queda el archivo para «Importar diagrama». |
 | `export_as_view` **app** | suma una **pestaña** (vista custom con su propia notación) al proyecto ACTIVO, sin crear proyecto aparte. Con `replace: true` **actualiza** la pestaña que ya se llama así —conserva la geometría del humano y no consume cupo—; si no existe, avisa con las que hay. Con `graph` + `notation` + `viewName` entrega un GraphData ya armado sin pasar por el workspace: así publica el modo creativo del constructor cuando el pedido dice «una nueva vista» (#431). Un grafo sin elementos se rechaza. Las notas, hotspots y responsables son del PROYECTO: la app los fusiona al recibir la vista (`src/lib/mcp/project-meta.ts`) sin pisar lo que ya había. |
 | `export_mermaid_view` **app** | suma una pestaña de vista **Mermaid** al proyecto activo. |
 | `delete_view` **app** | elimina una pestaña por nombre exacto. Destructiva y estrecha a propósito: nunca por coincidencia parcial, nunca varias, nunca una vista del sistema. |
 | `rename_view` **app** | renombra una pestaña — la alternativa no destructiva a borrar y volver a subir. |
+
+`export_as_view` acepta además `project`: si el proyecto activo es otro, no entrega nada y lo
+dice. Toda respuesta que crea algo nombra dónde quedó (proyecto y organización).
+
+### 5b · Proyectos de la app (#534)
+
+Un proyecto creado en la organización equivocada, o con otro nombre, antes sólo lo arreglaba
+el humano a mano. Las reglas viven en `src/lib/mcp/proyectos.ts`; la app aplica.
+
+| Herramienta | Qué hace |
+|---|---|
+| `list_projects` **app** | todos los proyectos, **agrupados por organización**, con notación, vistas propias, fecha y cuál está activo. `org` filtra. |
+| `move_project` **app** | mueve un proyecto a otra organización (tiene que existir; `""` = sin organización). |
+| `rename_project` **app** | renombra un proyecto sin dejar dos con el mismo nombre. |
+| `delete_project` **app** | elimina un proyecto con sus vistas. Destructiva: exige el nombre **exacto**, como `delete_view`. |
 
 ### 5c · Editar la vista abierta (feature 015)
 

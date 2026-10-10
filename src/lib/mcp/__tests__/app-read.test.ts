@@ -223,6 +223,31 @@ describe("resolveAppRead", () => {
     ...over,
   });
 
+  // #534: list_projects — todos, con su organización y sus vistas propias.
+  it("projects: todos los proyectos con organización, notación, vistas propias y cuál es el activo", () => {
+    const r = resolveAppRead(
+      { kind: "projects" },
+      ctx({
+        projects: [
+          { id: "f1", name: "Seguros.json", org: "bupa", notation: "ddd", fecha: "2026-10-01" },
+          { id: "f2", name: "Banca Digital.json", org: null, notation: "bpmn" },
+        ],
+      })
+    );
+    expect(r.ok && r.kind).toBe("projects");
+    if (!r.ok || r.kind !== "projects") return;
+    expect(r.projects).toEqual([
+      // La vista del sistema no cuenta: son las pestañas que creó alguien.
+      { name: "Seguros.json", org: "bupa", notation: "ddd", fecha: "2026-10-01", views: 0, activo: true },
+      { name: "Banca Digital.json", org: null, notation: "bpmn", fecha: undefined, views: 1, activo: false },
+    ]);
+  });
+
+  it("projects funciona en la pantalla de bienvenida (sin proyecto activo)", () => {
+    const r = resolveAppRead({ kind: "projects" }, ctx({ active: null }));
+    expect(r.ok && r.kind === "projects" && r.projects.every((p) => !p.activo)).toBe(true);
+  });
+
   // Feature 019: la caja cuya ficha tiene abierta el humano, entera, en una lectura.
   describe("focused", () => {
     const conFoco = (focus: AppReadContext["focus"]) =>

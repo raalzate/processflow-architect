@@ -118,6 +118,11 @@ export interface DiagramMeta {
   /** Con qué densidad y estrategia se dibujó por última vez (ver `layout-presets`). */
   layout?: { density: LayoutDensity; strategy: LayoutStrategy };
   /**
+   * De qué vista de la app salió (`get_view importAs`). Sin esto las copias se
+   * acumulaban en el workspace y no había cómo saber cuáles limpiar (#534).
+   */
+  importadoDe?: { proyecto: string; vista: string };
+  /**
    * Zonas del modelo que hay que discutir (los "hotspots" del Event Storming).
    * Viajan a `big_picture.hotspots`, que es lo que muestra la app.
    */
@@ -775,11 +780,26 @@ export function ambiguityNotes(model: DiagramModel): string {
  * fuentes. Si NINGÚN nodo la declara, el diagrama no se está trazando contra un
  * documento (p. ej. se modeló de una conversación) y avisar sería ruido.
  */
+/**
+ * Ancla a código de un elemento (`ruta/archivo.ts:símbolo`), guardada como
+ * metadato `codigo`. En un diagrama que sale de un repo, ésa ES la fuente: el
+ * revisor la contrasta abriendo el archivo. Viaja en los metadatos, así que no se
+ * pierde al exportar a la app ni al reimportar (#534).
+ */
+export function anclaDeCodigo(n: Pick<BuilderNode, "metadata">): string | undefined {
+  const clave = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+  const m = n.metadata?.find((e) => clave(e.clave) === "codigo" && e.valor?.trim());
+  return m?.valor.trim();
+}
+
+/** ¿Tiene algo contra qué contrastarlo? Una cita (`source`) o un ancla a código. */
+export const tieneFuente = (n: BuilderNode): boolean => !!n.source?.trim() || !!anclaDeCodigo(n);
+
 export function traceabilityWarnings(model: DiagramModel): string[] {
-  const withSource = model.nodes.filter((n) => n.source?.trim());
+  const withSource = model.nodes.filter(tieneFuente);
   if (!withSource.length) return [];
   return model.nodes
-    .filter((n) => !n.source?.trim())
+    .filter((n) => !tieneFuente(n))
     .map(
       (n) =>
         `"${n.nombre}" (${n.id}) no cita fuente; el revisor no puede contrastarlo con el documento. Añade \`source\` o quítalo.`

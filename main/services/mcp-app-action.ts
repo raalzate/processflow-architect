@@ -31,14 +31,15 @@ export function initAppActionBridge(): void {
 
 function intentar(
   win: Electron.BrowserWindow,
-  request: AppActionRequest
+  request: AppActionRequest,
+  timeoutMs: number
 ): Promise<AppActionResult | null> {
   const id = ++seq;
   return new Promise<AppActionResult | null>((resolve) => {
     const timer = setTimeout(() => {
       pendientes.delete(id);
       resolve(null);
-    }, TIMEOUT_MS);
+    }, timeoutMs);
     pendientes.set(id, (r) => {
       clearTimeout(timer);
       resolve(r);
@@ -49,9 +50,20 @@ function intentar(
 
 const esperar = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/**
+ * Cómo esperar. Lo que NO es idempotente (crear un proyecto, #534) va con un solo
+ * intento: reintentar ante una app lenta crearía el proyecto dos veces.
+ */
+export interface OpcionesAccion {
+  intentos?: number;
+  timeoutMs?: number;
+}
+
 /** Pide una acción al renderer. Nunca rechaza: el fallo viaja como resultado. */
-export async function actOnApp(request: AppActionRequest): Promise<AppActionResult> {
-  for (let intento = 1; intento <= INTENTOS; intento++) {
+export async function actOnApp(request: AppActionRequest, opciones: OpcionesAccion = {}): Promise<AppActionResult> {
+  const intentos = opciones.intentos ?? INTENTOS;
+  const timeoutMs = opciones.timeoutMs ?? TIMEOUT_MS;
+  for (let intento = 1; intento <= intentos; intento++) {
     const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
     if (!win) {
       return {
@@ -60,12 +72,17 @@ export async function actOnApp(request: AppActionRequest): Promise<AppActionResu
           "La app no está abierta (o este servidor corre en modo repo/stdio): no hay proyecto sobre el que actuar. Pedile al usuario que abra Processflow Architect con el servidor MCP activo.",
       };
     }
-    const r = await intentar(win, request);
+    const r = await intentar(win, request, timeoutMs);
     if (r) return r;
-    if (intento < INTENTOS) await esperar(BACKOFF_MS * 2 ** (intento - 1));
+    if (intento < intentos) await esperar(BACKOFF_MS * 2 ** (intento - 1));
   }
+  // Con un solo intento la app pudo haberlo hecho igual, tarde: decir «no se
+  // cambió nada» sería mentir y el reintento duplicaría.
   return {
     ok: false,
-    error: `La app no respondió tras ${INTENTOS} intentos de ${TIMEOUT_MS} ms. No se cambió nada: traé la ventana al frente y volvé a intentar.`,
+    error:
+      intentos === 1
+        ? `La app no confirmó en ${timeoutMs} ms. Puede que lo haya hecho igual: mirá get_app_state (o list_projects) antes de reintentar, para no duplicar.`
+        : `La app no respondió tras ${intentos} intentos de ${timeoutMs} ms. No se cambió nada: traé la ventana al frente y volvé a intentar.`,
   };
 }

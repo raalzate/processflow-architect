@@ -19,6 +19,7 @@ import {
   slugify,
   bpmnFlowWarnings,
   traceabilityWarnings,
+  anclaDeCodigo,
   recordAmbiguity,
   setProjectMeta,
   addReadModel,
@@ -656,6 +657,18 @@ describe("trazabilidad (source)", () => {
     m = addNode(m, { nombre: "Sin Fuente", tipo_elemento: "Evento" }).model;
     m = addEdge(m, { fuente: "con-fuente", destino: "sin-fuente" });
     expect(traceabilityWarnings(m).join(" ")).toContain("Sin Fuente");
+  });
+
+  it("un ancla a código (metadato `codigo`) es una fuente: ni avisa por él ni lo deja sin trazar (#534)", () => {
+    let m = emptyDiagram(base);
+    m = addNode(m, { nombre: "Con Fuente", tipo_elemento: "Comando", source: "Acta §1" }).model;
+    m = addNode(m, {
+      nombre: "Con Ancla",
+      tipo_elemento: "Evento",
+      metadata: [{ clave: "código", valor: "src/pagos.ts:cobrar" }],
+    }).model;
+    expect(traceabilityWarnings(m)).toEqual([]);
+    expect(anclaDeCodigo(m.nodes[1])).toBe("src/pagos.ts:cobrar");
   });
 
   it("no avisa si NINGÚN nodo declara fuente (el diagrama no se está trazando)", () => {

@@ -92,15 +92,22 @@ import {
   SIN_ORG,
   type OrgRef,
 } from "../../src/lib/mcp/orgs";
-import { nombreVisible, resolveProjectRef, resolveViewRef, vistaInexistente } from "../../src/lib/mcp/project-update";
+import {
+  claveProyecto,
+  nombreVisible,
+  resolveProjectRef,
+  resolveViewRef,
+  vistaInexistente,
+} from "../../src/lib/mcp/project-update";
 import { interpretarImportacion } from "../../src/lib/mcp/import-format";
-import { contarModelo, textoConteo } from "../../src/lib/mcp/conteo";
+import { contarModelo, marcasDiagrama, textoConteo } from "../../src/lib/mcp/conteo";
 import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
 import { toMermaid, idsQueCambian } from "../../src/lib/mcp/to-mermaid";
 import { qualityFindings, formatFindings, MAX_NODES } from "../../src/lib/mcp/quality";
 import { reviewPacket } from "../../src/lib/mcp/review";
 import { suggestViews, formatViewPlan } from "../../src/lib/mcp/view-plan";
-import { formatAppState, type AppState } from "../../src/lib/mcp/app-state";
+import { formatAppState, nombresDeProyectos, type AppState } from "../../src/lib/mcp/app-state";
+import { formatProjectList, mensajeEntrega, ubicacion } from "../../src/lib/mcp/proyectos";
 import {
   planAppAction,
   describeAccion,
@@ -197,7 +204,15 @@ export interface McpToolsOptions {
    * (borrar o renombrar una vista). Nunca rechaza: el fallo viaja en el
    * resultado. Sin esto, el agente podía crear pestañas y no recoger las suyas.
    */
-  actOnApp?: (request: AppActionRequest) => Promise<AppActionResult>;
+  actOnApp?: (
+    request: AppActionRequest,
+    opciones?: { intentos?: number; timeoutMs?: number }
+  ) => Promise<AppActionResult>;
+  /**
+   * Cuánto espera `export_to_app` a que el estado publicado muestre el proyecto
+   * entregado (#534). Por defecto 3000 ms; los tests lo acortan.
+   */
+  esperaEstadoMs?: number;
   /**
    * Diagrama por defecto de este servidor (`PROCESSFLOW_DIAGRAM` o `--diagram`
    * en `.mcp.json`). Sirve para atar una sesión de trabajo a un diagrama sin
@@ -324,7 +339,11 @@ const metadataSchema = z
   }, z
   .array(
     z.object({
-      clave: z.string().describe('Clave corta: "repo", "wiki", "owner", "SLA".'),
+      clave: z
+        .string()
+        .describe(
+          'Clave corta: "repo", "wiki", "owner", "SLA". La clave "codigo" es el ANCLA a código ("ruta/archivo.ts:símbolo"): review_diagram la acepta como fuente del elemento y viaja a la app sin perderse.'
+        ),
       valor: z.string().describe('Valor legible: "acme/pagos-svc", "Equipo Pagos".'),
       url: z.string().optional().describe("URL donde eso vive. Sólo http(s) se vuelve enlace en la app."),
     }),
@@ -512,6 +531,21 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       configured: opts.defaultDiagramId,
       disponibles: await listModels(),
     }).id;
+  }
+
+  /**
+   * Espera a que el estado publicado por la app muestre `proyecto` como activo
+   * (#534). true si llegó; false si se agotó el tiempo. Sin app conectada, true.
+   */
+  async function esperarEstadoConProyecto(proyecto: string): Promise<boolean> {
+    if (!opts.getAppState) return true;
+    const limite = Date.now() + (opts.esperaEstadoMs ?? 3000);
+    for (;;) {
+      const activo = opts.getAppState()?.projectName;
+      if (activo && claveProyecto(activo) === claveProyecto(proyecto)) return true;
+      if (Date.now() >= limite) return false;
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
 
   async function freshId(base: string): Promise<string> {
@@ -829,6 +863,49 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     }
   );
 
+  // Limpiar el workspace (#534): los diagramas de prueba y las copias de importAs
+  // se acumulaban sin forma de borrarlos desde el MCP.
+  server.registerTool(
+    "delete_diagram",
+    {
+      title: "Eliminar un diagrama del workspace",
+      description:
+        "Elimina un diagrama del WORKSPACE del MCP por su id EXACTO (no toca proyectos ni vistas de la app: para eso están delete_project y delete_view). list_diagrams marca los candidatos: [vacío] y [copia de la vista …]. Si el mismo id existe en dos organizaciones, pedí cuál con `org`.",
+      inputSchema: {
+        diagramId: z.string().describe("Id EXACTO del diagrama (como lo muestra list_diagrams)."),
+        org: z
+          .string()
+          .optional()
+          .describe("Organización donde está (slug). \"\" = sin organización. Sólo hace falta si el id se repite."),
+      },
+    },
+    async ({ diagramId, org }) => {
+      const disponibles = await listOrgSlugs();
+      const grupos: (string | null)[] = org === undefined ? [null, ...disponibles] : [org.trim() || null];
+      const encontrados: (string | null)[] = [];
+      for (const g of grupos) if ((await listModels(g)).includes(diagramId)) encontrados.push(g);
+      if (!encontrados.length) {
+        return fail(`No existe el diagrama "${diagramId}"${org === undefined ? "" : ` en ${nombreOrg(org.trim() || null)}`}. Mirá list_diagrams con org="*". No se borró nada.`);
+      }
+      if (encontrados.length > 1) {
+        return fail(
+          `Hay un diagrama "${diagramId}" en ${encontrados.map(nombreOrg).join(" y ")}. Pasá \`org\` para elegir cuál. No se borró nada.`
+        );
+      }
+      const g = encontrados[0];
+      let nombre = diagramId;
+      try {
+        nombre = (await loadModel(diagramId, g)).meta.nombre_proyecto || diagramId;
+      } catch {
+        /* ilegible: se borra igual, es lo que se pidió */
+      }
+      await fs.unlink(modelPathIn(g, diagramId));
+      // Un fijado que apunta a lo que se borró sólo produce errores después.
+      if ((await readPinned()) === diagramId && (await activeOrg()) === g) await writePinned(null);
+      return text(`Diagrama "${diagramId}" (${nombre}) eliminado de ${nombreOrg(g)} del workspace.`);
+    }
+  );
+
   // -- 2. Ciclo de vida del diagrama ------------------------------------------
 
   server.registerTool(
@@ -850,12 +927,14 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         notation: notation as NotationId,
         descripcion: description,
       });
-      await saveModel(id, model);
+      const org = await activeOrg();
+      await saveModel(id, model, org);
       // Se fija solo: lo normal tras crear es trabajar sobre él, y repetir el id
       // en cada llamada es la fricción que hacía que el agente se equivocara.
       await writePinned(id);
       return text(
-        `Diagrama creado y FIJADO. diagramId="${id}", notación=${notation}. Las próximas llamadas pueden omitir \`diagramId\`; cambialo con use_diagram.\n` +
+        // Dónde quedó, siempre (#534).
+        `Diagrama creado y FIJADO en ${ubicacion(org)} del workspace. diagramId="${id}", notación=${notation}. Las próximas llamadas pueden omitir \`diagramId\`; cambialo con use_diagram.\n` +
           `Siguiente: usa describe_notation("${notation}") para ver los tipos válidos, luego add_container/add_node/add_edge.`
       );
     }
@@ -917,6 +996,8 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         const resto = vocab.length - visibles.length;
         lineas.push(
           `- ${etiqueta(g)}${id} · ${model.meta.nombre_proyecto} · ${model.meta.notation} · ${textoConteo(contarModelo(model))}, ${model.edges.length} aristas` +
+            // Lo que se puede limpiar con delete_diagram (#534).
+            (marcasDiagrama(model).length ? ` · [${marcasDiagrama(model).join("; ")}]` : "") +
             (visibles.length
               ? `\n  ${visibles.join(" · ")}${resto > 0 ? ` · … y ${resto} más` : ""}`
               : "")
@@ -2219,10 +2300,11 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Estado de la app",
       description:
-        "PRIMERA llamada de cualquier sesión de diseño: qué proyecto está activo en Processflow Architect, con qué notación, qué vistas existen ya y cuánto cupo queda. De aquí sale la decisión entre export_to_app (crea/reemplaza el proyecto) y export_as_view (suma una pestaña al proyecto activo). Sin esta ingesta, exportar duplica vistas o pisa el trabajo del usuario.",
+        "PRIMERA llamada de cualquier sesión de diseño: qué proyecto está activo en Processflow Architect y en qué organización, con qué notación, qué vistas existen ya y cuánto cupo queda. Dice también qué organización mira el humano en la app y cuál tiene fijada el MCP, y lista los proyectos guardados agrupados por organización. De aquí sale la decisión entre export_to_app (actualiza o crea un proyecto) y export_as_view (suma una pestaña al proyecto activo).",
       inputSchema: {},
     },
-    async () => text(formatAppState(opts.getAppState?.() ?? null))
+    // La org del MCP va junto a la de la app: eran dos y nadie las veía juntas (#534).
+    async () => text(formatAppState(opts.getAppState?.() ?? null, { mcpOrg: await activeOrg() }))
   );
 
   // -- 4c-bis. Lectura del trabajo del humano (sólo modo app) --------------------
@@ -2334,10 +2416,12 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         const partes = [cabecera, "", "```mermaid", toMermaid(model).trim(), "```"];
         if (importAs) {
           const id = await freshId(slugify(`${r.project}-${v.name}`));
-          await saveModel(id, model);
+          const org = await activeOrg();
+          // El origen queda en el diagrama: list_diagrams la marca como copia (#534).
+          await saveModel(id, { ...model, meta: { ...model.meta, importadoDe: { proyecto: r.project, vista: v.name } } }, org);
           partes.push(
             "",
-            `Importada como diagramId="${id}" (${textoConteo(contarModelo(model))}, ${model.edges.length} aristas): editala y devolvela con export_as_view para no duplicar la pestaña.`
+            `Importada como diagramId="${id}" en ${ubicacion(org)} del workspace (${textoConteo(contarModelo(model))}, ${model.edges.length} aristas): editala y devolvela con export_as_view para no duplicar la pestaña. Cuando termines, borrala con delete_diagram.`
           );
         }
         return text(partes.join("\n"));
@@ -2496,7 +2580,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Exportar a la app",
       description: opts.exportToApp
-        ? "Serializa el diagrama (GraphData) y lo entrega al lienzo de Processflow Architect (la app está conectada). Por defecto ACTUALIZA el proyecto abierto —o el que diga `project` / la configuración del servidor— conservando la geometría que el humano movió y fusionando sus notas; con `mode=\"new\"` crea un proyecto aparte. También escribe un .json de respaldo."
+        ? "Serializa el diagrama (GraphData) y lo entrega al lienzo de Processflow Architect (la app está conectada). Por defecto ACTUALIZA el proyecto abierto —o el que diga `project` / la configuración del servidor— conservando la geometría que el humano movió y fusionando sus notas; con `mode=\"new\"` crea un proyecto aparte en `org` (por defecto la organización activa del MCP). Responde cuando la app confirmó, con el proyecto y la organización donde quedó, y avisa si el humano está mirando otra organización. También escribe un .json de respaldo."
         : "Serializa el diagrama al formato GraphData y lo escribe como .json en el workspace. Ese archivo se abre en Processflow Architect con «Importar diagrama (JSON)». Devuelve la ruta absoluta.",
       inputSchema: {
         diagramId: diagramIdSchema,
@@ -2522,9 +2606,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .string()
           .optional()
           .describe("Ruta de salida (por defecto <workspace>/<diagramId>.json)."),
+        org: z
+          .string()
+          .optional()
+          .describe(
+            "Organización (slug) donde CREAR el proyecto con mode=\"new\". Por defecto, la organización activa del MCP (use_org). \"\" = sin organización. Con mode=\"update\" el proyecto conserva la suya."
+          ),
       },
     },
-    async ({ diagramId: diagramIdEntrada, projectName, project, mode, outPath }) => {
+    async ({ diagramId: diagramIdEntrada, projectName, project, mode, outPath, org: orgEntrada }) => {
       // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
       // configuración, o el único del workspace (`active-diagram.ts`).
       let diagramId: string;
@@ -2558,7 +2648,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             destino = {
               project: resolveProjectRef(project ?? (await readPinnedProject()) ?? opts.defaultProject, {
                 activo: estado?.projectName ?? null,
-                proyectos: estado?.projects ?? [],
+                proyectos: nombresDeProyectos(estado),
               }),
             };
           } catch (e: any) {
@@ -2571,6 +2661,35 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             // bienvenida): crear el primero es exactamente lo que se quiere.
             destino = undefined;
           }
+        }
+
+        // Con el canal de acciones, la entrega ESPERA a la app y vuelve con dónde
+        // quedó (#534). Un solo intento: reintentar un «crear» lo duplicaría.
+        if (opts.actOnApp) {
+          let orgNueva: string | null = null;
+          if (!destino) {
+            const pedida = orgEntrada === undefined ? undefined : orgEntrada.trim() || null;
+            if (pedida && !(await listOrgSlugs()).includes(pedida)) {
+              return fail(
+                `No existe la organización "${pedida}". Las que hay: ${(await listOrgSlugs()).map((o) => `"${o}"`).join(", ") || "(ninguna)"}. Creala con create_org.\n\nEl .json quedó en: ${dest}`
+              );
+            }
+            orgNueva = pedida === undefined ? await activeOrg() : pedida;
+          }
+          const r = await opts.actOnApp(
+            { kind: "export-project", name: nombre, graph, mode: destino ? "update" : "new", target: destino?.project, org: orgNueva },
+            { intentos: 1, timeoutMs: 10_000 }
+          );
+          if (!r.ok) return fail(`${r.error}\n\nEl .json quedó en: ${dest}${warn}${err}`);
+          // La app confirma antes de volver a publicar su estado: sin esperar,
+          // un get_app_state inmediato mostraba el proyecto ANTERIOR y el agente
+          // podía exportar una vista al equivocado (#534, P1).
+          const esperado = destino ? nombreVisible(destino.project) : nombre;
+          const coherente = await esperarEstadoConProyecto(esperado);
+          const nota = coherente
+            ? ""
+            : `\n⚠️ La app confirmó pero todavía no publicó su estado nuevo: antes de seguir, comprobá con get_app_state que el activo sea "${esperado}".`;
+          return text(`✅ ${r.message}\nDiseño "${nombre}" · respaldo: ${dest}${nota}${warn}${err}`);
         }
 
         const delivered = await opts.exportToApp(nombre, graph, destino);
@@ -2619,9 +2738,32 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
               "GraphData completo en JSON: se entrega tal cual como pestaña, sin pasar por el workspace. Si viene, gana sobre diagramId y exige `viewName` y `notation`."
             ),
           notation: NOTATION.optional().describe("Notación del `graph` (obligatoria con él)."),
+          project: z
+            .string()
+            .optional()
+            .describe(
+              "Proyecto donde DEBE caer la pestaña. Si el activo en la app es otro, no se entrega nada y se avisa: así una vista no termina en el proyecto equivocado."
+            ),
         },
       },
-      async ({ diagramId: diagramIdEntrada, viewName, replace, graph: graphEntrada, notation }) => {
+      async ({ diagramId: diagramIdEntrada, viewName, replace, graph: graphEntrada, notation, project }) => {
+      // `project` explícito (#534): la pestaña va SIEMPRE al proyecto activo; si el
+      // agente esperaba otro, se rechaza en vez de colgarla donde no era.
+      const activoAhora = opts.getAppState?.() ?? null;
+      if (project?.trim()) {
+        if (!activoAhora?.projectName) {
+          return fail(`No hay un proyecto abierto en la app; se esperaba "${project}". Abrilo y reintentá.`);
+        }
+        if (claveProyecto(activoAhora.projectName) !== claveProyecto(project)) {
+          return fail(
+            `El proyecto activo en la app es "${activoAhora.projectName}" (${ubicacion(activoAhora.projectOrg)}), no "${project}". No se entregó nada: pedile al humano que abra "${project}", o exportá sin \`project\` si la pestaña va en el activo.`
+          );
+        }
+      }
+      // Dónde quedó, en cada respuesta (#534).
+      const enProyectoActivo = activoAhora?.projectName
+        ? ` en el proyecto activo "${activoAhora.projectName}" (${ubicacion(activoAhora.projectOrg)})`
+        : " en el proyecto activo";
       // Un grafo ya armado (modo creativo del constructor, #431) va directo a la
       // pestaña: convertirlo en diagrama del workspace sólo para exportarlo dejaba
       // basura ahí. Mismo puente, mismas garantías: nada vacío, nada que pisar sin `replace`.
@@ -2646,7 +2788,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           return fail("La app no tiene ventana activa; abre Processflow Architect y reintenta.");
         }
         return text(
-          `✅ Vista "${nombre}" (${notation}) ${replace ? "ACTUALIZADA" : "creada"} en el proyecto activo con ${elementos} elemento(s).`
+          `✅ Vista "${nombre}" (${notation}) ${replace ? "ACTUALIZADA" : "creada"}${enProyectoActivo} con ${elementos} elemento(s).`
         );
       }
       // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
@@ -2692,7 +2834,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           return text(
             `✅ Vista "${name}" (${model.meta.notation}) ${
               replace ? "ACTUALIZADA" : "enviada"
-            } en el proyecto activo de la app.${
+            }${enProyectoActivo}.${
               replace ? " Se conservó la posición de los elementos que ya estaban." : ""
             }${metaTxt}${warn}${err}`
           );
@@ -2723,7 +2865,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         const estado = opts.getAppState?.() ?? null;
         const conocidos = [
           ...(estado?.projectName ? [estado.projectName] : []),
-          ...(estado?.projects ?? []),
+          ...nombresDeProyectos(estado),
         ];
         const lista = conocidos.length
           ? [...new Set(conocidos)].map((p) => `"${p}"`).join(", ")
@@ -2751,7 +2893,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           // existe sólo mueve el error al momento de entregar.
           const resuelto = resolveProjectRef(project, {
             activo: estado?.projectName ?? null,
-            proyectos: estado?.projects ?? [],
+            proyectos: nombresDeProyectos(estado),
           });
           await writeActive({ project: resuelto });
           return text(
@@ -2761,6 +2903,78 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           return fail(e.message);
         }
       }
+    );
+  }
+
+  // Sólo en modo app: gestionar PROYECTOS (#534). Sin esto, un proyecto creado en
+  // la organización equivocada (o con otro nombre) sólo lo arreglaba el humano.
+  if (opts.readApp) {
+    server.registerTool(
+      "list_projects",
+      {
+        title: "Listar proyectos",
+        description:
+          "Lista los proyectos guardados en la app, AGRUPADOS POR ORGANIZACIÓN, con su notación, cuántas vistas propias tienen, su fecha y cuál está activo. No depende del selector de organización del header: muestra todos (o sólo los de `org`).",
+        inputSchema: {
+          org: z
+            .string()
+            .optional()
+            .describe("Sólo los de esta organización (slug). \"\" = sólo los que no tienen organización."),
+        },
+      },
+      async ({ org }) => {
+        const r = await opts.readApp!({ kind: "projects" });
+        if (!r.ok) return fail(r.error);
+        if (r.kind !== "projects") return fail("Respuesta inesperada.");
+        return text(formatProjectList(r.projects, org === undefined ? {} : { org: org.trim() || null }));
+      }
+    );
+  }
+
+  if (opts.actOnApp) {
+    const resultado = (r: AppActionResult) => (r.ok ? text(`✅ ${r.message}`) : fail(r.error));
+
+    server.registerTool(
+      "move_project",
+      {
+        title: "Mover un proyecto de organización",
+        description:
+          "Mueve un proyecto de la app a otra organización (la que ve el humano en el selector del header). Acepta el nombre con o sin .json y sin mayúsculas; si dos se parecen, pide el exacto. `org` tiene que existir (list_orgs); \"\" lo deja sin organización.",
+        inputSchema: {
+          project: z.string().describe("Nombre del proyecto."),
+          org: z.string().describe("Organización destino (slug). \"\" = sin organización."),
+        },
+      },
+      async ({ project, org }) =>
+        resultado(await opts.actOnApp!({ kind: "move-project", project, org: org.trim() || null }))
+    );
+
+    server.registerTool(
+      "rename_project",
+      {
+        title: "Renombrar un proyecto",
+        description:
+          "Cambia el nombre de un proyecto de la app. No deja dos proyectos con el mismo nombre. Acepta el nombre actual con o sin .json.",
+        inputSchema: {
+          project: z.string().describe("Nombre actual del proyecto."),
+          newName: z.string().describe("Nombre nuevo (sin .json)."),
+        },
+      },
+      async ({ project, newName }) =>
+        resultado(await opts.actOnApp!({ kind: "rename-project", project, newName }))
+    );
+
+    server.registerTool(
+      "delete_project",
+      {
+        title: "Eliminar un proyecto",
+        description:
+          "Elimina un proyecto de la app con sus vistas. DESTRUCTIVO sobre el trabajo del humano: exige el nombre EXACTO (con o sin .json), no borra por parecido ni varios a la vez. Si el nombre no existe, dice cuáles hay y no borra nada. Para pestañas sueltas está delete_view.",
+        inputSchema: {
+          project: z.string().describe("Nombre EXACTO del proyecto a eliminar."),
+        },
+      },
+      async ({ project }) => resultado(await opts.actOnApp!({ kind: "delete-project", project }))
     );
   }
 
