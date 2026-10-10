@@ -93,7 +93,7 @@
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.11",
     "concurrently": "^10.0.6",
-    "electron": "^39.0.0",
+    "electron": "^41.10.6",
     "electron-builder": "^26.0.12",
     "nodemon": "^3.1.14",
     "postcss": "^8",
