@@ -22,6 +22,31 @@ describe("resolver un color", () => {
     expect(resolverColor("222 16% 17%")).toEqual({ r: 36, g: 41, b: 50 });
   });
 
+  it("oklch, que es como Tailwind 4 publica su paleta", () => {
+    // Extremos y un primario de sRGB: valores de referencia de la especificación.
+    expect(resolverColor("oklch(100% 0 0)")).toEqual({ r: 255, g: 255, b: 255 });
+    expect(resolverColor("oklch(0% 0 0)")).toEqual({ r: 0, g: 0, b: 0 });
+    expect(resolverColor("oklch(62.8% 0.2577 29.23)")).toEqual({ r: 255, g: 0, b: 0 });
+    // La luminosidad también llega como fracción (0–1) en vez de porcentaje.
+    expect(resolverColor("oklch(0.628 0.2577 29.23)")).toEqual(resolverColor("oklch(62.8% 0.2577 29.23)"));
+    // zinc-700 de Tailwind 4: el mismo gris que el hex de la 3 (#3f3f46).
+    expect(resolverColor("oklch(37% 0.013 285.805)")).toEqual({ r: 63, g: 63, b: 70 });
+  });
+
+  it("un oklch fuera de sRGB se recorta al borde, no se descarta", () => {
+    const c = resolverColor("oklch(70% 0.4 145)");
+    expect(c).not.toBeNull();
+    for (const canal of [c!.r, c!.g, c!.b]) {
+      expect(canal).toBeGreaterThanOrEqual(0);
+      expect(canal).toBeLessThanOrEqual(255);
+    }
+  });
+
+  it("un oklch mal escrito es «no sé», no un color inventado", () => {
+    expect(resolverColor("oklch(70% abc 145)")).toBeNull();
+    expect(resolverColor("oklch()")).toBeNull();
+  });
+
   it("clase de Tailwind, con cualquier prefijo de utilidad", () => {
     const zinc700 = resolverColor("fill-zinc-700");
     expect(zinc700).not.toBeNull();

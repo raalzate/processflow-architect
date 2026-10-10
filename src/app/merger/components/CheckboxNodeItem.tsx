@@ -64,7 +64,7 @@ const CheckboxNodeItem: React.FC<Props> = ({
         )}
       </div>
 
-      <div className="flex-shrink-0 ml-auto flex items-center gap-1">
+      <div className="shrink-0 ml-auto flex items-center gap-1">
         <IconAction
           variant="ghost"
           className="text-muted-foreground hover:text-primary"

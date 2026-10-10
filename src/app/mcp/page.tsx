@@ -163,7 +163,7 @@ function SkillDownloadCard() {
         <CardTitle className="flex items-center gap-2">
           <Sparkles className="w-5 h-5" /> Skills para tu agente
         </CardTitle>
-        <CardDescription className="mt-1.5">
+        <CardDescription>
           El skill es el arnés del agente externo: lo obliga a mirar el estado de tu app antes de
           tocarla, a citar de dónde sale cada elemento, a preguntarte UNA vez lo que tu documento
           no decide, a validar la calidad del modelado y a pasarte un paquete de revisión antes de
@@ -239,7 +239,7 @@ export default function McpGuidePage() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <header className="bg-card border-b shadow-sm w-full p-4 z-10 flex justify-between items-center">
+      <header className="bg-card border-b shadow-xs w-full p-4 z-10 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold text-foreground font-headline flex items-center gap-2">
             <Plug className="w-5 h-5" /> Guía MCP · Diseñar con Claude Code
@@ -287,7 +287,7 @@ export default function McpGuidePage() {
                 <CardTitle className="flex items-center gap-2">
                   <Terminal className="w-5 h-5" /> ¿Qué es?
                 </CardTitle>
-                <CardDescription className="mt-1.5">
+                <CardDescription>
                   Un servidor <b>MCP (Model Context Protocol)</b> por stdio que expone herramientas para que
                   un agente (Claude Code, Codex…) <b>diseñe diagramas</b> — Event Storming DDD, BPMN, C4, UML —
                   analizando tus documentos, y los exporte al formato que esta app importa. Todo local, sin nube.
@@ -303,7 +303,7 @@ export default function McpGuidePage() {
                 <CardTitle className="flex items-center gap-2">
                   <Plug className="w-5 h-5" /> Conexión (recomendada): servidor de la app
                 </CardTitle>
-                <CardDescription className="mt-1.5">
+                <CardDescription>
                   Activa el servidor en <Link href="/settings" className="underline text-primary">Ajustes → Servidor MCP</Link> y
                   añade este bloque en tu cliente (Claude Code / Codex). Los diagramas que el agente exporte
                   <b> llegan directo al lienzo</b>, sin importar archivos. Sólo escucha en tu equipo (127.0.0.1).
@@ -324,7 +324,7 @@ export default function McpGuidePage() {
                 <CardTitle className="flex items-center gap-2">
                   <Terminal className="w-5 h-5" /> Alternativa (desarrollo): stdio con el repo
                 </CardTitle>
-                <CardDescription className="mt-1.5">
+                <CardDescription>
                   Si tienes el repositorio clonado, Claude Code descubre el servidor por el <code>.mcp.json</code> del
                   repo (no necesita la app abierta). Los exports quedan como <code>.json</code> para importar a mano:
                 </CardDescription>
@@ -345,7 +345,7 @@ export default function McpGuidePage() {
                   <CardTitle className="flex items-center gap-2">
                     <Settings className="w-5 h-5" /> Configuración
                   </CardTitle>
-                  <CardDescription className="mt-1.5">
+                  <CardDescription>
                     El agente trabaja sobre <b>un diagrama</b> del servidor y entrega a <b>un proyecto</b> de la app.
                     Los dos se pueden fijar para no repetirlos en cada paso — y <b>cómo</b> se fijan depende del
                     transporte:
@@ -405,7 +405,7 @@ export default function McpGuidePage() {
                 <CardTitle className="flex items-center gap-2">
                   <Terminal className="w-5 h-5" /> Prompt de ejemplo
                 </CardTitle>
-                <CardDescription className="mt-1.5">
+                <CardDescription>
                   Pégalo en Claude Code apuntando a tus propios documentos. Si trabajas con el
                   repo, también existe el skill <code>/disenar-diagrama</code> (en{" "}
                   <code>.claude/skills/</code>) que guía todo el flujo automáticamente:
@@ -449,7 +449,7 @@ export default function McpGuidePage() {
                 <CardTitle className="flex items-center gap-2">
                   <FileUp className="w-5 h-5" /> Traer el diseño al lienzo
                 </CardTitle>
-                <CardDescription className="mt-1.5">
+                <CardDescription>
                   Con el <b>servidor de la app activo</b>, <code>export_to_app</code> carga el diagrama
                   directo al lienzo como proyecto nuevo — verás la app traerse al frente con el diseño.
                   En modo stdio (repo), genera un <code>.json</code> que cargas con <b>«Importar diagrama»</b>{" "}
@@ -466,7 +466,7 @@ export default function McpGuidePage() {
               <CardTitle className="flex items-center gap-2">
                 <Wrench className="w-5 h-5" /> Herramientas disponibles
               </CardTitle>
-              <CardDescription className="mt-1.5">
+              <CardDescription>
                 El agente las llama solo; esta lista es de referencia.
               </CardDescription>
             </CardHeader>

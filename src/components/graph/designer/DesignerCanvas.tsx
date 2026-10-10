@@ -628,7 +628,7 @@ const PaletteItem: React.FC<{
       draggable
       onDragStart={(e) => onDragStart(e, item)}
       className={cn(
-        "flex items-center space-x-2 p-2 border rounded-md shadow-sm cursor-grab active:cursor-grabbing transition-all",
+        "flex items-center space-x-2 p-2 border rounded-md shadow-xs cursor-grab active:cursor-grabbing transition-all",
         // `bg` es `fill-*` (SVG del lienzo); en el chip HTML lo traducimos a `bg-*`
         // para que el chip se vea como se verá el nodo: mismo relleno, mismo texto.
         color.bg.replace("fill-", "bg-"),
@@ -770,7 +770,7 @@ export const Toolbox: React.FC<{
   // tirador de ancho NO se renderiza acá: no hay ancho que arrastrar.
   if (hidden) {
     return (
-      <div className="relative flex w-9 flex-shrink-0 flex-col items-center border-r bg-background pt-3 shadow-lg z-10">
+      <div className="relative flex w-9 shrink-0 flex-col items-center border-r bg-background pt-3 shadow-lg z-10">
         <Button
           variant="ghost"
           size="icon"
@@ -792,7 +792,7 @@ export const Toolbox: React.FC<{
       ref={panelRef}
       style={{ width }}
       className={cn(
-        "relative flex-shrink-0 flex flex-col bg-background shadow-lg z-10 border-r",
+        "relative shrink-0 flex flex-col bg-background shadow-lg z-10 border-r",
         resizing && "select-none"
       )}
     >
@@ -829,7 +829,7 @@ export const Toolbox: React.FC<{
         }}
         className={cn(
           "absolute inset-y-0 right-0 z-20 w-1.5 cursor-col-resize transition-colors",
-          "hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none",
+          "hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-hidden",
           resizing && "bg-primary/60",
           // Pegado a un tope: el cursor lo dice antes de que el usuario insista.
           limite === "min" && "cursor-e-resize",
@@ -1282,7 +1282,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         onMouseMove={onHover}
         onMouseLeave={onHoverEnd}
         className={cn(
-          "group [filter:drop-shadow(0_1px_2px_rgb(0_0_0/0.08))]",
+          "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.08))]",
           connecting ? "cursor-crosshair" : "cursor-move",
           // Marcado para eliminar: atenuado (la insignia roja da el motivo).
           isDeleted && "opacity-60"
@@ -1567,7 +1567,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         onMouseMove={onHover}
         onMouseLeave={onHoverEnd}
         className={cn(
-          "group [filter:drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
+          "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
           connecting ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing",
           isDeleted && "opacity-60"
         )}
@@ -1658,7 +1658,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       onMouseMove={onHover}
       onMouseLeave={onHoverEnd}
       className={cn(
-        "group [filter:drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
+        "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
         connecting ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing",
         // Marcado para eliminar: atenuado (la insignia roja da el motivo).
         isDeleted && "opacity-60"
@@ -1701,13 +1701,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               style={estiloBlq}
             >
               <p
-                className={cn("text-base font-bold leading-tight select-none break-words", isDeleted && "line-through")}
+                className={cn("text-base font-bold leading-tight select-none wrap-break-word", isDeleted && "line-through")}
                 style={estiloTxt}
               >
                 {node.nombre}
               </p>
               {!!node.descripcion && (
-                <p className="mt-0.5 text-2xs leading-snug opacity-80 select-none break-words line-clamp-4">
+                <p className="mt-0.5 text-2xs leading-snug opacity-80 select-none wrap-break-word line-clamp-4">
                   {node.descripcion}
                 </p>
               )}
@@ -1726,7 +1726,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 // Sin `line-clamp`: el texto libre se dibuja a su tamaño real y
                 // desborda la caja en vez de recortarse (#415).
                 className={cn(
-                  "text-sm font-bold leading-tight select-none break-words",
+                  "text-sm font-bold leading-tight select-none wrap-break-word",
                   isDeleted && "line-through"
                 )}
                 style={estiloTxt}
@@ -1749,7 +1749,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           >
             <p
               className={cn(
-                "text-sm font-bold leading-tight select-none break-words max-w-full",
+                "text-sm font-bold leading-tight select-none wrap-break-word max-w-full",
                 recorta && "line-clamp-3",
                 isDeleted && "line-through"
               )}
@@ -1758,7 +1758,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               {node.nombre}
             </p>
             {!!node.descripcion && (
-              <p className="text-2xs leading-tight opacity-80 select-none break-words max-w-full line-clamp-3">
+              <p className="text-2xs leading-tight opacity-80 select-none wrap-break-word max-w-full line-clamp-3">
                 {node.descripcion}
               </p>
             )}
@@ -1792,7 +1792,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             >
               <p
                 className={cn(
-                  "text-sm font-bold leading-tight select-none break-words max-w-full",
+                  "text-sm font-bold leading-tight select-none wrap-break-word max-w-full",
                   recorta && "line-clamp-2",
                   isDeleted && "line-through"
                 )}
@@ -1801,7 +1801,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 {node.nombre}
               </p>
               {!!node.descripcion && (
-                <p className="text-2xs leading-tight opacity-80 select-none break-words max-w-full line-clamp-2">
+                <p className="text-2xs leading-tight opacity-80 select-none wrap-break-word max-w-full line-clamp-2">
                   {node.descripcion}
                 </p>
               )}
@@ -1836,7 +1836,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                   // Ajusta el texto y lo acota con elipsis DENTRO de la caja en vez
                   // de desbordarse: nombres cortos se ven completos; los largos se
                   // recortan con «…» sin invadir nodos vecinos.
-                  "text-xs font-bold leading-tight select-none break-words max-w-full",
+                  "text-xs font-bold leading-tight select-none wrap-break-word max-w-full",
                   recorta && (meta?.hideIcon ? "line-clamp-3" : "line-clamp-2"),
                   isDeleted && "line-through"
                 )}
@@ -1865,7 +1865,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             className={cn(
               // Evento/compuerta: el nombre va debajo; se ajusta a 2 líneas con
               // elipsis para no solaparse con el nodo de al lado.
-              "text-center text-xs font-bold leading-tight select-none break-words",
+              "text-center text-xs font-bold leading-tight select-none wrap-break-word",
               recorta && "line-clamp-2",
               color.text,
               isDeleted && "line-through"

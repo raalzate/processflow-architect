@@ -1,6 +1,47 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@config '../../tailwind.config.ts';
+
+/* Clases que se arman en runtime y no aparecen literales en el código (era el
+   `safelist` de Tailwind 3). Los fondos pastel de los chips de la paleta se
+   derivan de los colores de notación (`fill-*-{50,100}` → `bg-*-{50,100}`). */
+@source inline("bg-{blue,orange,emerald,cyan,yellow,indigo,pink,purple}-500");
+@source inline("bg-gray-400");
+@source inline("bg-{red,orange,amber,yellow,lime,green,emerald,teal,cyan,sky,blue,indigo,violet,purple,fuchsia,pink,rose,slate,gray,zinc,stone}-{50,100}");
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility h-screen {
+  /* `h-screen` es 100vh, que incluye la franja de la barra de título: con la barra
+     puesta, cada pantalla se pasaba 40px y el contenido tapaba los controles de
+     ventana. Se corrige acá, en un solo lugar, en vez de en cada pantalla. */
+  height: calc(100vh - var(--titlebar-h));
+}
+
+@utility h-svh {
+  /* Lo mismo para las medidas de viewport del sidebar (shadcn usa `svh`). */
+  height: calc(100svh - var(--titlebar-h));
+}
+
+@utility min-h-svh {
+  min-height: calc(100svh - var(--titlebar-h));
+}
 
 @layer base {
   :root {
@@ -192,23 +233,6 @@
   }
   body[data-titlebar="on"] {
     --titlebar-h: 40px;
-  }
-}
-
-@layer utilities {
-  /* `h-screen` es 100vh, que incluye la franja de la barra de título: con la barra
-     puesta, cada pantalla se pasaba 40px y el contenido tapaba los controles de
-     ventana. Se corrige acá, en un solo lugar, en vez de en cada pantalla. */
-  .h-screen {
-    height: calc(100vh - var(--titlebar-h));
-  }
-
-  /* Lo mismo para las medidas de viewport del sidebar (shadcn usa `svh`). */
-  .h-svh {
-    height: calc(100svh - var(--titlebar-h));
-  }
-  .min-h-svh {
-    min-height: calc(100svh - var(--titlebar-h));
   }
 }
 
