@@ -52,9 +52,6 @@
     "tessl/npm-next": {
       "version": "15.5.0"
     },
-    "tessl/npm-nodemon": {
-      "version": "3.1.0"
-    },
     "tessl/npm-postcss": {
       "version": "8.5.0"
     },
