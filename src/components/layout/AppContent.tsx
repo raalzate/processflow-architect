@@ -671,7 +671,7 @@ export function AppContent() {
         <CommandPalette />
         <MemoizedAppHeader />
 
-        <main className="flex-grow relative graph-visualization-container">
+        <main className="grow relative graph-visualization-container">
           <GraphArea />
         </main>
 

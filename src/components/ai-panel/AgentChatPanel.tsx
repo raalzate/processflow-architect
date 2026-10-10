@@ -528,9 +528,9 @@ export function AgentChatPanel() {
               )}
             >
               {m.role === "assistant" && !m.error ? (
-                <Markdown content={m.content} className="break-words text-sm leading-relaxed" />
+                <Markdown content={m.content} className="wrap-break-word text-sm leading-relaxed" />
               ) : (
-                <p className="whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>
+                <p className="whitespace-pre-wrap wrap-break-word leading-relaxed">{m.content}</p>
               )}
               {m.role === "user" && !!m.attachments?.length && (
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -713,7 +713,7 @@ export function AgentChatPanel() {
           className="hidden"
           onChange={onPickFiles}
         />
-        <div className="relative rounded-2xl border border-input bg-background shadow-sm transition-shadow focus-within:border-primary focus-within:ring-1 focus-within:ring-primary focus-within:ring-offset-0">
+        <div className="relative rounded-2xl border border-input bg-background shadow-xs transition-shadow focus-within:border-primary focus-within:ring-1 focus-within:ring-primary focus-within:ring-offset-0">
           {/* Menú de mención "@" → incluir vistas como contexto */}
           {mentionQuery !== null && (
             <div className="absolute bottom-full left-2 z-30 mb-1 max-h-56 w-64 overflow-auto rounded-lg border bg-popover p-1 shadow-lg">
@@ -791,7 +791,7 @@ export function AgentChatPanel() {
                 ? `Pedile que construya: «${perfil.bienvenida.ejemplos[0]}»`
                 : "Pregunta, conversa o pide que diseñe/analice…  (@ para incluir una vista · + para pedir un artefacto)"
             }
-            className="min-h-[52px] max-h-36 w-full resize-none border-0 bg-transparent px-3 py-2.5 text-sm shadow-none outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="min-h-[52px] max-h-36 w-full resize-none border-0 bg-transparent px-3 py-2.5 text-sm shadow-none outline-hidden focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0"
             disabled={busy}
           />
 

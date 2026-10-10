@@ -270,7 +270,7 @@ export default function MergerPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <header className="bg-card border-b shadow-sm w-full p-4 z-10 flex justify-between items-center">
+      <header className="bg-card border-b shadow-xs w-full p-4 z-10 flex justify-between items-center">
         <div className="flex items-center gap-4">
           <div>
             <h1 className="text-xl font-bold text-foreground font-headline">Agrupador de Nodos</h1>
@@ -302,8 +302,11 @@ export default function MergerPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="max-w-5xl mx-auto space-y-6 flex flex-col flex-1 w-full min-h-0">
-            <Card className="bg-info-surface border-info-border flex-shrink-0">
+          <div className="max-w-5xl mx-auto gap-6 flex flex-col flex-1 w-full min-h-0">
+            {/* `gap`, no `space-y`: en Tailwind 4 `space-y` da margen abajo a todo hijo
+                salvo el último, y las secciones ocultas (display:none) que van después
+                le sumaban 24px a la visible, robándole alto a la lista (#501). */}
+            <Card className="bg-info-surface border-info-border shrink-0">
               <CardHeader>
                 <CardTitle className="flex items-center gap-3 text-info-foreground"><Info /> ¿Cómo funciona la fusión?</CardTitle>
               </CardHeader>

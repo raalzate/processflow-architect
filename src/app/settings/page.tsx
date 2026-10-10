@@ -174,7 +174,7 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <header className="bg-card border-b shadow-sm w-full p-4 z-10 flex justify-between items-center">
+      <header className="bg-card border-b shadow-xs w-full p-4 z-10 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold text-foreground font-headline">Configuración</h1>
           <p className="text-sm text-muted-foreground">

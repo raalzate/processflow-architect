@@ -289,7 +289,7 @@ export function CommandPalette() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onInputKey}
             placeholder="Buscar una acción… (vistas, lienzo, exportar, ajustes)"
-            className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            className="h-12 w-full bg-transparent text-sm outline-hidden placeholder:text-muted-foreground"
           />
           <kbd className="hidden shrink-0 rounded-md border bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground sm:block">
             Esc
