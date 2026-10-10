@@ -109,7 +109,8 @@ describe("get_app_state", () => {
     const out = await textOf("get_app_state");
     expect(out).toContain("Aurora");
     expect(out).toContain("Proceso de pago");
-    expect(out).toContain("REEMPLAZA");
+    // Dice lo que hace hoy: actualizar fusionando, no reemplazar (#533).
+    expect(out).toContain("ACTUALIZA el proyecto activo");
   });
 });
 

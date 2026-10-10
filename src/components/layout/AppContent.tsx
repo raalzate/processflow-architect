@@ -16,7 +16,7 @@ import { readMcpPrefs } from "@/lib/mcp-settings";
 import { describeAppState } from "@/lib/mcp/app-state";
 import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
 import { mergeProjectMeta, describeMetaAgregada } from "@/lib/mcp/project-meta";
-import { mergeProjectGraph, resolveViewRef } from "@/lib/mcp/project-update";
+import { buscarProyectoGuardado, claveProyecto, mergeProjectGraph, resolveViewRef } from "@/lib/mcp/project-update";
 import { planAppAction, planViewEdit, describeAccion, esEdicionDeVista } from "@/lib/mcp/app-actions";
 import { applyViewEdit } from "@/lib/mcp/view-edit";
 import { artifactBodyMarkdown } from "@/lib/artifacts/to-markdown";
@@ -373,9 +373,11 @@ const McpImportBridge = () => {
           // Actualizar EN EL SITIO: el proyecto conserva su id, su historial y la
           // posición que el humano les dio a las cajas. Crear otro proyecto en
           // cada entrega es lo que dejaba tres copias y ninguna vigente.
+          // Misma clave que usó el main para resolverlo: antes se buscaba sólo
+          // `nombre_proyecto === "X.json"`, nunca coincidía y se creaba una copia (#533).
           const destino =
-            savedFiles.find((f) => f.content?.nombre_proyecto === target.project) ??
-            (graphData?.nombre_proyecto === target.project && currentFileId
+            buscarProyectoGuardado(savedFiles, target.project) ??
+            (graphData && currentFileId && claveProyecto(graphData.nombre_proyecto) === claveProyecto(target.project)
               ? savedFiles.find((f) => f.id === currentFileId)
               : undefined);
           if (destino) {

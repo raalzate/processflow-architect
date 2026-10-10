@@ -92,7 +92,9 @@ import {
   SIN_ORG,
   type OrgRef,
 } from "../../src/lib/mcp/orgs";
-import { resolveProjectRef, resolveViewRef, vistaInexistente } from "../../src/lib/mcp/project-update";
+import { nombreVisible, resolveProjectRef, resolveViewRef, vistaInexistente } from "../../src/lib/mcp/project-update";
+import { interpretarImportacion } from "../../src/lib/mcp/import-format";
+import { contarModelo, textoConteo } from "../../src/lib/mcp/conteo";
 import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
 import { toMermaid, idsQueCambian } from "../../src/lib/mcp/to-mermaid";
 import { qualityFindings, formatFindings, MAX_NODES } from "../../src/lib/mcp/quality";
@@ -524,7 +526,8 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     const v = validate(model);
     return [
       `Diagrama "${id}" (${model.meta.nombre_proyecto}, notación ${model.meta.notation})`,
-      `Elementos: ${model.nodes.length} · Aristas: ${model.edges.length}`,
+      // Mismo conteo que list_views y get_app_state (#533): contenedores aparte.
+      `Elementos: ${textoConteo(contarModelo(model))} · Aristas: ${model.edges.length}`,
       // Lo que el humano ve en «Metadatos»: si no se dice acá, el agente no
       // sabe que ya existe y lo pisa en el próximo export.
       `Hotspots: ${model.meta.hotspots?.length ?? 0} · Responsables: ${model.meta.responsables?.length ?? 0} · Notas propias: ${model.meta.notas ? "sí" : "no"} · Read models: ${model.readModels?.length ?? 0}`,
@@ -913,7 +916,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         const visibles = vocab.slice(0, limit);
         const resto = vocab.length - visibles.length;
         lineas.push(
-          `- ${etiqueta(g)}${id} · ${model.meta.nombre_proyecto} · ${model.meta.notation} · ${model.nodes.length} elementos, ${model.edges.length} aristas` +
+          `- ${etiqueta(g)}${id} · ${model.meta.nombre_proyecto} · ${model.meta.notation} · ${textoConteo(contarModelo(model))}, ${model.edges.length} aristas` +
             (visibles.length
               ? `\n  ${visibles.join(" · ")}${resto > 0 ? ` · … y ${resto} más` : ""}`
               : "")
@@ -2316,7 +2319,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         const v = r.view;
         const cabecera = `Vista "${v.name}" de "${r.project}" — ${v.kind}${
           v.notation ? ` / ${v.notation}` : ""
-        }, ${v.elements} elemento(s)${v.builtin ? " (vista del sistema)" : ""}.`;
+        }, ${textoConteo({ nodes: v.elements, containers: v.containers, edges: 0 })}${v.builtin ? " (vista del sistema)" : ""}.`;
 
         if (v.mermaidCode) {
           return text([cabecera, "", "```mermaid", v.mermaidCode.trim(), "```"].join("\n"));
@@ -2334,7 +2337,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           await saveModel(id, model);
           partes.push(
             "",
-            `Importada como diagramId="${id}" (${model.nodes.length} elementos, ${model.edges.length} aristas): editala y devolvela con export_as_view para no duplicar la pestaña.`
+            `Importada como diagramId="${id}" (${textoConteo(contarModelo(model))}, ${model.edges.length} aristas): editala y devolvela con export_as_view para no duplicar la pestaña.`
           );
         }
         return text(partes.join("\n"));
@@ -2574,7 +2577,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         if (delivered) {
           return text(
             destino
-              ? `✅ Proyecto "${destino.project}" ACTUALIZADO en la app con el diseño "${nombre}". Se conservó la posición de los elementos que ya estaban y sus notas.\nRespaldo: ${dest}${warn}${err}`
+              ? `✅ Proyecto "${nombreVisible(destino.project)}" ACTUALIZADO en la app con el diseño "${nombre}". Se conservó la posición de los elementos que ya estaban y sus notas.\nRespaldo: ${dest}${warn}${err}`
               : `✅ Diagrama cargado en el lienzo de la app como proyecto NUEVO "${nombre}".\nRespaldo: ${dest}${warn}${err}`
           );
         }
@@ -2987,9 +2990,11 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Importar diseño existente",
       description:
-        "Carga un .json de GraphData (exportado por la app o por export_to_app) como un diagrama editable nuevo. Sirve para retomar un diseño previo y adquirir contexto de él.",
+        "Carga un .json como un diagrama editable nuevo, para retomar un diseño previo. Acepta dos formatos: (1) GraphData de la app o de export_to_app — mínimo `{\"nombre_proyecto\":\"X\",\"agregados\":[],\"big_picture\":{\"nodos\":[{\"id\":\"a\",\"nombre\":\"A\",\"tipo_elemento\":\"Evento\"}],\"aristas\":[]}}`; (2) un diagrama del workspace — `{\"meta\":{\"nombre_proyecto\":\"X\",\"notation\":\"bpmn\"},\"nodes\":[{\"id\":\"a\",\"nombre\":\"A\",\"tipo_elemento\":\"Tarea\",\"container\":\"pool\"}],\"edges\":[{\"fuente\":\"a\",\"destino\":\"b\"}]}`. Un formato desconocido o un archivo sin elementos es un error, nunca un import vacío.",
       inputSchema: {
-        path: z.string().describe("Ruta al .json de GraphData."),
+        path: z
+          .string()
+          .describe("Ruta al .json. Si es relativa, se resuelve contra el workspace del servidor (no contra el directorio del proceso)."),
         notation: NOTATION.optional(),
         relayout: z
           .boolean()
@@ -3000,25 +3005,26 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       },
     },
     async ({ path: p, notation, relayout: rehacer }) => {
-      let data: GraphData;
+      // Relativa ⇒ contra el workspace: contra el cwd del proceso terminaba en
+      // `/` dentro de la app empaquetada (ENOENT en `/import-…`, #533).
+      const ruta = path.isAbsolute(p) ? p : path.resolve(opts.workspace, p);
+      let data: unknown;
       try {
-        data = JSON.parse(await fs.readFile(path.resolve(p), "utf8")) as GraphData;
+        data = JSON.parse(await fs.readFile(ruta, "utf8"));
       } catch (e: any) {
-        return fail(`No pude leer/parsear "${p}": ${e.message}`);
+        return fail(`No pude leer/parsear "${ruta}": ${e.message}`);
       }
-      // Precedencia: notación explícita del param → la que trae el propio .json
-      // (GraphData.notation) → ddd. Así reimportar un BPMN conserva su notación.
-      const importado = fromGraphData(
-        data,
-        (notation as NotationId) || (data.notation as NotationId) || "ddd"
-      );
-      const model = rehacer ? relayout(importado) : importado;
-      const id = await freshId(slugify(data.nombre_proyecto || "importado"));
-      await saveModel(id, model);
+      // Precedencia: notación explícita del param → la que trae el propio .json → ddd.
+      const leido = interpretarImportacion(data, notation as NotationId | undefined);
+      if (!leido.ok) return fail(`No se importó "${ruta}": ${leido.error}`);
+      const model = rehacer ? relayout(leido.model) : leido.model;
+      const id = await freshId(slugify(model.meta.nombre_proyecto || "importado"));
+      const org = await activeOrg();
+      await saveModel(id, model, org);
       // Igual que create_diagram: retomar un diseño es empezar a trabajar en él.
       await writePinned(id);
       return text(
-        `Importado y FIJADO como diagramId="${id}" (${model.nodes.length} elementos, ${model.edges.length} aristas)${
+        `Importado y FIJADO como diagramId="${id}" en ${org ? `la organización "${org}"` : "el workspace sin organización"} (${textoConteo(contarModelo(model))}, ${model.edges.length} aristas; formato ${leido.formato === "workspace" ? "del workspace" : "GraphData"})${
           rehacer ? ", con el layout rehecho" : ". Trae la disposición del archivo; usa relayout_diagram si querés recalcularla"
         }.`
       );
