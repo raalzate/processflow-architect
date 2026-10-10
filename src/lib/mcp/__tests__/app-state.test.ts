@@ -72,7 +72,9 @@ describe("formatAppState", () => {
         now: "2026-08-14T10:00:00.000Z",
       })
     );
-    expect(out).toContain("REEMPLAZA");
+    // Dice lo que hace hoy: actualizar fusionando, no reemplazar (#533).
+    expect(out).toContain("ACTUALIZA el proyecto activo");
+    expect(out).not.toContain("REEMPLAZA");
     expect(out).toContain("Proceso de pago");
     expect(out).toContain("1/50");
     expect(out).toContain("Beta");

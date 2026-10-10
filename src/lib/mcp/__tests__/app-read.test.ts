@@ -134,6 +134,18 @@ describe("viewBriefs · selectView", () => {
     expect(b[0].builtin).toBe(true);
   });
 
+  it("los contenedores se cuentan aparte y la tabla lo dice (#533)", () => {
+    const conCarriles: ViewInput = {
+      name: "Proceso",
+      kind: "graph",
+      notation: "bpmn",
+      graph: { ...graph(2), agregados: [{ id: "c", nombre: "Carril", nodos: [], aristas: [] } as any] },
+    };
+    const [b] = viewBriefs([conCarriles]);
+    expect(b.containers).toBe(1);
+    expect(formatViewList("P", [b])).toContain("2 elementos + 1 contenedor");
+  });
+
   it("selectView devuelve el grafo de una vista de tipo grafo", () => {
     const v = selectView(views, "pagos")!;
     expect(v.notation).toBe("bpmn");
@@ -189,8 +201,9 @@ describe("formatos de respuesta", () => {
         { name: "Cobros", kind: "graph", notation: "bpmn", graph: graph(5) },
       ])
     );
-    expect(t).toContain("| Modelo | graph / ddd | sistema | 2 |");
-    expect(t).toContain("| Cobros | graph / bpmn | custom | 5 |");
+    // La celda dice qué cuenta (#533): «N elementos», con los contenedores aparte.
+    expect(t).toContain("| Modelo | graph / ddd | sistema | 2 elementos |");
+    expect(t).toContain("| Cobros | graph / bpmn | custom | 5 elementos |");
     expect(t).toContain("importAs");
   });
 });

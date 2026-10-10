@@ -146,7 +146,8 @@ export function formatAppState(state: AppState | null): string {
     lines.push(
       `Proyecto activo: "${state.projectName}" (notación ${state.notation ?? "ddd"}).`,
       `Contenido: ${state.counts.containers} contenedor(es) · ${state.counts.nodes} elemento(s) · ${state.counts.edges} relación(es).`,
-      "⚠️ `export_to_app` REEMPLAZA el proyecto activo por uno nuevo: si el usuario quiere sumar al que ya tiene, usa `export_as_view`."
+      // Decía «REEMPLAZA»; desde el modo `update` (default) fusiona (#533).
+      "`export_to_app` ACTUALIZA el proyecto activo: fusiona el diseño y conserva la posición y las notas de lo que ya estaba. Con `mode: \"new\"` crea otro proyecto. Para sumar una pestaña con otra notación, `export_as_view`."
     );
   }
 

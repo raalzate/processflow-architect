@@ -21,6 +21,7 @@ import type { ElementSpec } from "../element-spec";
 import { formatDocsIndex } from "../element-docs";
 import { countGraph, type AppFocus } from "./app-state";
 import { fromGraphData } from "./diagram-builder";
+import { textoConteo } from "./conteo";
 
 /* -------------------------------------------------------------------------- */
 /* Petición y respuesta                                                       */
@@ -83,8 +84,10 @@ export interface ViewBrief {
   kind: string;
   notation?: NotationId;
   builtin?: boolean;
-  /** Elementos de la vista (0 en vistas Mermaid, que son código). */
+  /** Elementos de la vista, SIN contar contenedores (0 en vistas Mermaid, que son código). */
   elements: number;
+  /** Contenedores (pools, carriles, agregados): aparte, como en get_diagram (#533). */
+  containers: number;
   description?: string;
 }
 
@@ -192,7 +195,7 @@ export function formatViewList(project: string, views: ViewBrief[]): string {
     (v) =>
       `| ${v.name} | ${v.kind}${v.notation ? ` / ${v.notation}` : ""} | ${
         v.builtin ? "sistema" : "custom"
-      } | ${v.elements} | ${(v.description || "—").replace(/\s+/g, " ").slice(0, 60)} |`
+      } | ${textoConteo({ nodes: v.elements, containers: v.containers, edges: 0 })} | ${(v.description || "—").replace(/\s+/g, " ").slice(0, 60)} |`
   );
   return [
     `Vistas de "${project}" (${views.length}):`,
@@ -311,6 +314,7 @@ export function viewBriefs(views: ViewInput[]): ViewBrief[] {
     notation: v.notation,
     builtin: v.builtin,
     elements: v.graph ? countGraph(v.graph).nodes : 0,
+    containers: v.graph ? countGraph(v.graph).containers : 0,
     description: v.description,
   }));
 }
@@ -324,6 +328,7 @@ export function selectView(views: ViewInput[], name: string): ViewPayload | null
     notation: v.notation,
     builtin: v.builtin,
     elements: v.graph ? countGraph(v.graph).nodes : 0,
+    containers: v.graph ? countGraph(v.graph).containers : 0,
     description: v.description,
     graph: v.graph,
     mermaidCode: v.mermaidCode,

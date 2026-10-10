@@ -16,6 +16,7 @@
 
 import type { GraphData, GraphNode, Agregado } from "../types";
 import { mergeProjectMeta } from "./project-meta";
+import { normalizeRef } from "./app-read";
 
 /** Geometría que el humano puede haber movido a mano. */
 type Geometria = Pick<GraphNode, "x" | "y" | "width" | "height">;
@@ -119,23 +120,61 @@ export function resolveProjectRef(
   const pedido = ref?.trim();
 
   if (!pedido || /^(activo|active)$/i.test(pedido)) {
-    if (activo) return activo;
+    // El nombre GUARDADO (con su `.json`), que es el que la app busca.
+    if (activo) return proyectos.find((p) => claveProyecto(p) === claveProyecto(activo)) ?? activo;
     throw new Error(
       `No hay un proyecto abierto en la app. Abrí uno, o pasá \`project\` con su nombre: ${lista(proyectos)}.`
     );
   }
-  const exacto = proyectos.find((p) => p === pedido) ?? (activo === pedido ? activo : undefined);
+  const exacto = proyectos.find((p) => p === pedido);
   if (exacto) return exacto;
 
-  // Sin distinguir mayúsculas: el agente escribe el nombre de memoria.
-  const flexibles = proyectos.filter((p) => p.toLowerCase() === pedido.toLowerCase());
+  // Misma clave que usa la app para encontrarlo (`buscarProyectoGuardado`): el
+  // agente escribe el nombre de memoria, sin `.json` ni acentos (#533).
+  const flexibles = proyectos.filter((p) => claveProyecto(p) === claveProyecto(pedido));
   if (flexibles.length === 1) return flexibles[0];
+  if (flexibles.length > 1) {
+    throw new Error(
+      `Hay más de un proyecto que se llama parecido a "${pedido}": ${lista(flexibles)}. Pasá el nombre exacto.`
+    );
+  }
+  if (activo && claveProyecto(activo) === claveProyecto(pedido)) return activo;
 
   throw new Error(
     `No hay un proyecto llamado "${pedido}" en la app. Los que hay: ${lista(
       proyectos
     )}. Mirá get_app_state, o exportá como proyecto NUEVO con mode="new".`
   );
+}
+
+/**
+ * Clave para comparar nombres de proyecto. La app guarda «X.json» y el contenido
+ * dice «X»; el agente escribe cualquiera de los dos, en cualquier caja (#533).
+ */
+export const claveProyecto = (nombre: string): string => normalizeRef(nombre.trim().replace(/\.json$/i, ""));
+
+/** Nombre para mostrar: sin la extensión con que la app lo guarda. */
+export const nombreVisible = (nombre: string): string => nombre.replace(/\.json$/i, "");
+
+/**
+ * El proyecto guardado al que apunta `ref` (lo que resolvió el main, o lo que
+ * escribió el agente). Primero exacto —por nombre de archivo o de proyecto— y
+ * después por clave. Si dos coinciden por clave NO elige: devuelve null.
+ *
+ * Antes la app buscaba sólo `nombre_proyecto === ref` mientras el main resolvía
+ * contra «X.json»: nunca coincidían y la entrega creaba un proyecto nuevo (#533).
+ */
+export function buscarProyectoGuardado<
+  T extends { name: string; content?: { nombre_proyecto?: string } | null },
+>(archivos: T[], ref: string): T | null {
+  const pedido = ref.trim();
+  const exacto = archivos.filter((f) => f.name === pedido || f.content?.nombre_proyecto === pedido);
+  if (exacto.length === 1) return exacto[0];
+  const clave = claveProyecto(pedido);
+  const porClave = archivos.filter(
+    (f) => claveProyecto(f.name) === clave || claveProyecto(f.content?.nombre_proyecto ?? "") === clave
+  );
+  return porClave.length === 1 ? porClave[0] : null;
 }
 
 function lista(proyectos: string[]): string {
