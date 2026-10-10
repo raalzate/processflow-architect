@@ -517,3 +517,18 @@ Regla:   un requisito de tiempo no se prueba con el reloj de pared. Se prueba el
 Mecanismo: `presupuestoDe` en `src/lib/layout/legible.ts` (200 ms hasta 50 elementos, techo de 2 s)
          + `TS-007` (presupuesto agotado → disposición parcial, con reloj inyectado) y `TS-006`
          en `src/lib/layout/__tests__/legible.test.ts`, cuyo tope es el presupuesto por tres.
+
+### GOTCHA: un parche de electron-serve borró el scheme de los modelos
+
+Issue: #529
+
+Síntoma: la IA local deja de cargar el modelo con «URL scheme "litert-model" is not supported»;
+         el gate en verde, porque ningún test carga un modelo.
+Causa:   electron-serve 3.0.1 (un parche, entró en el grupo de menores de Dependabot) pasó a
+         registrar su scheme en un `queueMicrotask`. Corre después del body de `main.ts`, así que su
+         llamada —sólo `app`— quedaba última y Electron respeta la última: `litert-model` desaparecía.
+Regla:   `registerPrivilegedSchemes()` registra también en un microtask, encolado después del de
+         electron-serve: la nuestra es la última llamada, registre la librería síncrona o diferida.
+Mecanismo: `main/__tests__/schemes.test.ts` modela el arranque (registro ajeno encolado antes + el
+         nuestro en el mismo tick) y exige que la última llamada declare `litert-model`; con el código
+         viejo falla.
