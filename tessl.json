@@ -55,9 +55,6 @@
     "tessl/npm-nodemon": {
       "version": "3.1.0"
     },
-    "tessl/npm-patch-package": {
-      "version": "8.0.0"
-    },
     "tessl/npm-postcss": {
       "version": "8.5.0"
     },
