@@ -1,7 +1,8 @@
 import type {Config} from 'tailwindcss';
 
 export default {
-  darkMode: ['class'],
+  // Tailwind 4 tipa la forma con arreglo sólo con su selector (`['class', '.x']`).
+  darkMode: 'class',
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -10,24 +11,8 @@ export default {
     // escanearse para que Tailwind genere sus clases fill-*/border-*/text-*.
     './src/lib/**/*.{js,ts,jsx,tsx,mdx}',
   ],
-  safelist: [
-    'bg-blue-500',
-    'bg-orange-500',
-    'bg-emerald-500',
-    'bg-cyan-500',
-    'bg-yellow-500',
-    'bg-indigo-500',
-    'bg-pink-500',
-    'bg-purple-500',
-    'bg-gray-400', // No olvides el color de fallback
-    // Fondos pastel de los chips de la paleta: se derivan en runtime de los
-    // colores de notación (`fill-*-{50,100}` → `bg-*-{50,100}`), así que no
-    // aparecen literales en el código y hay que safelistarlos por patrón.
-    {
-      pattern:
-        /^bg-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|stone)-(50|100)$/,
-    },
-  ],
+  // `safelist` no existe en Tailwind 4: las clases que se arman en runtime se
+  // declaran con `@source inline(...)` en src/app/globals.css.
   theme: {
     extend: {
       fontSize: {

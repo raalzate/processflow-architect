@@ -62,7 +62,7 @@ export function AppTitleBar() {
 
   return (
     <div
-      className="flex flex-shrink-0 select-none items-center gap-2 border-b bg-card px-2"
+      className="flex shrink-0 select-none items-center gap-2 border-b bg-card px-2"
       style={{ ...arrastrable, height: TITLEBAR_HEIGHT }}
     >
       <div style={{ ...arrastrable, width: reservaIzquierda(plataforma) }} />

@@ -81,9 +81,9 @@ const MergeTypeSection: React.FC<Props> = ({
   }, {});
 
   return (
-    <div style={{ display: selectedType === type ? "flex" : "none" }} className="flex-1 flex flex-col min-h-0 space-y-6">
+    <div style={{ display: selectedType === type ? "flex" : "none" }} className="flex-1 flex flex-col min-h-0 gap-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="flex-shrink-0">
+        <Card className="shrink-0">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5" />1. Selecciona un Tipo de Nodo</CardTitle>
             <CardDescription>Elige qué tipo de nodo deseas agrupar.</CardDescription>
@@ -147,7 +147,7 @@ const MergeTypeSection: React.FC<Props> = ({
           </CardHeader>
 
           <CardContent className="flex-1 min-h-0 p-4 flex flex-col gap-4">
-            <div className="flex-shrink-0">
+            <div className="shrink-0">
               <Label htmlFor={`agregado-filter-${type}`} className="text-sm font-medium">Filtrar por Agregado</Label>
               <Select value={selectedAgregado} onValueChange={setSelectedAgregado}>
                 <SelectTrigger id={`agregado-filter-${type}`} className="w-full md:w-[350px] mt-1">
@@ -181,7 +181,7 @@ const MergeTypeSection: React.FC<Props> = ({
       )}
 
       {isMergePossible && (
-        <div className="flex-shrink-0">
+        <div className="shrink-0">
           <MergeConfirmationDialog type={type} containers={dialogContainerState} allNodesMap={allNodesMap} onConfirmMerge={onConfirmMerge} />
         </div>
       )}

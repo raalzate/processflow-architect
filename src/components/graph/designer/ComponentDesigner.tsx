@@ -518,7 +518,7 @@ const MetadataRow: React.FC<{
             )}
           </div>
         </td>
-        <td className="w-[4.5rem] border-l p-0">
+        <td className="w-18 border-l p-0">
           <div className="flex items-center justify-end gap-0.5 px-1">
             <button
               type="button"
@@ -621,7 +621,7 @@ const MetadataField: React.FC<{
               <th className="w-40 px-2 py-1 font-medium">Propiedad</th>
               <th className="w-24 border-l px-2 py-1 font-medium">Tipo</th>
               <th className="border-l px-2 py-1 font-medium">Valor</th>
-              <th className="w-[4.5rem] border-l px-2 py-1" />
+              <th className="w-18 border-l px-2 py-1" />
             </tr>
           </thead>
           <tbody>
@@ -672,7 +672,7 @@ const MetadataField: React.FC<{
                   className="h-8 rounded-none border-0 bg-transparent px-2 text-xs focus-visible:ring-1"
                 />
               </td>
-              <td className="w-[4.5rem] border-l p-0">
+              <td className="w-18 border-l p-0">
                 <div className="flex justify-end px-1">
                   <IconAction
                     type="button"
@@ -1073,7 +1073,7 @@ const AdjuntosField: React.FC<{
                 <th className="px-2 py-1 font-medium">Adjunto</th>
                 <th className="w-24 border-l px-2 py-1 font-medium">Tipo</th>
                 <th className="w-28 border-l px-2 py-1 font-medium">Tamaño</th>
-                <th className="w-[4.5rem] border-l px-2 py-1" />
+                <th className="w-18 border-l px-2 py-1" />
               </tr>
             </thead>
             <tbody>
@@ -1117,7 +1117,7 @@ const AdjuntosField: React.FC<{
       )}
 
       {abierto && (
-        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 text-xs leading-relaxed text-foreground/80">
+        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md border bg-muted/40 p-2 text-xs leading-relaxed text-foreground/80">
           {abierto.texto || "(sin texto extraído: es material binario)"}
         </pre>
       )}
@@ -1163,7 +1163,7 @@ const FuenteCitada: React.FC<{ descripcion?: string; docs: SourceDoc[] }> = ({ d
           El documento no está adjunto al proyecto: la cita no se puede abrir desde acá.
         </p>
       ) : (
-        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/80">
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word text-xs leading-relaxed text-foreground/80">
           {resuelta.fragmento}
         </pre>
       )}
@@ -1547,7 +1547,7 @@ const EditNodeDialog: React.FC<{
           // El ancho lo decide `panel-size.ts`; acá sólo se aplica (por eso va
           // en `style` y no como clase: `55vw` no es una clase de Tailwind).
           style={{ maxWidth: inspectorMaxWidth(ancho) }}
-          className="fixed inset-y-0 right-0 z-50 flex h-full w-full flex-col border-l bg-background shadow-xl outline-none transition-[max-width] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
+          className="fixed inset-y-0 right-0 z-50 flex h-full w-full flex-col border-l bg-background shadow-xl outline-hidden transition-[max-width] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
         >
           <div className="flex items-start justify-between border-b p-4">
             <div className="space-y-1">
@@ -4772,7 +4772,7 @@ export const ComponentDesigner: React.FC<{
 
   return (
     <div className="w-full h-full flex flex-col font-sans bg-muted/30">
-      <header className="flex-shrink-0 bg-card border-b shadow-sm p-2 flex items-center justify-between z-10">
+      <header className="shrink-0 bg-card border-b shadow-xs p-2 flex items-center justify-between z-10">
         <div className="flex items-center gap-2">
           {/* Deshacer / Rehacer (visibles) */}
           <div className="flex items-center gap-1">
@@ -4988,7 +4988,7 @@ export const ComponentDesigner: React.FC<{
       {/* Breadcrumb de subprocesos: aparece al entrar en profundidad. Permite
           volver a cualquier vista ancestro. */}
       {drillStack.length > 0 && (
-        <div className="flex flex-shrink-0 items-center gap-1 border-b bg-muted/40 px-3 py-1.5 text-xs">
+        <div className="flex shrink-0 items-center gap-1 border-b bg-muted/40 px-3 py-1.5 text-xs">
           <button
             onClick={() => goToDrill(drillPath.length - 2)}
             title="Volver a la vista anterior"
@@ -5019,10 +5019,10 @@ export const ComponentDesigner: React.FC<{
         </div>
       )}
 
-      <div className="flex-grow flex h-0">
+      <div className="grow flex h-0">
         <Toolbox notation={notationId} onNotationChange={onNotationChange} />
 
-        <div className="flex-grow h-full relative overflow-hidden">
+        <div className="grow h-full relative overflow-hidden">
         <div
           ref={attachCanvasWrapper}
           // `bg-canvas` (no `bg-background`): el hueco de un cuadro durante el
@@ -5039,7 +5039,7 @@ export const ComponentDesigner: React.FC<{
         >
           {nodes.size === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-              <div className="rounded-lg border border-dashed bg-card/85 px-5 py-4 text-center text-sm text-muted-foreground shadow-sm backdrop-blur">
+              <div className="rounded-lg border border-dashed bg-card/85 px-5 py-4 text-center text-sm text-muted-foreground shadow-xs backdrop-blur-sm">
                 <p className="mb-2 font-medium text-foreground">Empieza a diseñar</p>
                 <ul className="space-y-1 text-left">
                   <li>
@@ -5350,7 +5350,7 @@ export const ComponentDesigner: React.FC<{
               fondo visible del viewport (dentro del scroll anclaban al fondo del
               contenido, ~1700px, y quedaban a media pantalla). */}
           <div className={cn(
-            "absolute bottom-4 right-4 z-20 flex items-center gap-1 rounded-lg border bg-card/95 p-1 shadow-md backdrop-blur",
+            "absolute bottom-4 right-4 z-20 flex items-center gap-1 rounded-lg border bg-card/95 p-1 shadow-md backdrop-blur-sm",
             capturing && "hidden"
           )}>
             <button
@@ -5364,7 +5364,7 @@ export const ComponentDesigner: React.FC<{
             <button
               onClick={zoomReset}
               title="Restablecer zoom (100%)"
-              className="min-w-[3rem] rounded-md px-1 py-1.5 text-center text-xs font-medium tabular-nums text-foreground hover:bg-muted"
+              className="min-w-12 rounded-md px-1 py-1.5 text-center text-xs font-medium tabular-nums text-foreground hover:bg-muted"
             >
               {Math.round(zoom * 100)}%
             </button>
@@ -5404,7 +5404,7 @@ export const ComponentDesigner: React.FC<{
           {/* Filtro activo: se DICE cuántos elementos están ocultos. Un lienzo al
               que le faltan cosas sin explicación se lee como pérdida de datos. */}
           {filtersActive && ocultos > 0 && (
-            <div className="pointer-events-auto absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-card/95 px-3 py-1 text-xs shadow-sm backdrop-blur">
+            <div className="pointer-events-auto absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-card/95 px-3 py-1 text-xs shadow-xs backdrop-blur-sm">
               <Filter className="h-3.5 w-3.5 text-primary" />
               <span>
                 {ocultos} elemento{ocultos === 1 ? "" : "s"} oculto{ocultos === 1 ? "" : "s"} por el filtro

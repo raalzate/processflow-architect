@@ -246,11 +246,12 @@
     "$comment": "El registro de tiles (tessl.json) tiene que describir las dependencias REALES de package.json: un tile huérfano documenta una API que ya no está (y el agente puede citarla igual), y una dep sin tile deja al agente escribiendo esa API de memoria — el origen de la mitad de los gotchas según buenas-practicas §6. La regla TILES del lint compara los dos archivos en ambas direcciones.",
     "registry": "tessl.json",
     "prefix": "tessl/npm-",
-    "$allow": "DEUDA DECLARADA — deps que estaban sin tile al instalar la regla (auditoría 2026-08-28). La lista sólo baja: salir de acá es `tessl search <dep>` + `tessl install`. Los primeros candidatos son los de API más exótica: @litert-lm/core (el motor de IA), electron-updater (feature activa #208) y @modelcontextprotocol/sdk.",
+    "$allow": "DEUDA DECLARADA — deps que estaban sin tile al instalar la regla (auditoría 2026-08-28). La lista sólo baja: salir de acá es `tessl search <dep>` + `tessl install`. Los primeros candidatos son los de API más exótica: @litert-lm/core (el motor de IA), electron-updater (feature activa #208) y @modelcontextprotocol/sdk. ÚNICA EXCEPCIÓN que subió: @tailwindcss/postcss (2026-10-10, #501), que Tailwind 4 exige con Next y no tiene tile publicado (`tessl install tessl/npm-tailwindcss--postcss` → «no published versions»); sale apenas exista.",
     "allow": [
       "@electron/notarize",
       "@electron/rebuild",
       "@hookform/resolvers",
+      "@tailwindcss/postcss",
       "@litert-lm/core",
       "@modelcontextprotocol/sdk",
       "@radix-ui/react-accordion",

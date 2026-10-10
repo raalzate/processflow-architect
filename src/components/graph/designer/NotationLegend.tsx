@@ -16,7 +16,7 @@ export function NotationLegend({ notation }: { notation: NotationId }) {
   const n = getNotation(notation);
 
   return (
-    <div className="absolute bottom-4 left-4 z-20 max-w-[240px] overflow-hidden rounded-lg border bg-card/95 shadow-md backdrop-blur">
+    <div className="absolute bottom-4 left-4 z-20 max-w-[240px] overflow-hidden rounded-lg border bg-card/95 shadow-md backdrop-blur-sm">
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"

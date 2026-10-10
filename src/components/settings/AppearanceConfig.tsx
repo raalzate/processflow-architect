@@ -54,7 +54,7 @@ export function AppearanceConfig() {
                 onClick={() => elegir(o.id)}
                 className={cn(
                   "flex flex-col gap-1 rounded-md border p-3 text-left transition",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                   activo ? "border-primary bg-primary/10" : "hover:bg-accent/10"
                 )}
               >

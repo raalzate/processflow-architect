@@ -922,7 +922,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
     } = useViews();
 
   return (
-    <header className="z-10 min-w-0 border-b bg-card p-4 shadow-sm">
+    <header className="z-10 min-w-0 border-b bg-card p-4 shadow-xs">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           {/* Disparador del Sidebar para móviles */}
