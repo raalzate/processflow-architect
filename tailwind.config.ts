@@ -1,4 +1,8 @@
 import type {Config} from 'tailwindcss';
+// `import`, no `require`: en desarrollo Tailwind 4 vuelve a cargar esta config
+// como módulo ES (`?id=…`) al recompilar una página, y ahí `require` no existe
+// (Node 25): Next salía con 0 y `concurrently -k` cerraba la app entera.
+import animate from 'tailwindcss-animate';
 
 export default {
   // Tailwind 4 tipa la forma con arreglo sólo con su selector (`['class', '.x']`).
@@ -148,5 +152,5 @@ export default {
       },
     },
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [animate],
 } satisfies Config;
