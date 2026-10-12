@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/layout/AppHeader";
-import { ORG_TODAS } from "@/lib/project-orgs";
+import { ORG_TODAS, orgOf } from "@/lib/project-orgs";
 import NodeModal from "@/components/modals/NodeModal";
 import { Toaster } from "@/components/ui/toaster";
 import { SidebarInset } from "@/components/ui/sidebar";
@@ -664,7 +664,7 @@ const GraphArea = React.memo(() => {
               notation={activeView?.notation}
               // La organización del proyecto decide qué perfil de marca viste
               // la skin editorial (spec 023).
-              orgId={savedFiles.find((f) => f.id === currentFileId)?.orgId ?? null}
+              orgId={orgOf(savedFiles.find((f) => f.id === currentFileId) ?? {})}
               onNotationChange={
                 currentFileId && graphData
                   ? (n) => handleDesignUpdate(currentFileId, { ...graphData, notation: n })

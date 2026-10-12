@@ -121,6 +121,13 @@ export function normalizarColor(texto: string): Triplete | null {
   const v = (texto ?? "").trim().toLowerCase();
   if (!v) return null;
   if (partesDeTriplete(v)) return v.replace(/\s+/g, " ");
+  // Un color translúcido no es un token: `rgba(0,0,0,0)` es «lo que haya
+  // debajo», no negro. Sin eso un reset de fondo entraba como papel negro.
+  const alfa = /^(?:rgba|hsla)\([^)]*[,/]\s*([\d.]+%?)\s*\)$/.exec(v)?.[1];
+  if (alfa !== undefined) {
+    const a = alfa.endsWith("%") ? Number(alfa.slice(0, -1)) / 100 : Number(alfa);
+    if (!Number.isFinite(a) || a < 1) return null;
+  }
   const rgbM = /^rgba?\(\s*(\d+)\s*[, ]\s*(\d+)\s*[, ]\s*(\d+)/.exec(v);
   if (rgbM) return rgbAHsl({ r: Number(rgbM[1]), g: Number(rgbM[2]), b: Number(rgbM[3]) });
   const hex3 = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(v);

@@ -52,6 +52,18 @@ describe("extraerMarca", () => {
     expect(e.evidencia.join("\n")).toMatch(/más frecuente/);
   });
 
+  it("un selector en lista larga sigue reconociendo a body, y un fondo transparente no es papel", () => {
+    const e = extraerMarca({ url: "u", html: "", css: [".a,.b,.c,.d,.e,.f,.g,.h,.i,.j,.k,.l,.m,.n,.o,.p,.q,.r,.s,.t,.u,.v,.w,.x,.y,.z, body { background: #fafafa; color: #222 }", "body { background: rgba(0,0,0,0) }"] });
+    expect(e.tokens.paper).toBe(hsl("#fafafa"));
+    expect(e.tokens.ink).toBe(hsl("#222"));
+  });
+
+  it("el recibo dice cuando un color no tiene ajuste posible", () => {
+    const e = extraerMarca({ url: "u", html: "", css: [] });
+    const r = reciboDe({ url: "u", fecha: "2026-10-12", extraccion: e, tokens: {}, medidas: [{ token: "accent", valor: "0 0% 50%", umbral: 4.5, ratio: 1.2, ok: false, propuesta: null, ratioPropuesta: null }], conIa: false });
+    expect(r.join("\n")).toMatch(/accent 0 0% 50% .* sin ajuste posible/);
+  });
+
   it("una página sin CSS útil no inventa nada y lo dice", () => {
     const e = extraerMarca({ url: "u", html: "<p>hola</p>", css: [] });
     expect(e.tokens).toEqual({});

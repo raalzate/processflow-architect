@@ -50,7 +50,7 @@ export function declaracionesDe(f: FuenteDeSitio): Declaracion[] {
   // en el mismo barrido, así que las reglas internas se leen igual.
   const re = /([^{}]+)\{([^{}]*)\}/g;
   for (const m of todo.matchAll(re)) {
-    const selector = m[1].trim().replace(/\s+/g, " ").slice(-80);
+    const selector = m[1].trim().replace(/\s+/g, " ").slice(0, 160);
     if (selector.startsWith("@")) continue;
     for (const d of m[2].split(";")) {
       const i = d.indexOf(":");
@@ -96,9 +96,12 @@ export function candidatosDe(decls: Declaracion[]): Candidato[] {
   return [...porColor.values()].sort((a, b) => b.veces - a.veces);
 }
 
+/** Un selector en LISTA (`.x, body, p`) coincide si cualquiera de sus partes coincide. */
+const coincide = (selector: string, re: RegExp): boolean => selector.split(",").some((s) => re.test(s.trim()));
+
 function primero(decls: Declaracion[], sel: RegExp, prop: (p: string) => boolean): { color: Triplete; d: Declaracion } | null {
   for (const d of decls) {
-    if (!sel.test(d.selector) || !prop(d.prop)) continue;
+    if (!coincide(d.selector, sel) || !prop(d.prop)) continue;
     const crudo = d.valor.match(COLOR)?.[0];
     const t = crudo ? normalizarColor(crudo) : null;
     if (t) return { color: t, d };
@@ -119,7 +122,7 @@ function variableDeMarca(decls: Declaracion[]): { color: Triplete; d: Declaracio
 
 function familia(decls: Declaracion[]): { fuente: string; d: Declaracion } | null {
   for (const d of decls) {
-    if (d.prop !== "font-family" || !TINTA_SEL.test(d.selector)) continue;
+    if (d.prop !== "font-family" || !coincide(d.selector, TINTA_SEL)) continue;
     const f = d.valor.split(",")[0].replace(/["']/g, "").trim();
     if (f && !/^(inherit|initial|var\()/i.test(f)) return { fuente: f, d };
   }

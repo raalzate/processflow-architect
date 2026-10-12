@@ -83,15 +83,20 @@ export function BrandConfig() {
 
   const orgId = destino === PERFIL_POR_DEFECTO_ID ? null : destino;
   const perfilGuardado = useMemo(() => perfiles.find((p) => p.orgId === orgId) ?? null, [perfiles, orgId]);
+  // Clave ESTABLE de lo guardado: un refresco del hook que no cambió nada no
+  // debe pisar lo que se está editando.
+  const claveGuardado = perfilGuardado ? JSON.stringify(perfilGuardado) : `vacio:${destino}`;
 
-  // Al cambiar de destino, el editor muestra lo guardado (o vacío).
+  // Al cambiar de destino (o cuando lo guardado cambia de verdad), el editor
+  // muestra lo guardado (o vacío).
   useEffect(() => {
     setTokens(perfilGuardado?.tokens ?? {});
     setTextos(Object.fromEntries(Object.entries(perfilGuardado?.tokens ?? {})) as Partial<Record<TokenDeMarca, string>>);
     setFuente(perfilGuardado?.fuente ?? "");
     setRecibo(perfilGuardado?.recibo ?? []);
     setPropuesta(null);
-  }, [perfilGuardado]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claveGuardado]);
 
   const medidas = useMemo(() => validarPerfil(tokens), [tokens]);
   const todoCumple = medidas.every((m) => m.ok);
@@ -175,11 +180,14 @@ export function BrandConfig() {
   const onGuardar = () => {
     if (!todoCumple) return;
     const nombre = orgId ? (orgs.find((o) => o.slug === orgId)?.nombre ?? orgId) : "Por defecto";
+    // Se guarda COMPLETO (papel explícito y derivados): un perfil con tinta y
+    // sin papel se mediría contra un papel claro y se dibujaría sobre el papel
+    // oscuro del tema; con todos los tokens, lo medido es lo que se ve.
     const perfil: PerfilDeMarca = {
       id: orgId ? `org-${orgId}` : PERFIL_POR_DEFECTO_ID,
       orgId,
       nombre,
-      tokens,
+      tokens: completarTokens(tokens),
       ...(fuente.trim() ? { fuente: fuente.trim() } : {}),
       recibo,
       fecha: hoy(),

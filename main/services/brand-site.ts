@@ -7,6 +7,12 @@
  * sin ejecutar nada. Reglas: `https` únicamente, una sola redirección, 1 MB por
  * documento, 256 KB por hoja, 10 s en total. Lo que no cumpla es un error con
  * causa, nunca una lectura a medias que parezca completa.
+ *
+ * Límite conocido: las direcciones privadas se rechazan por el TEXTO del host
+ * (loopback, 10/8, 172.16/12, 192.168/16, 169.254/16, IPv6 local y ULA). Un
+ * nombre público que resuelva a una IP privada (DNS rebinding) no se detecta:
+ * es una app de escritorio donde la URL la pega el usuario, y ese riesgo se
+ * acepta y queda escrito acá.
  */
 
 export interface SitioLeido {
@@ -38,20 +44,63 @@ function validarUrl(entrada: string): URL {
   }
   if (u.protocol !== "https:") throw new Error("Sólo se leen sitios https: la paleta de un sitio sin cifrar no se puede confiar.");
   if (u.username || u.password) throw new Error("La URL no puede llevar credenciales.");
-  const host = u.hostname;
-  if (host === "localhost" || /^(127\.|10\.|192\.168\.|0\.|\[?::1)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
-    throw new Error("No se leen direcciones locales ni privadas.");
-  }
+  if (esHostLocalOPrivado(u.hostname)) throw new Error("No se leen direcciones locales ni privadas.");
   return u;
 }
 
-/** Lee como texto con tope de bytes; corta y avisa si se pasa. */
+/** ¿El host, por su texto, es local o de red privada? (Ver el límite conocido del encabezado.) */
+export function esHostLocalOPrivado(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, "");
+  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local")) return true;
+  if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  // IPv6: loopback, sin especificar, link-local, ULA y mapeos IPv4 a lo anterior.
+  if (h === "::1" || h === "::" || /^fe[89ab]/.test(h) || /^f[cd]/.test(h)) return true;
+  // IPv4 mapeada: la URL WHATWG la normaliza a hex (`::ffff:7f00:1`), pero
+  // puede llegar punteada desde un test o un host crudo.
+  const v4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(h);
+  if (v4) return esHostLocalOPrivado(v4[1]);
+  const v4hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
+  if (v4hex) {
+    const a = parseInt(v4hex[1], 16);
+    const b = parseInt(v4hex[2], 16);
+    return esHostLocalOPrivado(`${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`);
+  }
+  return false;
+}
+
+/**
+ * Lee el cuerpo como texto con tope de BYTES, abortando en cuanto se pasa: un
+ * cuerpo chunked sin `content-length` no se carga entero para después tirarlo.
+ */
 async function leerTexto(res: Response, tope: number, que: string): Promise<string> {
   const declarado = Number(res.headers.get("content-length") ?? "0");
   if (declarado > tope) throw new Error(`${que} pesa ${(declarado / 1024).toFixed(0)} KB y el tope es ${(tope / 1024).toFixed(0)} KB.`);
-  const texto = await res.text();
-  if (texto.length > tope) throw new Error(`${que} pesa más de ${(tope / 1024).toFixed(0)} KB.`);
-  return texto;
+  if (!res.body) {
+    const texto = await res.text();
+    if (new TextEncoder().encode(texto).length > tope) throw new Error(`${que} pesa más de ${(tope / 1024).toFixed(0)} KB.`);
+    return texto;
+  }
+  const reader = res.body.getReader();
+  const partes: Uint8Array[] = [];
+  let bytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > tope) {
+      await reader.cancel().catch(() => {});
+      throw new Error(`${que} pesa más de ${(tope / 1024).toFixed(0)} KB.`);
+    }
+    partes.push(value);
+  }
+  const todo = new Uint8Array(bytes);
+  let offset = 0;
+  for (const p of partes) {
+    todo.set(p, offset);
+    offset += p.byteLength;
+  }
+  return new TextDecoder().decode(todo);
 }
 
 /** `href` de cada `<link rel="stylesheet">`, resuelto contra la página. */

@@ -36,10 +36,14 @@ describe("normalizarColor", () => {
     expect(normalizarColor("white")).toBe("0 0% 100%");
   });
 
-  it("rechaza lo que no se puede medir", () => {
+  it("rechaza lo que no se puede medir, incluido lo translúcido", () => {
     expect(normalizarColor("")).toBeNull();
     expect(normalizarColor("rojo fuerte")).toBeNull();
     expect(normalizarColor("var(--x)")).toBeNull();
+    expect(normalizarColor("rgba(0,0,0,0)")).toBeNull();
+    expect(normalizarColor("rgba(0, 0, 0, .5)")).toBeNull();
+    expect(normalizarColor("hsla(0 0% 0% / 40%)")).toBeNull();
+    expect(normalizarColor("rgba(255,255,255,1)")).toBe("0 0% 100%");
   });
 
   it("rgbAHsl y partesDeTriplete son inversas razonables", () => {

@@ -36,12 +36,17 @@ export function useBrandProfiles() {
 
   useEffect(() => {
     const refrescar = () => setPerfiles(leer());
+    // Sólo nuestra clave (o un `clear`): otra escritura a localStorage desde
+    // otra ventana no debe pisar lo que se está editando acá.
+    const desdeOtraVentana = (e: StorageEvent) => {
+      if (e.key === null || e.key === BRAND_STORAGE_KEY) refrescar();
+    };
     refrescar();
     window.addEventListener(EVENTO, refrescar);
-    window.addEventListener("storage", refrescar);
+    window.addEventListener("storage", desdeOtraVentana);
     return () => {
       window.removeEventListener(EVENTO, refrescar);
-      window.removeEventListener("storage", refrescar);
+      window.removeEventListener("storage", desdeOtraVentana);
     };
   }, []);
 

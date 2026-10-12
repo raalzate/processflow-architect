@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { hojasDe, leerSitio, MAX_HTML_BYTES } from "../brand-site";
+import { esHostLocalOPrivado, hojasDe, leerSitio, MAX_HTML_BYTES } from "../brand-site";
 
 const respuesta = (body: string, init: { status?: number; headers?: Record<string, string> } = {}) =>
   new Response(body, { status: init.status ?? 200, headers: { "content-type": "text/html", ...init.headers } });
@@ -26,8 +26,36 @@ describe("leerSitio (spec 023, P4)", () => {
     await expect(leerSitio("https://u:p@acme.example", { fetch: f })).rejects.toThrow(/credenciales/);
     await expect(leerSitio("https://localhost:3000", { fetch: f })).rejects.toThrow(/locales/);
     await expect(leerSitio("https://192.168.1.4", { fetch: f })).rejects.toThrow(/locales/);
+    await expect(leerSitio("https://169.254.169.254/latest", { fetch: f })).rejects.toThrow(/locales/);
+    await expect(leerSitio("https://[fe80::1]/", { fetch: f })).rejects.toThrow(/locales/);
+    await expect(leerSitio("https://[::ffff:127.0.0.1]/", { fetch: f })).rejects.toThrow(/locales/);
     await expect(leerSitio("no es url", { fetch: f })).rejects.toThrow(/URL válida/);
     expect(f).not.toHaveBeenCalled();
+  });
+
+  it("esHostLocalOPrivado cubre loopback, privadas, link-local, ULA y mapeos; deja pasar lo público", () => {
+    for (const h of ["localhost", "x.localhost", "127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.9.9", "192.168.0.1", "169.254.1.1", "::1", "[::1]", "fd12::1", "fe80::1", "::ffff:10.0.0.1", "::ffff:7f00:1", "::ffff:c0a8:101"]) {
+      expect(esHostLocalOPrivado(h), h).toBe(true);
+    }
+    for (const h of ["acme.example", "172.32.0.1", "8.8.8.8", "2606:4700::1111"]) {
+      expect(esHostLocalOPrivado(h), h).toBe(false);
+    }
+  });
+
+  it("un cuerpo chunked sin content-length se corta al pasar el tope, sin cargarlo entero", async () => {
+    const trozo = new Uint8Array(256 * 1024).fill(97);
+    let entregados = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        entregados++;
+        if (entregados > 40) c.close();
+        else c.enqueue(trozo);
+      },
+    });
+    const f = vi.fn(async () => new Response(body, { headers: { "content-type": "text/html" } }));
+    await expect(leerSitio("https://acme.example", { fetch: f as any })).rejects.toThrow(/más de 1024 KB/);
+    // Se abortó al pasar 1 MB (5 trozos), no al terminar los 40.
+    expect(entregados).toBeLessThan(10);
   });
 
   it("sigue UNA redirección (a https) y la informa; dos, no", async () => {

@@ -330,7 +330,67 @@ export const elementChatTask: AiTask<
  *
  * `structured`: la propuesta tiene que respetar una convención exacta. En modo
  * local corre local igual (§P4); en híbrido el router la manda a la nube.
+ *
+ * (La tarea de marca, `brandFromSiteTask`, va al final del archivo.)
  */
+export const creativeDiagramTask: AiTask<
+  {
+    pedido: string;
+    /** Lo que ya existe en la vista, en Mermaid (vacío si la vista está vacía). */
+    existente?: string;
+    notation?: string;
+    /** Hallazgos del intento anterior, para el ÚNICO reintento. */
+    hallazgos?: string[];
+  },
+  string
+> = {
+  id: "creative-diagram",
+  tier: "light",
+  structured: true,
+  maxLocalChars: BUILDER_LOCAL_MAX_CHARS,
+  buildPrompt: (i) => {
+    const tipos = notationTypes(i.notation, { includeContainers: true });
+    const contenedores = notationTypes(i.notation, { includeContainers: true }).filter(
+      (t) => !notationTypes(i.notation).includes(t)
+    );
+    return {
+      prompt: [
+        `PEDIDO: ${i.pedido}`,
+        i.existente
+          ? `LO QUE YA HAY EN LA VISTA (Mermaid):\n\`\`\`mermaid\n${i.existente}\n\`\`\`\nConservá lo que siga teniendo sentido: lo que repitas con el mismo nombre se reconoce como el mismo elemento.`
+          : "La vista está vacía.",
+        `TIPOS VÁLIDOS de la notación ${getNotation(i.notation).label}: ${tipos.join(", ")}.`,
+        contenedores.length ? `De esos, agrupan a otros (van como subgraph): ${contenedores.join(", ")}.` : "",
+        [
+          "CONVENCIÓN (obligatoria):",
+          "- Respondé UN bloque ```mermaid con un `flowchart LR`, y nada más.",
+          '- Cada caja lleva su tipo en la etiqueta: id["Nombre<br><i>Tipo</i>"].',
+          '- Un contenedor es un subgraph con la misma etiqueta: subgraph id["Nombre<br><i>Tipo</i>"] … end.',
+          "- El tipo tiene que ser UNO de la lista de arriba, escrito igual.",
+          "- Las relaciones van con --> y su etiqueta: a -->|\"hace algo\"| b.",
+          "- No pongas posiciones, colores ni classDef: la geometría la pone la app.",
+        ].join("\n"),
+        i.hallazgos?.length
+          ? `EL INTENTO ANTERIOR TUVO ESTOS PROBLEMAS (corregilos):\n${i.hallazgos.map((h) => `- ${h}`).join("\n")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      system:
+        "Sos un arquitecto que dibuja diagramas en Mermaid. Respondés SÓLO con el bloque ```mermaid pedido, sin explicaciones.",
+    };
+  },
+  // El modelo local suele envolver el bloque en prosa; lo que importa es el
+  // flowchart. Sin bloque marcado, se busca el `flowchart` a secas antes de
+  // darse por vencido: tirar una respuesta útil por la envoltura sería absurdo.
+  parse: (raw) => {
+    const bloque = /```(?:mermaid)?\s*([\s\S]*?)```/i.exec(raw);
+    const texto = (bloque?.[1] ?? raw).trim();
+    const inicio = texto.search(/^\s*(flowchart|graph)\b/im);
+    return inicio >= 0 ? texto.slice(inicio).trim() : "";
+  },
+};
+
 /**
  * Mapeo de marca desde un sitio (spec 023). Recibe los COLORES CANDIDATOS que
  * la heurística ya encontró en la página (con su frecuencia y contexto) y las
@@ -396,63 +456,5 @@ export const brandFromSiteTask: AiTask<
       razones: typeof data.razones === "string" ? data.razones.slice(0, 200) : undefined,
     };
     return Object.values(out).some((v) => v !== undefined) ? out : null;
-  },
-};
-
-export const creativeDiagramTask: AiTask<
-  {
-    pedido: string;
-    /** Lo que ya existe en la vista, en Mermaid (vacío si la vista está vacía). */
-    existente?: string;
-    notation?: string;
-    /** Hallazgos del intento anterior, para el ÚNICO reintento. */
-    hallazgos?: string[];
-  },
-  string
-> = {
-  id: "creative-diagram",
-  tier: "light",
-  structured: true,
-  maxLocalChars: BUILDER_LOCAL_MAX_CHARS,
-  buildPrompt: (i) => {
-    const tipos = notationTypes(i.notation, { includeContainers: true });
-    const contenedores = notationTypes(i.notation, { includeContainers: true }).filter(
-      (t) => !notationTypes(i.notation).includes(t)
-    );
-    return {
-      prompt: [
-        `PEDIDO: ${i.pedido}`,
-        i.existente
-          ? `LO QUE YA HAY EN LA VISTA (Mermaid):\n\`\`\`mermaid\n${i.existente}\n\`\`\`\nConservá lo que siga teniendo sentido: lo que repitas con el mismo nombre se reconoce como el mismo elemento.`
-          : "La vista está vacía.",
-        `TIPOS VÁLIDOS de la notación ${getNotation(i.notation).label}: ${tipos.join(", ")}.`,
-        contenedores.length ? `De esos, agrupan a otros (van como subgraph): ${contenedores.join(", ")}.` : "",
-        [
-          "CONVENCIÓN (obligatoria):",
-          "- Respondé UN bloque ```mermaid con un `flowchart LR`, y nada más.",
-          '- Cada caja lleva su tipo en la etiqueta: id["Nombre<br><i>Tipo</i>"].',
-          '- Un contenedor es un subgraph con la misma etiqueta: subgraph id["Nombre<br><i>Tipo</i>"] … end.',
-          "- El tipo tiene que ser UNO de la lista de arriba, escrito igual.",
-          "- Las relaciones van con --> y su etiqueta: a -->|\"hace algo\"| b.",
-          "- No pongas posiciones, colores ni classDef: la geometría la pone la app.",
-        ].join("\n"),
-        i.hallazgos?.length
-          ? `EL INTENTO ANTERIOR TUVO ESTOS PROBLEMAS (corregilos):\n${i.hallazgos.map((h) => `- ${h}`).join("\n")}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
-      system:
-        "Sos un arquitecto que dibuja diagramas en Mermaid. Respondés SÓLO con el bloque ```mermaid pedido, sin explicaciones.",
-    };
-  },
-  // El modelo local suele envolver el bloque en prosa; lo que importa es el
-  // flowchart. Sin bloque marcado, se busca el `flowchart` a secas antes de
-  // darse por vencido: tirar una respuesta útil por la envoltura sería absurdo.
-  parse: (raw) => {
-    const bloque = /```(?:mermaid)?\s*([\s\S]*?)```/i.exec(raw);
-    const texto = (bloque?.[1] ?? raw).trim();
-    const inicio = texto.search(/^\s*(flowchart|graph)\b/im);
-    return inicio >= 0 ? texto.slice(inicio).trim() : "";
   },
 };
