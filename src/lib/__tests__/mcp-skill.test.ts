@@ -43,6 +43,21 @@ describe("skills embebidos", () => {
     expect(DESIGN_SKILL_IDS).toEqual(["documento-a-processflow", "disenar-diagrama"]);
   });
 
+  // Taste gate de diagram-design (ADR 0006 · #539): los skills de DISEÑO
+  // declaran el plan antes de dibujar y pasan la prueba de quitar antes de
+  // entregar. Pulir un elemento no dibuja, así que no le aplica.
+  it("los skills de diseño piden declarar el plan antes de dibujar y pasar la prueba de quitar", () => {
+    for (const id of DESIGN_SKILL_IDS) {
+      const md = getSkill(id)!.files[0].content;
+      expect(md, `${id}: falta el plan previo`).toMatch(/[Aa]ntes de (dibujar|construir)/);
+      expect(md, `${id}: el plan no nombra el presupuesto`).toContain("PRESUPUESTO");
+      expect(md, `${id}: falta la prueba de quitar`).toContain("Prueba de quitar");
+      for (const pregunta of ["quitar un elemento", "siempre van juntos", "quitar una relación", "quitar una etiqueta"]) {
+        expect(md, `${id}: la prueba de quitar no pregunta «${pregunta}»`).toContain(pregunta);
+      }
+    }
+  });
+
   it("entrega todos los skills, con SKILL.md primero", () => {
     expect(listSkills().map((s) => s.id)).toEqual([...SKILL_IDS]);
     for (const s of listSkills()) {

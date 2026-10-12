@@ -104,6 +104,26 @@ cargados y no hay que reescribirlos.
   interfaz (`uiPolicies`) y con qué tecnologías. No es una caja del lienzo. El
   mismo nombre reemplaza, no duplica.
 
+## 3c · Antes de dibujar: declará el plan en un mensaje corto
+
+Antes de la primera llamada a `create_diagram`, decile al usuario en 3–5 líneas
+qué vas a dibujar, para que pueda redirigirte **antes** de que existan veinte
+cajas:
+
+- **Notación y vista**: cuál y por qué (si dudás entre dos, la de la mirada
+  dominante; la otra es una vista aparte).
+- **Qué entra**: contenedores y elementos previstos, con el número aproximado.
+- **Qué queda fuera y por qué**: lo que la fuente menciona y no va (decoración,
+  detalle de otra vista, duplicados), y qué parte del presupuesto se come.
+- **Presupuesto**: cada notación declara cuánto se lee de un vistazo
+  (`describe_notation` lo lista; `validate_diagram` avisa como `PRESUPUESTO`).
+  Si el plan lo supera, el plan es **dos vistas** (panorámica + detalle), no una
+  vista apretada.
+
+Si el usuario está, esperá su respuesta; si no (sesión desatendida), seguí y
+dejá las suposiciones escritas junto a la entrega. Saltá la pausa sólo cuando el
+pedido ya fija notación, vista y contenido con exactitud.
+
 ## 4 · Construir
 
 1. `create_diagram` → guarda el `diagramId`.
@@ -384,6 +404,23 @@ hallazgos de calidad con su regla:
 
 `render_mermaid` para comprobar la topología (el preview auto-ordena: no es el
 layout real del lienzo).
+
+### Prueba de quitar (antes de dar el diagrama por terminado)
+
+Un diagrama no está listo cuando ya tiene todo: está listo cuando no sobra
+nada. Pasá estas cuatro preguntas con `get_diagram` delante y actuá con
+`remove_element` / `remove_edge` / `update_edge`:
+
+- ¿Puedo **quitar un elemento** y el lector entiende lo mismo? Quitalo.
+- ¿Dos elementos **siempre van juntos** (uno no se nombra sin el otro)? Son uno:
+  fusionalos y dejá el detalle en `description`.
+- ¿Puedo **quitar una relación** porque la disposición ya la cuenta (están
+  dentro del mismo contenedor, en secuencia obvia)? Quitala.
+- ¿Puedo **quitar una etiqueta** porque el tipo o la forma ya lo dicen (la
+  flecha Comando → Evento no necesita «produce»)? Quitala.
+
+Lo que se quita por esta prueba se anota en una línea en la entrega: el usuario
+conoce la fuente y notaría la ausencia.
 
 ## 6 · Revisión humana y exportación
 
