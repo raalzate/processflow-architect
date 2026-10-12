@@ -95,6 +95,19 @@ export default {
         'canvas-edge': 'hsl(var(--canvas-edge))',
         'canvas-grid': 'hsl(var(--canvas-grid))',
         'canvas-grid-major': 'hsl(var(--canvas-grid-major))',
+        // Skin editorial del lienzo (spec 022): tokens por rol, con alfa para
+        // que `fill-ed-accent/10` sea el acento tenue y `stroke-ed-ink/15` la
+        // regla fina sin declarar un token por cada tinte.
+        ed: {
+          paper: 'hsl(var(--ed-paper) / <alpha-value>)',
+          'paper-2': 'hsl(var(--ed-paper-2) / <alpha-value>)',
+          ink: 'hsl(var(--ed-ink) / <alpha-value>)',
+          muted: 'hsl(var(--ed-muted) / <alpha-value>)',
+          soft: 'hsl(var(--ed-soft) / <alpha-value>)',
+          'rule-solid': 'hsl(var(--ed-rule-solid) / <alpha-value>)',
+          accent: 'hsl(var(--ed-accent) / <alpha-value>)',
+          link: 'hsl(var(--ed-link) / <alpha-value>)',
+        },
         sidebar: {
           DEFAULT: 'hsl(var(--sidebar-background))',
           foreground: 'hsl(var(--sidebar-foreground))',

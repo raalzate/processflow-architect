@@ -243,6 +243,29 @@ describe("reglas de presentación", () => {
   });
 });
 
+// Spec 022: el acento señala sólo mientras es escaso.
+describe("focos (ACENTO)", () => {
+  const con = (hotspots: string[]) => {
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "ddd" as const });
+    m = nodo(m, "c", "Pagar", "command", "ddd");
+    m = nodo(m, "e", "Pagado", "event", "ddd");
+    m = addEdge(m, { fuente: "c", destino: "e", descripcion: "produce" });
+    return { ...m, meta: { ...m.meta, hotspots } };
+  };
+
+  it("hasta MAX_FOCAL hotspots no avisa", () => {
+    expect(rules(con(["Pagar", "Pagado"]))).not.toContain("ACENTO");
+    expect(rules(con([]))).not.toContain("ACENTO");
+  });
+
+  it("con más de MAX_FOCAL pide elegir cuáles importan", () => {
+    const f = qualityFindings(con(["a", "b", "c"])).find((x) => x.rule === "ACENTO");
+    expect(f?.level).toBe("aviso");
+    expect(f?.message).toContain("3 hotspots");
+    expect(f?.message).toMatch(/elegí cuáles importan/);
+  });
+});
+
 // El presupuesto se lee del REGISTRO, nunca se cablea: el test sobrevive a que
 // alguien ajuste los números de una notación.
 describe("presupuesto de complejidad (PRESUPUESTO)", () => {

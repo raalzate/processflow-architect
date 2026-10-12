@@ -138,6 +138,11 @@ describe("canvasToGraphData", () => {
     expect(canvasToGraphData(new Map(), new Map(), BASE).defaultRouting).toBeUndefined();
   });
 
+  it("preserva la skin del proyecto (spec 022) y no la inventa cuando falta", () => {
+    expect(canvasToGraphData(new Map(), new Map(), { ...BASE, skin: "editorial" }).skin).toBe("editorial");
+    expect(canvasToGraphData(new Map(), new Map(), BASE).skin).toBeUndefined();
+  });
+
   it("uses base metadata and falls back to defaults", () => {
     const g = canvasToGraphData(new Map(), new Map(), BASE);
     expect(g.nombre_proyecto).toBe("Proj");

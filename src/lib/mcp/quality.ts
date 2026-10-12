@@ -16,6 +16,7 @@
  */
 
 import { getNotation, hasRole, roleOfType, typesWithRole, type ElementRole } from "../notations";
+import { MAX_FOCAL } from "../skin";
 import { resolveCita } from "../source-docs";
 import { isContainerType } from "./catalog";
 import { hayProblemaDeLegibilidad } from "../layout/metrics";
@@ -418,8 +419,27 @@ function legibilidadFindings(model: DiagramModel): QualityFinding[] {
   ];
 }
 
+/**
+ * Focos (spec 022): los hotspots son lo ÚNICO que lleva acento en la skin
+ * editorial, y el acento señala sólo mientras es escaso. Con más de `MAX_FOCAL`
+ * el lector no sabe a dónde mirar primero. Aplica en cualquier skin: el consejo
+ * de elegir qué importa vale aunque hoy se vea canónico.
+ */
+function focalFindings(model: DiagramModel): QualityFinding[] {
+  const hotspots = model.meta.hotspots ?? [];
+  if (hotspots.length <= MAX_FOCAL) return [];
+  return [
+    {
+      level: "aviso",
+      rule: "ACENTO",
+      message: `${hotspots.length} hotspots (${hotspots.slice(0, 4).join(", ")}${hotspots.length > 4 ? "…" : ""}) superan los ${MAX_FOCAL} que el acento puede señalar: elegí cuáles importan de verdad y bajá el resto a notas, o partí en vistas con un foco cada una.`,
+    },
+  ];
+}
+
 export function qualityFindings(model: DiagramModel): QualityFinding[] {
   const all = [
+    ...focalFindings(model),
     ...sourceFindings(model),
     ...legibilidadFindings(model),
     ...flowFindings(model),

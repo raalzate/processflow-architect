@@ -177,7 +177,22 @@ export interface NotationElement {
   bg: string;
   border: string;
   text: string;
+  /**
+   * TRATAMIENTO en la skin editorial (spec 022): cómo se dibuja el tipo cuando
+   * el lienzo no usa su color canónico sino tinta y papel. Si falta, se deduce
+   * del rol (`treatmentOf` en `src/lib/skin.ts`): almacén para los datos,
+   * externo para los sistemas de terceros, entrada para los actores, servicio
+   * para el resto. Se declara sólo cuando el rol no lo dice: la Regla de
+   * Negocio es una restricción (seguridad), no un servicio.
+   */
+  treatment?: Treatment;
 }
+
+/**
+ * Tratamientos editoriales de nodo (spec 022, adaptados de diagram-design). El
+ * `focal` no se declara: lo recibe el elemento marcado como hotspot.
+ */
+export type Treatment = "focal" | "backend" | "store" | "external" | "input" | "optional" | "security";
 
 /** Sección colapsable dentro de la paleta de una notación. */
 export interface NotationPaletteGroup {
@@ -369,12 +384,12 @@ const DDD: Notation = {
     { type: "Evento", icon: "Zap", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Actor", icon: "User", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Vista", icon: "RectangleHorizontal", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
-    { type: "Regla de Negocio", icon: "Gavel", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Regla de Negocio", icon: "Gavel", shape: "ellipse", treatment: "security", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Sistema Externo", icon: "HardDrive", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-500", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-white" },
     { type: "Política", icon: "Milestone", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Raíz de Agregado", icon: "Crown", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Entidad", icon: "Fingerprint", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
-    { type: "Objeto de Valor", icon: "Gem", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Objeto de Valor", icon: "Gem", shape: "ellipse", treatment: "optional", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Servicio de Dominio", icon: "Cog", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Repositorio", icon: "Archive", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Fábrica", icon: "Factory", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
@@ -467,7 +482,7 @@ const BPMN: Notation = {
     { type: "Subproceso", icon: "Boxes", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Objeto de Datos", icon: "FileText", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-500", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-white" },
     { type: "Almacén de Datos", icon: "Database", shape: "cylinder", stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-500", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-white" },
-    { type: "Anotación", icon: "MessageSquare", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Anotación", icon: "MessageSquare", shape: "rect", treatment: "optional", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // --- Compuertas (decisiones / bifurcaciones): rombo compacto, nombre debajo ---
     // Compuerta genérica: se conserva por compatibilidad con diagramas existentes.
     { type: "Compuerta", icon: "Diamond", shape: "diamond", compact: true, stroke: "stroke-amber-600 dark:stroke-amber-600", bg: "fill-amber-100 dark:fill-amber-950", border: "border-amber-400 dark:border-amber-500", text: "text-amber-900 dark:text-amber-100" },
@@ -633,7 +648,7 @@ const UML: Notation = {
     { type: "Actor", icon: "PersonStanding", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Caso de Uso", icon: "Circle", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // Nota adhesiva UML (comentario anclable a cualquier elemento).
-    { type: "Nota", icon: "StickyNote", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Nota", icon: "StickyNote", shape: "rect", treatment: "optional", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Paquete", icon: "Folder", container: true, transparent: true, stroke: "stroke-yellow-700 dark:stroke-yellow-600", bg: "fill-yellow-100 dark:fill-yellow-950/40", border: "border-yellow-400 dark:border-yellow-500", text: "text-yellow-900 dark:text-yellow-200" },
     // Diagrama de componentes: el puerto es el punto de conexión del componente
     // y las interfaces son el par lollipop (provista) / socket (requerida). Van
