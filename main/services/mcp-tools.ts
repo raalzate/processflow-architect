@@ -100,6 +100,8 @@ import {
   vistaInexistente,
 } from "../../src/lib/mcp/project-update";
 import { interpretarImportacion } from "../../src/lib/mcp/import-format";
+import { importarMermaid } from "../../src/lib/mcp/import-mermaid-file";
+import { formatLedger } from "../../src/lib/mcp/import-ledger";
 import { contarModelo, marcasDiagrama, textoConteo } from "../../src/lib/mcp/conteo";
 import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
 import { toMermaid, idsQueCambian } from "../../src/lib/mcp/to-mermaid";
@@ -3242,6 +3244,60 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           rehacer ? ", con el layout rehecho" : ". Trae la disposición del archivo; usa relayout_diagram si querés recalcularla"
         }.`
       );
+    }
+  );
+
+  // Importar Mermaid es REDIBUJAR, no convertir (ADR 0006 · #540): la fuente
+  // aporta participantes, cajas y relaciones; la geometría la pone la
+  // disposición legible y lo que no llega al dibujo se dice en el ledger.
+  server.registerTool(
+    "import_mermaid",
+    {
+      title: "Importar Mermaid",
+      description:
+        "Redibuja un diagrama Mermaid como diagrama editable nuevo y lo deja fijado. Acepta `.mmd`/`.mermaid` o un Markdown con bloques ```mermaid (elegí cuál con `block`). Gramáticas: flowchart/graph (los tipos van en la etiqueta como `<i>Tipo</i>` o `:::slug`; sin tipo entra el de la notación y se avisa) y sequenceDiagram (participantes → Líneas de Vida, mensajes en orden, alt/opt/loop/par → Fragmentos; siempre UML). Devuelve los hallazgos y un ledger de fidelidad con lo que no llegó al dibujo (notas, activaciones, estilos).",
+      inputSchema: {
+        path: z
+          .string()
+          .describe("Ruta al .mmd/.mermaid/.md. Si es relativa, se resuelve contra el workspace del servidor."),
+        notation: NOTATION.optional().describe("Notación con que leer un flowchart (por defecto la inicial de la app). Una secuencia siempre entra como uml."),
+        block: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe("Qué bloque ```mermaid del Markdown importar, desde 0 (por defecto el primero)."),
+        name: z.string().optional().describe("Nombre del diagrama (por defecto, el del archivo)."),
+      },
+    },
+    async ({ path: p, notation, block, name }) => {
+      const ruta = path.isAbsolute(p) ? p : path.resolve(opts.workspace, p);
+      let texto: string;
+      try {
+        texto = await fs.readFile(ruta, "utf8");
+      } catch (e: any) {
+        return fail(`No pude leer "${ruta}": ${e.message}`);
+      }
+      const r = importarMermaid(texto, ruta, { notation: notation as NotationId | undefined, bloque: block, nombre: name });
+      if (!r.ok) {
+        const lista = r.bloques.length
+          ? `\nBloques del archivo: ${r.bloques.map((b) => `[${b.indice}] ${b.cabecera}`).join(" · ")}.`
+          : "";
+        return fail(`No se importó: ${r.error}${lista}`);
+      }
+      const id = await freshId(slugify(r.nombre));
+      const org = await activeOrg();
+      await saveModel(id, r.model, org);
+      await writePinned(id);
+      const partes = [
+        `Importado (redibujado) y FIJADO como diagramId="${id}" en ${org ? `la organización "${org}"` : "el workspace sin organización"} (${textoConteo(contarModelo(r.model))}, ${r.model.edges.length} aristas; notación ${r.model.meta.notation}${
+          r.bloques.length > 1 ? `; bloque ${block ?? 0} de ${r.bloques.length}` : ""
+        }).`,
+        formatLedger(r.ledger),
+      ];
+      if (r.hallazgos.length) partes.push(`Hallazgos del parser:\n- ${r.hallazgos.join("\n- ")}`);
+      partes.push("Siguiente: validate_diagram para la calidad, review_diagram antes de exportar.");
+      return text(partes.join("\n\n"));
     }
   );
 }

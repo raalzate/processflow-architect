@@ -85,6 +85,7 @@ import { useToast } from "@/hooks/use-toast";
 import { BetaBadge } from "@/components/layout/AppCredits";
 import { buscarNodos, nodosBuscables, MIN_QUERY } from "@/lib/search-nodes";
 import { parseBoardFile } from "@/lib/board-file";
+import { importarMermaid } from "@/lib/mcp/import-mermaid-file";
 import type { PersistedViews } from "@/lib/views-types";
 import { normalizeProjectName } from "@/lib/project-rename";
 import {
@@ -399,6 +400,36 @@ const FileManagement: React.FC<
     }
   };
 
+  // Importar Mermaid (#540): un .mmd o el primer bloque ```mermaid de un .md
+  // se REDIBUJA como proyecto nuevo (la geometría la pone la disposición
+  // legible, no el renderer de Mermaid). El ledger dice qué no llegó al dibujo.
+  const importMermaidInputRef = useRef<HTMLInputElement>(null);
+  const onImportMermaidFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const r = importarMermaid(await file.text(), file.name, { notation: newNotation });
+    if (!r.ok) {
+      toast({ variant: "destructive", title: "No se pudo importar el Mermaid", description: r.error });
+      return;
+    }
+    onImportJson(r.nombre, r.graph);
+    const omitidos = r.ledger.omitidos.length;
+    const dudas = r.hallazgos.length;
+    toast({
+      title: `«${r.nombre}» importado (${r.model.nodes.length} elementos, ${r.model.edges.length} relaciones)`,
+      description:
+        omitidos || dudas
+          ? [
+              omitidos ? `${omitidos} cosa(s) de la fuente no se dibujan: ${r.ledger.omitidos[0]}` : "",
+              dudas ? `${dudas} tipo(s) por revisar: ${r.hallazgos[0]}` : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : "Todo lo que la fuente declara está en el lienzo.",
+    });
+  };
+
   return (
     <div className="flex items-center gap-2">
       {/* El nombre del proyecto también en la barra de título: es donde el sistema
@@ -535,6 +566,14 @@ const FileManagement: React.FC<
         className="hidden"
         onChange={onImportFile}
       />
+      {/* Importar Mermaid (.mmd / .mermaid / Markdown con bloque mermaid). */}
+      <input
+        ref={importMermaidInputRef}
+        type="file"
+        accept=".mmd,.mermaid,.md,.markdown,text/plain"
+        className="hidden"
+        onChange={onImportMermaidFile}
+      />
 
       {/* «Actualizar»: sólo se dibuja cuando hay una versión nueva publicada
           (#208). Va junto a las acciones de proyecto, a la derecha. */}
@@ -556,6 +595,9 @@ const FileManagement: React.FC<
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => importInputRef.current?.click()}>
             <FileUp className="mr-2 h-4 w-4" /> Importar diagrama
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => importMermaidInputRef.current?.click()}>
+            <FileUp className="mr-2 h-4 w-4" /> Importar Mermaid…
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled={!currentFileId} onClick={onDownloadJson}>
