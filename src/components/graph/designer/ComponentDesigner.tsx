@@ -56,6 +56,8 @@ import {
   Newspaper,
 } from "lucide-react";
 import { SKIN_LIST, leerSkin, type SkinId } from "@/lib/skin";
+import { AVISO_TAMANO_BYTES, PRESETS, PRESET_LIST, slugDeProyecto, type PresetId } from "@/lib/export/html-page";
+import { useTheme } from "@/hooks/use-theme";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { ColumnsField } from "./ColumnsField";
@@ -242,6 +244,7 @@ import {
   captureRegion,
   downloadDataUrl,
   downloadText,
+  exportCanvasHtml,
   exportCanvasSvg,
   waitForFloatingLayersGone,
 } from "./export-canvas";
@@ -3185,6 +3188,9 @@ export const ComponentDesigner: React.FC<{
     [toast]
   );
   const skinActiva: SkinId = meta?.skin ?? "canon";
+  // Tema efectivo: la página HTML exportada (spec 024) sale con el papel del
+  // tema que el usuario está viendo.
+  const { tema } = useTheme();
   // Los focos de la skin editorial son los hotspots del proyecto, por nombre.
   const skinCtx = useMemo(
     () => ({ skin: skinActiva, focal: new Set(meta?.hotspots ?? []) as ReadonlySet<string> }),
@@ -4475,6 +4481,43 @@ export const ComponentDesigner: React.FC<{
     toast({ title: "Diagrama exportado", description: "Se descargó un SVG del lienzo." });
   }, [meta, toast, notationId]);
 
+  // Exporta una página HTML autocontenida (spec 024): título, descripción y el
+  // diagrama con su contrato accesible, en el preset del destino. Si la
+  // autocomprobación encuentra algo, se avisa: el archivo sale, nunca en silencio.
+  const handleExportHtml = useCallback(
+    (preset: PresetId) => {
+      if (!svgRef.current) return;
+      const bounds = computeContentBounds(nodesRef.current, notationId);
+      if (!bounds) {
+        toast({ variant: "destructive", title: "Nada que exportar", description: "El lienzo está vacío." });
+        return;
+      }
+      const titulo = meta?.nombre_proyecto || "Diagrama";
+      const { fallas, bytes } = exportCanvasHtml(svgRef.current, bounds, {
+        filename: `${slugDeProyecto(titulo)}.html`,
+        titulo,
+        descripcion: meta?.bigPictureDescripcion,
+        notacion: activeNotation.label,
+        skin: skinActiva,
+        tema,
+        preset,
+        elementos: Array.from(nodesRef.current.values()).filter((n) => !isContainerType(n.tipo_elemento)).length,
+        relaciones: linksRef.current.size,
+      });
+      const mb = bytes / (1024 * 1024);
+      toast({
+        variant: fallas.length ? "destructive" : undefined,
+        title: fallas.length ? "HTML exportado con observaciones" : `HTML exportado · ${PRESETS[preset].label}`,
+        description: fallas.length
+          ? fallas.join(" · ")
+          : bytes > AVISO_TAMANO_BYTES
+            ? `Pesa ${mb.toFixed(1)} MB: los estilos en línea abultan. Se abre igual, sin la app ni red.`
+            : "Se abre con doble clic, sin la app ni conexión.",
+      });
+    },
+    [activeNotation.label, meta, notationId, skinActiva, tema, toast]
+  );
+
   // Exporta un PNG rasterizando la página en el proceso main (capturePage): así
   // sí sale el foreignObject de los nodos. Encuadra todo y oculta overlays antes.
   const handleExportPng = useCallback(async () => {
@@ -4945,6 +4988,13 @@ export const ComponentDesigner: React.FC<{
                   <DropdownMenuItem onClick={handleExportPng}>
                     PNG · imagen (para pegar en documentos)
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {/* Página autocontenida (spec 024): un preset por destino. */}
+                  {PRESET_LIST.map((p) => (
+                    <DropdownMenuItem key={p.id} onClick={() => handleExportHtml(p.id)} title={p.descripcion}>
+                      HTML · {p.label.toLowerCase()} (página que se abre sola)
+                    </DropdownMenuItem>
+                  ))}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
 

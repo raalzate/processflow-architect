@@ -15,6 +15,13 @@
 // =============================================================================
 
 import type { ContentBounds } from "./serialize";
+import {
+  COLORES_POR_DEFECTO,
+  paginaHtml,
+  verificarPagina,
+  type ColoresDePagina,
+  type PaginaOpts,
+} from "@/lib/export/html-page";
 
 /** Rectángulo de recorte (viewBox) alrededor del contenido, con margen. Puro. */
 export function croppedViewBox(
@@ -83,16 +90,19 @@ export function downloadText(content: string, filename: string, mime: string): v
 }
 
 /**
- * Exporta el <svg> del lienzo como archivo .svg recortado al contenido.
- * @param svg     El elemento <svg> vivo del lienzo.
- * @param bounds  Caja del contenido (viewBox recortado); null → lienzo completo.
- * @param filename Nombre del archivo de descarga.
+ * El `<svg>` del lienzo serializado: clon con los estilos computados en línea,
+ * viewBox recortado al contenido y un rectángulo de fondo. Es la ÚNICA
+ * serialización del lienzo: el SVG descargable y la página HTML (spec 024)
+ * salen de acá, así que no pueden divergir.
+ * @param fondo Color del rectángulo de fondo. Blanco por defecto (sin él, las
+ *   zonas transparentes salen negras en algunos visores); en la skin editorial
+ *   es el papel, o la lámina oscura llevaría un parche blanco.
  */
-export function exportCanvasSvg(
+export function serializarLienzo(
   svg: SVGSVGElement,
   bounds: ContentBounds | null,
-  filename: string
-): void {
+  fondo = "#ffffff"
+): string {
   const clone = svg.cloneNode(true) as SVGSVGElement;
   inlineComputedStyles(svg, clone);
 
@@ -104,22 +114,74 @@ export function exportCanvasSvg(
     clone.setAttribute("height", String(h));
   }
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  // Fondo blanco: sin él, las zonas transparentes salen negras en algunos visores.
   const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   const vb = (clone.getAttribute("viewBox") || "0 0 2000 2000").split(" ");
   bg.setAttribute("x", vb[0]);
   bg.setAttribute("y", vb[1]);
   bg.setAttribute("width", vb[2]);
   bg.setAttribute("height", vb[3]);
-  bg.setAttribute("fill", "#ffffff");
+  bg.setAttribute("fill", fondo);
   clone.insertBefore(bg, clone.firstChild);
 
-  const xml = new XMLSerializer().serializeToString(clone);
+  return new XMLSerializer().serializeToString(clone);
+}
+
+/**
+ * Valor de un token CSS tal como lo ve el lienzo (`--ed-paper` → `h s% l%`),
+ * ya como color usable. Con él la página HTML hereda la skin, el tema y, cuando
+ * exista, el perfil de marca (spec 023), sin que `lib/` sepa de CSS.
+ */
+export function colorDeToken(el: Element, token: string): string | undefined {
+  const v = getComputedStyle(el).getPropertyValue(token).trim();
+  return v ? `hsl(${v})` : undefined;
+}
+
+/**
+ * Exporta el <svg> del lienzo como archivo .svg recortado al contenido.
+ * @param svg     El elemento <svg> vivo del lienzo.
+ * @param bounds  Caja del contenido (viewBox recortado); null → lienzo completo.
+ * @param filename Nombre del archivo de descarga.
+ */
+export function exportCanvasSvg(
+  svg: SVGSVGElement,
+  bounds: ContentBounds | null,
+  filename: string,
+  fondo?: string
+): void {
+  const xml = serializarLienzo(svg, bounds, fondo);
   downloadText(
     `<?xml version="1.0" encoding="UTF-8"?>\n${xml}`,
     filename,
     "image/svg+xml"
   );
+}
+
+/**
+ * Exporta el lienzo como página HTML autocontenida (spec 024). Devuelve los
+ * incumplimientos de la autocomprobación y el tamaño, para que quien llama
+ * avise; el archivo se entrega igual (el usuario lo pidió), pero nunca en
+ * silencio.
+ */
+export function exportCanvasHtml(
+  svg: SVGSVGElement,
+  bounds: ContentBounds | null,
+  opts: Omit<PaginaOpts, "svg" | "colores"> & { filename: string }
+): { fallas: string[]; bytes: number } {
+  const editorial = opts.skin === "editorial";
+  const colores: ColoresDePagina | undefined = editorial
+    ? {
+        papel: colorDeToken(svg, "--ed-paper") ?? COLORES_POR_DEFECTO[opts.tema].papel,
+        tinta: colorDeToken(svg, "--ed-ink") ?? COLORES_POR_DEFECTO[opts.tema].tinta,
+        atenuado: colorDeToken(svg, "--ed-muted") ?? COLORES_POR_DEFECTO[opts.tema].atenuado,
+        regla: COLORES_POR_DEFECTO[opts.tema].regla,
+      }
+    : undefined;
+  const fondo = editorial ? colores!.papel : undefined;
+  const { filename, ...resto } = opts;
+  const html = paginaHtml({ ...resto, svg: serializarLienzo(svg, bounds, fondo), colores });
+  const fallas = verificarPagina(html);
+  downloadText(html, filename, "text/html");
+  return { fallas, bytes: new Blob([html]).size };
 }
 
 /**
