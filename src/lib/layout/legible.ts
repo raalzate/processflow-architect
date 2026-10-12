@@ -84,6 +84,13 @@ export function resumenDeLegibilidad(medida: MedidaComparada, parcial = false): 
       `encimadas ${antes.solape} → ${despues.solape} ` +
       `(sobre ${despues.relaciones} relaciones).`,
   ];
+  // Las reglas de conector (#538) sólo se nombran cuando dicen algo: en la
+  // mayoría de los diagramas van en cero y una línea más es ruido.
+  if (antes.anclajesCompartidos || despues.anclajesCompartidos || antes.etiquetasTapadas || despues.etiquetasTapadas)
+    partes.push(
+      `Conectores: puntas compartidas ${antes.anclajesCompartidos} → ${despues.anclajesCompartidos} · ` +
+        `etiquetas tapadas ${antes.etiquetasTapadas} → ${despues.etiquetasTapadas}.`
+    );
   if (conRecorridosManuales)
     partes.push("Las dos medidas incluyen los recorridos que ajustó una persona, que no se tocaron.");
   if (parcial)

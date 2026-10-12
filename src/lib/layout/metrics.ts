@@ -43,6 +43,11 @@ export interface Relacion {
    * de sus cajas, que es como se dibuja por defecto.
    */
   puntos?: Punto[];
+  /**
+   * true si la relación lleva etiqueta dibujada sobre el trazo. Sólo esas
+   * pueden quedar tapadas por una caja ajena (`etiquetasTapadas`).
+   */
+  etiquetada?: boolean;
 }
 
 export interface Legibilidad {
@@ -60,6 +65,20 @@ export interface Legibilidad {
   sobreCaja: number;
   /** Relaciones sin recorrido dibujable (una caja falta o el trazo degenera). */
   sinRuta: number;
+  /**
+   * Pares de relaciones que nacen o mueren en el MISMO punto del borde de una
+   * caja (a menos de `DISTANCIA_ANCLAJE`). Dos puntas pegadas se dibujan como
+   * una y el lector no sabe si de ahí salen una relación o tres; cada conector
+   * de un borde merece su propio punto de anclaje (regla de conector de
+   * diagram-design, ADR 0006 · #538).
+   */
+  anclajesCompartidos: number;
+  /**
+   * Relaciones con etiqueta cuyo texto cae dentro de una caja que no es su
+   * extremo: la caja se pinta encima y la etiqueta se lee como un fragmento en
+   * el borde, o no se lee (#538).
+   */
+  etiquetasTapadas: number;
   /** Relaciones consideradas (sin auto-relaciones ni extremos ausentes). */
   relaciones: number;
 }
@@ -72,6 +91,12 @@ export const TOLERANCIA_SOLAPE = 6;
 
 /** Tramo compartido a partir del cual el solape se nota en pantalla. */
 export const SOLAPE_MINIMO = 40;
+
+/**
+ * Dos puntas sobre el mismo borde a menos de esto se ven como una sola. Es el
+ * mínimo que diagram-design exige entre anclajes de un mismo lado (12 px).
+ */
+export const DISTANCIA_ANCLAJE = 12;
 
 /**
  * A partir de este número de relaciones, contar cruces por fuerza bruta (O(E²))
@@ -188,6 +213,56 @@ function trazoDe(rel: Relacion, cajas: Map<string, Caja>): Trazo | null {
     maxY = Math.max(maxY, p.y);
   }
   return { rel, segmentos, minX, minY, maxX, maxY };
+}
+
+/**
+ * Dónde cae la ETIQUETA de un recorrido: a mitad de camino sobre el trazo, que
+ * es donde la pone el lienzo (`polylineMidpoint` de `link-geom.ts`). Medirla en
+ * la mitad de la cuerda diría que una etiqueta en una L está donde no está.
+ */
+export function puntoDeEtiqueta(puntos: Punto[]): Punto {
+  const segs = segmentosDe(puntos);
+  const largos = segs.map(([a, b]) => Math.hypot(b.x - a.x, b.y - a.y));
+  const total = largos.reduce((t, d) => t + d, 0);
+  if (!segs.length || total === 0) return puntos[0] ?? { x: 0, y: 0 };
+  let resto = total / 2;
+  for (let i = 0; i < segs.length; i++) {
+    if (resto <= largos[i]) {
+      const t = largos[i] === 0 ? 0 : resto / largos[i];
+      const [a, b] = segs[i];
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+    resto -= largos[i];
+  }
+  const [, fin] = segs[segs.length - 1];
+  return fin;
+}
+
+const dentroDeCaja = (p: Punto, caja: Caja): boolean =>
+  p.x > caja.x && p.x < caja.x + caja.width && p.y > caja.y && p.y < caja.y + caja.height;
+
+/**
+ * Pares de puntas que comparten anclaje: misma caja, a menos de
+ * `DISTANCIA_ANCLAJE`. Se mira por caja porque dos puntas pueden estar cerca en
+ * el plano y pertenecer a cajas vecinas distintas, y eso no es un anclaje
+ * compartido.
+ */
+function contarAnclajesCompartidos(trazos: Trazo[]): number {
+  const porCaja = new Map<string, Punto[]>();
+  const anotar = (caja: string, p: Punto) => (porCaja.get(caja) ?? porCaja.set(caja, []).get(caja)!).push(p);
+  for (const t of trazos) {
+    const [primero] = t.segmentos[0];
+    const [, ultimo] = t.segmentos[t.segmentos.length - 1];
+    anotar(t.rel.fuente, primero);
+    anotar(t.rel.destino, ultimo);
+  }
+  let pares = 0;
+  for (const puntas of porCaja.values()) {
+    for (let i = 0; i < puntas.length; i++)
+      for (let j = i + 1; j < puntas.length; j++)
+        if (Math.hypot(puntas[i].x - puntas[j].x, puntas[i].y - puntas[j].y) < DISTANCIA_ANCLAJE) pares++;
+  }
+  return pares;
 }
 
 /** ¿Las dos relaciones se tocan en un nodo común? Ahí no hay ni cruce ni solape. */
@@ -333,7 +408,25 @@ export function medirLegibilidad(cajas: Caja[], relaciones: Relacion[]): Legibil
       if (seEnciman(trazos[i], trazos[j])) solape++;
     }
 
-  return { cruces: contarCruces(trazos), solape, sobreCaja, sinRuta, relaciones: consideradas };
+  let etiquetasTapadas = 0;
+  for (const t of trazos) {
+    if (!t.rel.etiquetada) continue;
+    const p = puntoDeEtiqueta(t.segmentos.flatMap(([a, b], i) => (i === 0 ? [a, b] : [b])));
+    const tapada = obstaculos.some(
+      (caja) => caja.id !== t.rel.fuente && caja.id !== t.rel.destino && dentroDeCaja(p, caja)
+    );
+    if (tapada) etiquetasTapadas++;
+  }
+
+  return {
+    cruces: contarCruces(trazos),
+    solape,
+    sobreCaja,
+    sinRuta,
+    anclajesCompartidos: contarAnclajesCompartidos(trazos),
+    etiquetasTapadas,
+    relaciones: consideradas,
+  };
 }
 
 /**
@@ -344,9 +437,14 @@ export function medirLegibilidad(cajas: Caja[], relaciones: Relacion[]): Legibil
  *
  * El solape pesa como un cruce: dos líneas encimadas esconden una relación
  * entera, que es peor que verlas cruzarse (#392).
+ *
+ * La etiqueta tapada pesa como el paso sobre caja (es el mismo dolor: algo que
+ * no se lee) y el anclaje compartido poco (0,2): es un detalle de dibujo que el
+ * reparto de puntas resuelve solo, y pesarlo más haría que el orden de capas
+ * sacrificara un cruce por separar dos puntas (#538).
  */
 export function costeDeDisposicion(l: Legibilidad): number {
-  return l.cruces + 0.6 * l.sobreCaja + l.solape;
+  return l.cruces + 0.6 * l.sobreCaja + l.solape + 0.6 * l.etiquetasTapadas + 0.2 * l.anclajesCompartidos;
 }
 
 /**
@@ -392,6 +490,8 @@ export function hayProblemaDeLegibilidad(l: Legibilidad): boolean {
   return (
     l.sobreCaja > 0 ||
     l.solape > 0 ||
+    l.etiquetasTapadas > 0 ||
+    l.anclajesCompartidos > 0 ||
     (l.relaciones > 0 && l.cruces > l.relaciones * 0.1)
   );
 }
