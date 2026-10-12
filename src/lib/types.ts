@@ -259,6 +259,12 @@ export interface GraphData {
    * este valor, y este sobre el de la notación.
    */
   defaultRouting?: "straight" | "curved" | "orthogonal";
+  /**
+   * Skin con que se dibuja el proyecto (spec 022): `canon` (cada tipo con su
+   * color) o `editorial` (tinta sobre papel, acento sólo en los hotspots).
+   * Ausente = canónica: un archivo anterior a la feature se ve igual que antes.
+   */
+  skin?: "canon" | "editorial";
   fecha_analisis: string;
   big_picture: BigPicture;
   agregados: Agregado[];

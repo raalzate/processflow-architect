@@ -162,6 +162,7 @@ import {
 } from "@/lib/notations";
 import { MIN_PALETTE_QUERY, filtrarPaleta } from "@/lib/palette-search";
 import { CANVAS_CHROME } from "@/lib/canvas-chrome";
+import { CONTAINER_TREATMENT, SKIN_DEFAULT, edgeTreatment, nodeTreatment, type SkinId } from "@/lib/skin";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
 import { FRAGMENT_OPS, esOperador, type FragmentPart } from "@/lib/sequence/fragments";
 import {
@@ -287,6 +288,35 @@ const colorForType = (
   const e = ALL_ELEMENTS[type];
   return e ? { bg: e.bg, border: e.border, text: e.text } : defaultColor;
 };
+
+/**
+ * Skin con que se dibuja el lienzo (spec 022) y qué elementos son FOCO (los
+ * hotspots, por nombre). Lo provee `ComponentDesigner` alrededor del `<svg>`;
+ * nodo y arista lo leen. Sin proveedor —la paleta, un test— es la canónica.
+ */
+export const SkinContext = React.createContext<{ skin: SkinId; focal: ReadonlySet<string> }>({
+  skin: SKIN_DEFAULT,
+  focal: new Set(),
+});
+
+/**
+ * Clases con que se pinta un nodo en la skin activa. En la canónica son las del
+ * registro; en la editorial, las de su tratamiento (foco si es hotspot,
+ * contenedor si agrupa). `dash` sólo viene con tratamiento: el canónico decide
+ * el trazo por simbología, no por skin.
+ */
+function useNodeColor(
+  type: string,
+  nombre: string,
+  notation: NotationId | undefined
+): { bg: string; border: string; text: string; dash?: string; editorial: boolean } {
+  const { skin, focal } = React.useContext(SkinContext);
+  const canon = colorForType(type);
+  if (skin !== "editorial") return { ...canon, editorial: false };
+  if (isContainerType(type)) return { ...CONTAINER_TREATMENT, editorial: true };
+  const t = nodeTreatment(skin, notation, type, focal.has(nombre));
+  return t ? { ...t, editorial: true } : { ...canon, editorial: true };
+}
 
 
 /**
@@ -1200,7 +1230,10 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   onHover,
   onHoverEnd,
 }) => {
-  const color = colorForType(node.tipo_elemento);
+  const color = useNodeColor(node.tipo_elemento, node.nombre, notation);
+  // En editorial no hay sombra (bordes, no sombras) y el contorno propio del
+  // tipo (`meta.stroke`) cede ante el del tratamiento.
+  const editorial = color.editorial;
   const hasSubView = !!node.viewRef && !!onOpenSubView;
   // El trazo que MANDA sobre el propio del tipo: azul si está seleccionado,
   // ámbar si está emparentado con la selección (#256). Son colores distintos a
@@ -1212,6 +1245,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       : null;
   const Icon = iconForType(node.tipo_elemento);
   const meta = ALL_ELEMENTS[node.tipo_elemento];
+  const strokeTipo = editorial ? undefined : meta?.stroke;
 
   // Sólo completa la conexión en mouseup cuando hay un arrastre activo; en caso
   // contrario dejamos burbujear el evento (p. ej. para cerrar un arrastre de mover).
@@ -1232,11 +1266,15 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   const estiloBlq = estiloBloque(node.estilo);
   // Con la caja seleccionada el contorno propio no se aplica: manda el azul de
   // selección (por eso el borde viaja sólo cuando no hay trazo de resalte).
-  const estiloForma = estiloSilueta(
-    node.estilo,
-    { color: node.color, borderColor: node.borderColor },
-    { conBorde: !trazoResalte }
-  );
+  const estiloForma = {
+    ...estiloSilueta(
+      node.estilo,
+      { color: node.color, borderColor: node.borderColor },
+      { conBorde: !trazoResalte }
+    ),
+    // Trazo discontinuo del tratamiento editorial (opcional, seguridad).
+    ...(color.dash ? { strokeDasharray: color.dash } : {}),
+  };
   const trazoPropio = estiloForma.stroke;
   // Con un tamaño elegido a mano el recorte por líneas estorba: el usuario sube
   // la letra justo para leer el nombre entero, y el `line-clamp` se lo comía
@@ -1282,7 +1320,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         onMouseMove={onHover}
         onMouseLeave={onHoverEnd}
         className={cn(
-          "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.08))]",
+          editorial ? "group" : "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.08))]",
           connecting ? "cursor-crosshair" : "cursor-move",
           // Marcado para eliminar: atenuado (la insignia roja da el motivo).
           isDeleted && "opacity-60"
@@ -1297,7 +1335,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           className={cn(
             "stroke-2 transition-all",
             meta?.transparent ? "fill-transparent" : color.bg,
-            trazoResalte ?? meta?.stroke ?? color.border
+            trazoResalte ?? strokeTipo ?? color.border
           )}
           strokeWidth={isSelected ? 3 : isRelated ? 2.5 : 2}
           // El marco de una línea de vida es ZONA DE SOLTAR, no una caja: se
@@ -1316,7 +1354,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           <>
             <path
               d={`M0,0 L86,0 L86,16 L74,28 L0,28 Z`}
-              className={cn("stroke-2", color.bg, meta?.stroke ?? color.border)}
+              className={cn("stroke-2", color.bg, strokeTipo ?? color.border)}
             />
             <text
               x={8}
@@ -1356,7 +1394,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                     y2={y}
                     strokeDasharray="6 6"
                     strokeWidth={1.5}
-                    className={cn(meta?.stroke ?? color.border)}
+                    className={cn(strokeTipo ?? color.border)}
                   />
                   <text
                     x={8}
@@ -1383,7 +1421,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               className={cn(
                 "stroke-2",
                 meta?.transparent ? "fill-canvas" : color.bg,
-                trazoResalte ?? meta?.stroke ?? color.border
+                trazoResalte ?? strokeTipo ?? color.border
               )}
               style={trazoPropio ? { stroke: trazoPropio } : undefined}
             />
@@ -1394,7 +1432,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               y2={height}
               strokeDasharray="6 6"
               strokeWidth={2}
-              className={cn(trazoResalte ?? meta?.stroke ?? color.border)}
+              className={cn(trazoResalte ?? strokeTipo ?? color.border)}
               style={trazoPropio ? { stroke: trazoPropio } : undefined}
             />
             <text
@@ -1421,7 +1459,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               y1={0}
               x2={BAND}
               y2={height}
-              className={cn(trazoResalte ?? meta?.stroke ?? color.border)}
+              className={cn(trazoResalte ?? strokeTipo ?? color.border)}
               strokeWidth={2}
               style={trazoPropio ? { stroke: trazoPropio } : undefined}
             />
@@ -1487,12 +1525,12 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           />
           <path
             d={`M${width - 10},${height} L${width},${height - 10}`}
-            className={cn(trazoResalte ?? meta?.stroke ?? "stroke-gray-400 dark:stroke-zinc-500")}
+            className={cn(trazoResalte ?? strokeTipo ?? (editorial ? color.border : "stroke-gray-400 dark:stroke-zinc-500"))}
             strokeWidth="2"
           />
           <path
             d={`M${width - 6},${height} L${width},${height - 6}`}
-            className={cn(trazoResalte ?? meta?.stroke ?? "stroke-gray-400 dark:stroke-zinc-500")}
+            className={cn(trazoResalte ?? strokeTipo ?? (editorial ? color.border : "stroke-gray-400 dark:stroke-zinc-500"))}
             strokeWidth="2"
           />
         </g>
@@ -1554,7 +1592,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   // columna a columna, y el HTML dentro del SVG las descuadra al hacer zoom.
   if (isTable) {
     const layout = tableBoxLayout(node.nombre, node.columnas ?? []);
-    const trazo = trazoResalte ?? meta?.stroke ?? color.border;
+    const trazo = trazoResalte ?? strokeTipo ?? color.border;
     return (
       <g
         transform={`translate(${node.x},${node.y})`}
@@ -1567,7 +1605,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         onMouseMove={onHover}
         onMouseLeave={onHoverEnd}
         className={cn(
-          "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
+          editorial ? "group" : "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
           connecting ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing",
           isDeleted && "opacity-60"
         )}
@@ -1658,7 +1696,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       onMouseMove={onHover}
       onMouseLeave={onHoverEnd}
       className={cn(
-        "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
+        editorial ? "group" : "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
         connecting ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing",
         // Marcado para eliminar: atenuado (la insignia roja da el motivo).
         isDeleted && "opacity-60"
@@ -1676,7 +1714,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           // Sólo los contenedores son transparentes; los símbolos llevan su tinte.
           meta?.transparent ? "fill-transparent" : color.bg,
           // El trazo: azul si está seleccionado; si no, el contorno propio del tipo.
-          trazoResalte ?? meta?.stroke ?? color.border,
+          trazoResalte ?? strokeTipo ?? color.border,
           // Resalte como destino al pasar por encima mientras se conecta.
           connecting && "group-hover:stroke-blue-500 group-hover:stroke-[3px]"
         )}
@@ -1960,6 +1998,17 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   onLineDoubleClick,
   onLabelMouseDown,
 }) => {
+  // Skin editorial (spec 022): atenuada, enlace si toca un externo, acento
+  // entre dos focos. En la canónica es `undefined` y manda el cromo del lienzo.
+  const skinCtx = React.useContext(SkinContext);
+  const trazoSkin = edgeTreatment(
+    skinCtx.skin,
+    notation,
+    [link.sourceId, link.targetId]
+      .map((id) => nodes.get(id))
+      .filter((n): n is DesignerNode => !!n)
+      .map((n) => ({ tipo: n.tipo_elemento, focal: skinCtx.focal.has(n.nombre) }))
+  );
   const geo = linkGeometry(link, nodes, notation);
   if (!geo) return null;
   const { path, labelX, labelY } = geo;
@@ -2024,7 +2073,7 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
               ? "stroke-amber-500"
               : link.color
                 ? ""
-                : `${CANVAS_CHROME.arista} opacity-80 dark:opacity-90`
+                : (trazoSkin ?? `${CANVAS_CHROME.arista} opacity-80 dark:opacity-90`)
         )}
         strokeWidth={isSelected ? 2.5 : isRelated ? 2 : 1.5}
         markerEnd={markerEnd}

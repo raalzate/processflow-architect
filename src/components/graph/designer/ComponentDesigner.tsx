@@ -53,7 +53,9 @@ import {
   AlignVerticalJustifyCenter,
   AlignVerticalJustifyEnd,
   Plug,
+  Newspaper,
 } from "lucide-react";
+import { SKIN_LIST, leerSkin, type SkinId } from "@/lib/skin";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { ColumnsField } from "./ColumnsField";
@@ -206,6 +208,7 @@ import { AiProvenanceBadge } from "@/components/ai-panel/AiProvenanceBadge";
 import type { GraphData, ReadModel } from "@/lib/types";
 import {
   Toolbox,
+  SkinContext,
   DesignerNodeComponent,
   DesignerLinkComponent,
   LinkEndpointHandles,
@@ -300,6 +303,8 @@ interface DesignerMeta {
   version: string;
   /** Enrutado con el que nacen las relaciones de esta vista (issue #128). */
   defaultRouting?: "straight" | "curved" | "orthogonal";
+  /** Skin con que se dibuja el proyecto (spec 022); viaja con el documento. */
+  skin: SkinId;
   fecha_analisis: string;
   bigPictureDescripcion: string;
   hotspots: string[];
@@ -314,6 +319,7 @@ function metaFromContent(content: GraphData): DesignerMeta {
     nombre_proyecto: content.nombre_proyecto || "Proyecto sin nombre",
     version: content.version || "1.0.0",
     defaultRouting: content.defaultRouting,
+    skin: leerSkin(content.skin),
     fecha_analisis: content.fecha_analisis || "",
     bigPictureDescripcion: content.big_picture?.descripcion || "",
     hotspots: content.big_picture?.hotspots || [],
@@ -335,6 +341,9 @@ function buildContent(
     nombre_proyecto: meta.nombre_proyecto,
     version: meta.version,
     defaultRouting: meta.defaultRouting,
+    // La canónica no se escribe: un documento sin `skin` sigue siendo canónico
+    // y así un archivo que nunca cambió de skin no cambia de bytes.
+    ...(meta.skin !== "canon" ? { skin: meta.skin } : {}),
     notation,
     fecha_analisis: meta.fecha_analisis,
     big_picture: {
@@ -3166,6 +3175,22 @@ export const ComponentDesigner: React.FC<{
     [toast]
   );
 
+  /** Skin del proyecto (spec 022): se alterna y se guarda con el documento. */
+  const setViewSkin = useCallback(
+    (skin: SkinId) => {
+      setMeta((m) => (m ? { ...m, skin } : m));
+      const s = SKIN_LIST.find((x) => x.id === skin);
+      toast({ title: `Skin ${s?.label.toLowerCase() ?? skin}`, description: s?.description });
+    },
+    [toast]
+  );
+  const skinActiva: SkinId = meta?.skin ?? "canon";
+  // Los focos de la skin editorial son los hotspots del proyecto, por nombre.
+  const skinCtx = useMemo(
+    () => ({ skin: skinActiva, focal: new Set(meta?.hotspots ?? []) as ReadonlySet<string> }),
+    [skinActiva, meta?.hotspots]
+  );
+
   const esLineaDeVidaRef = useRef((nodeId: string) => {
     const n = nodesRef.current.get(nodeId);
     return !!n && isLifelineContainer(n.tipo_elemento);
@@ -4804,6 +4829,19 @@ export const ComponentDesigner: React.FC<{
             onSuggestWithAi={suggestArrangementWithAi}
           />
 
+          {/* Skin del proyecto (spec 022): canónica para trabajar, editorial para
+              presentar. Es un conmutador y no un menú: hay dos. */}
+          <IconAction
+            variant={skinActiva === "editorial" ? "secondary" : "outline"}
+            onClick={() => setViewSkin(skinActiva === "editorial" ? "canon" : "editorial")}
+            label={
+              skinActiva === "editorial"
+                ? "Skin editorial activa: volver a la canónica (colores por tipo)"
+                : "Skin editorial: tinta sobre papel, acento sólo en los hotspots"
+            }
+            icon={<Newspaper className="h-4 w-4" />}
+          />
+
           <div className="w-px h-6 bg-border mx-1" />
 
           <IconAction
@@ -5056,6 +5094,7 @@ export const ComponentDesigner: React.FC<{
               </div>
             </div>
           )}
+          <SkinContext.Provider value={skinCtx}>
           <svg
             ref={svgRef}
             width={canvasPxW}
@@ -5064,7 +5103,10 @@ export const ComponentDesigner: React.FC<{
             // Un punto por debajo del fondo de la app: el lienzo es la superficie
             // de trabajo y se distingue del resto sin cambiar de familia de color.
             // Ya no necesita forzar `dark`: la app entera lo es (spec 003).
-            className="bg-canvas"
+            // `data-skin` deja que el CSS redefina tokens por skin (spec 022);
+            // en editorial el fondo es el papel de la skin.
+            data-skin={skinActiva}
+            className={skinActiva === "editorial" ? "bg-ed-paper" : "bg-canvas"}
           >
             <defs>
               {/* Cuadrícula estilo lienzo de diseño (Figma/Miro): puntos finos por
@@ -5317,6 +5359,7 @@ export const ComponentDesigner: React.FC<{
               />
             )}
           </svg>
+          </SkinContext.Provider>
           </div>
 
           {/* Ficha al pasar el ratón por un componente. position:fixed sobre las

@@ -3,7 +3,8 @@
 Issues: #537 · #538 · #539 · #540
 
 - **Fecha:** 2026-10-12
-- **Estado:** aceptado (Tier A en curso; Tier B y C son backlog declarado)
+- **Estado:** aceptado. Tier A entregado (#541–#544). Tier B en curso: B2 skin editorial =
+  feature 022 (#545). Tier C sigue descartado.
 - **Contexto previo:** [ADR 0002](0002-anidamiento-de-contenedores.md) ·
   [ADR 0003](0003-legibilidad-de-la-disposicion.md) · [arquitectura MCP](../architecture/mcp.md)
 
@@ -45,10 +46,11 @@ decidir qué ideas valen la pena traer.
 - **Export HTML autocontenido** con contrato SVG accesible (`role="img"`, `<title>` primer hijo,
   ids prefijados) y presets de tamaño que fijan viewBox **y** rampa tipográfica (`doc-inline`,
   `slide-16x9`, `social-og`, `print-a4`).
-- **Tokens por rol semántico** (`paper / ink / muted / soft / rule / accent / link`) sobre los HSL
-  de `globals.css`, y tratamientos de nodo por rol (`focal / store / external / input / optional /
-  security`) en vez de clases Tailwind sueltas en `notations.ts`. «Accent en ≤ 2 elementos» ya
-  tiene candidato: el hotspot (feature 007).
+- **Tokens por rol semántico y skin editorial** → **hecho como feature 022** (#545): tokens
+  `--ed-*` en `globals.css`, tratamientos por rol en `src/lib/skin.ts` (declarados o deducidos
+  del rol en el registro), skin por proyecto (`GraphData.skin`, canónica por defecto), acento
+  sólo en los hotspots (regla `ACENTO` cuando pasan de dos) y contraste verificado en el gate
+  (`skin-contrast.test.ts`). El color canónico de cada tipo se conserva: es notación.
 - **Perfiles de marca por organización** (feature 008) con onboarding desde URL como `AiTask`
   (`heavy`, `structured`); la petición HTTP sale del main (P4).
 

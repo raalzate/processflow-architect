@@ -121,6 +121,22 @@
     --canvas-grid: 213 27% 84%;
     --canvas-grid-major: 214 32% 91%;
 
+    /* Skin EDITORIAL del lienzo (spec 022, ADR 0006): tokens por ROL, no por
+       tipo. Papel y tinta son el fondo y el texto del diagrama presentado;
+       atenuado y suave, el segundo plano; el acento va en 1–2 elementos como
+       máximo (los hotspots) y el enlace en las relaciones externas. Los valores
+       son los de diagram-design, medidos a 4,5:1 como texto sobre papel
+       (`skin-contrast.test.ts`). El prefijo `ed-` evita chocar con `--muted` y
+       `--accent` de shadcn, que son superficies de la UI y no del diagrama. */
+    --ed-paper: 0 0% 96%;
+    --ed-paper-2: 0 0% 93%;
+    --ed-ink: 229 19% 22%;
+    --ed-muted: 218 19% 38%;
+    --ed-soft: 223 17% 43%;
+    --ed-rule-solid: 220 6% 55%;
+    --ed-accent: 14 71% 44%;
+    --ed-link: 218 57% 42%;
+
     --sidebar-background: 210 20% 96%;
     --sidebar-foreground: 220 15% 20%;
     --sidebar-primary: 218 35% 49%;
@@ -131,6 +147,13 @@
     --sidebar-ring: 218 35% 49%;
 
     --radius: 0.5rem;
+  }
+
+  /* En la skin editorial (spec 022) la arista por defecto y su punta de flecha
+     —que toman `--canvas-edge`— pasan al atenuado de la skin sin tocar el JSX:
+     el token se redefine en el root del lienzo y todo lo que lo use lo sigue. */
+  [data-skin="editorial"] {
+    --canvas-edge: var(--ed-muted);
   }
 
   .dark {
@@ -208,6 +231,17 @@
     --canvas-edge: 240 4% 46%;
     --canvas-grid: 215 25% 27%;
     --canvas-grid-major: 217 33% 17%;
+
+    /* Skin editorial en oscuro: el papel pasa a tinta y la tinta a papel; el
+       acento sube de luminosidad para leerse sobre papel oscuro (spec 022). */
+    --ed-paper: 229 19% 22%;
+    --ed-paper-2: 228 19% 27%;
+    --ed-ink: 0 0% 96%;
+    --ed-muted: 0 1% 75%;
+    --ed-soft: 220 16% 64%;
+    --ed-rule-solid: 224 8% 50%;
+    --ed-accent: 19 83% 65%;
+    --ed-link: 216 63% 66%;
 
     /* Barra lateral: `tailwind.config.ts` mapea estas variables desde siempre,
        pero nadie las definía y `bg-sidebar` resolvía a un hsl() inválido. */

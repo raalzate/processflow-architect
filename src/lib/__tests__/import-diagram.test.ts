@@ -44,6 +44,15 @@ describe("parseDiagramJson", () => {
   });
 });
 
+// Spec 022: la skin viaja con el documento; un archivo sin ella es canónico.
+describe("normalizeImportedGraphData · skin", () => {
+  it("conserva la skin editorial del archivo y no inventa una cuando falta", () => {
+    const base = { nombre_proyecto: "P", big_picture: { nodos: [], aristas: [] } };
+    expect(normalizeImportedGraphData({ ...base, skin: "editorial" } as any, "x").skin).toBe("editorial");
+    expect(normalizeImportedGraphData(base as any, "x").skin).toBeUndefined();
+  });
+});
+
 describe("normalizeImportedGraphData", () => {
   // Un GraphData completo, como el que produce «Descargar JSON»: incluye los
   // campos opcionales que el import no debe perder (issue #423).
