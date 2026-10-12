@@ -16,6 +16,7 @@ import {
   getNotation,
   isNotationContainer,
   type Notation,
+  type NotationBudget,
   type NotationId,
 } from "../notations";
 
@@ -38,6 +39,8 @@ export interface CatalogNotation {
   description: string;
   aiGuidance: string;
   elements: CatalogElement[];
+  /** Presupuesto de complejidad declarado por la notación (ver `Notation.budget`). */
+  budget?: NotationBudget;
 }
 
 /** Mapa tipo → sección de la paleta, para una notación dada. */
@@ -57,6 +60,7 @@ export function toCatalogNotation(n: Notation): CatalogNotation {
     label: n.label,
     description: n.description,
     aiGuidance: n.aiGuidance,
+    ...(n.budget ? { budget: n.budget } : {}),
     elements: n.elements.map((e) => ({
       type: e.type,
       container: Boolean(e.container),
