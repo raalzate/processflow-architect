@@ -257,6 +257,30 @@ export interface Notation {
    * semántica a la que se le olvidaron los roles es un error, ésta no.
    */
   freeform?: boolean;
+  /**
+   * Presupuesto de COMPLEJIDAD: cuánto aguanta un diagrama de esta notación
+   * antes de dejar de leerse de un vistazo. No es el tope duro del lienzo
+   * (`MAX_NODES` en `mcp/quality.ts`): es el punto a partir del cual el
+   * revisor pide dividir en una vista panorámica y vistas de detalle (ADR 0002,
+   * profundidad por vistas). Vive en el registro, y no en las reglas de calidad,
+   * porque el presupuesto ES notación: cinco líneas de vida son muchas en una
+   * secuencia y cinco agregados son pocos en un Event Storming (P6).
+   * Sin presupuesto (dibujo libre), la regla no tiene nada que decir.
+   * Adaptado del presupuesto por tipo de diagram-design (ADR 0006).
+   */
+  budget?: NotationBudget;
+}
+
+/** Ver `Notation.budget`. */
+export interface NotationBudget {
+  /** Nodos sueltos (sin contar contenedores). */
+  nodos: number;
+  /** Relaciones. */
+  relaciones: number;
+  /** Contenedores (carriles, líneas de vida, contextos, límites). */
+  contenedores?: number;
+  /** Nodos dentro de UN mismo contenedor. */
+  porContenedor?: number;
 }
 
 /**
@@ -294,6 +318,10 @@ export const INITIAL_NOTATION_ID: NotationId = "c4";
 const DDD: Notation = {
   id: "ddd",
   label: "DDD / Event Storming",
+  // Un Event Storming de referencia (actor → comando → evento → política, por
+  // agregado) ronda la docena de notas; pasado eso se parte por agregado o por
+  // contexto. Dentro de un agregado, nueve es lo que se lee de un vistazo.
+  budget: { nodos: 16, relaciones: 20, contenedores: 6, porContenedor: 9 },
   description:
     "Diseño estratégico y táctico de Domain-Driven Design con Event Storming.",
   paletteGroups: [
@@ -401,6 +429,9 @@ const DDD: Notation = {
 const BPMN: Notation = {
   id: "bpmn",
   label: "BPMN (Procesos)",
+  // Cinco carriles es el techo de una lámina de proceso; más participantes son
+  // un subproceso o una vista por participante. Por carril, nueve pasos.
+  budget: { nodos: 16, relaciones: 20, contenedores: 5, porContenedor: 9 },
   description: "Business Process Model and Notation: flujos de proceso de negocio.",
   paletteGroups: [
     {
@@ -472,6 +503,9 @@ const BPMN: Notation = {
 const C4: Notation = {
   id: "c4",
   label: "C4 (Arquitectura)",
+  // Un paisaje de sistemas con cada relación etiquetada (verbo + tecnología) se
+  // satura rápido: nueve cajas y doce flechas; el detalle baja un nivel C4.
+  budget: { nodos: 9, relaciones: 12, contenedores: 3 },
   description: "Modelo C4: Contexto, Contenedores, Componentes.",
   paletteGroups: [
     {
@@ -529,6 +563,9 @@ const C4: Notation = {
 const UML: Notation = {
   id: "uml",
   label: "UML",
+  // El contenedor que manda es la línea de vida: cinco participantes en una
+  // secuencia y ya no se sigue quién habla con quién.
+  budget: { nodos: 12, relaciones: 14, contenedores: 5, porContenedor: 7 },
   description: "Unified Modeling Language: clases, componentes y casos de uso.",
   paletteGroups: [
     {
@@ -672,6 +709,10 @@ const UML: Notation = {
 const MER: Notation = {
   id: "mer",
   label: "MER (Entidad-Relación)",
+  // Ocho entidades es el techo de un modelo de Chen legible; como cada una trae
+  // su rombo y sus atributos como nodos propios, el presupuesto de nodos los
+  // incluye (unas tres cajas por entidad).
+  budget: { nodos: 24, relaciones: 30, contenedores: 4 },
   description:
     "Modelo Entidad-Relación de Chen: entidades, relaciones con cardinalidad, atributos y su bajada a tablas.",
   paletteGroups: [

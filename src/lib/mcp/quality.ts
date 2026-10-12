@@ -15,7 +15,7 @@
  * como modelo; `aviso` = mejora recomendada.
  */
 
-import { hasRole, roleOfType, typesWithRole, type ElementRole } from "../notations";
+import { getNotation, hasRole, roleOfType, typesWithRole, type ElementRole } from "../notations";
 import { resolveCita } from "../source-docs";
 import { isContainerType } from "./catalog";
 import { hayProblemaDeLegibilidad } from "../layout/metrics";
@@ -302,6 +302,64 @@ function presentationFindings(model: DiagramModel): QualityFinding[] {
 }
 
 /**
+ * Presupuesto de COMPLEJIDAD de la notación (`Notation.budget`). `TAMANO` dice
+ * cuándo el lienzo deja de caber; esto dice cuándo el diagrama deja de leerse
+ * de un vistazo, que llega mucho antes: un paisaje C4 con 20 sistemas cabe en
+ * pantalla y no cuenta nada. La salida no es «quitá cosas» sino «partí en una
+ * vista panorámica y vistas de detalle» (ADR 0002): la profundidad en esta app
+ * se da por vistas, y `suggest_views` propone el corte. Una notación sin
+ * presupuesto (dibujo libre) no produce hallazgos. Adaptado de diagram-design
+ * (ADR 0006).
+ */
+function budgetFindings(model: DiagramModel): QualityFinding[] {
+  const budget = getNotation(model.meta.notation).budget;
+  if (!budget) return [];
+  const findings: QualityFinding[] = [];
+  const contenedores = model.nodes.filter(isContainer);
+  const nodes = model.nodes.filter((n) => !isContainer(n));
+  const partir =
+    "Partí el diagrama en una vista panorámica y vistas de detalle (suggest_views propone el corte) en vez de apretar más en una sola.";
+
+  if (nodes.length > budget.nodos) {
+    findings.push({
+      level: "aviso",
+      rule: "PRESUPUESTO",
+      message: `${nodes.length} elementos superan el presupuesto de ${budget.nodos} con que un diagrama de esta notación se lee de un vistazo. ${partir}`,
+    });
+  }
+  if (model.edges.length > budget.relaciones) {
+    findings.push({
+      level: "aviso",
+      rule: "PRESUPUESTO",
+      message: `${model.edges.length} relaciones superan el presupuesto de ${budget.relaciones}: con más de eso las líneas se cruzan y ninguna se sigue. ${partir}`,
+    });
+  }
+  if (budget.contenedores !== undefined && contenedores.length > budget.contenedores) {
+    findings.push({
+      level: "aviso",
+      rule: "PRESUPUESTO",
+      message: `${contenedores.length} contenedores superan el presupuesto de ${budget.contenedores} (${contenedores
+        .slice(0, 4)
+        .map((c) => `"${c.nombre}"`)
+        .join(", ")}${contenedores.length > 4 ? "…" : ""}). ${partir}`,
+    });
+  }
+  if (budget.porContenedor !== undefined) {
+    for (const c of contenedores) {
+      const dentro = nodes.filter((n) => n.container === c.nombre).length;
+      if (dentro <= budget.porContenedor) continue;
+      findings.push({
+        level: "aviso",
+        rule: "PRESUPUESTO",
+        message: `"${c.nombre}" tiene ${dentro} elementos; el presupuesto por contenedor es ${budget.porContenedor}. Lo que no entra suele ser otra fase o un subproceso: dale su propia vista.`,
+        nodeId: c.id,
+      });
+    }
+  }
+  return findings;
+}
+
+/**
  * Todos los hallazgos de calidad, en orden de lectura: flujo → dominio →
  * arquitectura → presentación, y dentro de cada bloque los `grave` primero.
  */
@@ -368,6 +426,7 @@ export function qualityFindings(model: DiagramModel): QualityFinding[] {
     ...domainFindings(model),
     ...architectureFindings(model),
     ...presentationFindings(model),
+    ...budgetFindings(model),
   ];
   return [...all.filter((f) => f.level === "grave"), ...all.filter((f) => f.level === "aviso")];
 }
