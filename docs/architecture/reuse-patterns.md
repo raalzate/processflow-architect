@@ -8,6 +8,7 @@ marcadas con 🔒; el resto es criterio.
 |---|---|---|
 | 🔒 Tipos de componente, iconos, formas, paletas, guía para la IA | `src/lib/notations.ts` (registro por notación DDD/BPMN/C4/UML) | declarar otra lista de tipos o cablear literales (regla NOTACION de `scripts/repo-lint.mjs`) |
 | Ayuda/semántica de cada tipo | `src/lib/notation-help.ts` | escribir textos de ayuda en el componente |
+| ¿Cuánto aguanta un diagrama antes de dejar de leerse? | `Notation.budget` en `src/lib/notations.ts` + regla `PRESUPUESTO` de `src/lib/mcp/quality.ts` (ADR 0006) | un tope de nodos inventado en el consumidor: el presupuesto es notación |
 | 🔒 Llamar al proceso main desde la UI | `hostBridge()` de `src/lib/host-bridge.ts` (hoy lo atiende `preload.ts`; en la edición web, un adaptador inyectado con `setHostBridge`) | `ipcRenderer` directo en `src/`, ni leer `window.electronAPI` fuera de ese módulo (regla PUENTE de `scripts/repo-lint.mjs`, ADR 0005) |
 | Mostrar u ocultar algo según lo que el host puede hacer | `capacidadesHost()` de `src/lib/host-bridge.ts` (`mcpServidor`, `chatCli`, `motorCli`, `modelosLocales`, `iaRemota`…; cada una exige todos los métodos que usa su pantalla) | preguntar «¿estoy en Electron?»: la edición web tiene unas capacidades y no otras |
 | 🔒 Generación con proveedor de nube | `main/services/ai-remote.ts` vía `fetch` | agregar un SDK de nube como dependencia |
