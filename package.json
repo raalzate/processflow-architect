@@ -33,6 +33,7 @@
     "sdd:status": "node scripts/sdd-github.mjs status",
     "screenshots": "tsx scripts/screenshots.ts",
     "skills:sync": "node scripts/sync-skills.mjs",
+    "icons:build": "tsx scripts/build-icon-catalog.ts",
     "skills:check": "node scripts/sync-skills.mjs --check",
     "gate": "node scripts/gate.mjs",
     "gate:fast": "node scripts/gate.mjs fast",

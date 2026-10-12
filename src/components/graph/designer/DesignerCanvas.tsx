@@ -102,7 +102,11 @@ import {
   Link,
   ShieldCheck,
   Hash,
+  // Genéricos del catálogo de iconos de tecnología (spec 025).
+  Globe, Lock, Monitor, Users, Bell, Code, BarChart3, Bot, CreditCard, ShoppingCart,
+  Map, Camera, Radio, Webhook, ListOrdered, BrainCircuit,
 } from "lucide-react";
+import { iconoDeCatalogo } from "@/lib/icons/catalog";
 import {
   Dialog,
   DialogContent,
@@ -230,10 +234,52 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Triangle, Combine, Link, ShieldCheck, Hash,
   // General: siluetas de dibujo libre (cuadrado, hexágono, nube, marco, lista…).
   Hexagon, Cloud, Shapes, ChevronRight, PanelTop, Heading, MessageCircle,
+  // Genéricos del catálogo de iconos de tecnología (spec 025).
+  Globe, Lock, Monitor, Users, Bell, Code, BarChart3, Bot, CreditCard, ShoppingCart,
+  Map, Camera, Radio, Webhook, ListOrdered, BrainCircuit,
 };
 
 export const iconForType = (type: string): React.ElementType =>
   ICON_MAP[ALL_ELEMENTS[type]?.icon ?? ""] || FilePlus;
+
+/**
+ * Icono de una caja (spec 025): el de TECNOLOGÍA que eligió el usuario si está
+ * en el catálogo, si no el del tipo. Un logo de marca (Simple Icons, Devicon)
+ * se incrusta como SVG saneado en tiempo de generación; su color de marca sólo
+ * se aplica en la skin canónica (en editorial, el CSS lo aplana a tinta). El
+ * genérico es un icono de lucide por nombre.
+ */
+export const IconoDeElemento: React.FC<{
+  icono?: string;
+  /** Icono del tipo, el de siempre: la caída cuando no hay logo. */
+  Fallback: React.ElementType;
+  className?: string;
+  /** Color de marca activado (skin canónica). */
+  conColor?: boolean;
+  title?: string;
+}> = ({ icono, Fallback, className, conColor = true, title }) => {
+  const entrada = iconoDeCatalogo(icono);
+  if (!entrada) return <Fallback className={className} />;
+  if (entrada.fuente === "lucide") {
+    const Generico = ICON_MAP[entrada.lucide ?? ""] ?? Fallback;
+    return <Generico className={className} />;
+  }
+  return (
+    <svg
+      viewBox={entrada.viewBox}
+      className={cn("icono-marca", className)}
+      style={conColor && entrada.color && entrada.fuente === "simple-icons" ? { color: `#${entrada.color}` } : undefined}
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+      // El marcado viene del catálogo generado y pasó por `sanearSvg`: sin
+      // scripts, eventos ni referencias externas (lo prueba el gate).
+      dangerouslySetInnerHTML={{ __html: entrada.svg ?? "" }}
+    >
+      {title ? undefined : undefined}
+    </svg>
+  );
+};
 
 /**
  * Color de caída para un tipo que no está en el registro. Sigue la misma regla
@@ -1498,10 +1544,19 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             {node.nombre}
           </text>
         ) : (
+          <>
+            {node.icono && (
+              /* Logo de tecnología del contenedor (spec 025), delante del nombre. */
+              <foreignObject x={12} y={10} width={20} height={20} className="pointer-events-none">
+                <div className={cn("flex h-5 w-5 items-center justify-center", color.text)}>
+                  <IconoDeElemento icono={node.icono} Fallback={Icon} conColor={!editorial} className="h-4 w-4" />
+                </div>
+              </foreignObject>
+            )}
           <text
             // Este nombre nace pegado a la izquierda (no lleva `textAnchor`), así
             // que sólo se recoloca si el usuario eligió una alineación.
-            x={node.estilo?.alineacion ? xSegunAlineacion(node.estilo, width) : 12}
+            x={node.estilo?.alineacion ? xSegunAlineacion(node.estilo, width) : node.icono ? 36 : 12}
             y="24"
             fill="currentColor"
             className={cn(
@@ -1513,6 +1568,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           >
             {node.nombre}
           </text>
+          </>
         )}
         <ChangeStateBadge estado={node.estado_comparativo} x={width - 2} />
         <g onMouseDown={onResizeMouseDown} className="cursor-nwse-resize">
@@ -1817,7 +1873,10 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           >
             {/* En el óvalo el icono se mete hacia adentro para no caer fuera de la curva. */}
             {!meta?.hideIcon && (
-              <Icon
+              <IconoDeElemento
+                icono={node.icono}
+                Fallback={Icon}
+                conColor={!editorial}
                 className={cn(
                   "w-4 h-4 absolute top-2 opacity-90",
                   shape === "ellipse" ? "left-8" : "left-2",
@@ -1866,7 +1925,12 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 icono. Una forma LIBRE tampoco lo lleva: la silueta ya dice lo
                 que es y el icono dentro del rombo sólo compite con el nombre. */}
             {!meta?.hideIcon && !libre && (
-              <Icon className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")} />
+              <IconoDeElemento
+                icono={node.icono}
+                Fallback={Icon}
+                conColor={!editorial}
+                className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")}
+              />
             )}
             {!labelOutside && (
               <p

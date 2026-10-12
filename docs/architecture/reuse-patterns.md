@@ -8,6 +8,7 @@ marcadas con 🔒; el resto es criterio.
 |---|---|---|
 | 🔒 Tipos de componente, iconos, formas, paletas, guía para la IA | `src/lib/notations.ts` (registro por notación DDD/BPMN/C4/UML) | declarar otra lista de tipos o cablear literales (regla NOTACION de `scripts/repo-lint.mjs`) |
 | Ayuda/semántica de cada tipo | `src/lib/notation-help.ts` | escribir textos de ayuda en el componente |
+| Logo de una tecnología en una caja (nube, base, lenguaje, SaaS…) | `src/lib/icons/catalog.ts` (`buscarIconos`, `iconoDeCatalogo`) sobre el catálogo generado por `npm run icons:build` desde `scripts/icon-catalog.manifest.json`; `IconoDeElemento` en el lienzo (spec 025) | pegar un SVG a mano en un componente, importar `simple-icons` entero o un icono sin licencia declarada |
 | Medir y ajustar un color al contraste exigido | `validarPerfil` / `ajustarAlUmbral` en `src/lib/brand/profile.ts` sobre `a11y/contrast.ts` (spec 023) | un umbral a ojo o un `if (color === …)` |
 | Leer un sitio ajeno desde la app | `brandFetchSite` → `main/services/brand-site.ts` (https, 1 redirección, 1 MB, 10 s) y la capacidad `marcaDesdeSitio` | `fetch` desde el renderer (CSP) o un IPC nuevo sin topes |
 | Entregar el lienzo como archivo (SVG, PNG, página HTML) | `serializarLienzo` en `src/components/graph/designer/export-canvas.ts` (única serialización) + `paginaHtml`/`verificarPagina` en `src/lib/export/html-page.ts` (spec 024) | una segunda forma de clonar el `<svg>` o un HTML armado a mano en un componente |

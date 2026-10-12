@@ -754,6 +754,9 @@ pedido ya fija notación, vista y contenido con exactitud.
    elementos ahí; un contenedor sin hijos se dibuja como banda vacía y
    \`validate_diagram\` lo reporta (\`CONTENEDOR-VACIO\`).
 3. \`add_node\` con \`container\` y \`source\`; sin \`container\` va al Big Picture.
+   Si la caja ES una tecnología reconocible (PostgreSQL, Kafka, Slack, GCP…),
+   ponele su logo con \`icon\` (el id sale de \`list_icons\`, p. ej. \`si-postgresql\`);
+   un sistema propio sin marca no lo necesita.
 4. \`add_edge\` para TODAS las relaciones — regla dura: **ningún nodo sin aristas**
    (el lienzo descarta los aislados). Etiqueta las aristas: condición de la rama
    en BPMN, verbo + tecnología en C4, «dispara»/«consulta» en DDD.

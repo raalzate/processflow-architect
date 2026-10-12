@@ -182,6 +182,8 @@ export interface BuilderNode {
   tags_tecnologia?: string[] | null;
   color?: string;
   borderColor?: string;
+  /** Icono de tecnología del catálogo (spec 025): `si-postgresql`, `dv-slack`, `lu-Cloud`… */
+  icono?: string;
   /** Operador de un fragmento combinado (secuencia UML). */
   fragmentOp?: FragmentOp;
   /** Operandos del fragmento: guarda y tramo de orden que abarca. */
@@ -519,7 +521,7 @@ export function reorderMessage(
 export function updateNode(
   model: DiagramModel,
   id: string,
-  patch: Partial<Pick<BuilderNode, "nombre" | "descripcion" | "source" | "tags_tecnologia" | "tipo_elemento" | "estado_comparativo" | "columnas">> & {
+  patch: Partial<Pick<BuilderNode, "nombre" | "descripcion" | "source" | "tags_tecnologia" | "tipo_elemento" | "estado_comparativo" | "columnas" | "icono">> & {
     /** Metadatos a agregar o reemplazar POR CLAVE (no reemplaza la lista entera). */
     metadata?: ElementMetadata[];
     /** Claves de metadatos a borrar. */
@@ -1570,6 +1572,7 @@ function toDomainNode(n: BuilderNode): Omit<GraphNode, "agregado"> {
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
     borderColor: n.borderColor,
+    icono: n.icono,
     x: n.x,
     y: n.y,
     width: n.width,
@@ -1604,6 +1607,7 @@ export function toGraphData(input: DiagramModel): GraphData {
     metadata: c.metadata,
     spec: sanitizeSpec(c.spec),
     adjuntos: docsParaGuardar(c.adjuntos),
+    icono: c.icono,
     // Un contenedor también documenta lo que YA existe: sin esto el estado que
     // declara el agente moría en la serialización (sólo lo llevaban los nodos).
     estado_comparativo: c.estado_comparativo,
@@ -1707,6 +1711,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       metadata: normalizarLista(agg.metadata),
       spec: sanitizeSpec((agg as any).spec),
       adjuntos: docsParaGuardar((agg as any).adjuntos),
+      icono: (agg as any).icono,
       x: agg.x,
       y: agg.y,
       width: agg.width,
@@ -1720,6 +1725,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
         spec: sanitizeSpec((n as any).spec),
         adjuntos: docsParaGuardar((n as any).adjuntos),
         columnas: normalizarColumnas((n as any).columnas),
+        icono: (n as any).icono,
       });
     }
     for (const a of agg.aristas || []) {
@@ -1746,6 +1752,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       spec: sanitizeSpec((n as any).spec),
       adjuntos: docsParaGuardar((n as any).adjuntos),
       columnas: normalizarColumnas((n as any).columnas),
+      icono: (n as any).icono,
     });
   }
   const pushEdge = (a: any) =>

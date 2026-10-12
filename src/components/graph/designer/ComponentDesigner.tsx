@@ -58,6 +58,7 @@ import {
 import { SKIN_LIST, leerSkin, type SkinId } from "@/lib/skin";
 import { AVISO_TAMANO_BYTES, PRESETS, PRESET_LIST, slugDeProyecto, type PresetId } from "@/lib/export/html-page";
 import { cssVarsDePerfil, perfilVigente } from "@/lib/brand/profile";
+import { CATEGORIAS, buscarIconos, iconoDeCatalogo } from "@/lib/icons/catalog";
 import { useBrandProfiles } from "@/hooks/use-brand-profiles";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -212,6 +213,8 @@ import type { GraphData, ReadModel } from "@/lib/types";
 import {
   Toolbox,
   SkinContext,
+  IconoDeElemento,
+  iconForType,
   DesignerNodeComponent,
   DesignerLinkComponent,
   LinkEndpointHandles,
@@ -831,6 +834,102 @@ const TamanoInput: React.FC<{
         }}
       />
       <span className="text-xs text-muted-foreground">px</span>
+    </div>
+  );
+};
+
+/**
+ * Icono de TECNOLOGÍA de la caja (spec 025): buscador sobre el catálogo,
+ * categorías, cuadrícula con vista previa y «Quitar». Escribe `draft.icono`;
+ * sin icono la caja dibuja el de su tipo.
+ */
+const IconoField: React.FC<{
+  value?: string;
+  tipo: string;
+  onChange: (icono: string | undefined) => void;
+}> = ({ value, tipo, onChange }) => {
+  const [consulta, setConsulta] = useState("");
+  const [categoria, setCategoria] = useState<string | undefined>(undefined);
+  const [abierto, setAbierto] = useState(false);
+  const actual = iconoDeCatalogo(value);
+  const resultados = useMemo(() => buscarIconos(consulta, categoria).slice(0, 48), [consulta, categoria]);
+  const Fallback = iconForType(tipo);
+  return (
+    <div className="rounded-md border p-3">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm font-semibold">Icono</Label>
+        <div className="flex items-center gap-1">
+          {value && (
+            <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onChange(undefined)}>
+              Quitar
+            </Button>
+          )}
+          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => setAbierto((a) => !a)}>
+            {abierto ? "Cerrar" : "Elegir…"}
+          </Button>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-2 text-sm">
+        <span className="flex h-7 w-7 items-center justify-center rounded border">
+          <IconoDeElemento icono={value} Fallback={Fallback} className="h-5 w-5" />
+        </span>
+        <span className="text-muted-foreground">
+          {actual ? `${actual.nombre} · ${actual.categoria}` : value ? `«${value}» no está en el catálogo: se dibuja el icono del tipo` : "El icono del tipo. Elegí el logo de la tecnología si la caja es una."}
+        </span>
+      </div>
+      {abierto && (
+        <div className="mt-3 space-y-2">
+          <Input
+            placeholder="Buscar: postgres, kafka, nube, slack…"
+            value={consulta}
+            onChange={(e) => setConsulta(e.target.value)}
+            autoFocus
+          />
+          <div className="flex flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={() => setCategoria(undefined)}
+              className={cn("rounded-full border px-2 py-0.5 text-2xs", !categoria && "border-primary bg-primary/10")}
+            >
+              Todas
+            </button>
+            {CATEGORIAS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCategoria(categoria === c.id ? undefined : c.id)}
+                className={cn("rounded-full border px-2 py-0.5 text-2xs", categoria === c.id && "border-primary bg-primary/10")}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          {resultados.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nada coincide. Probá otro nombre o un genérico (nube, servidor, base de datos).</p>
+          ) : (
+            <div className="grid max-h-56 grid-cols-6 gap-1 overflow-y-auto">
+              {resultados.map((i) => (
+                <button
+                  key={i.id}
+                  type="button"
+                  title={`${i.nombre} · ${i.categoria} · ${i.licencia}`}
+                  onClick={() => {
+                    onChange(i.id);
+                    setAbierto(false);
+                  }}
+                  className={cn(
+                    "flex flex-col items-center gap-1 rounded border p-1.5 hover:bg-accent/20",
+                    value === i.id && "border-primary bg-primary/10"
+                  )}
+                >
+                  <IconoDeElemento icono={i.id} Fallback={Fallback} className="h-6 w-6" />
+                  <span className="w-full truncate text-center text-2xs">{i.nombre}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -1884,6 +1983,14 @@ const EditNodeDialog: React.FC<{
             />
             <SugBtn field="tags" onClick={suggestTags} disabled={!draft.nombre.trim()} />
           </TagsField>
+          <IconoField
+            value={draft.icono}
+            tipo={draft.tipo_elemento}
+            onChange={(icono) => {
+              tocado("icono");
+              setDraft((d) => (d ? { ...d, icono } : d));
+            }}
+          />
           <EstiloField
             value={draft.estilo}
             legado={{ color: draft.color, borderColor: draft.borderColor }}

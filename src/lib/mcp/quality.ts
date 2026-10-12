@@ -17,6 +17,7 @@
 
 import { getNotation, hasRole, roleOfType, typesWithRole, type ElementRole } from "../notations";
 import { MAX_FOCAL } from "../skin";
+import { esIconoValido } from "../icons/catalog";
 import { resolveCita } from "../source-docs";
 import { isContainerType } from "./catalog";
 import { hayProblemaDeLegibilidad } from "../layout/metrics";
@@ -289,6 +290,19 @@ function presentationFindings(model: DiagramModel): QualityFinding[] {
       rule: "ETIQUETA-LARGA",
       message: `La relación "${nombre.get(e.fuente) ?? e.fuente}" → "${nombre.get(e.destino) ?? e.destino}" tiene una etiqueta de ${label.length} caracteres ("${label}"): déjala en ~${MAX_EDGE_LABEL_CHARS} (verbo + [tecnología]) y mueve el detalle a la descripción; sobre la línea no hay caja que la acote y tapa los nodos vecinos.`,
     });
+  }
+
+  // Icono de tecnología (spec 025): un id que no está en el catálogo se
+  // dibuja con el icono del tipo y nadie se entera, salvo por acá.
+  for (const n of model.nodes) {
+    if (n.icono && !esIconoValido(n.icono)) {
+      findings.push({
+        level: "aviso",
+        rule: "ICONO",
+        message: `"${n.nombre}" pide el icono "${n.icono}", que no está en el catálogo: se dibuja con el icono de su tipo. Buscá uno válido con list_icons.`,
+        nodeId: n.id,
+      });
+    }
   }
 
   if (nodes.length > MAX_NODES) {

@@ -283,6 +283,21 @@ describe("fromGraphData (round-trip)", () => {
     expect((enLienzo as any).adjuntos?.[0].texto).toContain("openapi: 3.0.0");
   });
 
+  it("el icono de tecnología (spec 025) sobrevive el ciclo en nodos y contenedores", () => {
+    let m = emptyDiagram(base);
+    m = addContainer(m, { id: "P", nombre: "Pedidos", tipo_elemento: "Agregado", icono: "si-googlecloud" }).model;
+    m = addNode(m, { id: "cmd", nombre: "Crear", tipo_elemento: "Comando", container: "Pedidos", icono: "si-stripe" }).model;
+    m = addNode(m, { id: "sin", nombre: "Sin", tipo_elemento: "Comando" }).model;
+    const g = toGraphData(m);
+    expect(g.agregados[0].icono).toBe("si-googlecloud");
+    expect(g.agregados[0].nodos[0].icono).toBe("si-stripe");
+    expect(g.big_picture.nodos[0].icono).toBeUndefined();
+    const back = fromGraphData(g, "ddd");
+    expect(back.nodes.find((n) => n.id === "cmd")!.icono).toBe("si-stripe");
+    expect(back.nodes.find((n) => n.nombre === "Pedidos")!.icono).toBe("si-googlecloud");
+    expect(updateNode(back, "cmd", { icono: undefined }).nodes.find((n) => n.id === "cmd")!.icono).toBeUndefined();
+  });
+
   it("una caja SIN adjuntos no gana el campo al pasar por el ciclo (#362)", () => {
     let m = emptyDiagram(base);
     m = addContainer(m, { id: "P", nombre: "Pedidos", tipo_elemento: "Agregado" }).model;

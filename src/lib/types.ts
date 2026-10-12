@@ -75,6 +75,13 @@ export interface GraphNode extends SimulationNodeDatum {
   /** Color de borde/contorno personalizado (hex). Si falta, usa el de la notación. */
   borderColor?: string;
   /**
+   * Icono de TECNOLOGÍA (spec 025): id del catálogo (`src/lib/icons/catalog.ts`),
+   * p. ej. `si-postgresql`, `dv-slack`, `lu-Cloud`. Ausente, la caja dibuja el
+   * icono de su tipo. Un id que ya no esté en el catálogo cae al del tipo y la
+   * revisión lo avisa.
+   */
+  icono?: string;
+  /**
    * Cómo se DIBUJA la caja cuando el usuario no quiere lo que decidió la
    * notación: tipografía, tamaño, alineación y colores. Ausente mientras nadie
    * toque nada —y entonces manda la notación, como siempre—. `color` y
@@ -214,6 +221,8 @@ export interface Agregado {
   borderColor?: string;
   /** Estilo visual del contenedor (ver `GraphNode.estilo`). */
   estilo?: ElementStyle;
+  /** Icono de tecnología del contenedor (ver `GraphNode.icono`). */
+  icono?: string;
   /** Referencias y datos externos del contenedor (ver `GraphNode.metadata`). */
   metadata?: ElementMetadata[];
   /** Especificación del contenedor (ver `GraphNode.spec`). */
