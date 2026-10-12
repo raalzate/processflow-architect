@@ -687,6 +687,66 @@ describe("registerProcessflowTools · metadatos del proyecto", () => {
 });
 
 // -----------------------------------------------------------------------------
+// Issue #540 — import_mermaid: redibujar, no convertir, con ledger de fidelidad.
+// -----------------------------------------------------------------------------
+
+describe("import_mermaid", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-mmd-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  it("importa una secuencia de un .mmd, la deja fijada y responde con el ledger", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    await fs.writeFile(
+      path.join(ws, "oauth.mmd"),
+      ["sequenceDiagram", "  participant C as Cliente", "  C->>A: pedir token", "  Note over C: nota", "  A-->>C: token"].join("\n")
+    );
+    const res = await tools.get("import_mermaid")!.handler({ path: "oauth.mmd" });
+    expect(res.isError).toBeUndefined();
+    const txt = res.content[0].text as string;
+    expect(txt).toContain('diagramId="oauth"');
+    expect(txt).toContain("notación uml");
+    expect(txt).toContain("2 relación(es) → 2 dibujada(s)");
+    expect(txt).toMatch(/nota/);
+    // Quedó fijado: get_diagram sin id lo encuentra.
+    const g = await tools.get("get_diagram")!.handler({});
+    expect(g.content[0].text).toContain("Cliente");
+  });
+
+  it("de un Markdown elige el bloque pedido y rechaza las gramáticas que no soporta", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    await fs.writeFile(
+      path.join(ws, "README.md"),
+      ["# Doc", "```mermaid", "pie", '  "a": 1', "```", "```mermaid", "flowchart LR", '  a["Web<br><i>Contenedor</i>"] --> b["API<br><i>Componente</i>"]', "```"].join("\n")
+    );
+    const malo = await tools.get("import_mermaid")!.handler({ path: "README.md" });
+    expect(malo.isError).toBe(true);
+    expect(malo.content[0].text).toMatch(/pie/);
+    expect(malo.content[0].text).toContain("[1] flowchart");
+    const bueno = await tools.get("import_mermaid")!.handler({ path: "README.md", block: 1, notation: "c4" });
+    expect(bueno.isError).toBeUndefined();
+    expect(bueno.content[0].text).toContain("bloque 1 de 2");
+    expect(bueno.content[0].text).toContain("notación c4");
+  });
+
+  it("un archivo que no existe o sin Mermaid es un error, nunca un import vacío", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    expect((await tools.get("import_mermaid")!.handler({ path: "no.mmd" })).isError).toBe(true);
+    await fs.writeFile(path.join(ws, "texto.md"), "# sin diagramas");
+    const r = await tools.get("import_mermaid")!.handler({ path: "texto.md" });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/ningún bloque/);
+  });
+});
+
+// -----------------------------------------------------------------------------
 // Issue #144 — la puerta del estado comparativo, el vocabulario del workspace,
 // el nombre del proyecto al exportar y la higiene de la instalación del skill.
 // -----------------------------------------------------------------------------

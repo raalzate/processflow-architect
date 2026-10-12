@@ -63,8 +63,12 @@ describe("disponerLegible", () => {
   });
 
   it("TS-008 · es determinista: dos disposiciones del mismo modelo coinciden", () => {
-    const a = relayout(fixture("cobranza-y-aplicacion-de-pagos"));
-    const b = relayout(fixture("cobranza-y-aplicacion-de-pagos"));
+    // Reloj CONGELADO, como en linea-base (#419): con el reloj de pared la
+    // primera corrida (fría, bajo la suite entera con cobertura) agotaba el
+    // presupuesto antes de rutear una relación y la segunda (caliente) no, y
+    // el «determinismo» dependía de la carga de la máquina.
+    const a = relayout(fixture("cobranza-y-aplicacion-de-pagos"), { ahora: () => 0 });
+    const b = relayout(fixture("cobranza-y-aplicacion-de-pagos"), { ahora: () => 0 });
     expect(a.nodes).toEqual(b.nodes);
     expect(a.edges).toEqual(b.edges);
   });
