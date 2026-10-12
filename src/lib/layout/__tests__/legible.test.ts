@@ -144,8 +144,8 @@ describe("disponerLegible", () => {
 
 describe("resumenDeLegibilidad", () => {
   const medida = {
-    antes: { cruces: 9, solape: 8, sobreCaja: 17, sinRuta: 0, relaciones: 108 },
-    despues: { cruces: 3, solape: 0, sobreCaja: 0, sinRuta: 0, relaciones: 108 },
+    antes: { cruces: 9, solape: 8, sobreCaja: 17, sinRuta: 0, anclajesCompartidos: 0, etiquetasTapadas: 0, relaciones: 108 },
+    despues: { cruces: 3, solape: 0, sobreCaja: 0, sinRuta: 0, anclajesCompartidos: 0, etiquetasTapadas: 0, relaciones: 108 },
     conRecorridosManuales: false,
   };
 
@@ -154,6 +154,17 @@ describe("resumenDeLegibilidad", () => {
     expect(texto).toContain("cruces 9 → 3");
     expect(texto).toContain("relaciones sobre caja ajena 17 → 0");
     expect(texto).toContain("encimadas 8 → 0");
+    // Las reglas de conector en cero no se nombran: serían ruido (#538).
+    expect(texto).not.toContain("Conectores");
+  });
+
+  it("#538 · nombra las reglas de conector sólo cuando alguna dice algo", () => {
+    const texto = resumenDeLegibilidad({
+      ...medida,
+      antes: { ...medida.antes, anclajesCompartidos: 2, etiquetasTapadas: 1 },
+    });
+    expect(texto).toContain("puntas compartidas 2 → 0");
+    expect(texto).toContain("etiquetas tapadas 1 → 0");
   });
 
   it("C5 · declara si la medida incluye recorridos hechos a mano", () => {

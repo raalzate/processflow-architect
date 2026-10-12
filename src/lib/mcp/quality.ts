@@ -402,11 +402,18 @@ function legibilidadFindings(model: DiagramModel): QualityFinding[] {
     partes.push(`${medida.sobreCaja} relación(es) atraviesan una caja que no es su extremo`);
   if (medida.relaciones > 0 && medida.cruces > medida.relaciones * 0.1)
     partes.push(`${medida.cruces} cruces sobre ${medida.relaciones} relaciones (más del 10%)`);
+  if (medida.solape > 0) partes.push(`${medida.solape} par(es) de relaciones van encimadas por el mismo corredor`);
+  // Las dos reglas de conector de diagram-design (ADR 0006 · #538): cada punta
+  // con su propio anclaje, y ninguna etiqueta debajo de una caja ajena.
+  if (medida.etiquetasTapadas > 0)
+    partes.push(`${medida.etiquetasTapadas} etiqueta(s) de relación quedan tapadas por una caja ajena`);
+  if (medida.anclajesCompartidos > 0)
+    partes.push(`${medida.anclajesCompartidos} par(es) de relaciones nacen o mueren en el mismo punto de una caja`);
   return [
     {
       level: "aviso",
       rule: "LEGIBILIDAD",
-      message: `${partes.join(" y ")}. Probá relayout_diagram con otra estrategia; si persiste, suele sobrar una relación o faltar una banda.`,
+      message: `${partes.join(", ")}. Probá relayout_diagram con otra estrategia; si persiste, suele sobrar una relación o faltar una banda.`,
     },
   ];
 }

@@ -17,6 +17,7 @@
 
 import {
   costeDeDisposicion,
+  DISTANCIA_ANCLAJE,
   largoEncimado,
   medirLegibilidad,
   recortarABorde,
@@ -315,5 +316,130 @@ export function rutarRelaciones(
     if (puntaje(sin) <= puntaje(rutas)) rutas = sin;
   }
 
+  // Reparto de puntas (#538): dos relaciones ruteadas que salen por el mismo
+  // punto de un borde se separan a lo largo de ese borde. Sólo las ruteadas: a
+  // una recta no se le puede mover la punta sin volverla escalonada (D2).
+  const repartidas = repartirAnclajes(cajas, pendientes.map((p) => p.rel), rutas, margen);
+  if (puntaje(repartidas) <= puntaje(rutas)) rutas = repartidas;
+
   return rutas;
+}
+
+/** En qué borde de la caja cae una punta. */
+function ladoDe(caja: Caja, p: Punto): "izq" | "der" | "arriba" | "abajo" {
+  const dIzq = Math.abs(p.x - caja.x);
+  const dDer = Math.abs(p.x - (caja.x + caja.width));
+  const dArr = Math.abs(p.y - caja.y);
+  const dAba = Math.abs(p.y - (caja.y + caja.height));
+  const min = Math.min(dIzq, dDer, dArr, dAba);
+  if (min === dIzq) return "izq";
+  if (min === dDer) return "der";
+  if (min === dArr) return "arriba";
+  return "abajo";
+}
+
+/**
+ * Reparte los anclajes de un mismo borde: cada punta en `L·k/(N+1)` (regla de
+ * conector de diagram-design, ADR 0006). Las puntas de relaciones en RECTA
+ * (sin quiebres) no se mueven, pero ocupan su hueco; las ruteadas se corren al
+ * hueco libre más cercano. Mover una punta es mover el primer (o último)
+ * quiebre a la altura del hueco, pegado al borde, para que el tramo salga
+ * axial desde ahí: el lienzo apunta cada extremo a su quiebre vecino.
+ */
+export function repartirAnclajes(
+  cajas: Caja[],
+  relaciones: Relacion[],
+  rutas: Map<string, Punto[]>,
+  margen = MARGEN_POR_DEFECTO
+): Map<string, Punto[]> {
+  const porId = new Map(cajas.map((c) => [c.id, c]));
+  interface Punta {
+    rel: Relacion;
+    extremo: "fuente" | "destino";
+    caja: Caja;
+    punto: Punto;
+    movible: boolean;
+  }
+  const puntas: Punta[] = [];
+  for (const rel of relaciones) {
+    if (rel.fuente === rel.destino) continue;
+    const f = porId.get(rel.fuente);
+    const d = porId.get(rel.destino);
+    if (!f || !d) continue;
+    const q = rutas.get(rel.id);
+    const movible = Boolean(q?.length);
+    const haciaF = q?.length ? q[0] : centro(d);
+    const haciaD = q?.length ? q[q.length - 1] : centro(f);
+    puntas.push({ rel, extremo: "fuente", caja: f, punto: recortarABorde(f, haciaF), movible });
+    puntas.push({ rel, extremo: "destino", caja: d, punto: recortarABorde(d, haciaD), movible });
+  }
+
+  const salida = new Map(rutas);
+  const grupos = new Map<string, Punta[]>();
+  for (const p of puntas) {
+    const k = `${p.caja.id}|${ladoDe(p.caja, p.punto)}`;
+    (grupos.get(k) ?? grupos.set(k, []).get(k)!).push(p);
+  }
+
+  for (const [clave, grupo] of grupos) {
+    if (grupo.length < 2) continue;
+    const lado = clave.split("|")[1] as ReturnType<typeof ladoDe>;
+    const vertical = lado === "izq" || lado === "der";
+    const coord = (p: Punto) => (vertical ? p.y : p.x);
+    // ¿Hay alguna pareja pegada? Si no, el borde ya está bien repartido.
+    const ordenadas = [...grupo].sort((a, b) => coord(a.punto) - coord(b.punto));
+    let pegadas = false;
+    for (let i = 1; i < ordenadas.length; i++)
+      if (coord(ordenadas[i].punto) - coord(ordenadas[i - 1].punto) < DISTANCIA_ANCLAJE) pegadas = true;
+    if (!pegadas || !grupo.some((p) => p.movible)) continue;
+
+    const { caja } = grupo[0];
+    const inicio = vertical ? caja.y : caja.x;
+    const largo = vertical ? caja.height : caja.width;
+    const n = grupo.length;
+    // Hueco ideal de cada punta: `L·k/(N+1)`. Las fijas no se mueven, así que
+    // ocupan su sitio real; cada movible busca, en una rejilla de
+    // DISTANCIA_ANCLAJE a lo largo del borde, la posición más cercana a su
+    // hueco ideal que quede a DISTANCIA_ANCLAJE o más de todo lo ya ocupado.
+    const ideales = Array.from({ length: n }, (_, k) => inicio + (largo * (k + 1)) / (n + 1));
+    const ocupados = ordenadas.filter((x) => !x.movible).map((x) => coord(x.punto));
+    const rejilla: number[] = [];
+    for (let v = inicio + DISTANCIA_ANCLAJE; v <= inicio + largo - DISTANCIA_ANCLAJE; v += DISTANCIA_ANCLAJE) rejilla.push(v);
+    const lejosDeTodo = (v: number) => ocupados.every((o) => Math.abs(o - v) >= DISTANCIA_ANCLAJE);
+
+    const fuera =
+      lado === "izq" ? caja.x - margen : lado === "der" ? caja.x + caja.width + margen : lado === "arriba" ? caja.y - margen : caja.y + caja.height + margen;
+    // El lienzo recorta la punta hacia su quiebre vecino, y ese recorte acerca
+    // la punta al centro en la proporción `mitad / (mitad + margen)`. El
+    // quiebre se coloca compensando eso, para que la PUNTA caiga en el hueco.
+    const mitad = (vertical ? caja.height : caja.width) / 2;
+    const mitadOtra = (vertical ? caja.width : caja.height) / 2;
+    const centroEje = inicio + mitad;
+    const compensar = (hueco: number) => centroEje + ((hueco - centroEje) * (mitadOtra + margen)) / mitadOtra;
+
+    ordenadas.forEach((p, i) => {
+      if (!p.movible) return;
+      const ideal = ideales[i];
+      const candidatas = rejilla.filter(lejosDeTodo).sort((u, v) => Math.abs(u - ideal) - Math.abs(v - ideal));
+      const hueco = candidatas[0];
+      // Sin hueco libre (borde corto y lleno) la punta se queda donde está.
+      if (hueco === undefined) return;
+      const q = [...(salida.get(p.rel.id) ?? [])];
+      if (!q.length) return;
+      ocupados.push(hueco);
+      const enQuiebre = compensar(hueco);
+      const punta: Punto = vertical ? { x: fuera, y: enQuiebre } : { x: enQuiebre, y: fuera };
+      // El quiebre vecino se alinea con la punta para que el tramo siga axial.
+      if (p.extremo === "fuente") {
+        q[0] = vertical ? { x: q[0].x, y: enQuiebre } : { x: enQuiebre, y: q[0].y };
+        q.unshift(punta);
+      } else {
+        const u = q.length - 1;
+        q[u] = vertical ? { x: q[u].x, y: enQuiebre } : { x: enQuiebre, y: q[u].y };
+        q.push(punta);
+      }
+      salida.set(p.rel.id, q);
+    });
+  }
+  return salida;
 }

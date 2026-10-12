@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { medirLegibilidad, recortarABorde, type Caja, type Punto, type Relacion } from "../metrics";
-import { rutarRelaciones } from "../routing";
+import { repartirAnclajes, rutarRelaciones } from "../routing";
 
 const caja = (id: string, x: number, y: number, extra: Partial<Caja> = {}): Caja => ({
   id,
@@ -126,5 +126,69 @@ describe("rutarRelaciones", () => {
     let t = 0;
     const rutas = rutarRelaciones(cajas, relaciones, { presupuestoMs: 1, ahora: () => (t += 100) });
     expect(rutas.size).toBe(0);
+  });
+});
+
+// Regla de conector de diagram-design (ADR 0006 · #538): cada relación que
+// sale por un mismo borde tiene su propio punto de anclaje.
+describe("repartirAnclajes", () => {
+  /** a manda dos relaciones hacia la derecha; las dos pisan `medio` y se rutean. */
+  const abanico = () => ({
+    cajas: [caja("a", 0, 0), caja("medio", 300, 0), caja("b", 600, 0), caja("c", 600, 40)],
+    relaciones: [
+      { id: "e0", fuente: "a", destino: "b" },
+      { id: "e1", fuente: "a", destino: "c" },
+    ] as Relacion[],
+  });
+  const medir = (cajas: Caja[], relaciones: Relacion[], rutas: Map<string, Punto[]>) =>
+    medirLegibilidad(
+      cajas,
+      relaciones.map((r) => {
+        const q = rutas.get(r.id);
+        return q?.length ? conRuta(r, cajas, q) : r;
+      })
+    );
+
+  it("separa dos relaciones ruteadas que salían por el mismo punto", () => {
+    const { cajas, relaciones } = abanico();
+    const rutas = rutarRelaciones(cajas, relaciones);
+    expect(rutas.size).toBe(2);
+    const sinRepartir = repartirAnclajes(cajas, relaciones, new Map(), 8);
+    void sinRepartir;
+    const medida = medir(cajas, relaciones, rutas);
+    expect(medida.anclajesCompartidos).toBe(0);
+    expect(medida.sobreCaja).toBe(0);
+  });
+
+  it("no mueve la punta de una relación en recta: ocupa su hueco y las ruteadas se corren", () => {
+    const cajas = [caja("a", 0, 0), caja("b", 400, 0), caja("c", 400, 100)];
+    const relaciones: Relacion[] = [
+      { id: "recta", fuente: "a", destino: "b" },
+      { id: "ruteada", fuente: "a", destino: "c" },
+    ];
+    // La ruteada arranca en el mismo punto que la recta (fuera del borde, a la
+    // altura del centro de a).
+    const rutas = new Map<string, Punto[]>([["ruteada", [{ x: 250, y: 30 }, { x: 250, y: 130 }]]]);
+    expect(medir(cajas, relaciones, rutas).anclajesCompartidos).toBe(1);
+    const repartidas = repartirAnclajes(cajas, relaciones, rutas, 8);
+    expect(repartidas.has("recta")).toBe(false);
+    expect(medir(cajas, relaciones, repartidas).anclajesCompartidos).toBe(0);
+    // El primer quiebre quedó pegado al borde derecho de a y el tramo sigue axial.
+    const q = repartidas.get("ruteada")!;
+    expect(q[0].x).toBe(108);
+    expect(q[0].y).toBe(q[1].y);
+  });
+
+  it("un borde ya repartido no se toca", () => {
+    const cajas = [caja("a", 0, 0), caja("b", 400, -200), caja("c", 400, 200)];
+    const relaciones: Relacion[] = [
+      { id: "e0", fuente: "a", destino: "b" },
+      { id: "e1", fuente: "a", destino: "c" },
+    ];
+    const rutas = new Map<string, Punto[]>([["e1", [{ x: 250, y: 30 }, { x: 250, y: 230 }]]]);
+    const antes = medir(cajas, relaciones, rutas);
+    const repartidas = repartirAnclajes(cajas, relaciones, rutas, 8);
+    if (antes.anclajesCompartidos === 0) expect([...repartidas.entries()]).toEqual([...rutas.entries()]);
+    else expect(medir(cajas, relaciones, repartidas).anclajesCompartidos).toBeLessThan(antes.anclajesCompartidos);
   });
 });
