@@ -96,6 +96,39 @@ describe("fromMermaid · sequenceDiagram", () => {
     expect(hallazgos.join(" ")).toMatch(/loop.*sin `end`/);
   });
 
+  it("un rect (sombreado) o un box no cierran el fragmento de afuera con su end", () => {
+    const texto = [
+      "sequenceDiagram",
+      "  box Azul Frontend",
+      "    participant A",
+      "  end",
+      "  alt ok",
+      "    rect rgb(200,200,200)",
+      "      A->>B: uno",
+      "    end",
+      "    B-->>A: dos",
+      "  end",
+    ].join("\n");
+    const { model, ledger } = fromMermaid(texto, "uml");
+    const fr = model.nodes.find((n) => isFragmentContainer(n.tipo_elemento)) as any;
+    expect(fr.fragmentParts[0]).toMatchObject({ desde: 1, hasta: 2 });
+    expect(ledger.omitidos.join(" ")).toMatch(/sombreado/);
+    expect(ledger.omitidos.join(" ")).toMatch(/agrupación «Azul Frontend»/);
+  });
+
+  it("create participant conserva el alias y destroy va al ledger", () => {
+    const texto = ["sequenceDiagram", "  A->>B: pedir", "  create participant C as Carrito", "  B->>C: crear", "  destroy C", "  C-->>B: listo"].join("\n");
+    const { model, ledger } = fromMermaid(texto, "uml");
+    expect(model.nodes.filter((n) => isLifelineContainer(n.tipo_elemento)).map((n) => n.nombre)).toContain("Carrito");
+    expect(ledger.omitidos.join(" ")).toMatch(/destrucción «C»/);
+    expect(ledger.omitidos.join(" ")).not.toMatch(/no reconocida/);
+  });
+
+  it("un participante llamado title o link sigue siendo un mensaje, no una directiva", () => {
+    const { model } = fromMermaid("sequenceDiagram\n  title->>B: x\n  link->>B: y", "uml");
+    expect(model.edges).toHaveLength(2);
+  });
+
   it("todo nodo tiene geometría al salir (el lienzo nunca queda en blanco)", () => {
     const { model } = fromMermaid(OAUTH, "uml");
     for (const n of model.nodes) {

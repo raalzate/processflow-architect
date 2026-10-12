@@ -18,7 +18,7 @@ import type { GraphData } from "../types";
 export interface ImportMermaidOpts {
   /** Nombre del proyecto; por defecto, el del archivo sin extensión. */
   nombre?: string;
-  /** Notación con que leer un flowchart (una secuencia siempre es UML). */
+  /** Notación con que leer un flowchart (una secuencia entra en la notación que declare línea de vida). */
   notation?: NotationId;
   /** Qué bloque del archivo, si trae varios (desde 0). */
   bloque?: number;

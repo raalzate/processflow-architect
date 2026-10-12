@@ -3255,12 +3255,12 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     {
       title: "Importar Mermaid",
       description:
-        "Redibuja un diagrama Mermaid como diagrama editable nuevo y lo deja fijado. Acepta `.mmd`/`.mermaid` o un Markdown con bloques ```mermaid (elegí cuál con `block`). Gramáticas: flowchart/graph (los tipos van en la etiqueta como `<i>Tipo</i>` o `:::slug`; sin tipo entra el de la notación y se avisa) y sequenceDiagram (participantes → Líneas de Vida, mensajes en orden, alt/opt/loop/par → Fragmentos; siempre UML). Devuelve los hallazgos y un ledger de fidelidad con lo que no llegó al dibujo (notas, activaciones, estilos).",
+        "Redibuja un diagrama Mermaid como diagrama editable nuevo y lo deja fijado. Acepta `.mmd`/`.mermaid` o un Markdown con bloques ```mermaid (elegí cuál con `block`). Gramáticas: flowchart/graph (los tipos van en la etiqueta como `<i>Tipo</i>` o `:::slug`; sin tipo entra el de la notación y se avisa) y sequenceDiagram (participantes → líneas de vida, mensajes en orden, alt/opt/loop/par → fragmentos; entra en la notación que declara línea de vida, hoy uml). Devuelve los hallazgos y un ledger de fidelidad con lo que no llegó al dibujo (notas, activaciones, estilos).",
       inputSchema: {
         path: z
           .string()
           .describe("Ruta al .mmd/.mermaid/.md. Si es relativa, se resuelve contra el workspace del servidor."),
-        notation: NOTATION.optional().describe("Notación con que leer un flowchart (por defecto la inicial de la app). Una secuencia siempre entra como uml."),
+        notation: NOTATION.optional().describe("Notación con que leer un flowchart (por defecto la inicial de la app). Una secuencia entra en la notación que declara línea de vida."),
         block: z
           .number()
           .int()

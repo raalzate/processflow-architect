@@ -21,12 +21,14 @@ import {
   isNotationContainer,
   isLifelineContainer,
   isFragmentContainer,
+  NOTATION_IDS,
   type NotationId,
 } from "../notations";
 import type { FragmentOp } from "../sequence/fragments";
 import type { SequenceMessageKind } from "../sequence/messages";
 import { normalizarTipo } from "./tipo-notacion";
 import { ledgerVacio, type ImportLedger } from "./import-ledger";
+import { cabeceraDe } from "./mermaid-source";
 import {
   slugify,
   layout,
@@ -155,17 +157,6 @@ function tipoDeClase(clase: string | undefined, notation: NotationId): string | 
   return notationTypes(notation, { includeContainers: true }).find((t) => slugify(t) === clase);
 }
 
-/** Cabecera (primera línea con contenido, sin frontmatter ni comentarios). */
-function cabeceraDe(texto: string): string {
-  const lineas = texto.split("\n").map((l) => l.trim());
-  let i = 0;
-  if (lineas[0] === "---") i = Math.max(1, lineas.indexOf("---", 1) + 1);
-  for (; i < lineas.length; i++) {
-    if (lineas[i] && !lineas[i].startsWith("%%")) return lineas[i];
-  }
-  return "";
-}
-
 /**
  * Convierte Mermaid en modelo: un `flowchart`/`graph` o un `sequenceDiagram`,
  * según la cabecera. Tolera lo que un modelo escribe de más (estilos,
@@ -177,7 +168,7 @@ export function fromMermaid(
   notation: NotationId,
   opts: { nombre?: string } = {}
 ): MermaidParse {
-  if (/^sequenceDiagram\b/i.test(cabeceraDe(texto))) return fromMermaidSequence(texto, notation, opts);
+  if (/^sequenceDiagram$/i.test(cabeceraDe(texto))) return fromMermaidSequence(texto, notation, opts);
   return fromMermaidFlowchart(texto, notation, opts);
 }
 
@@ -328,7 +319,10 @@ function claseDeMensaje(trazo: string): { kind: SequenceMessageKind; nota?: stri
 const OPERADOR_EQUIVALENTE: Record<string, FragmentOp> = { critical: "alt", break: "opt" };
 
 const MENSAJE = /^(.+?)\s*(<<-->>|<<->>|-->>|->>|--\)|-\)|--x|-x|-->|->)\s*([+-]?)\s*(.+?)\s*:\s*(.*)$/;
-const PARTICIPANTE = /^(participant|actor)\s+(.+?)(?:\s+as\s+(.+))?$/i;
+/** `participant A as Alias`, `actor A`, y la forma `create participant A as Alias` (Mermaid ≥ 10.3). */
+const PARTICIPANTE = /^(?:create\s+)?(participant|actor)\s+(.+?)(?:\s+as\s+(.+))?$/i;
+/** Directivas sin dibujo. `(\s|$)` y no `\b`: `title->>B: x` es un mensaje de un participante llamado title. */
+const DIRECTIVA = /^(autonumber|title|accTitle|accDescr|config|links?|properties|details)(\s|$)/i;
 const FRAGMENTO = /^(alt|opt|loop|par|critical|break)\b\s*(.*)$/i;
 const OPERANDO = /^(else|and|option)\b\s*(.*)$/i;
 
@@ -353,7 +347,7 @@ function fromMermaidSequence(
     notationTypes(id, { includeContainers: true }).find((t) => isLifelineContainer(t));
   let notacion = notation;
   if (!conLifeline(notacion)) {
-    const alternativa = (["uml"] as NotationId[]).find((id) => conLifeline(id));
+    const alternativa = NOTATION_IDS.find((id) => conLifeline(id));
     if (!alternativa) throw new Error("Ninguna notación declara una línea de vida: no se puede importar una secuencia.");
     hallazgos.push(`La notación ${notation} no tiene línea de vida: la secuencia entró como ${alternativa}.`);
     notacion = alternativa;
@@ -378,8 +372,10 @@ function fromMermaidSequence(
     return r.id;
   };
 
+  // Todo lo que abre un `end` va a la MISMA pila: un `box` o un `rect` sin
+  // apilar harían que su `end` cerrara el fragmento de afuera antes de tiempo.
   interface Abierto {
-    clase: "fragmento" | "box";
+    clase: "fragmento" | "box" | "rect";
     op?: FragmentOp;
     guardas: string[];
     desde: number;
@@ -403,14 +399,24 @@ function fromMermaidSequence(
       activaciones++;
       continue;
     }
-    if (/^(autonumber|title|accTitle|accDescr|config|links?|properties|details)\b/i.test(linea)) continue;
+    if (/^destroy\b/i.test(linea)) {
+      ledger.omitidos.push(`destrucción «${linea.replace(/^destroy\s*/i, "").slice(0, 40)}»: el lienzo no marca dónde muere un participante.`);
+      continue;
+    }
+    if (DIRECTIVA.test(linea)) continue;
     if (/^note\b/i.test(linea)) {
       ledger.omitidos.push(`nota «${linea.replace(/^note\s+(left of|right of|over)\s+[^:]+:\s*/i, "").slice(0, 50)}»: las notas no tienen caja en el lienzo; va a la descripción si la necesitás.`);
       continue;
     }
     if (/^box\b/i.test(linea)) {
-      abiertos.push({ clase: "box", guardas: [], desde: mensajes + 1, nombre: linea });
-      ledger.omitidos.push(`agrupación «${linea.replace(/^box\s*/i, "").slice(0, 40)}»: el lienzo no agrupa líneas de vida.`);
+      const nombre = linea.replace(/^box\s*/i, "").slice(0, 40);
+      abiertos.push({ clase: "box", guardas: [], desde: mensajes + 1, nombre });
+      ledger.omitidos.push(`agrupación «${nombre}»: el lienzo no agrupa líneas de vida.`);
+      continue;
+    }
+    if (/^rect\b/i.test(linea)) {
+      abiertos.push({ clase: "rect", guardas: [], desde: mensajes + 1, nombre: "rect" });
+      ledger.omitidos.push(`sombreado \`${linea.slice(0, 30)}\`: el color lo pone la notación, no la fuente.`);
       continue;
     }
     const f = FRAGMENTO.exec(linea);

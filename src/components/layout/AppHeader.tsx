@@ -417,7 +417,9 @@ const FileManagement: React.FC<
     const omitidos = r.ledger.omitidos.length;
     const dudas = r.hallazgos.length;
     toast({
-      title: `«${r.nombre}» importado (${r.model.nodes.length} elementos, ${r.model.edges.length} relaciones)`,
+      // Los números son los del ledger (lo mismo que reporta la tool MCP): en
+      // una secuencia `nodes` incluye los fragmentos y no son «elementos».
+      title: `«${r.nombre}» importado (${r.ledger.dibujados.elementos} elementos, ${r.ledger.dibujados.relaciones} relaciones)`,
       description:
         omitidos || dudas
           ? [

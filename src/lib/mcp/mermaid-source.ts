@@ -21,8 +21,12 @@ export interface BloqueMermaid {
 
 const FENCE = /```\s*mermaid[^\n]*\n([\s\S]*?)```/gi;
 
-/** La primera línea con contenido, saltando frontmatter `---` y comentarios. */
-function cabeceraDe(codigo: string): string {
+/**
+ * La primera palabra con contenido, saltando frontmatter `---` y comentarios.
+ * Es la única lectura de cabecera del repo: `from-mermaid` la usa para elegir
+ * gramática, así que las dos no pueden divergir.
+ */
+export function cabeceraDe(codigo: string): string {
   const lineas = codigo.split("\n").map((l) => l.trim());
   let i = 0;
   if (lineas[0] === "---") {
