@@ -56,6 +56,7 @@ import {
   Newspaper,
 } from "lucide-react";
 import { SKIN_LIST, leerSkin, type SkinId } from "@/lib/skin";
+import { AVISO_TAMANO_BYTES, PRESETS, PRESET_LIST, slugDeProyecto, type PresetId } from "@/lib/export/html-page";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { ColumnsField } from "./ColumnsField";
@@ -241,7 +242,9 @@ import { Minimap } from "./Minimap";
 import {
   captureRegion,
   downloadDataUrl,
+  colorDeToken,
   downloadText,
+  exportCanvasHtml,
   exportCanvasSvg,
   waitForFloatingLayersGone,
 } from "./export-canvas";
@@ -4471,9 +4474,52 @@ export const ComponentDesigner: React.FC<{
     if (!svgRef.current) return;
     const bounds = computeContentBounds(nodesRef.current, notationId);
     const base = (meta?.nombre_proyecto || "diagrama").replace(/[^\w.-]+/g, "_");
-    exportCanvasSvg(svgRef.current, bounds, `${base}.svg`);
+    // En editorial el fondo es el papel de la skin (spec 022/024); en canónica
+    // sigue blanco, como siempre.
+    const fondo = skinActiva === "editorial" ? colorDeToken(svgRef.current, "--ed-paper") : undefined;
+    exportCanvasSvg(svgRef.current, bounds, `${base}.svg`, fondo);
     toast({ title: "Diagrama exportado", description: "Se descargó un SVG del lienzo." });
-  }, [meta, toast, notationId]);
+  }, [meta, toast, notationId, skinActiva]);
+
+  // Exporta una página HTML autocontenida (spec 024): título, descripción y el
+  // diagrama con su contrato accesible, en el preset del destino. Si la
+  // autocomprobación encuentra algo, se avisa: el archivo sale, nunca en silencio.
+  const handleExportHtml = useCallback(
+    (preset: PresetId) => {
+      if (!svgRef.current) return;
+      const bounds = computeContentBounds(nodesRef.current, notationId);
+      if (!bounds) {
+        toast({ variant: "destructive", title: "Nada que exportar", description: "El lienzo está vacío." });
+        return;
+      }
+      const titulo = meta?.nombre_proyecto || "Diagrama";
+      // El tema se lee del documento EN EL MOMENTO de exportar: es lo que el
+      // usuario ve, aunque lo haya cambiado sin remontar el diseñador.
+      const tema = document.documentElement.classList.contains("dark") ? "dark" : "light";
+      const { fallas, bytes } = exportCanvasHtml(svgRef.current, bounds, {
+        filename: `${slugDeProyecto(titulo)}.html`,
+        titulo,
+        descripcion: meta?.bigPictureDescripcion,
+        notacion: activeNotation.label,
+        skin: skinActiva,
+        tema,
+        preset,
+        elementos: Array.from(nodesRef.current.values()).filter((n) => !isContainerType(n.tipo_elemento)).length,
+        relaciones: linksRef.current.size,
+      });
+      const mb = bytes / (1024 * 1024);
+      toast({
+        variant: fallas.length ? "destructive" : undefined,
+        title: fallas.length ? "HTML exportado con observaciones" : `HTML exportado · ${PRESETS[preset].label}`,
+        description: fallas.length
+          ? fallas.join(" · ")
+          : bytes > AVISO_TAMANO_BYTES
+            ? `Pesa ${mb.toFixed(1)} MB: los estilos en línea abultan. Se abre igual, sin la app ni red.`
+            : "Se abre con doble clic, sin la app ni conexión.",
+      });
+    },
+    [activeNotation.label, meta, notationId, skinActiva, toast]
+  );
 
   // Exporta un PNG rasterizando la página en el proceso main (capturePage): así
   // sí sale el foreignObject de los nodos. Encuadra todo y oculta overlays antes.
@@ -4945,6 +4991,13 @@ export const ComponentDesigner: React.FC<{
                   <DropdownMenuItem onClick={handleExportPng}>
                     PNG · imagen (para pegar en documentos)
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {/* Página autocontenida (spec 024): un preset por destino. */}
+                  {PRESET_LIST.map((p) => (
+                    <DropdownMenuItem key={p.id} onClick={() => handleExportHtml(p.id)} title={p.descripcion}>
+                      HTML · {p.label.toLowerCase()} (página que se abre sola)
+                    </DropdownMenuItem>
+                  ))}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
 

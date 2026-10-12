@@ -3,8 +3,9 @@
 Issues: #537 · #538 · #539 · #540
 
 - **Fecha:** 2026-10-12
-- **Estado:** aceptado. Tier A entregado (#541–#544). Tier B en curso: B2 skin editorial =
-  feature 022 (#545). Tier C sigue descartado.
+- **Estado:** aceptado. Tier A entregado (#541–#544). Tier B: B2 skin editorial = feature 022
+  (#545, entregada); B1 export HTML = feature 024 (#556); B3 perfiles de marca = feature 023
+  (#557). Tier C sigue descartado.
 - **Contexto previo:** [ADR 0002](0002-anidamiento-de-contenedores.md) ·
   [ADR 0003](0003-legibilidad-de-la-disposicion.md) · [arquitectura MCP](../architecture/mcp.md)
 
@@ -43,9 +44,11 @@ decidir qué ideas valen la pena traer.
 
 ### Se deja en backlog (Tier B, superficie nueva → ruta SDD cuando se priorice)
 
-- **Export HTML autocontenido** con contrato SVG accesible (`role="img"`, `<title>` primer hijo,
-  ids prefijados) y presets de tamaño que fijan viewBox **y** rampa tipográfica (`doc-inline`,
-  `slide-16x9`, `social-og`, `print-a4`).
+- **Export HTML autocontenido** → **hecho como feature 024** (#556): `src/lib/export/html-page.ts`
+  arma la página (sin scripts ni recursos externos) con el contrato SVG accesible y tres presets
+  por destino (página de lectura, lámina 16:9, impresión A4), y `verificarPagina` es el
+  `self_check` de diagram-design, corriendo en el gate sobre una página de referencia. La rampa
+  tipográfica por preset quedó fuera: el texto vive dentro del SVG.
 - **Tokens por rol semántico y skin editorial** → **hecho como feature 022** (#545): tokens
   `--ed-*` en `globals.css`, tratamientos por rol en `src/lib/skin.ts` (declarados o deducidos
   del rol en el registro), skin por proyecto (`GraphData.skin`, canónica por defecto), acento
