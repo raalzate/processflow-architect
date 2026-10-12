@@ -57,6 +57,8 @@ import {
 } from "lucide-react";
 import { SKIN_LIST, leerSkin, type SkinId } from "@/lib/skin";
 import { AVISO_TAMANO_BYTES, PRESETS, PRESET_LIST, slugDeProyecto, type PresetId } from "@/lib/export/html-page";
+import { cssVarsDePerfil, perfilVigente } from "@/lib/brand/profile";
+import { useBrandProfiles } from "@/hooks/use-brand-profiles";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { ColumnsField } from "./ColumnsField";
@@ -2635,7 +2637,9 @@ export const ComponentDesigner: React.FC<{
   notation?: NotationId;
   /** Cambia la notación de la vista (sólo modo vista; muestra el SELECT). */
   onNotationChange?: (n: NotationId) => void;
-}> = ({ value, onChange, sourceId, notation, onNotationChange }) => {
+  /** Organización del proyecto: elige el perfil de marca de la skin editorial (spec 023). */
+  orgId?: string | null;
+}> = ({ value, onChange, sourceId, notation, onNotationChange, orgId = null }) => {
   const { currentFileId, savedFiles, handleDesignUpdate, graphData } = useGraphContext();
   const { views, activeViewId, drillStack, enterView, goToDrill, createView, filters, filtersActive, clearFilters } =
     useViews();
@@ -3188,6 +3192,14 @@ export const ComponentDesigner: React.FC<{
     [toast]
   );
   const skinActiva: SkinId = meta?.skin ?? "canon";
+  // Perfil de marca que viste la skin editorial (spec 023): el de la
+  // organización del proyecto, si no el por defecto. En canónica no se aplica.
+  const { perfiles: perfilesDeMarca } = useBrandProfiles();
+  const perfilDeMarca = useMemo(() => perfilVigente(orgId, perfilesDeMarca), [orgId, perfilesDeMarca]);
+  const estiloDeMarca = useMemo(
+    () => (skinActiva === "editorial" ? (cssVarsDePerfil(perfilDeMarca) as React.CSSProperties) : undefined),
+    [skinActiva, perfilDeMarca]
+  );
   // Los focos de la skin editorial son los hotspots del proyecto, por nombre.
   const skinCtx = useMemo(
     () => ({ skin: skinActiva, focal: new Set(meta?.hotspots ?? []) as ReadonlySet<string> }),
@@ -4882,7 +4894,7 @@ export const ComponentDesigner: React.FC<{
             onClick={() => setViewSkin(skinActiva === "editorial" ? "canon" : "editorial")}
             label={
               skinActiva === "editorial"
-                ? "Skin editorial activa: volver a la canónica (colores por tipo)"
+                ? `Skin editorial activa${perfilDeMarca ? ` · Marca: ${perfilDeMarca.nombre}` : " · tokens de la skin"}: volver a la canónica (colores por tipo)`
                 : "Skin editorial: tinta sobre papel, acento sólo en los hotspots"
             }
             icon={<Newspaper className="h-4 w-4" />}
@@ -5159,6 +5171,7 @@ export const ComponentDesigner: React.FC<{
             // `data-skin` deja que el CSS redefina tokens por skin (spec 022);
             // en editorial el fondo es el papel de la skin.
             data-skin={skinActiva}
+            style={estiloDeMarca}
             className={skinActiva === "editorial" ? "bg-ed-paper" : "bg-canvas"}
           >
             <defs>

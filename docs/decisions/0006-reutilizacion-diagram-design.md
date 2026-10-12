@@ -54,8 +54,11 @@ decidir qué ideas valen la pena traer.
   del rol en el registro), skin por proyecto (`GraphData.skin`, canónica por defecto), acento
   sólo en los hotspots (regla `ACENTO` cuando pasan de dos) y contraste verificado en el gate
   (`skin-contrast.test.ts`). El color canónico de cada tipo se conserva: es notación.
-- **Perfiles de marca por organización** (feature 008) con onboarding desde URL como `AiTask`
-  (`heavy`, `structured`); la petición HTTP sale del main (P4).
+- **Perfiles de marca por organización** → **hecho como feature 023** (#557): `src/lib/brand/`
+  (perfil, extracción heurística, recibo de fidelidad, persistencia), `brandFromSiteTask`
+  (`heavy`, `structured`: mejora el mapeo sólo entre colores de la página), la lectura del sitio
+  en `main/services/brand-site.ts` (P4) y Ajustes → Marca. El perfil redefine `--ed-*` sobre el
+  lienzo en editorial; exports y página HTML lo heredan.
 
 ### Se descarta (Tier C)
 
