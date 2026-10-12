@@ -12,6 +12,7 @@ import {
   descripcionPorDefecto,
   escaparHtml,
   paginaHtml,
+  sinTamanoEnLinea,
   slugDeProyecto,
   verificarPagina,
 } from "../html-page";
@@ -126,5 +127,31 @@ describe("utilidades", () => {
       expect(p.descripcion.length).toBeGreaterThan(20);
       expect(p.css.length).toBeGreaterThan(20);
     }
+  });
+
+  it("el CSS de los presets apunta al <svg> HIJO de figure, no a los iconos anidados", () => {
+    // Los iconos de los nodos son <svg> dentro de foreignObject: un selector
+    // descendiente los estiraría al ancho de su caja (hallazgo del reviewer).
+    for (const p of Object.values(PRESETS)) {
+      expect(p.css, p.id).not.toMatch(/figure\s+svg\b/);
+      expect(p.css, p.id).toMatch(/figure > svg\b/);
+    }
+  });
+
+  it("sinTamanoEnLinea quita width/height del style del raíz y deja el resto", () => {
+    const svg = '<svg xmlns="x" width="400" style="width:1800px;height:900px;fill:red" viewBox="0 0 1 1"><rect style="width:5px"/></svg>';
+    const out = sinTamanoEnLinea(svg);
+    expect(out).toContain('style="fill:red"');
+    expect(out).toContain('<rect style="width:5px"/>');
+    expect(sinTamanoEnLinea('<svg viewBox="0 0 1 1"/>')).toBe('<svg viewBox="0 0 1 1"/>');
+    // La página lo aplica: el ancho que manda es el atributo recortado.
+    const html = paginaHtml({ titulo: "P", notacion: "UML", skin: "canon", tema: "light", preset: "documento", svg, descripcion: "d" });
+    expect(html).toContain("--svg-w:400px");
+    expect(html).not.toContain("width:1800px");
+  });
+
+  it("un texto de nodo con comillas no se confunde con un atributo de evento", () => {
+    const html = base().replace("Pagar", 'Pago online="tarjeta"');
+    expect(verificarPagina(html)).toEqual([]);
   });
 });

@@ -35,7 +35,7 @@ export const PRESETS: Record<PresetId, Preset> = {
       // La caja desplaza; la página no. Un `overflow:hidden` arriba cortaría el
       // diagrama sin barra, así que el SVG conserva su ancho natural.
       "figure{margin:24px 0;overflow-x:auto;overflow-y:hidden}",
-      "figure svg{display:block;min-width:min(100%,var(--svg-w))}",
+      "figure > svg{display:block;min-width:min(100%,var(--svg-w))}",
     ].join("\n"),
   },
   lamina169: {
@@ -46,7 +46,7 @@ export const PRESETS: Record<PresetId, Preset> = {
       "html,body{height:100%}",
       "main{width:1920px;height:1080px;margin:0 auto;padding:48px 64px;box-sizing:border-box;display:grid;grid-template-rows:auto 1fr auto;gap:16px}",
       "figure{margin:0;min-height:0;display:flex;align-items:center;justify-content:center}",
-      "figure svg{max-width:100%;max-height:100%;width:auto;height:auto}",
+      "figure > svg{max-width:100%;max-height:100%;width:auto;height:auto}",
     ].join("\n"),
   },
   impresionA4: {
@@ -57,7 +57,7 @@ export const PRESETS: Record<PresetId, Preset> = {
       "@page{size:A4 landscape;margin:12mm}",
       "main{max-width:none;padding:0 8mm}",
       "figure{margin:16px 0;overflow:hidden}",
-      "figure svg{max-width:100%;height:auto}",
+      "figure > svg{max-width:100%;height:auto}",
       "@media print{footer{position:fixed;bottom:0}}",
     ].join("\n"),
   },
@@ -135,6 +135,8 @@ function tamanoDe(svg: string): { w?: number; h?: number } {
  * Aplica el contrato accesible al `<svg>` raíz: `role="img"`, `aria-labelledby`
  * con ids prefijados, y `<title>` + `<desc>` como primeros hijos. Quita el
  * prólogo XML y cualquier `role`/`aria-labelledby` previo para no duplicar.
+ * Espera marcado bien formado (el de `XMLSerializer`, que escapa `>` en los
+ * atributos): con un `>` crudo dentro de un atributo cortaría la etiqueta antes.
  */
 export function conContratoAccesible(svg: string, slug: string, titulo: string, descripcion: string): string {
   const sinProlog = svg.replace(/^\s*<\?xml[^>]*\?>\s*/i, "");
@@ -150,6 +152,23 @@ export function conContratoAccesible(svg: string, slug: string, titulo: string, 
   const cabecera = `<title id="${slug}-title">${escaparHtml(titulo)}</title><desc id="${slug}-desc">${escaparHtml(descripcion)}</desc>`;
   const resto = sinProlog.slice(m.index + m[0].length).replace(/^\s*<title>[^<]*<\/title>/i, "");
   return apertura + cabecera + resto;
+}
+
+/**
+ * Quita `width`/`height` del `style` en línea del `<svg>` raíz. El lienzo
+ * serializa los estilos computados, y ahí viene el tamaño del `<svg>` VIVO en
+ * pantalla, que le gana a los atributos recortados al contenido: la página
+ * mediría el diagrama con el ancho del lienzo y no con el del dibujo.
+ */
+export function sinTamanoEnLinea(svg: string): string {
+  return svg.replace(/^(\s*(?:<\?xml[^>]*\?>\s*)?<svg\b[^>]*?\sstyle=")([^"]*)(")/i, (_m, a: string, estilo: string, c: string) => {
+    const limpio = estilo
+      .split(";")
+      .map((d) => d.trim())
+      .filter((d) => d && !/^(width|height)\s*:/i.test(d))
+      .join(";");
+    return `${a}${limpio}${c}`;
+  });
 }
 
 const CSS_BASE = (c: ColoresDePagina, svgW?: number) =>
@@ -170,7 +189,7 @@ export function paginaHtml(o: PaginaOpts): string {
   const descripcion = o.descripcion?.trim() || descripcionPorDefecto(o);
   const colores = o.colores ?? COLORES_POR_DEFECTO[o.tema];
   const { w } = tamanoDe(o.svg);
-  const svg = conContratoAccesible(o.svg, slug, o.titulo, descripcion);
+  const svg = conContratoAccesible(sinTamanoEnLinea(o.svg), slug, o.titulo, descripcion);
   const fecha = o.fecha ?? new Date().toISOString().slice(0, 10);
   const skin = o.skin === "editorial" ? "editorial" : "canónica";
   return [
@@ -212,7 +231,8 @@ export function paginaHtml(o: PaginaOpts): string {
 export function verificarPagina(html: string): string[] {
   const fallas: string[] = [];
   if (/<script\b/i.test(html)) fallas.push("contiene <script>: la página debe ser estática");
-  if (/\son[a-z]+\s*=\s*["']/i.test(html)) fallas.push("contiene un atributo de evento (on*=)");
+  // Dentro de una etiqueta: el texto de un nodo («Pago online="x"») no es un atributo.
+  if (/<[^>]*\son[a-z]+\s*=\s*["']/i.test(html)) fallas.push("contiene un atributo de evento (on*=)");
   if (/\b(?:src|href|xlink:href)\s*=\s*["']\s*(?:https?:)?\/\//i.test(html)) fallas.push("referencia un recurso externo (src/href con http)");
   if (/url\(\s*["']?\s*(?:https?:)?\/\//i.test(html)) fallas.push("el CSS referencia un recurso externo (url(http…))");
   if (/<link\b[^>]*rel\s*=\s*["']?stylesheet/i.test(html)) fallas.push("enlaza una hoja de estilos externa");

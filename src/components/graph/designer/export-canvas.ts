@@ -176,7 +176,7 @@ export function exportCanvasHtml(
         regla: COLORES_POR_DEFECTO[opts.tema].regla,
       }
     : undefined;
-  const fondo = editorial ? colores!.papel : undefined;
+  const fondo = colores?.papel;
   const { filename, ...resto } = opts;
   const html = paginaHtml({ ...resto, svg: serializarLienzo(svg, bounds, fondo), colores });
   const fallas = verificarPagina(html);

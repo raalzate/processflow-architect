@@ -57,7 +57,6 @@ import {
 } from "lucide-react";
 import { SKIN_LIST, leerSkin, type SkinId } from "@/lib/skin";
 import { AVISO_TAMANO_BYTES, PRESETS, PRESET_LIST, slugDeProyecto, type PresetId } from "@/lib/export/html-page";
-import { useTheme } from "@/hooks/use-theme";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { ColumnsField } from "./ColumnsField";
@@ -243,6 +242,7 @@ import { Minimap } from "./Minimap";
 import {
   captureRegion,
   downloadDataUrl,
+  colorDeToken,
   downloadText,
   exportCanvasHtml,
   exportCanvasSvg,
@@ -3188,9 +3188,6 @@ export const ComponentDesigner: React.FC<{
     [toast]
   );
   const skinActiva: SkinId = meta?.skin ?? "canon";
-  // Tema efectivo: la página HTML exportada (spec 024) sale con el papel del
-  // tema que el usuario está viendo.
-  const { tema } = useTheme();
   // Los focos de la skin editorial son los hotspots del proyecto, por nombre.
   const skinCtx = useMemo(
     () => ({ skin: skinActiva, focal: new Set(meta?.hotspots ?? []) as ReadonlySet<string> }),
@@ -4477,9 +4474,12 @@ export const ComponentDesigner: React.FC<{
     if (!svgRef.current) return;
     const bounds = computeContentBounds(nodesRef.current, notationId);
     const base = (meta?.nombre_proyecto || "diagrama").replace(/[^\w.-]+/g, "_");
-    exportCanvasSvg(svgRef.current, bounds, `${base}.svg`);
+    // En editorial el fondo es el papel de la skin (spec 022/024); en canónica
+    // sigue blanco, como siempre.
+    const fondo = skinActiva === "editorial" ? colorDeToken(svgRef.current, "--ed-paper") : undefined;
+    exportCanvasSvg(svgRef.current, bounds, `${base}.svg`, fondo);
     toast({ title: "Diagrama exportado", description: "Se descargó un SVG del lienzo." });
-  }, [meta, toast, notationId]);
+  }, [meta, toast, notationId, skinActiva]);
 
   // Exporta una página HTML autocontenida (spec 024): título, descripción y el
   // diagrama con su contrato accesible, en el preset del destino. Si la
@@ -4493,6 +4493,9 @@ export const ComponentDesigner: React.FC<{
         return;
       }
       const titulo = meta?.nombre_proyecto || "Diagrama";
+      // El tema se lee del documento EN EL MOMENTO de exportar: es lo que el
+      // usuario ve, aunque lo haya cambiado sin remontar el diseñador.
+      const tema = document.documentElement.classList.contains("dark") ? "dark" : "light";
       const { fallas, bytes } = exportCanvasHtml(svgRef.current, bounds, {
         filename: `${slugDeProyecto(titulo)}.html`,
         titulo,
@@ -4515,7 +4518,7 @@ export const ComponentDesigner: React.FC<{
             : "Se abre con doble clic, sin la app ni conexión.",
       });
     },
-    [activeNotation.label, meta, notationId, skinActiva, tema, toast]
+    [activeNotation.label, meta, notationId, skinActiva, toast]
   );
 
   // Exporta un PNG rasterizando la página en el proceso main (capturePage): así
