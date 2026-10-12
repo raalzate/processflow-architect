@@ -8,6 +8,8 @@ marcadas con 🔒; el resto es criterio.
 |---|---|---|
 | 🔒 Tipos de componente, iconos, formas, paletas, guía para la IA | `src/lib/notations.ts` (registro por notación DDD/BPMN/C4/UML) | declarar otra lista de tipos o cablear literales (regla NOTACION de `scripts/repo-lint.mjs`) |
 | Ayuda/semántica de cada tipo | `src/lib/notation-help.ts` | escribir textos de ayuda en el componente |
+| Medir y ajustar un color al contraste exigido | `validarPerfil` / `ajustarAlUmbral` en `src/lib/brand/profile.ts` sobre `a11y/contrast.ts` (spec 023) | un umbral a ojo o un `if (color === …)` |
+| Leer un sitio ajeno desde la app | `brandFetchSite` → `main/services/brand-site.ts` (https, 1 redirección, 1 MB, 10 s) y la capacidad `marcaDesdeSitio` | `fetch` desde el renderer (CSP) o un IPC nuevo sin topes |
 | Entregar el lienzo como archivo (SVG, PNG, página HTML) | `serializarLienzo` en `src/components/graph/designer/export-canvas.ts` (única serialización) + `paginaHtml`/`verificarPagina` en `src/lib/export/html-page.ts` (spec 024) | una segunda forma de clonar el `<svg>` o un HTML armado a mano en un componente |
 | Cómo se dibuja un tipo cuando el lienzo no usa su color canónico (lámina, export) | `src/lib/skin.ts`: `nodeTreatment` / `edgeTreatment` sobre tokens `ed-*`; el tratamiento se declara en `NotationElement.treatment` o se deduce del rol (spec 022) | un `if (tipo === …)` de colores en el lienzo, o un hex suelto: el tema y el perfil de marca cambian el token, no el JSX |
 | ¿Cuánto aguanta un diagrama antes de dejar de leerse? | `Notation.budget` en `src/lib/notations.ts` + regla `PRESUPUESTO` de `src/lib/mcp/quality.ts` (ADR 0006) | un tope de nodos inventado en el consumidor: el presupuesto es notación |

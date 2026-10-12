@@ -37,6 +37,7 @@ import { initAppReadBridge } from './services/mcp-app-read';
 import { initAppActionBridge } from './services/mcp-app-action';
 import type { AppState } from '../src/lib/mcp/app-state';
 import { getSystemInfo } from './services/system-info';
+import { leerSitio } from './services/brand-site';
 import { playgroundListTools, playgroundCallTool } from './services/mcp-playground';
 import { cancelAgentCli, cliStatus, generateWithCli, runAgentCli } from './services/agent-cli';
 import { carpetasPermitidas, initRegistroCarpetas, registrarCarpeta } from './services/agent-cli-dirs';
@@ -93,6 +94,19 @@ export function registerIpcHandlers() {
   ipcMain.handle('ai-key-delete', async (_e, provider: RemoteProvider) => deleteAiKey(provider));
   ipcMain.handle('ai-key-status', async () => aiKeyStatus());
   ipcMain.handle('ai-remote-generate', async (_e, args: RemoteGenerateArgs) => remoteGenerate(args));
+
+  // --- Marca desde el sitio del cliente (spec 023, P4) -----------------------
+  // La única petición a un sitio ajeno de toda la app sale de acá: https, una
+  // redirección, 1 MB, 10 s. Lo que vuelve es texto que el renderer lee sin
+  // ejecutar. Un error se devuelve como tal: el renderer lo muestra con causa.
+  ipcMain.handle('brand-fetch-site', async (_e, url: unknown) => {
+    if (typeof url !== 'string') return { ok: false as const, error: 'URL inválida.' };
+    try {
+      return { ok: true as const, sitio: await leerSitio(url, { fetch }) };
+    } catch (e: any) {
+      return { ok: false as const, error: String(e?.message ?? e) };
+    }
+  });
 
   // --- Chat con un agente externo por CLI (Claude Code / Codex), feature 020 ---
   // Los eventos del CLI viajan por `agent-cli-event` a medida que llegan, con el

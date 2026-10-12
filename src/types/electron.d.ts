@@ -163,6 +163,16 @@ export interface ElectronAPI {
     prompt: string;
     system?: string;
   }) => Promise<string>;
+  /**
+   * Lee la página de un sitio (https) para proponer una marca (spec 023). La
+   * petición sale del proceso principal; el renderer recibe texto acotado.
+   */
+  brandFetchSite?: (
+    url: string
+  ) => Promise<
+    | { ok: true; sitio: { url: string; urlFinal: string; html: string; css: string[]; omitidas: string[] } }
+    | { ok: false; error: string }
+  >;
 }
 
 declare global {

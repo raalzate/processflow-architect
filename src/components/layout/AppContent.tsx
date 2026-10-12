@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/layout/AppHeader";
-import { ORG_TODAS } from "@/lib/project-orgs";
+import { ORG_TODAS, orgOf } from "@/lib/project-orgs";
 import NodeModal from "@/components/modals/NodeModal";
 import { Toaster } from "@/components/ui/toaster";
 import { SidebarInset } from "@/components/ui/sidebar";
@@ -638,7 +638,7 @@ const WelcomeScreen = () => {
 // Este componente SÍ se volverá a renderizar en las búsquedas,
 // porque depende de `filteredNodes`. Esto es correcto y deseado.
 const GraphArea = React.memo(() => {
-  const { currentFileId, graphData, handleDesignUpdate } = useGraphContext();
+  const { currentFileId, graphData, handleDesignUpdate, savedFiles } = useGraphContext();
   const { activeView } = useViews();
 
   // Sin proyecto activo: pantalla de bienvenida. Con un proyecto activo
@@ -662,6 +662,9 @@ const GraphArea = React.memo(() => {
                 un proyecto BPMN se dibuja con paleta/simbología BPMN aquí mismo. */}
             <ComponentDesigner
               notation={activeView?.notation}
+              // La organización del proyecto decide qué perfil de marca viste
+              // la skin editorial (spec 023).
+              orgId={orgOf(savedFiles.find((f) => f.id === currentFileId) ?? {})}
               onNotationChange={
                 currentFileId && graphData
                   ? (n) => handleDesignUpdate(currentFileId, { ...graphData, notation: n })

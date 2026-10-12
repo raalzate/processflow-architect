@@ -48,6 +48,7 @@ tocar las pantallas. La regla PUENTE del lint impide volver al acceso directo.
 | `window.electronAPI` | Canal IPC | Hace |
 |----------------------|-----------|------|
 | `generatePdf(md)` | `convert-md-to-pdf` | Markdown → PDF (md-to-pdf + Puppeteer). |
+| `brandFetchSite(url)` | `brand-fetch-site` | Lee la página de un cliente (https, una redirección, 1 MB, 10 s) para proponer su marca (spec 023). La única petición a un sitio ajeno; vuelve texto. |
 | `copyToClipboard(text)` | `copy-to-clipboard` | Copia al portapapeles del SO. |
 | `litertModelsList()` | `litert-models-list` | Lista modelos `.litertlm` + RAM disponible. |
 | `litertModelDownload(id)` | `litert-model-download` | Descarga un modelo (emite progreso). |

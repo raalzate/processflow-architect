@@ -426,3 +426,46 @@ describe("elementChatTask", () => {
     expect(elementChatTask.parse!("  hola  ", base as any)).toBe("hola");
   });
 });
+
+import { brandFromSiteTask } from "@/lib/ai/tasks";
+
+// Spec 023: la IA mejora el mapeo sólo entre los colores de la página.
+describe("brandFromSiteTask", () => {
+  const input = {
+    url: "https://acme.example",
+    candidatos: [
+      { color: "0 0% 100%", veces: 9, contextos: ["body · background"] },
+      { color: "14 71% 44%", veces: 3, contextos: [".btn · background"] },
+    ],
+    familias: ["Inter"],
+  };
+
+  it("es estructurada y pesada: en híbrido va a la nube, en local corre local", () => {
+    expect(brandFromSiteTask.id).toBe("brand-from-site");
+    expect(brandFromSiteTask.tier).toBe("heavy");
+    expect(brandFromSiteTask.structured).toBe(true);
+    const { prompt } = brandFromSiteTask.buildPrompt!(input);
+    expect(prompt).toContain('"14 71% 44%" · 3 · .btn · background');
+    expect(prompt).toContain("FAMILIAS TIPOGRÁFICAS: Inter");
+  });
+
+  it("acepta sólo colores que estaban entre los candidatos y familias de la página", () => {
+    const out = brandFromSiteTask.parse!(
+      'Claro: {"paper":"0 0% 100%","accent":"1 2% 3%","link":"14 71% 44%","fuente":"Comic Sans","razones":"x"}',
+      input
+    );
+    expect(out).toEqual({ paper: "0 0% 100%", ink: undefined, muted: undefined, accent: undefined, link: "14 71% 44%", fuente: undefined, razones: "x" });
+  });
+
+  it("sin JSON, con JSON roto, todo descartado o sin input devuelve null", () => {
+    expect(brandFromSiteTask.parse!("no hay json", input)).toBeNull();
+    expect(brandFromSiteTask.parse!("{roto", input)).toBeNull();
+    expect(brandFromSiteTask.parse!('{"accent":"9 9% 9%"}', input)).toBeNull();
+    expect(brandFromSiteTask.parse!('{"paper":"0 0% 100%"}', undefined)).toBeNull();
+  });
+
+  it("recorta las razones a 200 caracteres", () => {
+    const out = brandFromSiteTask.parse!(`{"paper":"0 0% 100%","razones":"${"a".repeat(300)}"}`, input);
+    expect(out?.razones).toHaveLength(200);
+  });
+});
