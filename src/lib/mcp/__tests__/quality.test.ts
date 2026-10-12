@@ -7,7 +7,7 @@ import {
   type DiagramModel,
 } from "../diagram-builder";
 import { qualityFindings, formatFindings, MAX_NODES, MAX_NAME_CHARS } from "../quality";
-import { typesWithRole } from "../../notations";
+import { getNotation, typesWithRole } from "../../notations";
 
 // Los tipos NUNCA se cablean en el test: se piden por rol al registro, igual que
 // lo hacen las reglas. Así el test sobrevive a un renombre de la notación.
@@ -240,6 +240,74 @@ describe("reglas de presentación", () => {
       }).model;
     }
     expect(rules(m)).toContain("TAMANO");
+  });
+});
+
+// El presupuesto se lee del REGISTRO, nunca se cablea: el test sobrevive a que
+// alguien ajuste los números de una notación.
+describe("presupuesto de complejidad (PRESUPUESTO)", () => {
+  const presupuesto = (id: string) => {
+    const b = getNotation(id).budget;
+    if (!b) throw new Error(`la notación ${id} no declara presupuesto`);
+    return b;
+  };
+  const hallazgos = (m: DiagramModel) => qualityFindings(m).filter((f) => f.rule === "PRESUPUESTO");
+
+  it("pide partir en vistas cuando los elementos superan el presupuesto de la notación", () => {
+    const b = presupuesto("c4");
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "c4" as const });
+    for (let i = 0; i <= b.nodos; i++) m = nodo(m, `s${i}`, `Sistema ${i}`, "system", "c4");
+    const f = hallazgos(m);
+    expect(f).toHaveLength(1);
+    expect(f[0].level).toBe("aviso");
+    expect(f[0].message).toContain(`${b.nodos + 1} elementos`);
+    expect(f[0].message).toContain("suggest_views");
+  });
+
+  it("no se queja dentro del presupuesto", () => {
+    const b = presupuesto("c4");
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "c4" as const });
+    for (let i = 0; i < b.nodos; i++) m = nodo(m, `s${i}`, `Sistema ${i}`, "system", "c4");
+    expect(hallazgos(m)).toHaveLength(0);
+  });
+
+  it("avisa de las relaciones que superan el presupuesto", () => {
+    const b = presupuesto("ddd");
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "ddd" as const });
+    m = nodo(m, "c", "Pagar", "command", "ddd");
+    m = nodo(m, "e", "Pagado", "event", "ddd");
+    for (let i = 0; i <= b.relaciones; i++) m = addEdge(m, { fuente: "c", destino: "e", descripcion: `r${i}` });
+    expect(hallazgos(m).some((f) => f.message.includes(`${b.relaciones + 1} relaciones`))).toBe(true);
+  });
+
+  it("señala el contenedor que tiene más de lo que cabe por contenedor", () => {
+    const b = presupuesto("bpmn");
+    if (b.porContenedor === undefined) throw new Error("bpmn declara presupuesto por contenedor");
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "bpmn" as const });
+    const { model, id } = addContainer(m, { nombre: "Ventas", tipo_elemento: tipo("bpmn", "lane") });
+    m = model;
+    for (let i = 0; i <= b.porContenedor; i++) m = nodo(m, `t${i}`, `Paso ${i}`, "task", "bpmn", "Ventas");
+    const f = hallazgos(m).find((x) => x.nodeId === id);
+    expect(f?.message).toContain('"Ventas"');
+    expect(f?.message).toContain(`${b.porContenedor + 1} elementos`);
+  });
+
+  it("avisa cuando hay más contenedores que los que la notación presupuesta", () => {
+    const limite = presupuesto("uml").contenedores;
+    if (limite === undefined) throw new Error("uml declara presupuesto de contenedores");
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "uml" as const });
+    for (let i = 0; i <= limite; i++)
+      m = addContainer(m, { nombre: `Servicio ${i}`, tipo_elemento: tipo("uml", "pool") }).model;
+    expect(hallazgos(m).some((f) => f.message.includes(`${limite + 1} contenedores`))).toBe(true);
+  });
+
+  it("el dibujo libre no presupuesta: ningún hallazgo por muchas formas que haya", () => {
+    const general = getNotation("general");
+    expect(general.budget).toBeUndefined();
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "general" as const });
+    const forma = general.elements.find((e) => !e.container)!.type;
+    for (let i = 0; i < 30; i++) m = addNode(m, { id: `f${i}`, nombre: `Forma ${i}`, tipo_elemento: forma }).model;
+    expect(hallazgos(m)).toHaveLength(0);
   });
 });
 

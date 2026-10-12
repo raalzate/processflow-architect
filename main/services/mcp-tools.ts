@@ -647,8 +647,22 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         "- `list_element_docs` da el ÍNDICE (nombre, tipo, tamaño); `read_element_doc` trae el texto por rango.",
         "- `search_docs` dice en qué caja, adjunto y línea aparece un término.",
       ].join("\n");
+      // El presupuesto se lee ANTES de construir, igual que los tipos: un agente
+      // que lo conoce parte en vistas desde el diseño; uno que lo descubre en
+      // validate_diagram ya dibujó veinte cajas (#537).
+      const presupuesto = n.budget
+        ? [
+            "",
+            "## Presupuesto de complejidad (se lee de un vistazo hasta)",
+            `- ${n.budget.nodos} elementos y ${n.budget.relaciones} relaciones por diagrama` +
+              (n.budget.contenedores !== undefined ? `, ${n.budget.contenedores} contenedores` : "") +
+              (n.budget.porContenedor !== undefined ? `, ${n.budget.porContenedor} elementos por contenedor` : "") +
+              ".",
+            "- Pasado eso, partí en una vista panorámica + vistas de detalle (suggest_views); validate_diagram lo avisa como PRESUPUESTO.",
+          ].join("\n")
+        : "";
       return text(
-        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n${relaciones}${material}\n\n## Guía\n${n.aiGuidance}`
+        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n${relaciones}${presupuesto}${material}\n\n## Guía\n${n.aiGuidance}`
       );
     }
   );

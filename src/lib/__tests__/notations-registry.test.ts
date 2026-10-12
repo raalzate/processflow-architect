@@ -72,4 +72,25 @@ describe("registro de notaciones", () => {
       }
     }
   });
+
+  // El presupuesto de complejidad es lo que hace que la regla PRESUPUESTO de
+  // `mcp/quality.ts` tenga algo que decir: una notación semántica sin
+  // presupuesto hereda silencio, y el dibujo libre lo declara a propósito.
+  it("toda notación semántica declara su presupuesto de complejidad; el dibujo libre no", () => {
+    for (const n of NOTATION_LIST) {
+      if (n.freeform) {
+        expect(n.budget, `${n.id} es dibujo libre: no debe presupuestar`).toBeUndefined();
+        continue;
+      }
+      expect(n.budget, `${n.id} sin presupuesto`).toBeDefined();
+      const b = n.budget!;
+      expect(b.nodos).toBeGreaterThan(0);
+      expect(b.relaciones).toBeGreaterThan(0);
+      for (const v of [b.contenedores, b.porContenedor]) {
+        if (v !== undefined) expect(v).toBeGreaterThan(0);
+      }
+      // Lo que cabe por contenedor nunca supera lo que cabe en el diagrama.
+      if (b.porContenedor !== undefined) expect(b.porContenedor).toBeLessThanOrEqual(b.nodos);
+    }
+  });
 });
