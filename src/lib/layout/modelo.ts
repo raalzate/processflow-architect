@@ -86,7 +86,9 @@ export function relacionesDelModelo(
             recortarABorde(destino, quiebres[quiebres.length - 1]),
           ]
         : undefined;
-    return { id, fuente: e.fuente, destino: e.destino, puntos };
+    // La etiqueta sólo cuenta si se dibuja: una arista sin descripción no
+    // tiene nada que una caja pueda tapar.
+    return { id, fuente: e.fuente, destino: e.destino, puntos, etiquetada: Boolean(e.descripcion?.trim()) };
   });
 }
 
