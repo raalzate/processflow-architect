@@ -268,6 +268,9 @@ export function canvasToGraphData(
     // Igual que la notación: si no se propaga acá, el autoguardado del lienzo
     // borra el enrutado por defecto de la vista en el primer cambio.
     defaultRouting: base.defaultRouting,
+    // Y la skin (spec 022): sin esto el conmutador se veía en vivo y el
+    // autoguardado escribía un documento canónico, que al reabrir ganaba.
+    ...(base.skin ? { skin: base.skin } : {}),
     fecha_analisis: base.fecha_analisis,
     big_picture: {
       descripcion: base.big_picture?.descripcion || "",

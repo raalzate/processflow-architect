@@ -66,12 +66,14 @@ export const CONTAINER_TREATMENT: TreatmentClasses = {
 };
 
 /** Aristas en editorial: atenuadas por defecto, enlace para lo externo, acento entre focos. */
+/**
+ * La punta de flecha no va acá: el marcador es compartido y toma `--canvas-edge`,
+ * que `[data-skin="editorial"]` redefine al atenuado en `globals.css`.
+ */
 export const EDGE_TREATMENT = {
   base: "stroke-ed-muted",
   link: "stroke-ed-link",
   focal: "stroke-ed-accent",
-  /** La punta de flecha acompaña al trazo. */
-  arrow: "fill-ed-muted",
 } as const;
 
 /**
