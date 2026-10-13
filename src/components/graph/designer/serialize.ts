@@ -51,6 +51,8 @@ export interface DesignerNode {
   color?: string;
   /** Color de borde/contorno personalizado (hex). */
   borderColor?: string;
+  /** Icono de tecnología del catálogo (spec 025); vale para nodo y contenedor. */
+  icono?: string;
   /**
    * Estilo visual de la caja (tipografía, alineación, colores). Vale igual para
    * un nodo y para un CONTENEDOR: al guardar viaja a `Agregado.estilo`.
@@ -168,6 +170,15 @@ const AGG_H = 400;
  *               (nombre_proyecto, version, fecha, big_picture.descripcion,
  *               hotspots, read_models, responsables, notas, transcript).
  */
+/**
+ * Id de icono tal como viene del archivo: un string no vacío o nada. No se
+ * valida contra el catálogo acá —un id que ya no existe se conserva, cae al
+ * icono del tipo al dibujar y la revisión lo avisa (spec 025)—, así un proyecto
+ * no pierde datos por abrirse con un catálogo distinto.
+ */
+const iconoGuardado = (v: unknown): string | undefined =>
+  typeof v === "string" && v.trim() ? v.trim() : undefined;
+
 export function canvasToGraphData(
   nodes: Map<string, DesignerNode>,
   links: Map<string, DesignerLink>,
@@ -192,6 +203,7 @@ export function canvasToGraphData(
       tipo_contenedor: c.tipo_elemento,
       color: c.color,
       borderColor: c.borderColor,
+      icono: c.icono,
       estilo: estiloParaGuardar(c.estilo),
       metadata: c.metadata,
       // Una spec vacía no viaja: se guarda `undefined` para no agregarle un
@@ -299,6 +311,7 @@ function toDomainNode(n: DesignerNode): Omit<GraphNode, "agregado"> {
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
     borderColor: n.borderColor,
+    icono: n.icono,
     estilo: estiloParaGuardar(n.estilo),
     metadata: n.metadata,
     spec: sanitizeSpec(n.spec),
@@ -359,6 +372,7 @@ export function graphDataToCanvas(content: GraphData | null | undefined): {
       estado_comparativo: agg.estado_comparativo || "nuevo",
       color: (agg as any).color,
       borderColor: (agg as any).borderColor,
+      icono: iconoGuardado((agg as any).icono),
       // Puede venir de un archivo viejo o de un agente: se normaliza, no se confía.
       estilo: normalizarEstilo((agg as any).estilo),
       // Lo guardado puede venir de un import o de una versión vieja: se normaliza
@@ -426,6 +440,7 @@ function hydrateNode(
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
     borderColor: n.borderColor,
+    icono: iconoGuardado(n.icono),
     estilo: normalizarEstilo((n as { estilo?: unknown }).estilo),
     metadata: normalizarLista(n.metadata),
     spec: sanitizeSpec(n.spec),

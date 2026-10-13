@@ -155,6 +155,13 @@
   [data-skin="editorial"] {
     --canvas-edge: var(--ed-muted);
   }
+  /* Logo de tecnología (spec 025) en editorial: monocromo en el color del
+     texto de la caja. Un logo de Devicon trae sus propios rellenos; acá se
+     aplanan para que la lámina sea tinta sobre papel. */
+  [data-skin="editorial"] .icono-marca * {
+    fill: currentColor !important;
+    stroke: none !important;
+  }
 
   .dark {
     /* Modo oscuro suave, slate azulado (no negro): más elegante y menos cansado. */

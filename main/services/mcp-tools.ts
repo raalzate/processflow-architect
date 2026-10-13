@@ -101,6 +101,7 @@ import {
 } from "../../src/lib/mcp/project-update";
 import { interpretarImportacion } from "../../src/lib/mcp/import-format";
 import { importarMermaid } from "../../src/lib/mcp/import-mermaid-file";
+import { CATEGORIAS, buscarIconos, esIconoValido } from "../../src/lib/icons/catalog";
 import { formatLedger } from "../../src/lib/mcp/import-ledger";
 import { contarModelo, marcasDiagrama, textoConteo } from "../../src/lib/mcp/conteo";
 import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
@@ -669,6 +670,32 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     }
   );
 
+  // -- 1a-bis. Catálogo de iconos de tecnología (spec 025) ------------------------
+  server.registerTool(
+    "list_icons",
+    {
+      title: "Buscar iconos de tecnología",
+      description:
+        "Busca en el catálogo de logos de tecnología (nube, infraestructura, bases de datos, lenguajes, frameworks, SaaS, genéricos…) el icono que una caja puede llevar en vez del icono de su tipo. Devuelve id, nombre y categoría; el id va en `icon` de add_node/update_element.",
+      inputSchema: {
+        query: z.string().optional().describe("Nombre, alias o id («postgres», «mensajería», «nube»). Sin query lista la categoría entera (o las categorías)."),
+        category: z.string().optional().describe(`Una de: ${CATEGORIAS.map((c) => c.id).join(", ")}.`),
+        limit: z.number().int().min(1).max(100).default(30),
+      },
+    },
+    async ({ query, category, limit }) => {
+      if (!query && !category) {
+        return text(
+          `Categorías del catálogo:\n${CATEGORIAS.map((c) => `- ${c.id} — ${c.label}`).join("\n")}\n\nBuscá con query (ej. "kafka", "nube") o pedí una categoría.`
+        );
+      }
+      const r = buscarIconos(query ?? "", category);
+      if (!r.length) return text(`Ningún icono coincide con "${query ?? ""}"${category ? ` en ${category}` : ""}. Probá otro nombre o un genérico (nube, servidor, base de datos…).`);
+      const lineas = r.slice(0, limit).map((i) => `- \`${i.id}\` — ${i.nombre} · ${i.categoria}${i.alias.length ? ` (${i.alias.slice(0, 3).join(", ")})` : ""}`);
+      return text(`${r.length} icono(s)${r.length > limit ? `, primeros ${limit}` : ""}:\n${lineas.join("\n")}`);
+    }
+  );
+
   // -- 1b. Organizaciones (agrupan diagramas y aíslan lo que ve el agente) -----
 
   server.registerTool(
@@ -1175,6 +1202,10 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         description: z.string().optional(),
         estado: estadoSchema,
         tags: z.array(z.string()).optional().describe("Etiquetas de tecnología."),
+        icon: z
+          .string()
+          .optional()
+          .describe("Icono de TECNOLOGÍA del catálogo (id de list_icons: `si-postgresql`, `dv-slack`, `lu-Cloud`). Se dibuja en la caja en vez del icono del tipo; un id desconocido no entra y validate_diagram lo avisa."),
         id: z.string().optional().describe("Id explícito (por defecto se deriva del nombre)."),
         source: z
           .string()
@@ -1190,7 +1221,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId: diagramIdEntrada, name, type, container, description, estado, tags, id, source, metadata, columns }) => {
+    async ({ diagramId: diagramIdEntrada, name, type, container, description, estado, tags, icon, id, source, metadata, columns }) => {
       // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
       // configuración, o el único del workspace (`active-diagram.ts`).
       let diagramId: string;
@@ -1200,6 +1231,9 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         return fail(e.message);
       }
       const model = await loadModel(diagramId);
+      // Se guarda y se valida el MISMO valor (recortado): «" si-x "» no puede
+      // entrar válido y avisar a la vez que no está en el catálogo.
+      const iconoLimpio = icon?.trim() || undefined;
       try {
         const r = addNode(model, {
           id,
@@ -1209,11 +1243,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           descripcion: description,
           estado_comparativo: estado as Estado | undefined,
           tags_tecnologia: tags,
+          icono: iconoLimpio,
           source,
           metadata,
           columnas: columns,
         });
         await saveModel(diagramId, r.model);
+        if (iconoLimpio && !esIconoValido(iconoLimpio)) {
+          return text(`Nodo "${name}" añadido (id=${r.id}), pero el icono "${iconoLimpio}" no está en el catálogo: se dibuja el icono del tipo. Buscá uno con list_icons.`);
+        }
         return text(`Nodo "${name}" añadido (id=${r.id}).`);
       } catch (e: any) {
         return fail(e.message);
@@ -1330,6 +1368,10 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         estado: estadoSchema,
         source: z.string().optional().describe("Cita de la fuente."),
         tags: z.array(z.string()).optional(),
+        icon: z
+          .string()
+          .optional()
+          .describe("Icono de tecnología del catálogo (id de list_icons). Cadena vacía para quitarlo."),
         metadata: metadataSchema.describe(
             "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}${p.obligatoria ? ", OBLIGATORIA en lo desplegable" : ""})`).join(" · ") + ". Un elemento desplegable (Contenedor, Componente, Base de Datos, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
           ),
@@ -1344,7 +1386,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
       },
     },
-    async ({ diagramId: diagramIdEntrada, id, name, type, description, estado, source, tags, metadata, metadataRemove, columns }) => {
+    async ({ diagramId: diagramIdEntrada, id, name, type, description, estado, source, tags, icon, metadata, metadataRemove, columns }) => {
       // Sin `diagramId` explícito: manda el fijado con use_diagram, el de la
       // configuración, o el único del workspace (`active-diagram.ts`).
       let diagramId: string;
@@ -1354,6 +1396,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         return fail(e.message);
       }
       const model = await loadModel(diagramId);
+      const iconoLimpio = icon?.trim() || undefined;
       try {
         const next = updateNode(model, id, {
           ...(name !== undefined ? { nombre: name } : {}),
@@ -1362,11 +1405,17 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ...(estado !== undefined ? { estado_comparativo: estado as Estado } : {}),
           ...(source !== undefined ? { source } : {}),
           ...(tags !== undefined ? { tags_tecnologia: tags } : {}),
+          ...(icon !== undefined ? { icono: iconoLimpio } : {}),
           ...(metadata !== undefined ? { metadata } : {}),
           ...(metadataRemove !== undefined ? { metadataRemove } : {}),
           ...(columns !== undefined ? { columnas: columns } : {}),
         });
         await saveModel(diagramId, next);
+        if (iconoLimpio && !esIconoValido(iconoLimpio)) {
+          return text(
+            `Elemento "${id}" actualizado, pero el icono "${iconoLimpio}" no está en el catálogo: se dibuja el icono del tipo. Buscá uno con list_icons.`
+          );
+        }
         const n = next.nodes.find((x) => x.id === id)!;
         return text(`Elemento "${id}" actualizado: "${n.nombre}" (${n.tipo_elemento}).`);
       } catch (e: any) {

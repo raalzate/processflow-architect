@@ -55,6 +55,7 @@ nunca ve una herramienta que su transporte no soporta.
 |---|---|
 | `list_notations` | notaciones soportadas (DDD/Event Storming, BPMN, C4, UML) con su guía de diseño. |
 | `describe_notation` | los `type` válidos de una notación, si son contenedores y su forma. |
+| `list_icons` | busca en el catálogo de logos de tecnología (`src/lib/icons/catalog.ts`, spec 025) por nombre, alias o categoría; el id va en `icon` de `add_node`/`update_element`. Un id desconocido entra igual y `validate_diagram` lo reporta (`ICONO`). |
 | `get_app_state` **app** | proyecto activo **con su organización**, notación, vistas ya existentes y cupo libre. Dice qué organización mira el humano en el selector del header y cuál tiene fijada el MCP —y avisa si difieren—, y lista los proyectos guardados **agrupados por organización**, sin el filtro del header (#534). La **ingesta**: sin esto se exporta a ciegas y se duplican vistas. |
 | `list_views` **app** | vistas (pestañas) de un proyecto con notación, origen y tamaño. Acepta `project`: llega a **otro proyecto guardado** sin abrirlo. |
 | `get_view` **app** | contenido de una vista: resumen + Mermaid; con `importAs` la deja como diagrama **editable** en el workspace para continuarla. |

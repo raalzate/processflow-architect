@@ -687,6 +687,57 @@ describe("registerProcessflowTools · metadatos del proyecto", () => {
 });
 
 // -----------------------------------------------------------------------------
+// Spec 025 — catálogo de iconos: list_icons, `icon` en add_node/update_element.
+// -----------------------------------------------------------------------------
+
+describe("iconos de tecnología (spec 025)", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-icon-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  it("list_icons busca por nombre y alias, lista categorías sin query y dice cuando no hay nada", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    const kafka = await tools.get("list_icons")!.handler({ query: "kafka", limit: 30 });
+    expect(kafka.content[0].text).toContain("`si-apachekafka`");
+    const cats = await tools.get("list_icons")!.handler({ limit: 30 });
+    expect(cats.content[0].text).toContain("bases-de-datos");
+    const nada = await tools.get("list_icons")!.handler({ query: "zzz-no", limit: 30 });
+    expect(nada.content[0].text).toMatch(/Ningún icono/);
+  });
+
+  it("add_node y update_element llevan el icono; un id desconocido queda avisado", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    const creado = await tools.get("create_diagram")!.handler({ name: "Paisaje", notation: "c4" });
+    const id = /diagramId="([^"]+)"/.exec(creado.content[0].text)![1];
+    // Con espacios alrededor: se guarda recortado y NO se avisa (es válido).
+    const alta = await tools.get("add_node")!.handler({ diagramId: id, name: "Cuentas", type: "Base de Datos", id: "db", icon: " si-postgresql " });
+    expect(alta.content[0].text).not.toMatch(/no está en el catálogo/);
+    await tools.get("add_node")!.handler({ diagramId: id, name: "App", type: "Sistema", id: "app" });
+    await tools.get("add_edge")!.handler({ diagramId: id, source: "app", target: "db", label: "lee [SQL]" });
+    const upd = await tools.get("update_element")!.handler({ diagramId: id, id: "app", icon: "si-no-existe" });
+    expect(upd.content[0].text).toMatch(/no está en el catálogo/);
+    const out = path.join(ws, "p.json");
+    await tools.get("export_to_app")!.handler({ diagramId: id, outPath: out });
+    const graph = JSON.parse(await fs.readFile(out, "utf8"));
+    const nodos = graph.big_picture.nodos;
+    expect(nodos.find((n: any) => n.id === "db").icono).toBe("si-postgresql");
+    expect(nodos.find((n: any) => n.id === "app").icono).toBe("si-no-existe");
+    const val = await tools.get("validate_diagram")!.handler({ diagramId: id });
+    expect(val.content[0].text).toMatch(/\[ICONO\]/);
+    // Cadena vacía quita el icono.
+    await tools.get("update_element")!.handler({ diagramId: id, id: "app", icon: "" });
+    const val2 = await tools.get("validate_diagram")!.handler({ diagramId: id });
+    expect(val2.content[0].text).not.toMatch(/\[ICONO\]/);
+  });
+});
+
+// -----------------------------------------------------------------------------
 // Issue #540 — import_mermaid: redibujar, no convertir, con ledger de fidelidad.
 // -----------------------------------------------------------------------------
 

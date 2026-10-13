@@ -243,6 +243,22 @@ describe("reglas de presentación", () => {
   });
 });
 
+// Spec 025: un icono que no está en el catálogo se dibuja con el del tipo, y se dice.
+describe("icono de tecnología (ICONO)", () => {
+  it("avisa del id desconocido y calla con uno válido o sin icono", () => {
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "c4" as const });
+    m = addNode(m, { id: "a", nombre: "App", tipo_elemento: typesWithRole("c4", "system")[0], icono: "si-react" }).model;
+    m = addNode(m, { id: "b", nombre: "Raro", tipo_elemento: typesWithRole("c4", "system")[0], icono: "si-no-existe" }).model;
+    m = addNode(m, { id: "c", nombre: "Sin", tipo_elemento: typesWithRole("c4", "system")[0] }).model;
+    m = addEdge(m, { fuente: "a", destino: "b", descripcion: "usa [HTTP]" });
+    m = addEdge(m, { fuente: "b", destino: "c", descripcion: "usa [HTTP]" });
+    const f = qualityFindings(m).filter((x) => x.rule === "ICONO");
+    expect(f).toHaveLength(1);
+    expect(f[0].nodeId).toBe("b");
+    expect(f[0].message).toContain('"si-no-existe"');
+  });
+});
+
 // Spec 022: el acento señala sólo mientras es escaso.
 describe("focos (ACENTO)", () => {
   const con = (hotspots: string[]) => {
