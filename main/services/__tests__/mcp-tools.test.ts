@@ -5,6 +5,25 @@ import path from "node:path";
 import { registerProcessflowTools } from "../mcp-tools";
 import { typesWithRole } from "../../../src/lib/notations";
 
+/**
+ * Descripciones (`.describe()`) de un esquema zod y de todo lo que envuelve:
+ * optional, default, pipe/preprocess, array, object. zod 4 no las serializa
+ * con JSON.stringify, así que se recorren por la API pública.
+ */
+function descripcionesDe(schema: unknown, vistos = new Set<unknown>()): string[] {
+  if (!schema || typeof schema !== "object" || vistos.has(schema)) return [];
+  vistos.add(schema);
+  const s = schema as any;
+  const out: string[] = [];
+  if (typeof s.description === "string") out.push(s.description);
+  const d = s.def ?? s._def ?? {};
+  for (const hijo of [d.innerType, d.in, d.out, d.element, d.wrapped, d.schema]) out.push(...descripcionesDe(hijo, vistos));
+  const shape = d.shape ?? (s.shape && typeof s.shape === "object" ? s.shape : undefined);
+  const campos = shape ?? (s.safeParse ? undefined : s);
+  if (campos && typeof campos === "object") for (const v of Object.values(campos)) out.push(...descripcionesDe(v, vistos));
+  return out;
+}
+
 /** Server MCP falso: captura las herramientas registradas (nombre → handler). */
 function fakeServer() {
   const tools = new Map<string, { def: any; handler: (args: any) => Promise<any> }>();
@@ -587,7 +606,10 @@ describe("metadatos de la caja (referencias): contrato con el agente", () => {
     const { server, tools } = fakeServer();
     registerProcessflowTools(server, { workspace: "/tmp/x" });
     for (const nombre of TOOLS_CON_METADATA) {
-      const doc = JSON.stringify(tools.get(nombre)!.def);
+      // zod 4 ya no serializa las descripciones dentro del esquema: se leen
+      // por la API pública (`description`), campo por campo y en profundidad.
+      const def = tools.get(nombre)!.def;
+      const doc = [def.description ?? "", ...descripcionesDe(def.inputSchema)].join("\n");
       expect(doc, nombre).toContain("repo");
       expect(doc, nombre).toContain("wiki");
       expect(doc, nombre).toMatch(/http\(s\)/);
@@ -825,7 +847,8 @@ describe("estado_comparativo · A", () => {
     for (const t of ["add_node", "add_container", "update_element"]) {
       const shape = tools.get(t)!.def.inputSchema;
       expect(shape.estado, `${t} sin \`estado\``).toBeDefined();
-      const opciones = (shape.estado._def.innerType ?? shape.estado)._def.values;
+      // zod 4: el enum expone `options`; `unwrap()` quita el `optional`.
+      const opciones = (shape.estado.unwrap?.() ?? shape.estado).options;
       expect(opciones).toContain("existente");
       expect(opciones).toContain("modificado");
       expect(opciones).toContain("nuevo");
