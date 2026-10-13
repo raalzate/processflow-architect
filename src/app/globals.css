@@ -8,6 +8,12 @@
 @source inline("bg-{blue,orange,emerald,cyan,yellow,indigo,pink,purple}-500");
 @source inline("bg-gray-400");
 @source inline("bg-{red,orange,amber,yellow,lime,green,emerald,teal,cyan,sky,blue,indigo,violet,purple,fuchsia,pink,rose,slate,gray,zinc,stone}-{50,100}");
+/* Y sus variantes oscuras (`dark:fill-*` → `dark:bg-*`, #588): sin esto el chip
+   de un tipo cuyo tono oscuro no aparece literal en ningún .tsx queda blanco.
+   `notations-ui.test.ts` comprueba que todo relleno del registro está cubierto. */
+@source inline("dark:bg-{red,orange,amber,yellow,lime,green,emerald,teal,cyan,sky,blue,indigo,violet,purple,fuchsia,pink,rose,slate,gray,zinc,stone}-{300,500,600,700,800,900,950}");
+@source inline("dark:bg-{red,orange,amber,yellow,lime,green,emerald,teal,cyan,sky,blue,indigo,violet,purple,fuchsia,pink,rose,slate,gray,zinc,stone}-{800,950}/40");
+@source inline("bg-transparent");
 
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
