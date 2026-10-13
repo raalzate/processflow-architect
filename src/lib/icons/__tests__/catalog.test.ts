@@ -110,6 +110,19 @@ describe("sanearSvg", () => {
     expect(s.inner).not.toContain('id="a"');
   });
 
+  it("no deja pasar href sin comillas, style ni eventos sin comillas, y prefija ids con comilla simple", () => {
+    const sucio =
+      '<svg viewBox="0 0 10 10"><defs><linearGradient id=\'a\'><stop offset="0"/></linearGradient></defs>' +
+      '<use href=https://evil onclick=x() /><path style="behavior:expression(1)" fill="url(#a)" d="M0 0h1"/></svg>';
+    const s = sanearSvg(sucio, "p")!;
+    expect(s.inner).not.toMatch(/evil|onclick|style/);
+    expect(s.inner).toContain('id="p-a"');
+    expect(s.inner).toContain("url(#p-a)");
+    const base = { id: "dv-x", nombre: "x", categoria: "nube", alias: [], fuente: "devicon" as const, licencia: "MIT", viewBox: "0 0 1 1" };
+    expect(fallasDeIcono({ ...base, svg: "<use href=https://evil /><path d=\"M0 0\"/>" })).toContainEqual(expect.stringContaining("externa"));
+    expect(fallasDeIcono({ ...base, svg: "<path style=\"x\" d=\"M0 0\"/>" })).toContainEqual(expect.stringContaining("style"));
+  });
+
   it("rechaza lo que no es un SVG con viewBox o no tiene dibujo", () => {
     expect(sanearSvg("<div>no</div>", "p")).toBeNull();
     expect(sanearSvg('<svg width="10"><path d="M0 0"/></svg>', "p")).toBeNull();

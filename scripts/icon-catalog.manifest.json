@@ -2,7 +2,7 @@
   "$comment": "Manifiesto CURADO del catálogo de iconos (spec 025). Cada entrada: id estable, nombre, categoría (ver CATEGORIAS en src/lib/icons/catalog.ts), alias de búsqueda en español, y la fuente: { si: slug de Simple Icons (CC0) } | { dv: nombre de Devicon, variante } (MIT) | { lucide: NombreDelIcono } (ISC, ya en el repo). Regenerar con `npm run icons:build`; el test del gate exige que el generado corresponda a este archivo.",
   "fuentes": {
     "simple-icons": { "version": "16.35.0", "url": "https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/<slug>.svg", "licencia": "CC0-1.0" },
-    "devicon": { "version": "latest", "url": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/<nombre>/<nombre>-<variante>.svg", "licencia": "MIT" },
+    "devicon": { "version": "v2.17.0", "url": "https://cdn.jsdelivr.net/gh/devicons/devicon@v2.17.0/icons/<nombre>/<nombre>-<variante>.svg", "licencia": "MIT" },
     "lucide": { "licencia": "ISC" }
   },
   "iconos": [

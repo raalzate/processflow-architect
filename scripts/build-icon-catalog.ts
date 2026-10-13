@@ -61,7 +61,7 @@ async function main() {
     await bajar(`https://cdn.jsdelivr.net/npm/simple-icons@${si.version}/data/simple-icons.json`)
   ) as { slug: string; hex: string; title: string }[];
   const hexDe = new Map(indiceSi.map((i) => [i.slug, i.hex]));
-  const indiceDv = JSON.parse(await bajar("https://cdn.jsdelivr.net/gh/devicons/devicon@latest/devicon.json")) as {
+  const indiceDv = JSON.parse(await bajar(`https://cdn.jsdelivr.net/gh/devicons/devicon@${dv.version}/devicon.json`)) as {
     name: string;
     color: string;
   }[];

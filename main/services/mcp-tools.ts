@@ -1231,6 +1231,9 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         return fail(e.message);
       }
       const model = await loadModel(diagramId);
+      // Se guarda y se valida el MISMO valor (recortado): «" si-x "» no puede
+      // entrar válido y avisar a la vez que no está en el catálogo.
+      const iconoLimpio = icon?.trim() || undefined;
       try {
         const r = addNode(model, {
           id,
@@ -1240,14 +1243,14 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           descripcion: description,
           estado_comparativo: estado as Estado | undefined,
           tags_tecnologia: tags,
-          icono: icon?.trim() || undefined,
+          icono: iconoLimpio,
           source,
           metadata,
           columnas: columns,
         });
         await saveModel(diagramId, r.model);
-        if (icon && !esIconoValido(icon)) {
-          return text(`Nodo "${name}" añadido (id=${r.id}), pero el icono "${icon}" no está en el catálogo: se dibuja el icono del tipo. Buscá uno con list_icons.`);
+        if (iconoLimpio && !esIconoValido(iconoLimpio)) {
+          return text(`Nodo "${name}" añadido (id=${r.id}), pero el icono "${iconoLimpio}" no está en el catálogo: se dibuja el icono del tipo. Buscá uno con list_icons.`);
         }
         return text(`Nodo "${name}" añadido (id=${r.id}).`);
       } catch (e: any) {
@@ -1393,6 +1396,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         return fail(e.message);
       }
       const model = await loadModel(diagramId);
+      const iconoLimpio = icon?.trim() || undefined;
       try {
         const next = updateNode(model, id, {
           ...(name !== undefined ? { nombre: name } : {}),
@@ -1401,15 +1405,15 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ...(estado !== undefined ? { estado_comparativo: estado as Estado } : {}),
           ...(source !== undefined ? { source } : {}),
           ...(tags !== undefined ? { tags_tecnologia: tags } : {}),
-          ...(icon !== undefined ? { icono: icon.trim() || undefined } : {}),
+          ...(icon !== undefined ? { icono: iconoLimpio } : {}),
           ...(metadata !== undefined ? { metadata } : {}),
           ...(metadataRemove !== undefined ? { metadataRemove } : {}),
           ...(columns !== undefined ? { columnas: columns } : {}),
         });
         await saveModel(diagramId, next);
-        if (icon && !esIconoValido(icon)) {
+        if (iconoLimpio && !esIconoValido(iconoLimpio)) {
           return text(
-            `Elemento "${id}" actualizado, pero el icono "${icon}" no está en el catálogo: se dibuja el icono del tipo. Buscá uno con list_icons.`
+            `Elemento "${id}" actualizado, pero el icono "${iconoLimpio}" no está en el catálogo: se dibuja el icono del tipo. Buscá uno con list_icons.`
           );
         }
         const n = next.nodes.find((x) => x.id === id)!;

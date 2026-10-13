@@ -256,8 +256,7 @@ export const IconoDeElemento: React.FC<{
   className?: string;
   /** Color de marca activado (skin canónica). */
   conColor?: boolean;
-  title?: string;
-}> = ({ icono, Fallback, className, conColor = true, title }) => {
+}> = ({ icono, Fallback, className, conColor = true }) => {
   const entrada = iconoDeCatalogo(icono);
   if (!entrada) return <Fallback className={className} />;
   if (entrada.fuente === "lucide") {
@@ -272,12 +271,12 @@ export const IconoDeElemento: React.FC<{
       fill="currentColor"
       aria-hidden="true"
       focusable="false"
-      // El marcado viene del catálogo generado y pasó por `sanearSvg`: sin
-      // scripts, eventos ni referencias externas (lo prueba el gate).
+      // El marcado viene del catálogo generado: pasó por `sanearSvg` al
+      // generarse Y `fallasDeIcono` lo verifica en el gate (catalog.test.ts).
+      // Las dos capas se sostienen juntas: aflojar una exige mirar la otra.
+      // No puede llevar hijos React además de `dangerouslySetInnerHTML`.
       dangerouslySetInnerHTML={{ __html: entrada.svg ?? "" }}
-    >
-      {title ? undefined : undefined}
-    </svg>
+    />
   );
 };
 
@@ -1556,7 +1555,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           <text
             // Este nombre nace pegado a la izquierda (no lleva `textAnchor`), así
             // que sólo se recoloca si el usuario eligió una alineación.
-            x={node.estilo?.alineacion ? xSegunAlineacion(node.estilo, width) : node.icono ? 36 : 12}
+            x={
+              node.estilo?.alineacion && node.estilo.alineacion !== "izquierda"
+                ? xSegunAlineacion(node.estilo, width)
+                : node.icono
+                  ? 36
+                  : 12
+            }
             y="24"
             fill="currentColor"
             className={cn(

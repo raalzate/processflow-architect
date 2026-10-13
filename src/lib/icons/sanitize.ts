@@ -49,9 +49,15 @@ export function sanearSvg(markup: string, prefijo: string): SvgSaneado | null {
   );
   // Atributos de evento y referencias externas.
   inner = inner
-    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, "")
-    .replace(/\s+(xlink:href|href)\s*=\s*("(?!#)[^"]*"|'(?!#)[^']*')/gi, "")
-    .replace(/\s+style\s*=\s*("[^"]*url\([^"]*"|'[^']*url\([^']*')/gi, "");
+    // Un valor puede venir entre comillas dobles, simples o SIN comillas: las
+    // tres formas se contemplan, o un `href=https://…` sin comillas pasaría.
+    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/\s+(xlink:href|href)\s*=\s*("(?!#)[^"]*"|'(?!#)[^']*'|(?!#)[^\s>"']+)/gi, "")
+    // `style` se borra siempre: ningún logo del catálogo lo necesita y es la
+    // única vía para `url()`/`expression()` que no es un atributo de dibujo.
+    .replace(/\s+style\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    // Comillas simples → dobles en `id`, para que el prefijado de abajo las vea.
+    .replace(/\sid='([^']*)'/g, ' id="$1"');
   // Ids propios, prefijados, y sus referencias (`url(#x)`, `href="#x"`).
   const ids = new Set([...inner.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
   for (const id of ids) {
@@ -78,7 +84,9 @@ export function fallasDeIcono(i: IconoDeCatalogo): string[] {
   const svg = i.svg ?? "";
   if (/<script|<foreignObject|<style|<image/i.test(svg)) fallas.push(`${i.id}: elemento prohibido`);
   if (/\son[a-z]+\s*=/i.test(svg)) fallas.push(`${i.id}: atributo de evento`);
-  if (/(xlink:href|href)\s*=\s*"(?!#)/i.test(svg)) fallas.push(`${i.id}: referencia externa`);
+  if (/\sstyle\s*=/i.test(svg)) fallas.push(`${i.id}: atributo style`);
+  // Con comillas dobles, simples o sin comillas: lo único válido es `#id`.
+  if (/(xlink:href|href)\s*=\s*(?:"(?!#)|'(?!#)|(?!["'#]))/i.test(svg)) fallas.push(`${i.id}: referencia externa`);
   if (/url\(\s*["']?\s*(?:https?:)?\/\//i.test(svg)) fallas.push(`${i.id}: url externa`);
   return fallas;
 }

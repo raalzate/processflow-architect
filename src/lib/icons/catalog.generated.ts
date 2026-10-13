@@ -5,7 +5,7 @@
 
 import type { IconoDeCatalogo } from "./catalog";
 
-export const MANIFEST_HASH = "6ae0a3f1a1404ec2";
+export const MANIFEST_HASH = "e547eac01ed07a15";
 
 export const ICON_CATALOG: readonly IconoDeCatalogo[] = [
   {

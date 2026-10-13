@@ -715,7 +715,9 @@ describe("iconos de tecnología (spec 025)", () => {
     registerProcessflowTools(server, { workspace: ws });
     const creado = await tools.get("create_diagram")!.handler({ name: "Paisaje", notation: "c4" });
     const id = /diagramId="([^"]+)"/.exec(creado.content[0].text)![1];
-    await tools.get("add_node")!.handler({ diagramId: id, name: "Cuentas", type: "Base de Datos", id: "db", icon: "si-postgresql" });
+    // Con espacios alrededor: se guarda recortado y NO se avisa (es válido).
+    const alta = await tools.get("add_node")!.handler({ diagramId: id, name: "Cuentas", type: "Base de Datos", id: "db", icon: " si-postgresql " });
+    expect(alta.content[0].text).not.toMatch(/no está en el catálogo/);
     await tools.get("add_node")!.handler({ diagramId: id, name: "App", type: "Sistema", id: "app" });
     await tools.get("add_edge")!.handler({ diagramId: id, source: "app", target: "db", label: "lee [SQL]" });
     const upd = await tools.get("update_element")!.handler({ diagramId: id, id: "app", icon: "si-no-existe" });
