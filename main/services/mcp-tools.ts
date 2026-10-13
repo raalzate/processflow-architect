@@ -351,7 +351,8 @@ const metadataSchema = z
       url: z.string().optional().describe("URL donde eso vive. Sólo http(s) se vuelve enlace en la app."),
     }),
     {
-      invalid_type_error:
+      // zod 4: `invalid_type_error` desapareció; `error` cubre el mismo caso.
+      error:
         'metadata es una LISTA de objetos, no texto: [{"clave":"repo","valor":"acme/pagos-svc","url":"https://github.com/acme/pagos-svc"}]. Si tu cliente sólo manda texto, mandá ese mismo JSON como cadena y se parsea solo.',
     }
   )

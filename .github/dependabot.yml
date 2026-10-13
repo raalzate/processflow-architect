@@ -47,14 +47,13 @@ updates:
       - dependency-name: tailwind-merge
         update-types: ["version-update:semver-major"]
       # Migraciones registradas en #510, no actualizaciones:
-      #  - typescript 7 es el compilador nuevo; otros paquetes fijan la 5.
-      #  - zod 4 cambió la API de errores (rompe las herramientas MCP).
+      #  - typescript 7 es el compilador nuevo: Next 15 no carga next.config.ts
+      #    con él (`Cannot read properties of undefined (reading 'fileExists')`,
+      #    probado el 2026-10-13) y tsconfck fija la 5. Va con el salto de Next.
       #  - @types/node sigue al Node de Electron, no al último publicado.
       #  - vitest exige que coverage-v8 suba en el mismo cambio, y Dependabot no
       #    logra subirlo: el salto lo hace un humano con un `npm install` (P9).
       - dependency-name: typescript
-        update-types: ["version-update:semver-major"]
-      - dependency-name: zod
         update-types: ["version-update:semver-major"]
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
