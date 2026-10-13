@@ -181,7 +181,7 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-xl font-bold text-foreground font-headline">Configuración</h1>
           <p className="text-sm text-muted-foreground">
-            Local por defecto con Gemma (LiteRT-LM · WebGPU). IA remota opcional (Gemini · OpenAI · Anthropic).
+            Local por defecto con Gemma (LiteRT-LM · WebGPU). IA remota opcional (Gemini · OpenAI · Anthropic · OpenRouter).
           </p>
         </div>
         <Button asChild variant="outline">

@@ -233,6 +233,13 @@ interface Shot {
   /** ¿La pantalla necesita un proyecto cargado? (la bienvenida se ve sin él). */
   seed: boolean;
   wait: number;
+  /**
+   * Texto que TIENE que estar en pantalla antes de capturar (#592). Sin esto,
+   * un dev server lento (compilando, o compartido con electron-dev) dejaba
+   * capturas de la pantalla de carga o de Ajustes sin modelos, y nadie lo
+   * notaba hasta mirar el PNG. Si no aparece en `ESPERA_MAX_MS`, el script falla.
+   */
+  listo: string;
   /** Hero: colapsa el panel de análisis y reencuadra el lienzo. */
   hero?: boolean;
   /** Agrupador: elige tipo y nodo principal para que se vea el paso 3. */
@@ -240,13 +247,29 @@ interface Shot {
 }
 
 const SHOTS: Shot[] = [
-  { file: "01-home.png", path: "/", seed: false, wait: 2500 },
-  { file: "02-canvas.png", path: "/", seed: true, wait: 4000, hero: true },
-  { file: "03-settings.png", path: "/settings", seed: true, wait: 2500 },
-  { file: "04-mcp.png", path: "/mcp", seed: true, wait: 2500 },
-  { file: "05-docs.png", path: "/docs", seed: true, wait: 2500 },
-  { file: "06-merger.png", path: "/merger", seed: true, wait: 2500, merger: true },
+  { file: "01-home.png", path: "/", seed: false, wait: 2500, listo: "Bienvenido a ProcessFlow Architect" },
+  { file: "02-canvas.png", path: "/", seed: true, wait: 4000, hero: true, listo: "Leyenda" },
+  // «Descargado» sólo aparece con el stub del host funcionando: es la prueba
+  // de que Ajustes ve los modelos y no cayó a «sólo en la app de escritorio».
+  { file: "03-settings.png", path: "/settings", seed: true, wait: 2500, listo: "Descargado" },
+  { file: "04-mcp.png", path: "/mcp", seed: true, wait: 2500, listo: "MCP" },
+  { file: "05-docs.png", path: "/docs", seed: true, wait: 2500, listo: "Documentación" },
+  { file: "06-merger.png", path: "/merger", seed: true, wait: 2500, merger: true, listo: "Agrupador de Nodos" },
 ];
+
+const ESPERA_MAX_MS = 60_000;
+
+/** Espera a que `texto` esté en el documento, o falla con la pantalla que había. */
+async function esperarListo(page: Page, shot: Shot) {
+  const inicio = Date.now();
+  while (Date.now() - inicio < ESPERA_MAX_MS) {
+    const hay = await page.evaluate((t) => document.body?.innerText.includes(t), shot.listo);
+    if (hay) return;
+    await esperar(500);
+  }
+  const visible = await page.evaluate(() => document.body?.innerText.slice(0, 200).replace(/\s+/g, " "));
+  throw new Error(`${shot.file}: no apareció «${shot.listo}» en ${ESPERA_MAX_MS / 1000} s. En pantalla: «${visible}»`);
+}
 
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -294,6 +317,7 @@ async function main() {
       await page.goto(BASE + shot.path, { waitUntil: "networkidle2", timeout: 120_000 });
       // El indicador de `next dev` no existe en la app empaquetada.
       await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      await esperarListo(page, shot);
       await esperar(shot.wait);
 
       if (shot.merger) await prepararMerger(page);
