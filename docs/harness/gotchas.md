@@ -532,3 +532,19 @@ Regla:   `registerPrivilegedSchemes()` registra también en un microtask, encola
 Mecanismo: `main/__tests__/schemes.test.ts` modela el arranque (registro ajeno encolado antes + el
          nuestro en el mismo tick) y exige que la última llamada declare `litert-model`; con el código
          viejo falla.
+
+### GOTCHA: las capturas salen de la pantalla de carga si el dev server está ocupado
+
+Issue: #592
+
+Síntoma: `npm run screenshots` termina «✔» en las seis capturas, pero `02-canvas.png` muestra
+         «Iniciando…» y `03-settings.png` dice «sólo en la app de escritorio»; nadie lo nota
+         hasta mirar el PNG.
+Causa:   con `BASE=` apuntando a un `next dev` compartido con `electron-dev` (compilando otra
+         ruta), la página tardaba más que la espera fija del script y la captura entraba antes
+         de que la pantalla terminara de cargar. No era WebGPU ni el stub del host.
+Regla:   cada captura declara el texto que TIENE que estar en pantalla (`listo`); el script
+         espera hasta 60 s a que aparezca y, si no, falla nombrando la captura y lo que había.
+         Para regenerar, dejar que el script levante su propio servidor (sin `BASE`).
+Mecanismo: `esperarListo()` en `scripts/screenshots.ts`: una captura de la pantalla de carga
+         ya no puede llegar a `docs/screenshots/`.
