@@ -68,7 +68,8 @@ function seedGraph(): GraphData {
     tipo_elemento: string,
     container?: string,
     descripcion?: string,
-    tags?: string[]
+    tags?: string[],
+    icono?: string
   ) => {
     const r = addNode(m, {
       nombre,
@@ -76,6 +77,9 @@ function seedGraph(): GraphData {
       container,
       descripcion,
       tags_tecnologia: tags ?? null,
+      // Logo de tecnología (spec 025): la captura muestra que una caja puede
+      // decir con qué está hecha, no sólo de qué tipo es.
+      icono,
     });
     m = r.model;
     return r.id;
@@ -88,23 +92,23 @@ function seedGraph(): GraphData {
   const poliza = cont("Póliza", "Póliza");
   const cobro = cont("Cobro", "Pago");
 
-  const cliente = nodo("Cliente", "Actor", undefined, "Solicita cotizaciones en el portal");
+  const cliente = nodo("Cliente", "Actor", undefined, "Solicita cotizaciones en el portal", undefined, "lu-User");
   const cSolicitar = nodo("Solicitar cotización", "Comando", cotizacion, "Datos del vehículo y del conductor");
   const eCotizada = nodo("Cotización emitida", "Evento", cotizacion, "Prima calculada y vigente 15 días");
   const rTarifa = nodo("Tarifa por riesgo", "Regla de Negocio", cotizacion, "Recarga por siniestralidad y zona");
   const cAceptar = nodo("Aceptar cotización", "Comando", poliza, "El cliente acepta la prima ofrecida");
   const ePolizaEmitida = nodo("Póliza emitida", "Evento", poliza, "Número de póliza y vigencia asignados");
   const cCobrar = nodo("Cobrar prima", "Comando", cobro, "Cargo a la tarjeta del cliente");
-  const eCobrada = nodo("Prima cobrada", "Evento", cobro, "Pago confirmado por la pasarela", ["Stripe"]);
+  const eCobrada = nodo("Prima cobrada", "Evento", cobro, "Pago confirmado por la pasarela", ["Stripe"], "si-stripe");
   const eRechazada = nodo("Prima rechazada", "Evento", cobro, "Fondos insuficientes o tarjeta vencida");
   // Duplicado a propósito (mismo concepto, otro nombre): es el caso de uso que
   // muestra la captura del Agrupador de Nodos.
   const eConfirmado = nodo("Cobro confirmado", "Evento", cobro, "Alta del recibo en contabilidad");
   const pActivar = nodo("Al cobrar, activar póliza", "Política", undefined, "Prima cobrada → póliza en vigor");
   const eActivada = nodo("Póliza activada", "Evento", poliza, "Cobertura vigente desde la fecha de cobro");
-  const buro = nodo("Buró de riesgo", "Sistema Externo", undefined, "Historial de siniestros del conductor");
-  const pasarela = nodo("Pasarela de pagos", "Sistema Externo", undefined, "Autoriza el cargo de la prima");
-  const panel = nodo("Panel de pólizas", "Vista", undefined, "Estado y vencimientos por cliente");
+  const buro = nodo("Buró de riesgo", "Sistema Externo", undefined, "Historial de siniestros del conductor", undefined, "lu-ShieldCheck");
+  const pasarela = nodo("Pasarela de pagos", "Sistema Externo", undefined, "Autoriza el cargo de la prima", undefined, "si-stripe");
+  const panel = nodo("Panel de pólizas", "Vista", undefined, "Estado y vencimientos por cliente", undefined, "lu-BarChart3");
 
   arista(cliente, cSolicitar, "solicita");
   arista(cSolicitar, eCotizada, "dispara");
