@@ -160,6 +160,17 @@ El mapa **nombre de icono → componente lucide** de los artefactos vive en
 string, que es puro). Agregar un `kind` con un icono no mapeado falla en
 `__tests__/artifact-icon.test.tsx`.
 
+## Catálogo de iconos de tecnología (`src/lib/icons/`)
+
+Una caja puede llevar el logo de su tecnología (PostgreSQL, Slack, Android…) además del
+icono de su tipo. El catálogo es **curado y versionado**: `scripts/icon-catalog.manifest.json`
+declara cada icono (fuente pineada, alias en español, categoría) y `npm run icons:build`
+baja los SVG, los pasa por `sanearSvg` y escribe `catalog.generated.ts` con el hash del
+manifiesto. La app no toca la red ni carga `simple-icons`/`devicon` como dependencia.
+`catalog.ts` (puro) resuelve y busca; `IconoDeElemento` (lienzo) dibuja; el MCP lo expone
+con `list_icons` e `icon`. Licencias en `THIRD_PARTY_LICENSES.md`. Si cambia el manifiesto
+sin regenerar, `src/lib/icons/__tests__/catalog.test.ts` falla.
+
 ## Pruebas
 
 - **Vitest**, entorno `node`. Las pruebas viven en `__tests__/` junto a su módulo.
