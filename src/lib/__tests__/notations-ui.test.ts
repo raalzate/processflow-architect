@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { NOTATION_LIST, bgDeFill, notationBadgeClass, swatchClass, getNotation } from "../notations";
 
 describe("notationBadgeClass", () => {
@@ -40,5 +42,31 @@ describe("swatchClass", () => {
     }
     expect(bgDeFill("fill-zinc-100 dark:fill-zinc-700")).toBe("bg-zinc-100 dark:bg-zinc-700");
     expect(bgDeFill("fill-[#fff]")).toBe("bg-[#fff]");
+  });
+});
+
+/**
+ * Expande llaves al estilo Tailwind: `a-{b,c}-{1,2}` → a-b-1, a-b-2, a-c-1, a-c-2.
+ * Lo que `@source inline(...)` de globals.css declara es lo que el CSS trae.
+ */
+function expandir(patron: string): string[] {
+  const m = /\{([^}]*)\}/.exec(patron);
+  if (!m) return [patron];
+  return m[1].split(",").flatMap((opt) => expandir(patron.replace(m[0], opt)));
+}
+
+describe("safelist de fondos de la paleta (#588)", () => {
+  it("todo relleno del registro, traducido a bg-*, está declarado en @source inline de globals.css", () => {
+    const css = fs.readFileSync(path.resolve(__dirname, "../../app/globals.css"), "utf8");
+    const declaradas = new Set(
+      [...css.matchAll(/@source inline\("([^"]+)"\)/g)].flatMap((m) => expandir(m[1]))
+    );
+    for (const n of NOTATION_LIST) {
+      for (const el of n.elements) {
+        for (const clase of bgDeFill(el.bg).split(/\s+/)) {
+          expect(declaradas.has(clase), `${n.id}/${el.type}: «${clase}» no está safelistada`).toBe(true);
+        }
+      }
+    }
   });
 });
