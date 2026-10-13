@@ -987,7 +987,17 @@ export function notationBadgeClass(id: NotationId | string | undefined): string 
  * Traducir la misma clase mantiene el color del swatch idéntico al del nodo.
  */
 export function swatchClass(el: NotationElement): string {
-  return el.bg.replace(/^fill-/, "bg-");
+  return bgDeFill(el.bg);
+}
+
+/**
+ * Traduce un relleno SVG (`fill-*`) a fondo HTML (`bg-*`) en TODAS sus clases,
+ * incluidas las variantes (`dark:fill-*`, `hover:fill-*`). Cambiar sólo la
+ * primera dejaba `dark:fill-*` en un <div>, donde no hace nada: el chip de la
+ * paleta salía claro con texto blanco en tema oscuro (#588).
+ */
+export function bgDeFill(fill: string): string {
+  return fill.replace(/(^|[\s:])fill-/g, "$1bg-");
 }
 
 /** Conjunto GLOBAL de tipos contenedor (de todas las notaciones). */

@@ -159,6 +159,7 @@ import {
   isFreeformType,
   isTableType,
   textStyleOfType,
+  bgDeFill,
   DEFAULT_NOTATION_ID,
   type Notation,
   type NotationId,
@@ -706,7 +707,7 @@ const PaletteItem: React.FC<{
         "flex items-center space-x-2 p-2 border rounded-md shadow-xs cursor-grab active:cursor-grabbing transition-all",
         // `bg` es `fill-*` (SVG del lienzo); en el chip HTML lo traducimos a `bg-*`
         // para que el chip se vea como se verá el nodo: mismo relleno, mismo texto.
-        color.bg.replace("fill-", "bg-"),
+        bgDeFill(color.bg),
         color.border,
         // El chip lleva el MISMO texto que el nodo: con la app oscura, su fondo y
         // el del nodo son el mismo, y un tono pensado para fondo blanco quedaba
