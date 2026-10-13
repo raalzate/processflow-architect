@@ -15,7 +15,9 @@
  * como modelo; `aviso` = mejora recomendada.
  */
 
-import { hasRole, roleOfType, typesWithRole, type ElementRole } from "../notations";
+import { getNotation, hasRole, roleOfType, typesWithRole, type ElementRole } from "../notations";
+import { MAX_FOCAL } from "../skin";
+import { esIconoValido } from "../icons/catalog";
 import { resolveCita } from "../source-docs";
 import { isContainerType } from "./catalog";
 import { hayProblemaDeLegibilidad } from "../layout/metrics";
@@ -290,6 +292,19 @@ function presentationFindings(model: DiagramModel): QualityFinding[] {
     });
   }
 
+  // Icono de tecnología (spec 025): un id que no está en el catálogo se
+  // dibuja con el icono del tipo y nadie se entera, salvo por acá.
+  for (const n of model.nodes) {
+    if (n.icono && !esIconoValido(n.icono)) {
+      findings.push({
+        level: "aviso",
+        rule: "ICONO",
+        message: `"${n.nombre}" pide el icono "${n.icono}", que no está en el catálogo: se dibuja con el icono de su tipo. Buscá uno válido con list_icons.`,
+        nodeId: n.id,
+      });
+    }
+  }
+
   if (nodes.length > MAX_NODES) {
     findings.push({
       level: "aviso",
@@ -298,6 +313,64 @@ function presentationFindings(model: DiagramModel): QualityFinding[] {
     });
   }
 
+  return findings;
+}
+
+/**
+ * Presupuesto de COMPLEJIDAD de la notación (`Notation.budget`). `TAMANO` dice
+ * cuándo el lienzo deja de caber; esto dice cuándo el diagrama deja de leerse
+ * de un vistazo, que llega mucho antes: un paisaje C4 con 20 sistemas cabe en
+ * pantalla y no cuenta nada. La salida no es «quitá cosas» sino «partí en una
+ * vista panorámica y vistas de detalle» (ADR 0002): la profundidad en esta app
+ * se da por vistas, y `suggest_views` propone el corte. Una notación sin
+ * presupuesto (dibujo libre) no produce hallazgos. Adaptado de diagram-design
+ * (ADR 0006).
+ */
+function budgetFindings(model: DiagramModel): QualityFinding[] {
+  const budget = getNotation(model.meta.notation).budget;
+  if (!budget) return [];
+  const findings: QualityFinding[] = [];
+  const contenedores = model.nodes.filter(isContainer);
+  const nodes = model.nodes.filter((n) => !isContainer(n));
+  const partir =
+    "Partí el diagrama en una vista panorámica y vistas de detalle (suggest_views propone el corte) en vez de apretar más en una sola.";
+
+  if (nodes.length > budget.nodos) {
+    findings.push({
+      level: "aviso",
+      rule: "PRESUPUESTO",
+      message: `${nodes.length} elementos superan el presupuesto de ${budget.nodos} con que un diagrama de esta notación se lee de un vistazo. ${partir}`,
+    });
+  }
+  if (model.edges.length > budget.relaciones) {
+    findings.push({
+      level: "aviso",
+      rule: "PRESUPUESTO",
+      message: `${model.edges.length} relaciones superan el presupuesto de ${budget.relaciones}: con más de eso las líneas se cruzan y ninguna se sigue. ${partir}`,
+    });
+  }
+  if (budget.contenedores !== undefined && contenedores.length > budget.contenedores) {
+    findings.push({
+      level: "aviso",
+      rule: "PRESUPUESTO",
+      message: `${contenedores.length} contenedores superan el presupuesto de ${budget.contenedores} (${contenedores
+        .slice(0, 4)
+        .map((c) => `"${c.nombre}"`)
+        .join(", ")}${contenedores.length > 4 ? "…" : ""}). ${partir}`,
+    });
+  }
+  if (budget.porContenedor !== undefined) {
+    for (const c of contenedores) {
+      const dentro = nodes.filter((n) => n.container === c.nombre).length;
+      if (dentro <= budget.porContenedor) continue;
+      findings.push({
+        level: "aviso",
+        rule: "PRESUPUESTO",
+        message: `"${c.nombre}" tiene ${dentro} elementos; el presupuesto por contenedor es ${budget.porContenedor}. Lo que no entra suele ser otra fase o un subproceso: dale su propia vista.`,
+        nodeId: c.id,
+      });
+    }
+  }
   return findings;
 }
 
@@ -344,23 +417,50 @@ function legibilidadFindings(model: DiagramModel): QualityFinding[] {
     partes.push(`${medida.sobreCaja} relación(es) atraviesan una caja que no es su extremo`);
   if (medida.relaciones > 0 && medida.cruces > medida.relaciones * 0.1)
     partes.push(`${medida.cruces} cruces sobre ${medida.relaciones} relaciones (más del 10%)`);
+  if (medida.solape > 0) partes.push(`${medida.solape} par(es) de relaciones van encimadas por el mismo corredor`);
+  // Las dos reglas de conector de diagram-design (ADR 0006 · #538): cada punta
+  // con su propio anclaje, y ninguna etiqueta debajo de una caja ajena.
+  if (medida.etiquetasTapadas > 0)
+    partes.push(`${medida.etiquetasTapadas} etiqueta(s) de relación quedan tapadas por una caja ajena`);
+  if (medida.anclajesCompartidos > 0)
+    partes.push(`${medida.anclajesCompartidos} par(es) de relaciones nacen o mueren en el mismo punto de una caja`);
   return [
     {
       level: "aviso",
       rule: "LEGIBILIDAD",
-      message: `${partes.join(" y ")}. Probá relayout_diagram con otra estrategia; si persiste, suele sobrar una relación o faltar una banda.`,
+      message: `${partes.join(", ")}. Probá relayout_diagram con otra estrategia; si persiste, suele sobrar una relación o faltar una banda.`,
+    },
+  ];
+}
+
+/**
+ * Focos (spec 022): los hotspots son lo ÚNICO que lleva acento en la skin
+ * editorial, y el acento señala sólo mientras es escaso. Con más de `MAX_FOCAL`
+ * el lector no sabe a dónde mirar primero. Aplica en cualquier skin: el consejo
+ * de elegir qué importa vale aunque hoy se vea canónico.
+ */
+function focalFindings(model: DiagramModel): QualityFinding[] {
+  const hotspots = model.meta.hotspots ?? [];
+  if (hotspots.length <= MAX_FOCAL) return [];
+  return [
+    {
+      level: "aviso",
+      rule: "ACENTO",
+      message: `${hotspots.length} hotspots (${hotspots.slice(0, 4).join(", ")}${hotspots.length > 4 ? "…" : ""}) superan los ${MAX_FOCAL} que el acento puede señalar: elegí cuáles importan de verdad y bajá el resto a notas, o partí en vistas con un foco cada una.`,
     },
   ];
 }
 
 export function qualityFindings(model: DiagramModel): QualityFinding[] {
   const all = [
+    ...focalFindings(model),
     ...sourceFindings(model),
     ...legibilidadFindings(model),
     ...flowFindings(model),
     ...domainFindings(model),
     ...architectureFindings(model),
     ...presentationFindings(model),
+    ...budgetFindings(model),
   ];
   return [...all.filter((f) => f.level === "grave"), ...all.filter((f) => f.level === "aviso")];
 }

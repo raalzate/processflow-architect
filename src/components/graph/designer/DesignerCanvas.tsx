@@ -102,7 +102,11 @@ import {
   Link,
   ShieldCheck,
   Hash,
+  // Genéricos del catálogo de iconos de tecnología (spec 025).
+  Globe, Lock, Monitor, Users, Bell, Code, BarChart3, Bot, CreditCard, ShoppingCart,
+  Map, Camera, Radio, Webhook, ListOrdered, BrainCircuit,
 } from "lucide-react";
+import { iconoDeCatalogo } from "@/lib/icons/catalog";
 import {
   Dialog,
   DialogContent,
@@ -155,6 +159,7 @@ import {
   isFreeformType,
   isTableType,
   textStyleOfType,
+  bgDeFill,
   DEFAULT_NOTATION_ID,
   type Notation,
   type NotationId,
@@ -162,6 +167,7 @@ import {
 } from "@/lib/notations";
 import { MIN_PALETTE_QUERY, filtrarPaleta } from "@/lib/palette-search";
 import { CANVAS_CHROME } from "@/lib/canvas-chrome";
+import { CONTAINER_TREATMENT, SKIN_DEFAULT, edgeTreatment, nodeTreatment, type SkinId } from "@/lib/skin";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
 import { FRAGMENT_OPS, esOperador, type FragmentPart } from "@/lib/sequence/fragments";
 import {
@@ -229,10 +235,51 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Triangle, Combine, Link, ShieldCheck, Hash,
   // General: siluetas de dibujo libre (cuadrado, hexágono, nube, marco, lista…).
   Hexagon, Cloud, Shapes, ChevronRight, PanelTop, Heading, MessageCircle,
+  // Genéricos del catálogo de iconos de tecnología (spec 025).
+  Globe, Lock, Monitor, Users, Bell, Code, BarChart3, Bot, CreditCard, ShoppingCart,
+  Map, Camera, Radio, Webhook, ListOrdered, BrainCircuit,
 };
 
 export const iconForType = (type: string): React.ElementType =>
   ICON_MAP[ALL_ELEMENTS[type]?.icon ?? ""] || FilePlus;
+
+/**
+ * Icono de una caja (spec 025): el de TECNOLOGÍA que eligió el usuario si está
+ * en el catálogo, si no el del tipo. Un logo de marca (Simple Icons, Devicon)
+ * se incrusta como SVG saneado en tiempo de generación; su color de marca sólo
+ * se aplica en la skin canónica (en editorial, el CSS lo aplana a tinta). El
+ * genérico es un icono de lucide por nombre.
+ */
+export const IconoDeElemento: React.FC<{
+  icono?: string;
+  /** Icono del tipo, el de siempre: la caída cuando no hay logo. */
+  Fallback: React.ElementType;
+  className?: string;
+  /** Color de marca activado (skin canónica). */
+  conColor?: boolean;
+}> = ({ icono, Fallback, className, conColor = true }) => {
+  const entrada = iconoDeCatalogo(icono);
+  if (!entrada) return <Fallback className={className} />;
+  if (entrada.fuente === "lucide") {
+    const Generico = ICON_MAP[entrada.lucide ?? ""] ?? Fallback;
+    return <Generico className={className} />;
+  }
+  return (
+    <svg
+      viewBox={entrada.viewBox}
+      className={cn("icono-marca", className)}
+      style={conColor && entrada.color && entrada.fuente === "simple-icons" ? { color: `#${entrada.color}` } : undefined}
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+      // El marcado viene del catálogo generado: pasó por `sanearSvg` al
+      // generarse Y `fallasDeIcono` lo verifica en el gate (catalog.test.ts).
+      // Las dos capas se sostienen juntas: aflojar una exige mirar la otra.
+      // No puede llevar hijos React además de `dangerouslySetInnerHTML`.
+      dangerouslySetInnerHTML={{ __html: entrada.svg ?? "" }}
+    />
+  );
+};
 
 /**
  * Color de caída para un tipo que no está en el registro. Sigue la misma regla
@@ -287,6 +334,35 @@ const colorForType = (
   const e = ALL_ELEMENTS[type];
   return e ? { bg: e.bg, border: e.border, text: e.text } : defaultColor;
 };
+
+/**
+ * Skin con que se dibuja el lienzo (spec 022) y qué elementos son FOCO (los
+ * hotspots, por nombre). Lo provee `ComponentDesigner` alrededor del `<svg>`;
+ * nodo y arista lo leen. Sin proveedor —la paleta, un test— es la canónica.
+ */
+export const SkinContext = React.createContext<{ skin: SkinId; focal: ReadonlySet<string> }>({
+  skin: SKIN_DEFAULT,
+  focal: new Set(),
+});
+
+/**
+ * Clases con que se pinta un nodo en la skin activa. En la canónica son las del
+ * registro; en la editorial, las de su tratamiento (foco si es hotspot,
+ * contenedor si agrupa). `dash` sólo viene con tratamiento: el canónico decide
+ * el trazo por simbología, no por skin.
+ */
+function useNodeColor(
+  type: string,
+  nombre: string,
+  notation: NotationId | undefined
+): { bg: string; border: string; text: string; dash?: string; editorial: boolean } {
+  const { skin, focal } = React.useContext(SkinContext);
+  const canon = colorForType(type);
+  if (skin !== "editorial") return { ...canon, editorial: false };
+  if (isContainerType(type)) return { ...CONTAINER_TREATMENT, editorial: true };
+  const t = nodeTreatment(skin, notation, type, focal.has(nombre));
+  return t ? { ...t, editorial: true } : { ...canon, editorial: true };
+}
 
 
 /**
@@ -628,10 +704,10 @@ const PaletteItem: React.FC<{
       draggable
       onDragStart={(e) => onDragStart(e, item)}
       className={cn(
-        "flex items-center space-x-2 p-2 border rounded-md shadow-sm cursor-grab active:cursor-grabbing transition-all",
+        "flex items-center space-x-2 p-2 border rounded-md shadow-xs cursor-grab active:cursor-grabbing transition-all",
         // `bg` es `fill-*` (SVG del lienzo); en el chip HTML lo traducimos a `bg-*`
         // para que el chip se vea como se verá el nodo: mismo relleno, mismo texto.
-        color.bg.replace("fill-", "bg-"),
+        bgDeFill(color.bg),
         color.border,
         // El chip lleva el MISMO texto que el nodo: con la app oscura, su fondo y
         // el del nodo son el mismo, y un tono pensado para fondo blanco quedaba
@@ -770,7 +846,7 @@ export const Toolbox: React.FC<{
   // tirador de ancho NO se renderiza acá: no hay ancho que arrastrar.
   if (hidden) {
     return (
-      <div className="relative flex w-9 flex-shrink-0 flex-col items-center border-r bg-background pt-3 shadow-lg z-10">
+      <div className="relative flex w-9 shrink-0 flex-col items-center border-r bg-background pt-3 shadow-lg z-10">
         <Button
           variant="ghost"
           size="icon"
@@ -792,7 +868,7 @@ export const Toolbox: React.FC<{
       ref={panelRef}
       style={{ width }}
       className={cn(
-        "relative flex-shrink-0 flex flex-col bg-background shadow-lg z-10 border-r",
+        "relative shrink-0 flex flex-col bg-background shadow-lg z-10 border-r",
         resizing && "select-none"
       )}
     >
@@ -829,7 +905,7 @@ export const Toolbox: React.FC<{
         }}
         className={cn(
           "absolute inset-y-0 right-0 z-20 w-1.5 cursor-col-resize transition-colors",
-          "hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none",
+          "hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-hidden",
           resizing && "bg-primary/60",
           // Pegado a un tope: el cursor lo dice antes de que el usuario insista.
           limite === "min" && "cursor-e-resize",
@@ -1200,7 +1276,10 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   onHover,
   onHoverEnd,
 }) => {
-  const color = colorForType(node.tipo_elemento);
+  const color = useNodeColor(node.tipo_elemento, node.nombre, notation);
+  // En editorial no hay sombra (bordes, no sombras) y el contorno propio del
+  // tipo (`meta.stroke`) cede ante el del tratamiento.
+  const editorial = color.editorial;
   const hasSubView = !!node.viewRef && !!onOpenSubView;
   // El trazo que MANDA sobre el propio del tipo: azul si está seleccionado,
   // ámbar si está emparentado con la selección (#256). Son colores distintos a
@@ -1212,6 +1291,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       : null;
   const Icon = iconForType(node.tipo_elemento);
   const meta = ALL_ELEMENTS[node.tipo_elemento];
+  const strokeTipo = editorial ? undefined : meta?.stroke;
 
   // Sólo completa la conexión en mouseup cuando hay un arrastre activo; en caso
   // contrario dejamos burbujear el evento (p. ej. para cerrar un arrastre de mover).
@@ -1232,11 +1312,15 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   const estiloBlq = estiloBloque(node.estilo);
   // Con la caja seleccionada el contorno propio no se aplica: manda el azul de
   // selección (por eso el borde viaja sólo cuando no hay trazo de resalte).
-  const estiloForma = estiloSilueta(
-    node.estilo,
-    { color: node.color, borderColor: node.borderColor },
-    { conBorde: !trazoResalte }
-  );
+  const estiloForma = {
+    ...estiloSilueta(
+      node.estilo,
+      { color: node.color, borderColor: node.borderColor },
+      { conBorde: !trazoResalte }
+    ),
+    // Trazo discontinuo del tratamiento editorial (opcional, seguridad).
+    ...(color.dash ? { strokeDasharray: color.dash } : {}),
+  };
   const trazoPropio = estiloForma.stroke;
   // Con un tamaño elegido a mano el recorte por líneas estorba: el usuario sube
   // la letra justo para leer el nombre entero, y el `line-clamp` se lo comía
@@ -1282,7 +1366,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         onMouseMove={onHover}
         onMouseLeave={onHoverEnd}
         className={cn(
-          "group [filter:drop-shadow(0_1px_2px_rgb(0_0_0/0.08))]",
+          editorial ? "group" : "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.08))]",
           connecting ? "cursor-crosshair" : "cursor-move",
           // Marcado para eliminar: atenuado (la insignia roja da el motivo).
           isDeleted && "opacity-60"
@@ -1297,7 +1381,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           className={cn(
             "stroke-2 transition-all",
             meta?.transparent ? "fill-transparent" : color.bg,
-            trazoResalte ?? meta?.stroke ?? color.border
+            trazoResalte ?? strokeTipo ?? color.border
           )}
           strokeWidth={isSelected ? 3 : isRelated ? 2.5 : 2}
           // El marco de una línea de vida es ZONA DE SOLTAR, no una caja: se
@@ -1316,7 +1400,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           <>
             <path
               d={`M0,0 L86,0 L86,16 L74,28 L0,28 Z`}
-              className={cn("stroke-2", color.bg, meta?.stroke ?? color.border)}
+              className={cn("stroke-2", color.bg, strokeTipo ?? color.border)}
             />
             <text
               x={8}
@@ -1356,7 +1440,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                     y2={y}
                     strokeDasharray="6 6"
                     strokeWidth={1.5}
-                    className={cn(meta?.stroke ?? color.border)}
+                    className={cn(strokeTipo ?? color.border)}
                   />
                   <text
                     x={8}
@@ -1383,7 +1467,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               className={cn(
                 "stroke-2",
                 meta?.transparent ? "fill-canvas" : color.bg,
-                trazoResalte ?? meta?.stroke ?? color.border
+                trazoResalte ?? strokeTipo ?? color.border
               )}
               style={trazoPropio ? { stroke: trazoPropio } : undefined}
             />
@@ -1394,7 +1478,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               y2={height}
               strokeDasharray="6 6"
               strokeWidth={2}
-              className={cn(trazoResalte ?? meta?.stroke ?? color.border)}
+              className={cn(trazoResalte ?? strokeTipo ?? color.border)}
               style={trazoPropio ? { stroke: trazoPropio } : undefined}
             />
             <text
@@ -1421,7 +1505,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               y1={0}
               x2={BAND}
               y2={height}
-              className={cn(trazoResalte ?? meta?.stroke ?? color.border)}
+              className={cn(trazoResalte ?? strokeTipo ?? color.border)}
               strokeWidth={2}
               style={trazoPropio ? { stroke: trazoPropio } : undefined}
             />
@@ -1460,10 +1544,25 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             {node.nombre}
           </text>
         ) : (
+          <>
+            {node.icono && (
+              /* Logo de tecnología del contenedor (spec 025), delante del nombre. */
+              <foreignObject x={12} y={10} width={20} height={20} className="pointer-events-none">
+                <div className={cn("flex h-5 w-5 items-center justify-center", color.text)}>
+                  <IconoDeElemento icono={node.icono} Fallback={Icon} conColor={!editorial} className="h-4 w-4" />
+                </div>
+              </foreignObject>
+            )}
           <text
             // Este nombre nace pegado a la izquierda (no lleva `textAnchor`), así
             // que sólo se recoloca si el usuario eligió una alineación.
-            x={node.estilo?.alineacion ? xSegunAlineacion(node.estilo, width) : 12}
+            x={
+              node.estilo?.alineacion && node.estilo.alineacion !== "izquierda"
+                ? xSegunAlineacion(node.estilo, width)
+                : node.icono
+                  ? 36
+                  : 12
+            }
             y="24"
             fill="currentColor"
             className={cn(
@@ -1475,6 +1574,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           >
             {node.nombre}
           </text>
+          </>
         )}
         <ChangeStateBadge estado={node.estado_comparativo} x={width - 2} />
         <g onMouseDown={onResizeMouseDown} className="cursor-nwse-resize">
@@ -1487,12 +1587,12 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           />
           <path
             d={`M${width - 10},${height} L${width},${height - 10}`}
-            className={cn(trazoResalte ?? meta?.stroke ?? "stroke-gray-400 dark:stroke-zinc-500")}
+            className={cn(trazoResalte ?? strokeTipo ?? (editorial ? color.border : "stroke-gray-400 dark:stroke-zinc-500"))}
             strokeWidth="2"
           />
           <path
             d={`M${width - 6},${height} L${width},${height - 6}`}
-            className={cn(trazoResalte ?? meta?.stroke ?? "stroke-gray-400 dark:stroke-zinc-500")}
+            className={cn(trazoResalte ?? strokeTipo ?? (editorial ? color.border : "stroke-gray-400 dark:stroke-zinc-500"))}
             strokeWidth="2"
           />
         </g>
@@ -1554,7 +1654,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   // columna a columna, y el HTML dentro del SVG las descuadra al hacer zoom.
   if (isTable) {
     const layout = tableBoxLayout(node.nombre, node.columnas ?? []);
-    const trazo = trazoResalte ?? meta?.stroke ?? color.border;
+    const trazo = trazoResalte ?? strokeTipo ?? color.border;
     return (
       <g
         transform={`translate(${node.x},${node.y})`}
@@ -1567,7 +1667,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         onMouseMove={onHover}
         onMouseLeave={onHoverEnd}
         className={cn(
-          "group [filter:drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
+          editorial ? "group" : "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
           connecting ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing",
           isDeleted && "opacity-60"
         )}
@@ -1658,7 +1758,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       onMouseMove={onHover}
       onMouseLeave={onHoverEnd}
       className={cn(
-        "group [filter:drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
+        editorial ? "group" : "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
         connecting ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing",
         // Marcado para eliminar: atenuado (la insignia roja da el motivo).
         isDeleted && "opacity-60"
@@ -1676,7 +1776,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           // Sólo los contenedores son transparentes; los símbolos llevan su tinte.
           meta?.transparent ? "fill-transparent" : color.bg,
           // El trazo: azul si está seleccionado; si no, el contorno propio del tipo.
-          trazoResalte ?? meta?.stroke ?? color.border,
+          trazoResalte ?? strokeTipo ?? color.border,
           // Resalte como destino al pasar por encima mientras se conecta.
           connecting && "group-hover:stroke-blue-500 group-hover:stroke-[3px]"
         )}
@@ -1701,13 +1801,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               style={estiloBlq}
             >
               <p
-                className={cn("text-base font-bold leading-tight select-none break-words", isDeleted && "line-through")}
+                className={cn("text-base font-bold leading-tight select-none wrap-break-word", isDeleted && "line-through")}
                 style={estiloTxt}
               >
                 {node.nombre}
               </p>
               {!!node.descripcion && (
-                <p className="mt-0.5 text-2xs leading-snug opacity-80 select-none break-words line-clamp-4">
+                <p className="mt-0.5 text-2xs leading-snug opacity-80 select-none wrap-break-word line-clamp-4">
                   {node.descripcion}
                 </p>
               )}
@@ -1726,7 +1826,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 // Sin `line-clamp`: el texto libre se dibuja a su tamaño real y
                 // desborda la caja en vez de recortarse (#415).
                 className={cn(
-                  "text-sm font-bold leading-tight select-none break-words",
+                  "text-sm font-bold leading-tight select-none wrap-break-word",
                   isDeleted && "line-through"
                 )}
                 style={estiloTxt}
@@ -1749,7 +1849,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           >
             <p
               className={cn(
-                "text-sm font-bold leading-tight select-none break-words max-w-full",
+                "text-sm font-bold leading-tight select-none wrap-break-word max-w-full",
                 recorta && "line-clamp-3",
                 isDeleted && "line-through"
               )}
@@ -1758,7 +1858,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               {node.nombre}
             </p>
             {!!node.descripcion && (
-              <p className="text-2xs leading-tight opacity-80 select-none break-words max-w-full line-clamp-3">
+              <p className="text-2xs leading-tight opacity-80 select-none wrap-break-word max-w-full line-clamp-3">
                 {node.descripcion}
               </p>
             )}
@@ -1779,7 +1879,10 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           >
             {/* En el óvalo el icono se mete hacia adentro para no caer fuera de la curva. */}
             {!meta?.hideIcon && (
-              <Icon
+              <IconoDeElemento
+                icono={node.icono}
+                Fallback={Icon}
+                conColor={!editorial}
                 className={cn(
                   "w-4 h-4 absolute top-2 opacity-90",
                   shape === "ellipse" ? "left-8" : "left-2",
@@ -1792,7 +1895,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             >
               <p
                 className={cn(
-                  "text-sm font-bold leading-tight select-none break-words max-w-full",
+                  "text-sm font-bold leading-tight select-none wrap-break-word max-w-full",
                   recorta && "line-clamp-2",
                   isDeleted && "line-through"
                 )}
@@ -1801,7 +1904,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 {node.nombre}
               </p>
               {!!node.descripcion && (
-                <p className="text-2xs leading-tight opacity-80 select-none break-words max-w-full line-clamp-2">
+                <p className="text-2xs leading-tight opacity-80 select-none wrap-break-word max-w-full line-clamp-2">
                   {node.descripcion}
                 </p>
               )}
@@ -1828,7 +1931,12 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 icono. Una forma LIBRE tampoco lo lleva: la silueta ya dice lo
                 que es y el icono dentro del rombo sólo compite con el nombre. */}
             {!meta?.hideIcon && !libre && (
-              <Icon className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")} />
+              <IconoDeElemento
+                icono={node.icono}
+                Fallback={Icon}
+                conColor={!editorial}
+                className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")}
+              />
             )}
             {!labelOutside && (
               <p
@@ -1836,7 +1944,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                   // Ajusta el texto y lo acota con elipsis DENTRO de la caja en vez
                   // de desbordarse: nombres cortos se ven completos; los largos se
                   // recortan con «…» sin invadir nodos vecinos.
-                  "text-xs font-bold leading-tight select-none break-words max-w-full",
+                  "text-xs font-bold leading-tight select-none wrap-break-word max-w-full",
                   recorta && (meta?.hideIcon ? "line-clamp-3" : "line-clamp-2"),
                   isDeleted && "line-through"
                 )}
@@ -1865,7 +1973,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             className={cn(
               // Evento/compuerta: el nombre va debajo; se ajusta a 2 líneas con
               // elipsis para no solaparse con el nodo de al lado.
-              "text-center text-xs font-bold leading-tight select-none break-words",
+              "text-center text-xs font-bold leading-tight select-none wrap-break-word",
               recorta && "line-clamp-2",
               color.text,
               isDeleted && "line-through"
@@ -1960,6 +2068,17 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   onLineDoubleClick,
   onLabelMouseDown,
 }) => {
+  // Skin editorial (spec 022): atenuada, enlace si toca un externo, acento
+  // entre dos focos. En la canónica es `undefined` y manda el cromo del lienzo.
+  const skinCtx = React.useContext(SkinContext);
+  const trazoSkin = edgeTreatment(
+    skinCtx.skin,
+    notation,
+    [link.sourceId, link.targetId]
+      .map((id) => nodes.get(id))
+      .filter((n): n is DesignerNode => !!n)
+      .map((n) => ({ tipo: n.tipo_elemento, focal: skinCtx.focal.has(n.nombre) }))
+  );
   const geo = linkGeometry(link, nodes, notation);
   if (!geo) return null;
   const { path, labelX, labelY } = geo;
@@ -2024,7 +2143,7 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
               ? "stroke-amber-500"
               : link.color
                 ? ""
-                : `${CANVAS_CHROME.arista} opacity-80 dark:opacity-90`
+                : (trazoSkin ?? `${CANVAS_CHROME.arista} opacity-80 dark:opacity-90`)
         )}
         strokeWidth={isSelected ? 2.5 : isRelated ? 2 : 1.5}
         markerEnd={markerEnd}

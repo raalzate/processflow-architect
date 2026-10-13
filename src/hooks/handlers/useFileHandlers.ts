@@ -67,14 +67,21 @@ export function useFileHandlers(deps: FileHandlersDeps) {
     // se siembran para el proyecto nuevo ANTES de activarlo, así `ViewsContext` las
     // levanta al cargar. La IA (modelo desde documentos) no manda vistas → catálogo
     // vacío, como antes.
-    const handleCreateProjectFromContent = useCallback((nombre: string, content: GraphData, vistas?: PersistedViews) => {
+    // `orgId` lo pasa el MCP (#534): el proyecto nace en su organización. Asignarla
+    // después con setFileOrg trabajaría sobre la lista de ANTES de crearlo.
+    const handleCreateProjectFromContent = useCallback((nombre: string, content: GraphData, vistas?: PersistedViews, orgId?: string | null) => {
         const name = (nombre || "").trim() || "Diseño IA";
         // Rellena defaults SIN perder campos: un GraphData exportado completo
         // (con `defaultRouting`/`source_docs`) o el modelo parcial de la IA
         // (`DomainAnalysis`, sin escalares) pasan ambos por la misma función pura.
         // Reconstruir con lista blanca aquí perdía campos en el round-trip (#423).
         const fullContent: GraphData = normalizeImportedGraphData(content, name);
-        const newFile: SavedFile = { id: `${name}-${new Date().getTime()}`, name: `${name}.json`, content: fullContent };
+        const newFile: SavedFile = {
+            id: `${name}-${new Date().getTime()}`,
+            name: `${name}.json`,
+            content: fullContent,
+            ...(orgId ? { orgId } : {}),
+        };
         try {
             // Sembrar las vistas ANTES de activar el proyecto: el efecto de carga de
             // ViewsContext lee por fileId, así las tabs aparecen como propias.

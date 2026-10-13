@@ -65,7 +65,7 @@ export function MermaidEditor({
           value={code}
           onChange={(e) => update(e.target.value)}
           spellCheck={false}
-          className="flex-1 resize-none bg-background p-3 font-mono text-xs leading-relaxed outline-none"
+          className="flex-1 resize-none bg-background p-3 font-mono text-xs leading-relaxed outline-hidden"
           placeholder="Escribe código Mermaid… (usa el botón Plantilla para empezar)"
         />
         <p className="border-t px-3 py-1.5 text-2xs text-muted-foreground">

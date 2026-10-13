@@ -19,7 +19,9 @@
 
 import { isContainerType } from "./catalog";
 import {
+  anclaDeCodigo,
   pendingAmbiguities,
+  tieneFuente,
   type BuilderNode,
   type DiagramModel,
   validate,
@@ -50,7 +52,9 @@ const isContainer = (n: BuilderNode) => isContainerType(n.tipo_elemento);
 /** Tabla «elemento ← fuente» de un grupo de nodos. */
 function sourceTable(nodes: BuilderNode[]): string {
   const rows = nodes.map((n) => {
-    const fuente = n.source?.trim() || "— (sin fuente)";
+    // Un ancla a código también es fuente (#534): se muestra con su ruta.
+    const ancla = anclaDeCodigo(n);
+    const fuente = n.source?.trim() || (ancla ? `código: ${ancla}` : "— (sin fuente)");
     const detalle = (n.descripcion || "").replace(/\s+/g, " ").trim();
     const corto = detalle.length > 80 ? `${detalle.slice(0, 77)}…` : detalle;
     // Las referencias van en la misma tabla: el revisor contrasta la caja con la
@@ -76,7 +80,7 @@ export function reviewPacket(model: DiagramModel, sourceLabel?: string): ReviewP
   const graves = findings.filter((f) => f.level === "grave");
   const v = validate(model);
   const pendientes = pendingAmbiguities(model);
-  const untraced = nodes.filter((n) => !n.source?.trim()).map((n) => n.nombre);
+  const untraced = nodes.filter((n) => !tieneFuente(n)).map((n) => n.nombre);
   const sinReferencias = metadataFaltantes([...containers, ...nodes]);
   const decididas = (model.ambiguities ?? []).filter((a) => a.resolucion?.trim());
 

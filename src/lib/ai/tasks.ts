@@ -330,6 +330,8 @@ export const elementChatTask: AiTask<
  *
  * `structured`: la propuesta tiene que respetar una convención exacta. En modo
  * local corre local igual (§P4); en híbrido el router la manda a la nube.
+ *
+ * (La tarea de marca, `brandFromSiteTask`, va al final del archivo.)
  */
 export const creativeDiagramTask: AiTask<
   {
@@ -386,5 +388,73 @@ export const creativeDiagramTask: AiTask<
     const texto = (bloque?.[1] ?? raw).trim();
     const inicio = texto.search(/^\s*(flowchart|graph)\b/im);
     return inicio >= 0 ? texto.slice(inicio).trim() : "";
+  },
+};
+
+/**
+ * Mapeo de marca desde un sitio (spec 023). Recibe los COLORES CANDIDATOS que
+ * la heurística ya encontró en la página (con su frecuencia y contexto) y las
+ * familias tipográficas, y devuelve qué candidato es papel, tinta, atenuado,
+ * acento y enlace. `parse` sólo acepta colores que estaban entre los
+ * candidatos: la IA mejora el mapeo, nunca inventa un color que la página no
+ * tenga. Estructurada: en híbrido va a la nube; en local corre local.
+ */
+export const brandFromSiteTask: AiTask<
+  {
+    url: string;
+    /** `color · veces · contextos` por línea. */
+    candidatos: { color: string; veces: number; contextos: string[] }[];
+    familias: string[];
+  },
+  { paper?: string; ink?: string; muted?: string; accent?: string; link?: string; fuente?: string; razones?: string } | null
+> = {
+  id: "brand-from-site",
+  tier: "heavy",
+  structured: true,
+  maxLocalChars: 6000,
+  buildPrompt: (i) => ({
+    prompt: [
+      `Sitio: ${i.url}`,
+      "COLORES ENCONTRADOS EN SU CSS (color HSL · veces · dónde):",
+      ...i.candidatos.slice(0, 24).map((c) => `- "${c.color}" · ${c.veces} · ${c.contextos.slice(0, 2).join("; ")}`),
+      i.familias.length ? `FAMILIAS TIPOGRÁFICAS: ${i.familias.join(", ")}` : "",
+      [
+        "TAREA: elegí, SÓLO entre esos colores (copiá el string HSL tal cual), cuál es:",
+        "- paper: el fondo de la página (claro en un sitio claro, oscuro en uno oscuro).",
+        "- ink: el color del texto principal.",
+        "- muted: el texto secundario (captions, pie, menús).",
+        "- accent: el color de marca que usan los botones y llamadas a la acción. UNO solo.",
+        "- link: el color de los enlaces (si es el mismo que accent, repetilo).",
+        "- fuente: la familia del cuerpo, si está entre las familias.",
+        'Respondé SÓLO un JSON: {"paper":"…","ink":"…","muted":"…","accent":"…","link":"…","fuente":"…","razones":"una frase"}. Omití la clave que no puedas decidir.',
+      ].join("\n"),
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+    system: "Sos un diseñador que lee el CSS de un sitio y nombra su paleta por rol. Respondés sólo JSON.",
+  }),
+  parse: (raw, input) => {
+    const bloque = /\{[\s\S]*\}/.exec(raw);
+    if (!bloque) return null;
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(bloque[0]);
+    } catch {
+      return null;
+    }
+    const validos = new Set((input?.candidatos ?? []).map((c) => c.color));
+    const color = (k: string) => (typeof data[k] === "string" && validos.has(data[k] as string) ? (data[k] as string) : undefined);
+    const familias = new Set(input?.familias ?? []);
+    const fuente = typeof data.fuente === "string" && familias.has(data.fuente) ? data.fuente : undefined;
+    const out = {
+      paper: color("paper"),
+      ink: color("ink"),
+      muted: color("muted"),
+      accent: color("accent"),
+      link: color("link"),
+      fuente,
+      razones: typeof data.razones === "string" ? data.razones.slice(0, 200) : undefined,
+    };
+    return Object.values(out).some((v) => v !== undefined) ? out : null;
   },
 };

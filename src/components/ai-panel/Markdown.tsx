@@ -114,12 +114,12 @@ export function Markdown({ content, className }: { content: string; className?: 
         );
       } else {
         blocks.push(
-          // `whitespace-pre-wrap break-words`: el bloque vive en paneles angostos
+          // `whitespace-pre-wrap wrap-break-word`: el bloque vive en paneles angostos
           // (chat, tarjeta de artefacto); con `pre` a secas una línea larga
           // ensanchaba al contenedor y el texto de al lado quedaba cortado.
           <pre
             key={`pre-${blocks.length}`}
-            className="my-2 overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-xs font-mono"
+            className="my-2 overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-md bg-muted p-3 text-xs font-mono"
           >
             <code>{code.join("\n")}</code>
           </pre>

@@ -130,7 +130,7 @@ function NotationSection({ notation }: { notation: Notation }) {
         <CardTitle className="flex items-center gap-2">
           <Boxes className="w-5 h-5" /> {notation.label}
         </CardTitle>
-        <CardDescription className="mt-1.5">{notation.description}</CardDescription>
+        <CardDescription>{notation.description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {notation.paletteGroups.map((g) => (
@@ -179,7 +179,7 @@ export default function DocsPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <header className="bg-card border-b shadow-sm w-full p-4 z-10 flex justify-between items-center">
+      <header className="bg-card border-b shadow-xs w-full p-4 z-10 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold text-foreground font-headline flex items-center gap-2">
             <BookOpen className="w-5 h-5" /> Documentación del diseñador
@@ -228,7 +228,7 @@ export default function DocsPage() {
                   <CardTitle className="flex items-center gap-2">
                     <MousePointerSquareDashed className="w-5 h-5" /> El lienzo
                   </CardTitle>
-                  <CardDescription className="mt-1.5">
+                  <CardDescription>
                     Cómo se construye un diagrama en el diseñador, sea cual sea la notación.
                   </CardDescription>
                 </CardHeader>
@@ -321,7 +321,7 @@ export default function DocsPage() {
                   <CardTitle className="flex items-center gap-2">
                     <GitCompareArrows className="w-5 h-5" /> Estados del cambio
                   </CardTitle>
-                  <CardDescription className="mt-1.5">
+                  <CardDescription>
                     Cada elemento declara si es nuevo, se modifica o debe eliminarse. Con eso el
                     panel «Elementos Principales» se convierte en la lista de trabajo del equipo.
                   </CardDescription>
@@ -357,7 +357,7 @@ export default function DocsPage() {
                   <CardTitle className="flex items-center gap-2">
                     <Layers className="w-5 h-5" /> Vistas
                   </CardTitle>
-                  <CardDescription className="mt-1.5">
+                  <CardDescription>
                     Un proyecto tiene su modelo («Modelo», la pestaña base) y hasta 50 vistas
                     adicionales, cada una con su propia notación.
                   </CardDescription>

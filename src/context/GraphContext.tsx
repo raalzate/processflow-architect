@@ -76,7 +76,9 @@ export interface GraphContextType {
 
   // Estado de PDF
   isGeneratingPdf: boolean;
-  pdfRef: RefObject<HTMLDivElement>;
+  // React 19: `useRef<T>(null)` es `RefObject<T | null>`; el tipo dice la verdad
+  // de que el nodo puede no estar montado.
+  pdfRef: RefObject<HTMLDivElement | null>;
   taskListNodes: { new: GraphNode[]; modified: GraphNode[]; deleted: GraphNode[] };
 
   // Funciones (Callbacks)
@@ -85,7 +87,12 @@ export interface GraphContextType {
   handleDownloadPdf: () => void;
   handleRunAnalysis: (type: 'drivers' | 'constraints' | 'roadmap' | 'proposal', { temperature, customPrompt }: { temperature?: number; customPrompt?: string; }) => Promise<void>;
   handleCreateProject: (nombre: string, notation?: NotationId) => void;
-  handleCreateProjectFromContent: (nombre: string, content: GraphData, vistas?: PersistedViews) => string | null;
+  handleCreateProjectFromContent: (
+    nombre: string,
+    content: GraphData,
+    vistas?: PersistedViews,
+    orgId?: string | null
+  ) => string | null;
   handleDesignUpdate: (fileId: string, content: GraphData) => void;
   handleFileSelect: (id: string) => void;
   handleFileDelete: (id: string) => void;

@@ -88,6 +88,8 @@ export interface CapacidadesHost {
   sistema: boolean;
   /** Menú nativo de la ventana (Windows/Linux). */
   menuNativo: boolean;
+  /** Leer el sitio de un cliente para proponer su marca (spec 023); la red es del host. */
+  marcaDesdeSitio: boolean;
 }
 
 export const SIN_CAPACIDADES: CapacidadesHost = Object.freeze({
@@ -103,6 +105,7 @@ export const SIN_CAPACIDADES: CapacidadesHost = Object.freeze({
   portapapeles: false,
   sistema: false,
   menuNativo: false,
+  marcaDesdeSitio: false,
 });
 
 /**
@@ -126,6 +129,7 @@ export function capacidadesDe(bridge: Partial<HostBridge> | undefined): Capacida
     portapapeles: tiene("copyToClipboard"),
     sistema: tiene("systemInfo"),
     menuNativo: tiene("windowMenuPopup"),
+    marcaDesdeSitio: tiene("brandFetchSite"),
   };
 }
 

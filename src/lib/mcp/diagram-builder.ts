@@ -118,6 +118,11 @@ export interface DiagramMeta {
   /** Con qué densidad y estrategia se dibujó por última vez (ver `layout-presets`). */
   layout?: { density: LayoutDensity; strategy: LayoutStrategy };
   /**
+   * De qué vista de la app salió (`get_view importAs`). Sin esto las copias se
+   * acumulaban en el workspace y no había cómo saber cuáles limpiar (#534).
+   */
+  importadoDe?: { proyecto: string; vista: string };
+  /**
    * Zonas del modelo que hay que discutir (los "hotspots" del Event Storming).
    * Viajan a `big_picture.hotspots`, que es lo que muestra la app.
    */
@@ -177,6 +182,8 @@ export interface BuilderNode {
   tags_tecnologia?: string[] | null;
   color?: string;
   borderColor?: string;
+  /** Icono de tecnología del catálogo (spec 025): `si-postgresql`, `dv-slack`, `lu-Cloud`… */
+  icono?: string;
   /** Operador de un fragmento combinado (secuencia UML). */
   fragmentOp?: FragmentOp;
   /** Operandos del fragmento: guarda y tramo de orden que abarca. */
@@ -514,7 +521,7 @@ export function reorderMessage(
 export function updateNode(
   model: DiagramModel,
   id: string,
-  patch: Partial<Pick<BuilderNode, "nombre" | "descripcion" | "source" | "tags_tecnologia" | "tipo_elemento" | "estado_comparativo" | "columnas">> & {
+  patch: Partial<Pick<BuilderNode, "nombre" | "descripcion" | "source" | "tags_tecnologia" | "tipo_elemento" | "estado_comparativo" | "columnas" | "icono">> & {
     /** Metadatos a agregar o reemplazar POR CLAVE (no reemplaza la lista entera). */
     metadata?: ElementMetadata[];
     /** Claves de metadatos a borrar. */
@@ -775,11 +782,26 @@ export function ambiguityNotes(model: DiagramModel): string {
  * fuentes. Si NINGÚN nodo la declara, el diagrama no se está trazando contra un
  * documento (p. ej. se modeló de una conversación) y avisar sería ruido.
  */
+/**
+ * Ancla a código de un elemento (`ruta/archivo.ts:símbolo`), guardada como
+ * metadato `codigo`. En un diagrama que sale de un repo, ésa ES la fuente: el
+ * revisor la contrasta abriendo el archivo. Viaja en los metadatos, así que no se
+ * pierde al exportar a la app ni al reimportar (#534).
+ */
+export function anclaDeCodigo(n: Pick<BuilderNode, "metadata">): string | undefined {
+  const clave = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+  const m = n.metadata?.find((e) => clave(e.clave) === "codigo" && e.valor?.trim());
+  return m?.valor.trim();
+}
+
+/** ¿Tiene algo contra qué contrastarlo? Una cita (`source`) o un ancla a código. */
+export const tieneFuente = (n: BuilderNode): boolean => !!n.source?.trim() || !!anclaDeCodigo(n);
+
 export function traceabilityWarnings(model: DiagramModel): string[] {
-  const withSource = model.nodes.filter((n) => n.source?.trim());
+  const withSource = model.nodes.filter(tieneFuente);
   if (!withSource.length) return [];
   return model.nodes
-    .filter((n) => !n.source?.trim())
+    .filter((n) => !tieneFuente(n))
     .map(
       (n) =>
         `"${n.nombre}" (${n.id}) no cita fuente; el revisor no puede contrastarlo con el documento. Añade \`source\` o quítalo.`
@@ -1550,6 +1572,7 @@ function toDomainNode(n: BuilderNode): Omit<GraphNode, "agregado"> {
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
     borderColor: n.borderColor,
+    icono: n.icono,
     x: n.x,
     y: n.y,
     width: n.width,
@@ -1584,6 +1607,7 @@ export function toGraphData(input: DiagramModel): GraphData {
     metadata: c.metadata,
     spec: sanitizeSpec(c.spec),
     adjuntos: docsParaGuardar(c.adjuntos),
+    icono: c.icono,
     // Un contenedor también documenta lo que YA existe: sin esto el estado que
     // declara el agente moría en la serialización (sólo lo llevaban los nodos).
     estado_comparativo: c.estado_comparativo,
@@ -1687,6 +1711,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       metadata: normalizarLista(agg.metadata),
       spec: sanitizeSpec((agg as any).spec),
       adjuntos: docsParaGuardar((agg as any).adjuntos),
+      icono: (agg as any).icono,
       x: agg.x,
       y: agg.y,
       width: agg.width,
@@ -1700,6 +1725,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
         spec: sanitizeSpec((n as any).spec),
         adjuntos: docsParaGuardar((n as any).adjuntos),
         columnas: normalizarColumnas((n as any).columnas),
+        icono: (n as any).icono,
       });
     }
     for (const a of agg.aristas || []) {
@@ -1726,6 +1752,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       spec: sanitizeSpec((n as any).spec),
       adjuntos: docsParaGuardar((n as any).adjuntos),
       columnas: normalizarColumnas((n as any).columnas),
+      icono: (n as any).icono,
     });
   }
   const pushEdge = (a: any) =>

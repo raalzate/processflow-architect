@@ -16,6 +16,7 @@ import {
   Plug,
   MonitorCog,
   Sun,
+  Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -41,6 +42,7 @@ import { McpServerConfig } from "@/components/settings/McpServerConfig";
 import { SystemInfoCard } from "@/components/settings/SystemInfoCard";
 import { UpdateConfig } from "@/components/settings/UpdateConfig";
 import { AppearanceConfig } from "@/components/settings/AppearanceConfig";
+import { BrandConfig } from "@/components/settings/BrandConfig";
 import type { LitertModelStatus } from "@/types/electron";
 import { hostBridge } from "@/lib/host-bridge";
 
@@ -52,6 +54,7 @@ const SECTIONS = [
   { id: "motor", label: "Motor de IA", icon: BrainCircuit },
   { id: "mcp", label: "Servidor MCP", icon: Plug },
   { id: "apariencia", label: "Apariencia", icon: Sun },
+  { id: "marca", label: "Marca", icon: Palette },
   { id: "sistema", label: "Sistema", icon: MonitorCog },
 ] as const;
 
@@ -174,7 +177,7 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <header className="bg-card border-b shadow-sm w-full p-4 z-10 flex justify-between items-center">
+      <header className="bg-card border-b shadow-xs w-full p-4 z-10 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold text-foreground font-headline">Configuración</h1>
           <p className="text-sm text-muted-foreground">
@@ -350,6 +353,11 @@ export default function SettingsPage() {
             {/* Tema de la app y del lienzo (feature 018) */}
             <section id="apariencia" className="scroll-mt-4">
               <AppearanceConfig />
+            </section>
+
+            {/* Perfiles de marca por organización (spec 023) */}
+            <section id="marca" className="scroll-mt-4">
+              <BrandConfig />
             </section>
 
             {/* Actualizaciones (#208): interruptor de la búsqueda automática y

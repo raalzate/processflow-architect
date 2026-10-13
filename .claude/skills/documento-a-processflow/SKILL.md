@@ -32,9 +32,11 @@ Reglas de oro:
 En este orden, siempre:
 
 1. `list_notations` — confirma que el MCP responde. Si no, ver «Conexión» abajo.
-2. **`get_app_state`** — qué proyecto está activo, con qué notación, qué vistas
-   ya existen y cuánto cupo queda. De aquí sale la decisión de exportar como
-   PROYECTO (`export_to_app`, reemplaza el activo) o como VISTA
+2. **`get_app_state`** — qué proyecto está activo y en qué organización, con qué
+   notación, qué vistas ya existen y cuánto cupo queda; y si la organización que
+   mira el humano es la misma que la del MCP. De aquí sale la decisión de exportar
+   como PROYECTO (`export_to_app`, actualiza uno existente o crea otro con
+   `mode: "new"` en la organización del MCP) o como VISTA
    (`export_as_view`, suma una pestaña). Sin esta llamada estarías pisando
    trabajo del usuario a ciegas.
 3. **`list_views`** — las pestañas que ya existen, con su notación y tamaño. Con
@@ -175,7 +177,20 @@ Plantilla por defecto:
 3. **`c4` — Paisaje de sistemas** (si nombra ≥3 sistemas): Límite de Sistema por
    organización, Personas fuera, relaciones etiquetadas con la integración.
 
-Anuncia el plan final en 2–3 líneas antes de construir.
+Anuncia el plan final antes de construir, en un mensaje corto que el humano
+pueda corregir **antes** de que existan veinte cajas. Por cada diagrama del
+portafolio:
+
+- **Notación y vista**, y por qué esa mirada y no otra.
+- **Qué entra**: contenedores y elementos previstos, con el número aproximado.
+- **Qué queda fuera y por qué**: lo que el documento menciona y no va
+  (decoración, detalle de otra vista, duplicados).
+- **Presupuesto**: cada notación declara cuánto se lee de un vistazo
+  (`describe_notation` lo lista; `validate_diagram` avisa como `PRESUPUESTO`).
+  Si un diagrama lo supera, el plan es **dos vistas** (panorámica + detalle).
+
+Si el humano está, esperá su respuesta; si no, seguí y dejá las suposiciones
+escritas junto a la entrega.
 
 ## 3 · Construir (bucle MCP)
 
@@ -333,6 +348,21 @@ está bien modelado (hallazgos de calidad, con regla).
 - **Avisos**: se corrigen o se justifican al usuario en una línea.
 - `render_mermaid` para comprobar que la topología cuenta la historia del
   documento (el preview auto-ordena: NO refleja el layout real del lienzo).
+
+### Prueba de quitar (antes de dar cada diagrama por terminado)
+
+Un diagrama no está listo cuando ya tiene todo: está listo cuando no sobra
+nada. Con `get_diagram` delante, pasá estas cuatro preguntas y actuá con
+`remove_element` / `remove_edge` / `update_edge`:
+
+- ¿Puedo **quitar un elemento** y el lector entiende lo mismo? Quitalo.
+- ¿Dos elementos **siempre van juntos**? Son uno: fusionalos y dejá el detalle
+  en `description`.
+- ¿Puedo **quitar una relación** porque la disposición ya la cuenta? Quitala.
+- ¿Puedo **quitar una etiqueta** porque el tipo o la forma ya lo dicen? Quitala.
+
+Lo que se quita por esta prueba se anota en una línea en la entrega: el humano
+conoce el documento y notaría la ausencia.
 
 ## 5 · Paquete de revisión (antes de subir nada)
 

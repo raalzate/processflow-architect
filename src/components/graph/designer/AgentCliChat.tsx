@@ -457,7 +457,7 @@ export function AgentCliChat(props: AgentCliChatProps) {
                   mismo renderizador del chat del agente local. Lo del humano va tal cual. */}
               {m.text &&
                 (m.role === "assistant" ? (
-                  <Markdown content={m.text} className="break-words text-sm leading-relaxed" />
+                  <Markdown content={m.text} className="wrap-break-word text-sm leading-relaxed" />
                 ) : (
                   <p className="whitespace-pre-wrap">{m.text}</p>
                 ))}
@@ -483,7 +483,7 @@ export function AgentCliChat(props: AgentCliChatProps) {
             <span
               key={d}
               title={d}
-              className="inline-flex max-w-[14rem] items-center gap-1 rounded-full border bg-muted/50 py-0.5 pl-2 pr-0.5 text-xs"
+              className="inline-flex max-w-56 items-center gap-1 rounded-full border bg-muted/50 py-0.5 pl-2 pr-0.5 text-xs"
             >
               <Folder className="h-3 w-3 shrink-0 text-muted-foreground" />
               <span className="truncate">{nombreCarpeta(d)}</span>

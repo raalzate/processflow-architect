@@ -74,6 +74,22 @@ describe("reviewPacket", () => {
     expect(p.markdown).toContain("sin fuente");
   });
 
+  // #534: en un repo, la fuente de una caja es su ancla al código, no un párrafo.
+  it("un ancla a código (metadato `codigo`) cuenta como fuente y se ve en la tabla", () => {
+    let m = dddSano();
+    m = addNode(m, {
+      id: "extra",
+      nombre: "Notificar Cliente",
+      tipo_elemento: t("ddd", "command"),
+      container: "Pagos",
+      metadata: [{ clave: "codigo", valor: "src/notify/cliente.ts:notificar" }],
+    }).model;
+    m = addEdge(m, { fuente: "evt", destino: "extra", descripcion: "luego" });
+    const p = reviewPacket(m);
+    expect(p.untraced).not.toContain("Notificar Cliente");
+    expect(p.markdown).toContain("código: src/notify/cliente.ts:notificar");
+  });
+
   it("separa decisiones tomadas de lo pendiente en la fuente", () => {
     let m = dddSano();
     const a = recordAmbiguity(m, { pregunta: "¿Quién aprueba el reembolso?" });

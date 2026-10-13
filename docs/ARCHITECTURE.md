@@ -48,6 +48,7 @@ tocar las pantallas. La regla PUENTE del lint impide volver al acceso directo.
 | `window.electronAPI` | Canal IPC | Hace |
 |----------------------|-----------|------|
 | `generatePdf(md)` | `convert-md-to-pdf` | Markdown → PDF (md-to-pdf + Puppeteer). |
+| `brandFetchSite(url)` | `brand-fetch-site` | Lee la página de un cliente (https, una redirección, 1 MB, 10 s) para proponer su marca (spec 023). La única petición a un sitio ajeno; vuelve texto. |
 | `copyToClipboard(text)` | `copy-to-clipboard` | Copia al portapapeles del SO. |
 | `litertModelsList()` | `litert-models-list` | Lista modelos `.litertlm` + RAM disponible. |
 | `litertModelDownload(id)` | `litert-model-download` | Descarga un modelo (emite progreso). |
@@ -158,6 +159,17 @@ El mapa **nombre de icono → componente lucide** de los artefactos vive en
 `src/components/ai-panel/artifact-icon.tsx` (la UI resuelve lo que el registro nombra como
 string, que es puro). Agregar un `kind` con un icono no mapeado falla en
 `__tests__/artifact-icon.test.tsx`.
+
+## Catálogo de iconos de tecnología (`src/lib/icons/`)
+
+Una caja puede llevar el logo de su tecnología (PostgreSQL, Slack, Android…) además del
+icono de su tipo. El catálogo es **curado y versionado**: `scripts/icon-catalog.manifest.json`
+declara cada icono (fuente pineada, alias en español, categoría) y `npm run icons:build`
+baja los SVG, los pasa por `sanearSvg` y escribe `catalog.generated.ts` con el hash del
+manifiesto. La app no toca la red ni carga `simple-icons`/`devicon` como dependencia.
+`catalog.ts` (puro) resuelve y busca; `IconoDeElemento` (lienzo) dibuja; el MCP lo expone
+con `list_icons` e `icon`. Licencias en `THIRD_PARTY_LICENSES.md`. Si cambia el manifiesto
+sin regenerar, `src/lib/icons/__tests__/catalog.test.ts` falla.
 
 ## Pruebas
 

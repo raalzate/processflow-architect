@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planViewEdit, planAppAction, describeAccion } from "../app-actions";
+import { planViewEdit, planAppAction, describeAccion, esAccionDeProyecto, esEdicionDeVista } from "../app-actions";
 
 const vistas = [
   { id: "design", name: "Modelo", builtin: true },
@@ -104,5 +104,27 @@ describe("planViewEdit · la edición cae en la vista correcta (015, #341)", () 
   it("sin vista abierta y sin `view`, no se adivina un destino", () => {
     const r = planViewEdit({ kind: "add-element", name: "Ana", type: "Persona" }, vistas);
     expect(r.ok).toBe(false);
+  });
+});
+
+describe("clasificar una acción: proyecto, vista o edición de grafo (#534)", () => {
+  it("las acciones sobre proyectos NO son ediciones de vista", () => {
+    const deProyecto = [
+      { kind: "move-project", project: "X", org: null },
+      { kind: "rename-project", project: "X", newName: "Y" },
+      { kind: "delete-project", project: "X" },
+      { kind: "export-project", name: "X", graph: {}, mode: "new", org: null },
+    ];
+    for (const r of deProyecto) {
+      expect(esAccionDeProyecto(r as never)).toBe(true);
+      expect(esEdicionDeVista(r as never)).toBe(false);
+    }
+  });
+
+  it("las de vista siguen siendo de vista, y las de grafo de grafo", () => {
+    expect(esAccionDeProyecto({ kind: "delete-view", name: "A" })).toBe(false);
+    expect(esEdicionDeVista({ kind: "delete-view", name: "A" })).toBe(false);
+    expect(esEdicionDeVista({ kind: "remove-element", name: "A" })).toBe(true);
+    expect(esAccionDeProyecto({ kind: "remove-element", name: "A" })).toBe(false);
   });
 });

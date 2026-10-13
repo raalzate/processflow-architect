@@ -149,4 +149,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     prompt: string;
     system?: string;
   }): Promise<string> => ipcRenderer.invoke('ai-remote-generate', args),
+  // Marca desde el sitio del cliente (spec 023): la petición sale del main.
+  brandFetchSite: (
+    url: string
+  ): Promise<
+    | { ok: true; sitio: { url: string; urlFinal: string; html: string; css: string[]; omitidas: string[] } }
+    | { ok: false; error: string }
+  > => ipcRenderer.invoke('brand-fetch-site', url),
 });

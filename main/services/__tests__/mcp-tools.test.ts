@@ -109,7 +109,8 @@ describe("get_app_state", () => {
     const out = await textOf("get_app_state");
     expect(out).toContain("Aurora");
     expect(out).toContain("Proceso de pago");
-    expect(out).toContain("REEMPLAZA");
+    // Dice lo que hace hoy: actualizar fusionando, no reemplazar (#533).
+    expect(out).toContain("ACTUALIZA el proyecto activo");
   });
 });
 
@@ -682,6 +683,117 @@ describe("registerProcessflowTools · metadatos del proyecto", () => {
     expect(graph.responsables).toEqual(["Ana"]);
     expect(graph.notas).toContain("Nota del humano.");
     expect(graph.read_models.map((r: any) => r.nombre)).toEqual(["Panel"]);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Spec 025 — catálogo de iconos: list_icons, `icon` en add_node/update_element.
+// -----------------------------------------------------------------------------
+
+describe("iconos de tecnología (spec 025)", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-icon-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  it("list_icons busca por nombre y alias, lista categorías sin query y dice cuando no hay nada", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    const kafka = await tools.get("list_icons")!.handler({ query: "kafka", limit: 30 });
+    expect(kafka.content[0].text).toContain("`si-apachekafka`");
+    const cats = await tools.get("list_icons")!.handler({ limit: 30 });
+    expect(cats.content[0].text).toContain("bases-de-datos");
+    const nada = await tools.get("list_icons")!.handler({ query: "zzz-no", limit: 30 });
+    expect(nada.content[0].text).toMatch(/Ningún icono/);
+  });
+
+  it("add_node y update_element llevan el icono; un id desconocido queda avisado", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    const creado = await tools.get("create_diagram")!.handler({ name: "Paisaje", notation: "c4" });
+    const id = /diagramId="([^"]+)"/.exec(creado.content[0].text)![1];
+    // Con espacios alrededor: se guarda recortado y NO se avisa (es válido).
+    const alta = await tools.get("add_node")!.handler({ diagramId: id, name: "Cuentas", type: "Base de Datos", id: "db", icon: " si-postgresql " });
+    expect(alta.content[0].text).not.toMatch(/no está en el catálogo/);
+    await tools.get("add_node")!.handler({ diagramId: id, name: "App", type: "Sistema", id: "app" });
+    await tools.get("add_edge")!.handler({ diagramId: id, source: "app", target: "db", label: "lee [SQL]" });
+    const upd = await tools.get("update_element")!.handler({ diagramId: id, id: "app", icon: "si-no-existe" });
+    expect(upd.content[0].text).toMatch(/no está en el catálogo/);
+    const out = path.join(ws, "p.json");
+    await tools.get("export_to_app")!.handler({ diagramId: id, outPath: out });
+    const graph = JSON.parse(await fs.readFile(out, "utf8"));
+    const nodos = graph.big_picture.nodos;
+    expect(nodos.find((n: any) => n.id === "db").icono).toBe("si-postgresql");
+    expect(nodos.find((n: any) => n.id === "app").icono).toBe("si-no-existe");
+    const val = await tools.get("validate_diagram")!.handler({ diagramId: id });
+    expect(val.content[0].text).toMatch(/\[ICONO\]/);
+    // Cadena vacía quita el icono.
+    await tools.get("update_element")!.handler({ diagramId: id, id: "app", icon: "" });
+    const val2 = await tools.get("validate_diagram")!.handler({ diagramId: id });
+    expect(val2.content[0].text).not.toMatch(/\[ICONO\]/);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Issue #540 — import_mermaid: redibujar, no convertir, con ledger de fidelidad.
+// -----------------------------------------------------------------------------
+
+describe("import_mermaid", () => {
+  let ws = "";
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-mmd-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  it("importa una secuencia de un .mmd, la deja fijada y responde con el ledger", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    await fs.writeFile(
+      path.join(ws, "oauth.mmd"),
+      ["sequenceDiagram", "  participant C as Cliente", "  C->>A: pedir token", "  Note over C: nota", "  A-->>C: token"].join("\n")
+    );
+    const res = await tools.get("import_mermaid")!.handler({ path: "oauth.mmd" });
+    expect(res.isError).toBeUndefined();
+    const txt = res.content[0].text as string;
+    expect(txt).toContain('diagramId="oauth"');
+    expect(txt).toContain("notación uml");
+    expect(txt).toContain("2 relación(es) → 2 dibujada(s)");
+    expect(txt).toMatch(/nota/);
+    // Quedó fijado: get_diagram sin id lo encuentra.
+    const g = await tools.get("get_diagram")!.handler({});
+    expect(g.content[0].text).toContain("Cliente");
+  });
+
+  it("de un Markdown elige el bloque pedido y rechaza las gramáticas que no soporta", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    await fs.writeFile(
+      path.join(ws, "README.md"),
+      ["# Doc", "```mermaid", "pie", '  "a": 1', "```", "```mermaid", "flowchart LR", '  a["Web<br><i>Contenedor</i>"] --> b["API<br><i>Componente</i>"]', "```"].join("\n")
+    );
+    const malo = await tools.get("import_mermaid")!.handler({ path: "README.md" });
+    expect(malo.isError).toBe(true);
+    expect(malo.content[0].text).toMatch(/pie/);
+    expect(malo.content[0].text).toContain("[1] flowchart");
+    const bueno = await tools.get("import_mermaid")!.handler({ path: "README.md", block: 1, notation: "c4" });
+    expect(bueno.isError).toBeUndefined();
+    expect(bueno.content[0].text).toContain("bloque 1 de 2");
+    expect(bueno.content[0].text).toContain("notación c4");
+  });
+
+  it("un archivo que no existe o sin Mermaid es un error, nunca un import vacío", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    expect((await tools.get("import_mermaid")!.handler({ path: "no.mmd" })).isError).toBe(true);
+    await fs.writeFile(path.join(ws, "texto.md"), "# sin diagramas");
+    const r = await tools.get("import_mermaid")!.handler({ path: "texto.md" });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/ningún bloque/);
   });
 });
 
@@ -2204,5 +2316,200 @@ describe("adjuntos de una caja por MCP", () => {
     const todos = [...(graph.big_picture?.nodos ?? []), ...graph.agregados.flatMap((a: any) => a.nodos ?? [])];
     const caja = todos.find((n: any) => n.nombre === "Enrollment API");
     expect(caja.adjuntos[0].texto).toContain("openapi: 3.0.0");
+  });
+});
+
+describe("organizaciones y proyectos desde el MCP (#534)", () => {
+  const estadoApp = (over: Record<string, unknown> = {}) => ({
+    projectName: null,
+    counts: { containers: 0, nodes: 0, edges: 0 },
+    views: [],
+    viewsLimit: 50,
+    projects: [],
+    catalog: [],
+    appOrg: undefined,
+    updatedAt: "2026-10-10T10:00:00.000Z",
+    ...over,
+  });
+
+  async function conDiseno(t: ReturnType<typeof toolsFor>) {
+    const creado = await t.textOf("create_diagram", { name: "EMMA · Arquitectura", notation: "ddd" });
+    const id = /diagramId="([^"]+)"/.exec(creado)![1];
+    await t.call("add_node", { diagramId: id, name: "Pedido creado", type: tipo("ddd", "event") });
+    return id;
+  }
+
+  it("criterio de aceptación: use_org + export_to_app(new) crea el proyecto EN esa organización y espera a la app", async () => {
+    const pedidos: { req: any; op: any }[] = [];
+    const t = toolsFor({
+      exportToApp: async () => true,
+      getAppState: () => estadoApp(),
+      actOnApp: async (req: any, op: any) => {
+        pedidos.push({ req, op });
+        return { ok: true, message: `Proyecto "${req.name}" creado en la organización "${req.org}".` };
+      },
+    });
+    await t.call("create_org", { name: "Proyecto Integrador" });
+    await t.call("use_org", { org: "proyecto-integrador" });
+    const id = await conDiseno(t);
+
+    const out = await t.textOf("export_to_app", { diagramId: id, mode: "new" });
+    expect(pedidos).toHaveLength(1);
+    expect(pedidos[0].req).toMatchObject({ kind: "export-project", mode: "new", org: "proyecto-integrador" });
+    // Crear no es idempotente: un solo intento, o una app lenta lo duplicaría.
+    expect(pedidos[0].op).toMatchObject({ intentos: 1 });
+    expect(out).toContain('creado en la organización "proyecto-integrador"');
+  });
+
+  it("export_to_app con una organización que no existe no entrega nada", async () => {
+    const pedidos: any[] = [];
+    const t = toolsFor({
+      exportToApp: async () => true,
+      getAppState: () => estadoApp(),
+      actOnApp: async (req: any) => (pedidos.push(req), { ok: true, message: "" }),
+    });
+    const id = await conDiseno(t);
+    const r = await t.call("export_to_app", { diagramId: id, mode: "new", org: "no-existe" });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/No existe la organización "no-existe"/);
+    expect(pedidos).toHaveLength(0);
+  });
+
+  it("si la app no confirma, la respuesta lo dice (ya no es ✅ a ciegas)", async () => {
+    const t = toolsFor({
+      exportToApp: async () => true,
+      getAppState: () => estadoApp(),
+      actOnApp: async () => ({ ok: false, error: "La app no confirmó en 10000 ms." }),
+    });
+    const id = await conDiseno(t);
+    const r = await t.call("export_to_app", { diagramId: id, mode: "new" });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain("no confirmó");
+  });
+
+  it("list_projects agrupa por organización con lo que trae la app", async () => {
+    const t = toolsFor({
+      readApp: async () => ({
+        ok: true,
+        project: "",
+        kind: "projects",
+        projects: [
+          { name: "Seguros.json", org: "bupa", notation: "ddd", views: 2, activo: false },
+          { name: "Suelto.json", org: null, notation: "bpmn", views: 0, activo: true },
+        ],
+      }),
+    });
+    const out = await t.textOf("list_projects");
+    expect(out).toMatch(/Organización "bupa" \(1\)/);
+    expect(out).toMatch(/Sin organización \(1\)[\s\S]*"Suelto" · bpmn · 0 vistas · ACTIVO/);
+  });
+
+  it("move/rename/delete_project viajan a la app y devuelven lo que pasó", async () => {
+    const pedidos: any[] = [];
+    const t = toolsFor({
+      actOnApp: async (req: any) => (pedidos.push(req), { ok: true, message: `hecho ${req.kind}` }),
+    });
+    expect(await t.textOf("move_project", { project: "Seguros", org: "bupa" })).toContain("✅ hecho move-project");
+    await t.call("move_project", { project: "Seguros", org: "" });
+    await t.call("rename_project", { project: "Seguros", newName: "Seguros Bupa" });
+    await t.call("delete_project", { project: "Seguros Bupa" });
+    expect(pedidos).toEqual([
+      { kind: "move-project", project: "Seguros", org: "bupa" },
+      { kind: "move-project", project: "Seguros", org: null },
+      { kind: "rename-project", project: "Seguros", newName: "Seguros Bupa" },
+      { kind: "delete-project", project: "Seguros Bupa" },
+    ]);
+  });
+
+  it("export_as_view con `project` distinto del activo no entrega nada", async () => {
+    let entregas = 0;
+    const t = toolsFor({
+      exportViewToApp: async () => (entregas++, true),
+      getAppState: () => estadoApp({ projectName: "Seguros", projectOrg: "bupa" }),
+    });
+    const id = await conDiseno(t);
+    const r = await t.call("export_as_view", { diagramId: id, project: "Otro" });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('El proyecto activo en la app es "Seguros" (la organización "bupa")');
+    expect(entregas).toBe(0);
+  });
+
+  it("get_app_state dice la organización del MCP junto a la de la app", async () => {
+    const t = toolsFor({ getAppState: () => estadoApp({ appOrg: "bupa" }) });
+    await t.call("create_org", { name: "Proyecto Integrador" });
+    await t.call("use_org", { org: "proyecto-integrador" });
+    const out = await t.textOf("get_app_state");
+    expect(out).toContain('el MCP tiene fijada la organización "proyecto-integrador"');
+    expect(out).toMatch(/⚠️/);
+  });
+});
+
+describe("delete_diagram y marcas de list_diagrams (#534)", () => {
+  it("borra por id exacto, avisa lo que no existe y list_diagrams marca vacíos", async () => {
+    const t = toolsFor();
+    const creado = await t.textOf("create_diagram", { name: "Prueba vacía", notation: "ddd" });
+    expect(creado).toContain("sin organización del workspace");
+    const id = /diagramId="([^"]+)"/.exec(creado)![1];
+
+    expect(await t.textOf("list_diagrams", { names: true })).toContain("[vacío]");
+
+    const nada = await t.call("delete_diagram", { diagramId: "no-existe" });
+    expect(nada.isError).toBe(true);
+    expect(nada.content[0].text).toContain("No se borró nada");
+
+    expect(await t.textOf("delete_diagram", { diagramId: id })).toContain(`Diagrama "${id}" (Prueba vacía) eliminado`);
+    expect(await t.textOf("list_diagrams", { names: true })).not.toContain(id);
+  });
+
+  it("un id repetido en dos organizaciones exige `org`", async () => {
+    const t = toolsFor();
+    // Uno sin organización y otro en "bupa" (create_org deja fijada la nueva).
+    await t.call("create_diagram", { name: "Mismo", notation: "ddd" });
+    await t.call("create_org", { name: "Bupa" });
+    await t.call("create_diagram", { name: "Mismo", notation: "ddd" });
+    const r = await t.call("delete_diagram", { diagramId: "mismo" });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/Pasá `org`/);
+    expect(await t.textOf("delete_diagram", { diagramId: "mismo", org: "bupa" })).toContain("eliminado");
+  });
+});
+
+describe("export_to_app espera a que el estado publicado refleje el proyecto (#534, P1)", () => {
+  it("no responde hasta que get_app_state muestra el proyecto nuevo como activo", async () => {
+    let lecturas = 0;
+    let exportado = false;
+    const estado = () => ({
+      projectName: exportado && ++lecturas > 3 ? "EMMA · Arquitectura" : null,
+      counts: { containers: 0, nodes: 0, edges: 0 },
+      views: [],
+      viewsLimit: 50,
+      projects: [],
+      updatedAt: "",
+    });
+    const t = toolsFor({
+      exportToApp: async () => true,
+      getAppState: estado,
+      actOnApp: async () => ((exportado = true), { ok: true, message: 'Proyecto "EMMA · Arquitectura" creado sin organización.' }),
+    });
+    const creado = await t.textOf("create_diagram", { name: "EMMA · Arquitectura", notation: "ddd" });
+    const id = /diagramId="([^"]+)"/.exec(creado)![1];
+    await t.call("add_node", { diagramId: id, name: "Pedido creado", type: tipo("ddd", "event") });
+    const out = await t.textOf("export_to_app", { diagramId: id, mode: "new" });
+    // Respondió DESPUÉS de que el estado cambió: la siguiente lectura ya es coherente.
+    expect(estado().projectName).toBe("EMMA · Arquitectura");
+    expect(out).not.toMatch(/todavía no/);
+  });
+
+  it("si el estado no se actualiza a tiempo, lo dice en vez de callarlo", async () => {
+    const t = toolsFor({
+      exportToApp: async () => true,
+      getAppState: () => ({ projectName: "Otro", counts: { containers: 0, nodes: 0, edges: 0 }, views: [], viewsLimit: 50, projects: [], updatedAt: "" }),
+      actOnApp: async () => ({ ok: true, message: "creado" }),
+      esperaEstadoMs: 200,
+    });
+    const creado = await t.textOf("create_diagram", { name: "Nuevo", notation: "ddd" });
+    const id = /diagramId="([^"]+)"/.exec(creado)![1];
+    await t.call("add_node", { diagramId: id, name: "Pedido creado", type: tipo("ddd", "event") });
+    expect(await t.textOf("export_to_app", { diagramId: id, mode: "new" })).toMatch(/todavía no publicó/);
   });
 });

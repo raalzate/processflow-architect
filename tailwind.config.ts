@@ -1,7 +1,12 @@
 import type {Config} from 'tailwindcss';
+// `import`, no `require`: en desarrollo Tailwind 4 vuelve a cargar esta config
+// como módulo ES (`?id=…`) al recompilar una página, y ahí `require` no existe
+// (Node 25): Next salía con 0 y `concurrently -k` cerraba la app entera.
+import animate from 'tailwindcss-animate';
 
 export default {
-  darkMode: ['class'],
+  // Tailwind 4 tipa la forma con arreglo sólo con su selector (`['class', '.x']`).
+  darkMode: 'class',
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -10,24 +15,8 @@ export default {
     // escanearse para que Tailwind genere sus clases fill-*/border-*/text-*.
     './src/lib/**/*.{js,ts,jsx,tsx,mdx}',
   ],
-  safelist: [
-    'bg-blue-500',
-    'bg-orange-500',
-    'bg-emerald-500',
-    'bg-cyan-500',
-    'bg-yellow-500',
-    'bg-indigo-500',
-    'bg-pink-500',
-    'bg-purple-500',
-    'bg-gray-400', // No olvides el color de fallback
-    // Fondos pastel de los chips de la paleta: se derivan en runtime de los
-    // colores de notación (`fill-*-{50,100}` → `bg-*-{50,100}`), así que no
-    // aparecen literales en el código y hay que safelistarlos por patrón.
-    {
-      pattern:
-        /^bg-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|stone)-(50|100)$/,
-    },
-  ],
+  // `safelist` no existe en Tailwind 4: las clases que se arman en runtime se
+  // declaran con `@source inline(...)` en src/app/globals.css.
   theme: {
     extend: {
       fontSize: {
@@ -110,6 +99,19 @@ export default {
         'canvas-edge': 'hsl(var(--canvas-edge))',
         'canvas-grid': 'hsl(var(--canvas-grid))',
         'canvas-grid-major': 'hsl(var(--canvas-grid-major))',
+        // Skin editorial del lienzo (spec 022): tokens por rol, con alfa para
+        // que `fill-ed-accent/10` sea el acento tenue y `stroke-ed-ink/15` la
+        // regla fina sin declarar un token por cada tinte.
+        ed: {
+          paper: 'hsl(var(--ed-paper) / <alpha-value>)',
+          'paper-2': 'hsl(var(--ed-paper-2) / <alpha-value>)',
+          ink: 'hsl(var(--ed-ink) / <alpha-value>)',
+          muted: 'hsl(var(--ed-muted) / <alpha-value>)',
+          soft: 'hsl(var(--ed-soft) / <alpha-value>)',
+          'rule-solid': 'hsl(var(--ed-rule-solid) / <alpha-value>)',
+          accent: 'hsl(var(--ed-accent) / <alpha-value>)',
+          link: 'hsl(var(--ed-link) / <alpha-value>)',
+        },
         sidebar: {
           DEFAULT: 'hsl(var(--sidebar-background))',
           foreground: 'hsl(var(--sidebar-foreground))',
@@ -150,5 +152,5 @@ export default {
       },
     },
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [animate],
 } satisfies Config;

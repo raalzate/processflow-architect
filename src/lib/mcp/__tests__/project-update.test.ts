@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { mergeProjectGraph, resolveProjectRef, resolveViewRef, vistaInexistente } from "../project-update";
+import {
+  buscarProyectoGuardado,
+  mergeProjectGraph,
+  resolveProjectRef,
+  resolveViewRef,
+  vistaInexistente,
+} from "../project-update";
 import type { GraphData } from "../../types";
 
 const nodo = (id: string, extra: Record<string, unknown> = {}) => ({
@@ -149,6 +155,62 @@ describe("resolveProjectRef · a qué proyecto se entrega", () => {
     expect(() => resolveProjectRef(undefined, { activo: null, proyectos: [] })).toThrow(
       /No hay un proyecto abierto/
     );
+  });
+
+  // #533: la lista trae nombres de ARCHIVO ("X.json") y el agente escribe "X".
+  // Antes fallaba, y con "X.json" la app no lo encontraba y creaba un proyecto nuevo.
+  const guardados = { activo: "Seguros", proyectos: ["Seguros.json", "EMMA · Conversación.json", "Enrollment v2.json"] };
+
+  it("el nombre se acepta con o sin .json, y devuelve el nombre guardado", () => {
+    expect(resolveProjectRef("Enrollment v2", guardados)).toBe("Enrollment v2.json");
+    expect(resolveProjectRef("enrollment v2.JSON", guardados)).toBe("Enrollment v2.json");
+  });
+
+  it("sin acentos ni puntuación: como lo escribe un agente de memoria", () => {
+    expect(resolveProjectRef("EMMA Conversacion", guardados)).toBe("EMMA · Conversación.json");
+  });
+
+  it("«activo» devuelve el nombre GUARDADO del proyecto abierto, para que la app lo encuentre", () => {
+    expect(resolveProjectRef("activo", guardados)).toBe("Seguros.json");
+  });
+
+  it("no adivina: si dos proyectos dan la misma clave, pide el nombre exacto", () => {
+    const dobles = { activo: null, proyectos: ["Pagos.json", "pagos.json"] };
+    expect(() => resolveProjectRef("PAGOS", dobles)).toThrow(/más de un proyecto/);
+    // El exacto sí resuelve aunque haya otro parecido.
+    expect(resolveProjectRef("pagos.json", dobles)).toBe("pagos.json");
+  });
+
+  it("un nombre parcial no alcanza: entregar al proyecto equivocado es peor que fallar", () => {
+    expect(() => resolveProjectRef("Enrollment", guardados)).toThrow(/No hay un proyecto llamado/);
+  });
+});
+
+describe("buscarProyectoGuardado · el renderer encuentra lo que resolvió el main (#533)", () => {
+  const archivos = [
+    { id: "1", name: "Seguros.json", content: { nombre_proyecto: "Seguros" } },
+    { id: "2", name: "EMMA · Conversación.json", content: { nombre_proyecto: "EMMA · Conversación" } },
+    { id: "3", name: "Renombrado.json", content: { nombre_proyecto: "Nombre viejo" } },
+  ];
+
+  it("encuentra por el nombre de archivo que devuelve resolveProjectRef", () => {
+    expect(buscarProyectoGuardado(archivos, "EMMA · Conversación.json")?.id).toBe("2");
+  });
+
+  it("y por el nombre del proyecto, con o sin .json, sin mayúsculas ni acentos", () => {
+    expect(buscarProyectoGuardado(archivos, "Seguros")?.id).toBe("1");
+    expect(buscarProyectoGuardado(archivos, "emma conversacion")?.id).toBe("2");
+    expect(buscarProyectoGuardado(archivos, "Nombre viejo")?.id).toBe("3");
+  });
+
+  it("ambiguo o inexistente devuelve null: crear una copia en silencio fue el bug", () => {
+    expect(buscarProyectoGuardado(archivos, "Fantasma")).toBeNull();
+    const dobles = [
+      { id: "a", name: "Pagos.json", content: { nombre_proyecto: "Pagos" } },
+      { id: "b", name: "pagos.json", content: { nombre_proyecto: "pagos" } },
+    ];
+    expect(buscarProyectoGuardado(dobles, "PAGOS")).toBeNull();
+    expect(buscarProyectoGuardado(dobles, "pagos.json")?.id).toBe("b");
   });
 });
 

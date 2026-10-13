@@ -50,7 +50,7 @@ export function Minimap({
 
   return (
     <div
-      className="absolute right-4 top-4 z-20 overflow-hidden rounded-lg border bg-card/95 shadow-md backdrop-blur"
+      className="absolute right-4 top-4 z-20 overflow-hidden rounded-lg border bg-card/95 shadow-md backdrop-blur-sm"
       title="Minimapa — clic o arrastra para navegar"
     >
       <svg

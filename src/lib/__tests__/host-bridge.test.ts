@@ -99,6 +99,7 @@ describe("capacidadesDe", () => {
       copyToClipboard: vi.fn(),
       systemInfo: vi.fn(),
       windowMenuPopup: vi.fn(),
+      brandFetchSite: vi.fn(),
     };
     expect(Object.values(capacidadesDe(todo)).every(Boolean)).toBe(true);
   });

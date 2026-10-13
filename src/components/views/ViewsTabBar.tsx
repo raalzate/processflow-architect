@@ -239,17 +239,17 @@ export function ViewsTabBar() {
   };
 
   return (
-    <div className="relative flex items-center gap-2 border-t bg-card/80 px-2 py-1.5 backdrop-blur">
+    <div className="relative flex items-center gap-2 border-t bg-card/80 px-2 py-1.5 backdrop-blur-sm">
       {/* Degradados: dicen que la tira sigue, sin mostrar un corte seco. */}
-      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-gradient-to-r from-card to-transparent" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-gradient-to-l from-card to-transparent" />
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-linear-to-r from-card to-transparent" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-linear-to-l from-card to-transparent" />
       {/* La tira scrollea, pero sin cortar pestañas a la mitad: `snap` alinea la
           pestaña al borde y los degradados laterales avisan que hay más. Antes,
           con muchas vistas, se veía una pestaña partida («…elo») pegada al panel
           y parecía un error de layout. */}
       <div
         ref={tiraRef}
-        className="flex min-w-0 flex-1 snap-x snap-mandatory items-center gap-1 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex min-w-0 flex-1 snap-x snap-mandatory items-center gap-1 overflow-x-auto scroll-smooth scrollbar-none [&::-webkit-scrollbar]:hidden"
       >
         {pestanas.map(({ view: v, virtual }) => {
           const active = v.id === raizActiva;
@@ -309,7 +309,7 @@ export function ViewsTabBar() {
                       if (e.key === "Enter") commitRename();
                       if (e.key === "Escape") setEditingId(null);
                     }}
-                    className="w-24 rounded-md bg-background px-1 text-xs outline-none ring-1 ring-primary"
+                    className="w-24 rounded-md bg-background px-1 text-xs outline-hidden ring-1 ring-primary"
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (

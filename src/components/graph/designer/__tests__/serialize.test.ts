@@ -138,6 +138,28 @@ describe("canvasToGraphData", () => {
     expect(canvasToGraphData(new Map(), new Map(), BASE).defaultRouting).toBeUndefined();
   });
 
+  it("el icono de tecnología (spec 025) va y vuelve en nodos y contenedores, y lo vacío no entra", () => {
+    const nodes = new Map<string, DesignerNode>([
+      ["agg-Ventas", { id: "agg-Ventas", nombre: "Ventas", tipo_elemento: "Agregado", estado_comparativo: "nuevo", icono: "si-googlecloud", x: 0, y: 0, width: 400, height: 300 } as DesignerNode],
+      ["n1", { id: "n1", nombre: "Pagar", tipo_elemento: "Comando", agregado: "Ventas", estado_comparativo: "nuevo", icono: "si-stripe", x: 10, y: 10 } as DesignerNode],
+      ["n2", { id: "n2", nombre: "Pagado", tipo_elemento: "Evento", estado_comparativo: "nuevo", x: 500, y: 10 } as DesignerNode],
+    ]);
+    const g = canvasToGraphData(nodes, new Map(), BASE);
+    expect(g.agregados[0].icono).toBe("si-googlecloud");
+    expect(g.agregados[0].nodos[0].icono).toBe("si-stripe");
+    expect(g.big_picture.nodos[0].icono).toBeUndefined();
+    const vuelta = graphDataToCanvas(g);
+    expect(vuelta.nodes.get("n1")?.icono).toBe("si-stripe");
+    expect(vuelta.nodes.get("agg-Ventas")?.icono).toBe("si-googlecloud");
+    // Un id raro (espacios, vacío) se limpia; uno que no esté en el catálogo se conserva.
+    expect(graphDataToCanvas({ ...g, big_picture: { ...g.big_picture, nodos: [{ ...g.big_picture.nodos[0], icono: "  " }] } }).nodes.get("n2")?.icono).toBeUndefined();
+  });
+
+  it("preserva la skin del proyecto (spec 022) y no la inventa cuando falta", () => {
+    expect(canvasToGraphData(new Map(), new Map(), { ...BASE, skin: "editorial" }).skin).toBe("editorial");
+    expect(canvasToGraphData(new Map(), new Map(), BASE).skin).toBeUndefined();
+  });
+
   it("uses base metadata and falls back to defaults", () => {
     const g = canvasToGraphData(new Map(), new Map(), BASE);
     expect(g.nombre_proyecto).toBe("Proj");

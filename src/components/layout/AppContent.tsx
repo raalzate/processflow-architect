@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/layout/AppHeader";
-import { ORG_TODAS } from "@/lib/project-orgs";
+import { ORG_TODAS, orgOf } from "@/lib/project-orgs";
 import NodeModal from "@/components/modals/NodeModal";
 import { Toaster } from "@/components/ui/toaster";
 import { SidebarInset } from "@/components/ui/sidebar";
@@ -16,8 +16,23 @@ import { readMcpPrefs } from "@/lib/mcp-settings";
 import { describeAppState } from "@/lib/mcp/app-state";
 import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
 import { mergeProjectMeta, describeMetaAgregada } from "@/lib/mcp/project-meta";
-import { mergeProjectGraph, resolveViewRef } from "@/lib/mcp/project-update";
-import { planAppAction, planViewEdit, describeAccion, esEdicionDeVista } from "@/lib/mcp/app-actions";
+import { buscarProyectoGuardado, claveProyecto, mergeProjectGraph, nombreVisible, resolveViewRef } from "@/lib/mcp/project-update";
+import {
+  planAppAction,
+  planViewEdit,
+  describeAccion,
+  esAccionDeProyecto,
+  esEdicionDeVista,
+  type AppActionResult,
+  type ExportProjectRequest,
+} from "@/lib/mcp/app-actions";
+import {
+  mensajeEliminado,
+  mensajeEntrega,
+  mensajeMovido,
+  planProjectAction,
+  type ProjectActionRequest,
+} from "@/lib/mcp/proyectos";
 import { applyViewEdit } from "@/lib/mcp/view-edit";
 import { artifactBodyMarkdown } from "@/lib/artifacts/to-markdown";
 import { readStoredArtifacts } from "@/context/AgentContext";
@@ -102,6 +117,9 @@ const McpImportBridge = () => {
     savedFiles,
     allNodes,
     orgFilter,
+    handleRenameProject,
+    handleFileDelete,
+    setFileOrg,
   } = useGraphContext();
   const { createView, views, activeView, updateViewGraph, setViewNotation, setActiveView, deleteView, renameView, focus } =
     useViews();
@@ -122,9 +140,11 @@ const McpImportBridge = () => {
         org: orgFilter === ORG_TODAS ? undefined : orgFilter,
         // La ficha abierta (feature 019): «esta caja» para el agente externo.
         focus,
+        // En qué organización está lo que el humano tiene abierto (#534).
+        projectOrg: savedFiles.find((f) => f.id === currentFileId)?.orgId ?? null,
       })
     );
-  }, [graphData, views, savedFiles, orgFilter, focus]);
+  }, [graphData, views, savedFiles, orgFilter, focus, currentFileId]);
 
   // Lectura bajo demanda (`list_artifacts`, `get_artifact`, `list_views`,
   // `get_view`): el main pregunta y este efecto contesta. El proyecto activo sale
@@ -133,7 +153,14 @@ const McpImportBridge = () => {
     const electron = hostBridge();
     if (!electron?.onMcpAppRead) return;
 
-    const proyectos = savedFiles.map((f) => ({ id: f.id, name: f.name }));
+    const proyectos = savedFiles.map((f) => ({
+      id: f.id,
+      name: f.name,
+      // Para `list_projects` (#534).
+      org: f.orgId ?? null,
+      notation: f.content?.notation,
+      fecha: f.content?.fecha_analisis,
+    }));
     const activo =
       currentFileId && graphData
         ? { id: currentFileId, name: graphData.nombre_proyecto ?? "sin nombre" }
@@ -209,8 +236,78 @@ const McpImportBridge = () => {
     const electron = hostBridge();
     if (!electron?.onMcpAppAction) return;
 
+    // Lo que mira el humano en el header: `undefined` = «Todas».
+    const orgApp = orgFilter === ORG_TODAS ? undefined : orgFilter;
+
+    // Acciones sobre PROYECTOS (#534): no necesitan uno abierto, y la entrega
+    // contesta con dónde quedó (antes era fire-and-forget).
+    const atenderProyecto = async (id: number, request: ProjectActionRequest | ExportProjectRequest) => {
+      const responder = (r: AppActionResult) => electron.mcpAppActionReply?.(id, r);
+      if (request.kind === "export-project") {
+        const { name, graph, mode, target, org } = request;
+        if (mode === "update" && target) {
+          const destino =
+            buscarProyectoGuardado(savedFiles, target) ??
+            (graphData && currentFileId && claveProyecto(graphData.nombre_proyecto) === claveProyecto(target)
+              ? savedFiles.find((f) => f.id === currentFileId)
+              : undefined);
+          if (!destino) {
+            // Crear una copia acá fue lo que dejaba proyectos duplicados: se avisa.
+            return responder({
+              ok: false,
+              error: `No encontré el proyecto "${target}" en la app (¿se renombró o se borró?). No se creó ninguna copia: exportá con mode="new" si querés uno aparte.`,
+            });
+          }
+          const base = destino.id === currentFileId ? graphData ?? destino.content : destino.content;
+          const { graph: fusion, resumen } = mergeProjectGraph(base, graph);
+          handleDesignUpdate(destino.id, fusion);
+          if (destino.id !== currentFileId) handleFileSelect(destino.id);
+          return responder({
+            ok: true,
+            message: mensajeEntrega({
+              accion: "actualizado",
+              proyecto: destino.name,
+              org: destino.orgId ?? null,
+              orgApp,
+              detalle: `${resumen.agregados} nuevos · ${resumen.conservados} conservados · ${resumen.quitados} que ya no están en el diseño. Es el proyecto activo.`,
+            }),
+          });
+        }
+        const nuevo = handleCreateProjectFromContent(name, graph, undefined, org);
+        if (!nuevo) return responder({ ok: false, error: `La app no pudo crear el proyecto "${name}".` });
+        return responder({
+          ok: true,
+          message: mensajeEntrega({ accion: "creado", proyecto: name, org, orgApp, detalle: "Es el proyecto activo." }),
+        });
+      }
+
+      const orgs = ((await electron.mcpOrgsStatus?.())?.orgs ?? []).map((o) => o.slug);
+      const plan = planProjectAction(request, savedFiles, orgs);
+      if (!plan.ok) return responder({ ok: false, error: plan.error });
+      const visible = nombreVisible(plan.name);
+      if (request.kind === "move-project") {
+        setFileOrg(plan.id, plan.org ?? null);
+        return responder({ ok: true, message: mensajeMovido(plan.name, plan.org ?? null, orgApp) });
+      }
+      if (request.kind === "rename-project") {
+        if (!handleRenameProject(plan.id, plan.newName!)) {
+          return responder({ ok: false, error: `La app no aceptó el nombre "${plan.newName}".` });
+        }
+        return responder({ ok: true, message: `Proyecto "${visible}" renombrado a "${plan.newName}".` });
+      }
+      const org = savedFiles.find((f) => f.id === plan.id)?.orgId ?? null;
+      handleFileDelete(plan.id);
+      return responder({ ok: true, message: mensajeEliminado(plan.name, org) });
+    };
+
     const off = electron.onMcpAppAction(({ id, request }) => {
       try {
+        if (esAccionDeProyecto(request)) {
+          void atenderProyecto(id, request).catch((e: any) =>
+            electron.mcpAppActionReply?.(id, { ok: false, error: e?.message ?? "Error inesperado en la app." })
+          );
+          return;
+        }
         if (!currentFileId) {
           electron.mcpAppActionReply?.(id, {
             ok: false,
@@ -276,7 +373,24 @@ const McpImportBridge = () => {
       }
     });
     return off;
-  }, [currentFileId, views, activeView, graphData, handleDesignUpdate, updateViewGraph, deleteView, renameView]);
+  }, [
+    currentFileId,
+    views,
+    activeView,
+    graphData,
+    handleDesignUpdate,
+    updateViewGraph,
+    deleteView,
+    renameView,
+    // Acciones sobre proyectos (#534).
+    savedFiles,
+    orgFilter,
+    handleFileSelect,
+    handleCreateProjectFromContent,
+    handleRenameProject,
+    handleFileDelete,
+    setFileOrg,
+  ]);
 
   useEffect(() => {
     const electron = hostBridge();
@@ -373,9 +487,11 @@ const McpImportBridge = () => {
           // Actualizar EN EL SITIO: el proyecto conserva su id, su historial y la
           // posición que el humano les dio a las cajas. Crear otro proyecto en
           // cada entrega es lo que dejaba tres copias y ninguna vigente.
+          // Misma clave que usó el main para resolverlo: antes se buscaba sólo
+          // `nombre_proyecto === "X.json"`, nunca coincidía y se creaba una copia (#533).
           const destino =
-            savedFiles.find((f) => f.content?.nombre_proyecto === target.project) ??
-            (graphData?.nombre_proyecto === target.project && currentFileId
+            buscarProyectoGuardado(savedFiles, target.project) ??
+            (graphData && currentFileId && claveProyecto(graphData.nombre_proyecto) === claveProyecto(target.project)
               ? savedFiles.find((f) => f.id === currentFileId)
               : undefined);
           if (destino) {
@@ -522,7 +638,7 @@ const WelcomeScreen = () => {
 // Este componente SÍ se volverá a renderizar en las búsquedas,
 // porque depende de `filteredNodes`. Esto es correcto y deseado.
 const GraphArea = React.memo(() => {
-  const { currentFileId, graphData, handleDesignUpdate } = useGraphContext();
+  const { currentFileId, graphData, handleDesignUpdate, savedFiles } = useGraphContext();
   const { activeView } = useViews();
 
   // Sin proyecto activo: pantalla de bienvenida. Con un proyecto activo
@@ -546,6 +662,9 @@ const GraphArea = React.memo(() => {
                 un proyecto BPMN se dibuja con paleta/simbología BPMN aquí mismo. */}
             <ComponentDesigner
               notation={activeView?.notation}
+              // La organización del proyecto decide qué perfil de marca viste
+              // la skin editorial (spec 023).
+              orgId={orgOf(savedFiles.find((f) => f.id === currentFileId) ?? {})}
               onNotationChange={
                 currentFileId && graphData
                   ? (n) => handleDesignUpdate(currentFileId, { ...graphData, notation: n })
@@ -671,7 +790,7 @@ export function AppContent() {
         <CommandPalette />
         <MemoizedAppHeader />
 
-        <main className="flex-grow relative graph-visualization-container">
+        <main className="grow relative graph-visualization-container">
           <GraphArea />
         </main>
 

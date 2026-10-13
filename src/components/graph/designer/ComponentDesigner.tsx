@@ -53,7 +53,13 @@ import {
   AlignVerticalJustifyCenter,
   AlignVerticalJustifyEnd,
   Plug,
+  Newspaper,
 } from "lucide-react";
+import { SKIN_LIST, leerSkin, type SkinId } from "@/lib/skin";
+import { AVISO_TAMANO_BYTES, PRESETS, PRESET_LIST, slugDeProyecto, type PresetId } from "@/lib/export/html-page";
+import { cssVarsDePerfil, perfilVigente } from "@/lib/brand/profile";
+import { CATEGORIAS, buscarIconos, iconoDeCatalogo } from "@/lib/icons/catalog";
+import { useBrandProfiles } from "@/hooks/use-brand-profiles";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { ColumnsField } from "./ColumnsField";
@@ -206,6 +212,9 @@ import { AiProvenanceBadge } from "@/components/ai-panel/AiProvenanceBadge";
 import type { GraphData, ReadModel } from "@/lib/types";
 import {
   Toolbox,
+  SkinContext,
+  IconoDeElemento,
+  iconForType,
   DesignerNodeComponent,
   DesignerLinkComponent,
   LinkEndpointHandles,
@@ -238,7 +247,9 @@ import { Minimap } from "./Minimap";
 import {
   captureRegion,
   downloadDataUrl,
+  colorDeToken,
   downloadText,
+  exportCanvasHtml,
   exportCanvasSvg,
   waitForFloatingLayersGone,
 } from "./export-canvas";
@@ -300,6 +311,8 @@ interface DesignerMeta {
   version: string;
   /** Enrutado con el que nacen las relaciones de esta vista (issue #128). */
   defaultRouting?: "straight" | "curved" | "orthogonal";
+  /** Skin con que se dibuja el proyecto (spec 022); viaja con el documento. */
+  skin: SkinId;
   fecha_analisis: string;
   bigPictureDescripcion: string;
   hotspots: string[];
@@ -314,6 +327,7 @@ function metaFromContent(content: GraphData): DesignerMeta {
     nombre_proyecto: content.nombre_proyecto || "Proyecto sin nombre",
     version: content.version || "1.0.0",
     defaultRouting: content.defaultRouting,
+    skin: leerSkin(content.skin),
     fecha_analisis: content.fecha_analisis || "",
     bigPictureDescripcion: content.big_picture?.descripcion || "",
     hotspots: content.big_picture?.hotspots || [],
@@ -335,6 +349,9 @@ function buildContent(
     nombre_proyecto: meta.nombre_proyecto,
     version: meta.version,
     defaultRouting: meta.defaultRouting,
+    // La canónica no se escribe: un documento sin `skin` sigue siendo canónico
+    // y así un archivo que nunca cambió de skin no cambia de bytes.
+    ...(meta.skin !== "canon" ? { skin: meta.skin } : {}),
     notation,
     fecha_analisis: meta.fecha_analisis,
     big_picture: {
@@ -518,7 +535,7 @@ const MetadataRow: React.FC<{
             )}
           </div>
         </td>
-        <td className="w-[4.5rem] border-l p-0">
+        <td className="w-18 border-l p-0">
           <div className="flex items-center justify-end gap-0.5 px-1">
             <button
               type="button"
@@ -621,7 +638,7 @@ const MetadataField: React.FC<{
               <th className="w-40 px-2 py-1 font-medium">Propiedad</th>
               <th className="w-24 border-l px-2 py-1 font-medium">Tipo</th>
               <th className="border-l px-2 py-1 font-medium">Valor</th>
-              <th className="w-[4.5rem] border-l px-2 py-1" />
+              <th className="w-18 border-l px-2 py-1" />
             </tr>
           </thead>
           <tbody>
@@ -672,7 +689,7 @@ const MetadataField: React.FC<{
                   className="h-8 rounded-none border-0 bg-transparent px-2 text-xs focus-visible:ring-1"
                 />
               </td>
-              <td className="w-[4.5rem] border-l p-0">
+              <td className="w-18 border-l p-0">
                 <div className="flex justify-end px-1">
                   <IconAction
                     type="button"
@@ -817,6 +834,102 @@ const TamanoInput: React.FC<{
         }}
       />
       <span className="text-xs text-muted-foreground">px</span>
+    </div>
+  );
+};
+
+/**
+ * Icono de TECNOLOGÍA de la caja (spec 025): buscador sobre el catálogo,
+ * categorías, cuadrícula con vista previa y «Quitar». Escribe `draft.icono`;
+ * sin icono la caja dibuja el de su tipo.
+ */
+const IconoField: React.FC<{
+  value?: string;
+  tipo: string;
+  onChange: (icono: string | undefined) => void;
+}> = ({ value, tipo, onChange }) => {
+  const [consulta, setConsulta] = useState("");
+  const [categoria, setCategoria] = useState<string | undefined>(undefined);
+  const [abierto, setAbierto] = useState(false);
+  const actual = iconoDeCatalogo(value);
+  const resultados = useMemo(() => buscarIconos(consulta, categoria).slice(0, 48), [consulta, categoria]);
+  const Fallback = iconForType(tipo);
+  return (
+    <div className="rounded-md border p-3">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm font-semibold">Icono</Label>
+        <div className="flex items-center gap-1">
+          {value && (
+            <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onChange(undefined)}>
+              Quitar
+            </Button>
+          )}
+          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => setAbierto((a) => !a)}>
+            {abierto ? "Cerrar" : "Elegir…"}
+          </Button>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-2 text-sm">
+        <span className="flex h-7 w-7 items-center justify-center rounded border">
+          <IconoDeElemento icono={value} Fallback={Fallback} className="h-5 w-5" />
+        </span>
+        <span className="text-muted-foreground">
+          {actual ? `${actual.nombre} · ${actual.categoria}` : value ? `«${value}» no está en el catálogo: se dibuja el icono del tipo` : "El icono del tipo. Elegí el logo de la tecnología si la caja es una."}
+        </span>
+      </div>
+      {abierto && (
+        <div className="mt-3 space-y-2">
+          <Input
+            placeholder="Buscar: postgres, kafka, nube, slack…"
+            value={consulta}
+            onChange={(e) => setConsulta(e.target.value)}
+            autoFocus
+          />
+          <div className="flex flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={() => setCategoria(undefined)}
+              className={cn("rounded-full border px-2 py-0.5 text-2xs", !categoria && "border-primary bg-primary/10")}
+            >
+              Todas
+            </button>
+            {CATEGORIAS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCategoria(categoria === c.id ? undefined : c.id)}
+                className={cn("rounded-full border px-2 py-0.5 text-2xs", categoria === c.id && "border-primary bg-primary/10")}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          {resultados.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nada coincide. Probá otro nombre o un genérico (nube, servidor, base de datos).</p>
+          ) : (
+            <div className="grid max-h-56 grid-cols-6 gap-1 overflow-y-auto">
+              {resultados.map((i) => (
+                <button
+                  key={i.id}
+                  type="button"
+                  title={`${i.nombre} · ${i.categoria} · ${i.licencia}`}
+                  onClick={() => {
+                    onChange(i.id);
+                    setAbierto(false);
+                  }}
+                  className={cn(
+                    "flex flex-col items-center gap-1 rounded border p-1.5 hover:bg-accent/20",
+                    value === i.id && "border-primary bg-primary/10"
+                  )}
+                >
+                  <IconoDeElemento icono={i.id} Fallback={Fallback} className="h-6 w-6" />
+                  <span className="w-full truncate text-center text-2xs">{i.nombre}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -1073,7 +1186,7 @@ const AdjuntosField: React.FC<{
                 <th className="px-2 py-1 font-medium">Adjunto</th>
                 <th className="w-24 border-l px-2 py-1 font-medium">Tipo</th>
                 <th className="w-28 border-l px-2 py-1 font-medium">Tamaño</th>
-                <th className="w-[4.5rem] border-l px-2 py-1" />
+                <th className="w-18 border-l px-2 py-1" />
               </tr>
             </thead>
             <tbody>
@@ -1117,7 +1230,7 @@ const AdjuntosField: React.FC<{
       )}
 
       {abierto && (
-        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 text-xs leading-relaxed text-foreground/80">
+        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md border bg-muted/40 p-2 text-xs leading-relaxed text-foreground/80">
           {abierto.texto || "(sin texto extraído: es material binario)"}
         </pre>
       )}
@@ -1163,7 +1276,7 @@ const FuenteCitada: React.FC<{ descripcion?: string; docs: SourceDoc[] }> = ({ d
           El documento no está adjunto al proyecto: la cita no se puede abrir desde acá.
         </p>
       ) : (
-        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/80">
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word text-xs leading-relaxed text-foreground/80">
           {resuelta.fragmento}
         </pre>
       )}
@@ -1547,7 +1660,7 @@ const EditNodeDialog: React.FC<{
           // El ancho lo decide `panel-size.ts`; acá sólo se aplica (por eso va
           // en `style` y no como clase: `55vw` no es una clase de Tailwind).
           style={{ maxWidth: inspectorMaxWidth(ancho) }}
-          className="fixed inset-y-0 right-0 z-50 flex h-full w-full flex-col border-l bg-background shadow-xl outline-none transition-[max-width] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
+          className="fixed inset-y-0 right-0 z-50 flex h-full w-full flex-col border-l bg-background shadow-xl outline-hidden transition-[max-width] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
         >
           <div className="flex items-start justify-between border-b p-4">
             <div className="space-y-1">
@@ -1870,6 +1983,14 @@ const EditNodeDialog: React.FC<{
             />
             <SugBtn field="tags" onClick={suggestTags} disabled={!draft.nombre.trim()} />
           </TagsField>
+          <IconoField
+            value={draft.icono}
+            tipo={draft.tipo_elemento}
+            onChange={(icono) => {
+              tocado("icono");
+              setDraft((d) => (d ? { ...d, icono } : d));
+            }}
+          />
           <EstiloField
             value={draft.estilo}
             legado={{ color: draft.color, borderColor: draft.borderColor }}
@@ -2623,7 +2744,9 @@ export const ComponentDesigner: React.FC<{
   notation?: NotationId;
   /** Cambia la notación de la vista (sólo modo vista; muestra el SELECT). */
   onNotationChange?: (n: NotationId) => void;
-}> = ({ value, onChange, sourceId, notation, onNotationChange }) => {
+  /** Organización del proyecto: elige el perfil de marca de la skin editorial (spec 023). */
+  orgId?: string | null;
+}> = ({ value, onChange, sourceId, notation, onNotationChange, orgId = null }) => {
   const { currentFileId, savedFiles, handleDesignUpdate, graphData } = useGraphContext();
   const { views, activeViewId, drillStack, enterView, goToDrill, createView, filters, filtersActive, clearFilters } =
     useViews();
@@ -3164,6 +3287,30 @@ export const ComponentDesigner: React.FC<{
       });
     },
     [toast]
+  );
+
+  /** Skin del proyecto (spec 022): se alterna y se guarda con el documento. */
+  const setViewSkin = useCallback(
+    (skin: SkinId) => {
+      setMeta((m) => (m ? { ...m, skin } : m));
+      const s = SKIN_LIST.find((x) => x.id === skin);
+      toast({ title: `Skin ${s?.label.toLowerCase() ?? skin}`, description: s?.description });
+    },
+    [toast]
+  );
+  const skinActiva: SkinId = meta?.skin ?? "canon";
+  // Perfil de marca que viste la skin editorial (spec 023): el de la
+  // organización del proyecto, si no el por defecto. En canónica no se aplica.
+  const { perfiles: perfilesDeMarca } = useBrandProfiles();
+  const perfilDeMarca = useMemo(() => perfilVigente(orgId, perfilesDeMarca), [orgId, perfilesDeMarca]);
+  const estiloDeMarca = useMemo(
+    () => (skinActiva === "editorial" ? (cssVarsDePerfil(perfilDeMarca) as React.CSSProperties) : undefined),
+    [skinActiva, perfilDeMarca]
+  );
+  // Los focos de la skin editorial son los hotspots del proyecto, por nombre.
+  const skinCtx = useMemo(
+    () => ({ skin: skinActiva, focal: new Set(meta?.hotspots ?? []) as ReadonlySet<string> }),
+    [skinActiva, meta?.hotspots]
   );
 
   const esLineaDeVidaRef = useRef((nodeId: string) => {
@@ -4446,9 +4593,52 @@ export const ComponentDesigner: React.FC<{
     if (!svgRef.current) return;
     const bounds = computeContentBounds(nodesRef.current, notationId);
     const base = (meta?.nombre_proyecto || "diagrama").replace(/[^\w.-]+/g, "_");
-    exportCanvasSvg(svgRef.current, bounds, `${base}.svg`);
+    // En editorial el fondo es el papel de la skin (spec 022/024); en canónica
+    // sigue blanco, como siempre.
+    const fondo = skinActiva === "editorial" ? colorDeToken(svgRef.current, "--ed-paper") : undefined;
+    exportCanvasSvg(svgRef.current, bounds, `${base}.svg`, fondo);
     toast({ title: "Diagrama exportado", description: "Se descargó un SVG del lienzo." });
-  }, [meta, toast, notationId]);
+  }, [meta, toast, notationId, skinActiva]);
+
+  // Exporta una página HTML autocontenida (spec 024): título, descripción y el
+  // diagrama con su contrato accesible, en el preset del destino. Si la
+  // autocomprobación encuentra algo, se avisa: el archivo sale, nunca en silencio.
+  const handleExportHtml = useCallback(
+    (preset: PresetId) => {
+      if (!svgRef.current) return;
+      const bounds = computeContentBounds(nodesRef.current, notationId);
+      if (!bounds) {
+        toast({ variant: "destructive", title: "Nada que exportar", description: "El lienzo está vacío." });
+        return;
+      }
+      const titulo = meta?.nombre_proyecto || "Diagrama";
+      // El tema se lee del documento EN EL MOMENTO de exportar: es lo que el
+      // usuario ve, aunque lo haya cambiado sin remontar el diseñador.
+      const tema = document.documentElement.classList.contains("dark") ? "dark" : "light";
+      const { fallas, bytes } = exportCanvasHtml(svgRef.current, bounds, {
+        filename: `${slugDeProyecto(titulo)}.html`,
+        titulo,
+        descripcion: meta?.bigPictureDescripcion,
+        notacion: activeNotation.label,
+        skin: skinActiva,
+        tema,
+        preset,
+        elementos: Array.from(nodesRef.current.values()).filter((n) => !isContainerType(n.tipo_elemento)).length,
+        relaciones: linksRef.current.size,
+      });
+      const mb = bytes / (1024 * 1024);
+      toast({
+        variant: fallas.length ? "destructive" : undefined,
+        title: fallas.length ? "HTML exportado con observaciones" : `HTML exportado · ${PRESETS[preset].label}`,
+        description: fallas.length
+          ? fallas.join(" · ")
+          : bytes > AVISO_TAMANO_BYTES
+            ? `Pesa ${mb.toFixed(1)} MB: los estilos en línea abultan. Se abre igual, sin la app ni red.`
+            : "Se abre con doble clic, sin la app ni conexión.",
+      });
+    },
+    [activeNotation.label, meta, notationId, skinActiva, toast]
+  );
 
   // Exporta un PNG rasterizando la página en el proceso main (capturePage): así
   // sí sale el foreignObject de los nodos. Encuadra todo y oculta overlays antes.
@@ -4772,7 +4962,7 @@ export const ComponentDesigner: React.FC<{
 
   return (
     <div className="w-full h-full flex flex-col font-sans bg-muted/30">
-      <header className="flex-shrink-0 bg-card border-b shadow-sm p-2 flex items-center justify-between z-10">
+      <header className="shrink-0 bg-card border-b shadow-xs p-2 flex items-center justify-between z-10">
         <div className="flex items-center gap-2">
           {/* Deshacer / Rehacer (visibles) */}
           <div className="flex items-center gap-1">
@@ -4802,6 +4992,19 @@ export const ComponentDesigner: React.FC<{
             hasLanes={Array.from(nodes.values()).some((n) => isContainerType(n.tipo_elemento))}
             onArrange={applyArrangement}
             onSuggestWithAi={suggestArrangementWithAi}
+          />
+
+          {/* Skin del proyecto (spec 022): canónica para trabajar, editorial para
+              presentar. Es un conmutador y no un menú: hay dos. */}
+          <IconAction
+            variant={skinActiva === "editorial" ? "secondary" : "outline"}
+            onClick={() => setViewSkin(skinActiva === "editorial" ? "canon" : "editorial")}
+            label={
+              skinActiva === "editorial"
+                ? `Skin editorial activa${perfilDeMarca ? ` · Marca: ${perfilDeMarca.nombre}` : " · tokens de la skin"}: volver a la canónica (colores por tipo)`
+                : "Skin editorial: tinta sobre papel, acento sólo en los hotspots"
+            }
+            icon={<Newspaper className="h-4 w-4" />}
           />
 
           <div className="w-px h-6 bg-border mx-1" />
@@ -4907,6 +5110,13 @@ export const ComponentDesigner: React.FC<{
                   <DropdownMenuItem onClick={handleExportPng}>
                     PNG · imagen (para pegar en documentos)
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {/* Página autocontenida (spec 024): un preset por destino. */}
+                  {PRESET_LIST.map((p) => (
+                    <DropdownMenuItem key={p.id} onClick={() => handleExportHtml(p.id)} title={p.descripcion}>
+                      HTML · {p.label.toLowerCase()} (página que se abre sola)
+                    </DropdownMenuItem>
+                  ))}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
 
@@ -4988,7 +5198,7 @@ export const ComponentDesigner: React.FC<{
       {/* Breadcrumb de subprocesos: aparece al entrar en profundidad. Permite
           volver a cualquier vista ancestro. */}
       {drillStack.length > 0 && (
-        <div className="flex flex-shrink-0 items-center gap-1 border-b bg-muted/40 px-3 py-1.5 text-xs">
+        <div className="flex shrink-0 items-center gap-1 border-b bg-muted/40 px-3 py-1.5 text-xs">
           <button
             onClick={() => goToDrill(drillPath.length - 2)}
             title="Volver a la vista anterior"
@@ -5019,10 +5229,10 @@ export const ComponentDesigner: React.FC<{
         </div>
       )}
 
-      <div className="flex-grow flex h-0">
+      <div className="grow flex h-0">
         <Toolbox notation={notationId} onNotationChange={onNotationChange} />
 
-        <div className="flex-grow h-full relative overflow-hidden">
+        <div className="grow h-full relative overflow-hidden">
         <div
           ref={attachCanvasWrapper}
           // `bg-canvas` (no `bg-background`): el hueco de un cuadro durante el
@@ -5039,7 +5249,7 @@ export const ComponentDesigner: React.FC<{
         >
           {nodes.size === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-              <div className="rounded-lg border border-dashed bg-card/85 px-5 py-4 text-center text-sm text-muted-foreground shadow-sm backdrop-blur">
+              <div className="rounded-lg border border-dashed bg-card/85 px-5 py-4 text-center text-sm text-muted-foreground shadow-xs backdrop-blur-sm">
                 <p className="mb-2 font-medium text-foreground">Empieza a diseñar</p>
                 <ul className="space-y-1 text-left">
                   <li>
@@ -5056,6 +5266,7 @@ export const ComponentDesigner: React.FC<{
               </div>
             </div>
           )}
+          <SkinContext.Provider value={skinCtx}>
           <svg
             ref={svgRef}
             width={canvasPxW}
@@ -5064,7 +5275,11 @@ export const ComponentDesigner: React.FC<{
             // Un punto por debajo del fondo de la app: el lienzo es la superficie
             // de trabajo y se distingue del resto sin cambiar de familia de color.
             // Ya no necesita forzar `dark`: la app entera lo es (spec 003).
-            className="bg-canvas"
+            // `data-skin` deja que el CSS redefina tokens por skin (spec 022);
+            // en editorial el fondo es el papel de la skin.
+            data-skin={skinActiva}
+            style={estiloDeMarca}
+            className={skinActiva === "editorial" ? "bg-ed-paper" : "bg-canvas"}
           >
             <defs>
               {/* Cuadrícula estilo lienzo de diseño (Figma/Miro): puntos finos por
@@ -5317,6 +5532,7 @@ export const ComponentDesigner: React.FC<{
               />
             )}
           </svg>
+          </SkinContext.Provider>
           </div>
 
           {/* Ficha al pasar el ratón por un componente. position:fixed sobre las
@@ -5350,7 +5566,7 @@ export const ComponentDesigner: React.FC<{
               fondo visible del viewport (dentro del scroll anclaban al fondo del
               contenido, ~1700px, y quedaban a media pantalla). */}
           <div className={cn(
-            "absolute bottom-4 right-4 z-20 flex items-center gap-1 rounded-lg border bg-card/95 p-1 shadow-md backdrop-blur",
+            "absolute bottom-4 right-4 z-20 flex items-center gap-1 rounded-lg border bg-card/95 p-1 shadow-md backdrop-blur-sm",
             capturing && "hidden"
           )}>
             <button
@@ -5364,7 +5580,7 @@ export const ComponentDesigner: React.FC<{
             <button
               onClick={zoomReset}
               title="Restablecer zoom (100%)"
-              className="min-w-[3rem] rounded-md px-1 py-1.5 text-center text-xs font-medium tabular-nums text-foreground hover:bg-muted"
+              className="min-w-12 rounded-md px-1 py-1.5 text-center text-xs font-medium tabular-nums text-foreground hover:bg-muted"
             >
               {Math.round(zoom * 100)}%
             </button>
@@ -5404,7 +5620,7 @@ export const ComponentDesigner: React.FC<{
           {/* Filtro activo: se DICE cuántos elementos están ocultos. Un lienzo al
               que le faltan cosas sin explicación se lee como pérdida de datos. */}
           {filtersActive && ocultos > 0 && (
-            <div className="pointer-events-auto absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-card/95 px-3 py-1 text-xs shadow-sm backdrop-blur">
+            <div className="pointer-events-auto absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-card/95 px-3 py-1 text-xs shadow-xs backdrop-blur-sm">
               <Filter className="h-3.5 w-3.5 text-primary" />
               <span>
                 {ocultos} elemento{ocultos === 1 ? "" : "s"} oculto{ocultos === 1 ? "" : "s"} por el filtro

@@ -177,7 +177,22 @@ export interface NotationElement {
   bg: string;
   border: string;
   text: string;
+  /**
+   * TRATAMIENTO en la skin editorial (spec 022): cómo se dibuja el tipo cuando
+   * el lienzo no usa su color canónico sino tinta y papel. Si falta, se deduce
+   * del rol (`treatmentOf` en `src/lib/skin.ts`): almacén para los datos,
+   * externo para los sistemas de terceros, entrada para los actores, servicio
+   * para el resto. Se declara sólo cuando el rol no lo dice: la Regla de
+   * Negocio es una restricción (seguridad), no un servicio.
+   */
+  treatment?: Treatment;
 }
+
+/**
+ * Tratamientos editoriales de nodo (spec 022, adaptados de diagram-design). El
+ * `focal` no se declara: lo recibe el elemento marcado como hotspot.
+ */
+export type Treatment = "focal" | "backend" | "store" | "external" | "input" | "optional" | "security";
 
 /** Sección colapsable dentro de la paleta de una notación. */
 export interface NotationPaletteGroup {
@@ -257,6 +272,30 @@ export interface Notation {
    * semántica a la que se le olvidaron los roles es un error, ésta no.
    */
   freeform?: boolean;
+  /**
+   * Presupuesto de COMPLEJIDAD: cuánto aguanta un diagrama de esta notación
+   * antes de dejar de leerse de un vistazo. No es el tope duro del lienzo
+   * (`MAX_NODES` en `mcp/quality.ts`): es el punto a partir del cual el
+   * revisor pide dividir en una vista panorámica y vistas de detalle (ADR 0002,
+   * profundidad por vistas). Vive en el registro, y no en las reglas de calidad,
+   * porque el presupuesto ES notación: cinco líneas de vida son muchas en una
+   * secuencia y cinco agregados son pocos en un Event Storming (P6).
+   * Sin presupuesto (dibujo libre), la regla no tiene nada que decir.
+   * Adaptado del presupuesto por tipo de diagram-design (ADR 0006).
+   */
+  budget?: NotationBudget;
+}
+
+/** Ver `Notation.budget`. */
+export interface NotationBudget {
+  /** Nodos sueltos (sin contar contenedores). */
+  nodos: number;
+  /** Relaciones. */
+  relaciones: number;
+  /** Contenedores (carriles, líneas de vida, contextos, límites). */
+  contenedores?: number;
+  /** Nodos dentro de UN mismo contenedor. */
+  porContenedor?: number;
 }
 
 /**
@@ -294,6 +333,10 @@ export const INITIAL_NOTATION_ID: NotationId = "c4";
 const DDD: Notation = {
   id: "ddd",
   label: "DDD / Event Storming",
+  // Un Event Storming de referencia (actor → comando → evento → política, por
+  // agregado) ronda la docena de notas; pasado eso se parte por agregado o por
+  // contexto. Dentro de un agregado, nueve es lo que se lee de un vistazo.
+  budget: { nodos: 16, relaciones: 20, contenedores: 6, porContenedor: 9 },
   description:
     "Diseño estratégico y táctico de Domain-Driven Design con Event Storming.",
   paletteGroups: [
@@ -341,12 +384,12 @@ const DDD: Notation = {
     { type: "Evento", icon: "Zap", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Actor", icon: "User", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Vista", icon: "RectangleHorizontal", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
-    { type: "Regla de Negocio", icon: "Gavel", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Regla de Negocio", icon: "Gavel", shape: "ellipse", treatment: "security", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Sistema Externo", icon: "HardDrive", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-500", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-white" },
     { type: "Política", icon: "Milestone", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Raíz de Agregado", icon: "Crown", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Entidad", icon: "Fingerprint", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
-    { type: "Objeto de Valor", icon: "Gem", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Objeto de Valor", icon: "Gem", shape: "ellipse", treatment: "optional", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Servicio de Dominio", icon: "Cog", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Repositorio", icon: "Archive", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Fábrica", icon: "Factory", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
@@ -401,6 +444,9 @@ const DDD: Notation = {
 const BPMN: Notation = {
   id: "bpmn",
   label: "BPMN (Procesos)",
+  // Cinco carriles es el techo de una lámina de proceso; más participantes son
+  // un subproceso o una vista por participante. Por carril, nueve pasos.
+  budget: { nodos: 16, relaciones: 20, contenedores: 5, porContenedor: 9 },
   description: "Business Process Model and Notation: flujos de proceso de negocio.",
   paletteGroups: [
     {
@@ -436,14 +482,15 @@ const BPMN: Notation = {
     { type: "Subproceso", icon: "Boxes", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Objeto de Datos", icon: "FileText", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-500", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-white" },
     { type: "Almacén de Datos", icon: "Database", shape: "cylinder", stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-500", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-white" },
-    { type: "Anotación", icon: "MessageSquare", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Anotación", icon: "MessageSquare", shape: "rect", treatment: "optional", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // --- Compuertas (decisiones / bifurcaciones): rombo compacto, nombre debajo ---
     // Compuerta genérica: se conserva por compatibilidad con diagramas existentes.
     { type: "Compuerta", icon: "Diamond", shape: "diamond", compact: true, stroke: "stroke-amber-600 dark:stroke-amber-600", bg: "fill-amber-100 dark:fill-amber-950", border: "border-amber-400 dark:border-amber-500", text: "text-amber-900 dark:text-amber-100" },
     { type: "Compuerta Exclusiva", icon: "X", shape: "diamond", compact: true, stroke: "stroke-orange-600 dark:stroke-orange-600", bg: "fill-orange-100 dark:fill-orange-950", border: "border-orange-400 dark:border-orange-500", text: "text-orange-900 dark:text-orange-100" },
     { type: "Compuerta Paralela", icon: "Plus", shape: "diamond", compact: true, stroke: "stroke-emerald-600 dark:stroke-emerald-600", bg: "fill-emerald-100 dark:fill-emerald-950", border: "border-emerald-400 dark:border-emerald-500", text: "text-emerald-900 dark:text-emerald-100" },
     { type: "Compuerta Inclusiva", icon: "Circle", shape: "diamond", compact: true, stroke: "stroke-indigo-600 dark:stroke-indigo-400", bg: "fill-indigo-100 dark:fill-indigo-950", border: "border-indigo-400 dark:border-indigo-500", text: "text-indigo-900 dark:text-indigo-100" },
-    { type: "Compuerta de Eventos", icon: "CircleDot", shape: "diamond", compact: true, stroke: "stroke-purple-600 dark:stroke-purple-600", bg: "fill-purple-100 dark:fill-purple-950", border: "border-purple-400 dark:border-purple-500", text: "text-purple-900 dark:text-purple-100" },
+    // Oscuro en 500: el violeta 600 de la paleta de Tailwind 4 da 2,98:1 sobre el lienzo (mínimo 3:1, #501).
+    { type: "Compuerta de Eventos", icon: "CircleDot", shape: "diamond", compact: true, stroke: "stroke-purple-600 dark:stroke-purple-500", bg: "fill-purple-100 dark:fill-purple-950", border: "border-purple-400 dark:border-purple-500", text: "text-purple-900 dark:text-purple-100" },
     // --- Contenedores (los ÚNICOS transparentes: un fondo taparía a sus hijos) ---
     { type: "Pool", icon: "Container", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-sky-600 dark:stroke-sky-600", bg: "fill-sky-100 dark:fill-sky-950/40", border: "border-sky-400 dark:border-sky-600", text: "text-sky-900 dark:text-sky-200" },
     { type: "Carril", icon: "Rows3", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-cyan-600 dark:stroke-cyan-600", bg: "fill-cyan-100 dark:fill-cyan-950/40", border: "border-cyan-400 dark:border-cyan-600", text: "text-cyan-900 dark:text-cyan-200" },
@@ -471,6 +518,9 @@ const BPMN: Notation = {
 const C4: Notation = {
   id: "c4",
   label: "C4 (Arquitectura)",
+  // Un paisaje de sistemas con cada relación etiquetada (verbo + tecnología) se
+  // satura rápido: nueve cajas y doce flechas; el detalle baja un nivel C4.
+  budget: { nodos: 9, relaciones: 12, contenedores: 3 },
   description: "Modelo C4: Contexto, Contenedores, Componentes.",
   paletteGroups: [
     {
@@ -528,6 +578,9 @@ const C4: Notation = {
 const UML: Notation = {
   id: "uml",
   label: "UML",
+  // El contenedor que manda es la línea de vida: cinco participantes en una
+  // secuencia y ya no se sigue quién habla con quién.
+  budget: { nodos: 12, relaciones: 14, contenedores: 5, porContenedor: 7 },
   description: "Unified Modeling Language: clases, componentes y casos de uso.",
   paletteGroups: [
     {
@@ -595,7 +648,7 @@ const UML: Notation = {
     { type: "Actor", icon: "PersonStanding", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Caso de Uso", icon: "Circle", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // Nota adhesiva UML (comentario anclable a cualquier elemento).
-    { type: "Nota", icon: "StickyNote", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Nota", icon: "StickyNote", shape: "rect", treatment: "optional", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Paquete", icon: "Folder", container: true, transparent: true, stroke: "stroke-yellow-700 dark:stroke-yellow-600", bg: "fill-yellow-100 dark:fill-yellow-950/40", border: "border-yellow-400 dark:border-yellow-500", text: "text-yellow-900 dark:text-yellow-200" },
     // Diagrama de componentes: el puerto es el punto de conexión del componente
     // y las interfaces son el par lollipop (provista) / socket (requerida). Van
@@ -671,6 +724,10 @@ const UML: Notation = {
 const MER: Notation = {
   id: "mer",
   label: "MER (Entidad-Relación)",
+  // Ocho entidades es el techo de un modelo de Chen legible; como cada una trae
+  // su rombo y sus atributos como nodos propios, el presupuesto de nodos los
+  // incluye (unas tres cajas por entidad).
+  budget: { nodos: 24, relaciones: 30, contenedores: 4 },
   description:
     "Modelo Entidad-Relación de Chen: entidades, relaciones con cardinalidad, atributos y su bajada a tablas.",
   paletteGroups: [
@@ -930,7 +987,17 @@ export function notationBadgeClass(id: NotationId | string | undefined): string 
  * Traducir la misma clase mantiene el color del swatch idéntico al del nodo.
  */
 export function swatchClass(el: NotationElement): string {
-  return el.bg.replace(/^fill-/, "bg-");
+  return bgDeFill(el.bg);
+}
+
+/**
+ * Traduce un relleno SVG (`fill-*`) a fondo HTML (`bg-*`) en TODAS sus clases,
+ * incluidas las variantes (`dark:fill-*`, `hover:fill-*`). Cambiar sólo la
+ * primera dejaba `dark:fill-*` en un <div>, donde no hace nada: el chip de la
+ * paleta salía claro con texto blanco en tema oscuro (#588).
+ */
+export function bgDeFill(fill: string): string {
+  return fill.replace(/(^|[\s:])fill-/g, "$1bg-");
 }
 
 /** Conjunto GLOBAL de tipos contenedor (de todas las notaciones). */

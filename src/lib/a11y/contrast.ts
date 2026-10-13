@@ -94,6 +94,47 @@ const hslARgb = (valor: string): Rgb | null => {
 };
 
 /**
+ * `oklch(L C H)` → sRGB. Tailwind 4 publica su paleta en OKLCH, así que sin esto
+ * ninguna clase de la paleta se podía medir (#501). La luminosidad llega como
+ * porcentaje (`62.8%`) o fracción (`0.628`).
+ *
+ * Un color fuera de sRGB se recorta canal por canal. El navegador hace un mapeo
+ * de gama más fino (baja el croma), pero la diferencia en la luminancia —que es
+ * lo único que mide el contraste— es mínima.
+ */
+const oklchARgb = (valor: string): Rgb | null => {
+  const m = valor
+    .trim()
+    .match(/^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+(-?[\d.]+)(?:deg)?\s*(?:\/\s*[\d.]+%?\s*)?\)$/);
+  if (!m) return null;
+  const L = Number(m[1]) / (m[2] === "%" ? 100 : 1);
+  const C = Number(m[3]);
+  const h = (Number(m[4]) * Math.PI) / 180;
+  if (![L, C, h].every(Number.isFinite)) return null;
+  // OKLCH → OKLab → LMS → sRGB lineal (Björn Ottosson, la referencia de CSS Color 4).
+  const a = C * Math.cos(h);
+  const b = C * Math.sin(h);
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const mm = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const lineal = [
+    4.0767416621 * l - 3.3077115913 * mm + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * mm - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * mm + 1.707614701 * s,
+  ];
+  const [r, g, bl] = lineal.map((x) => {
+    const c = Math.min(1, Math.max(0, x));
+    const gamma = c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
+    return Math.round(gamma * 255);
+  });
+  return { r, g, b: bl };
+};
+
+/** Un valor de la paleta de Tailwind: hex en la 3, oklch en la 4. */
+const valorDePaleta = (valor: string): Rgb | null =>
+  valor.startsWith("oklch") ? oklchARgb(valor) : hexARgb(valor);
+
+/**
  * Clase de Tailwind → color. Acepta cualquier prefijo de utilidad (`fill-`,
  * `text-`, `bg-`, `stroke-`, `border-`) y el prefijo de tema `dark:`, que se
  * descarta: qué tema es lo decide quien llama, no la clase.
@@ -120,7 +161,7 @@ const claseARgb = (clase: string): Rgb | null => {
   const paleta = (colors as unknown as Record<string, unknown>)[familia];
   if (!paleta || typeof paleta !== "object") return null;
   const valor = (paleta as Record<string, string>)[nivel ?? "500"];
-  return typeof valor === "string" ? conAlfa(hexARgb(valor)) : null;
+  return typeof valor === "string" ? conAlfa(valorDePaleta(valor)) : null;
 };
 
 /**
@@ -132,6 +173,7 @@ export function resolverColor(valor: string): Rgb | null {
   if (!v) return null;
   if (v.startsWith("#")) return hexARgb(v);
   if (v.startsWith("hsl")) return hslARgb(v);
+  if (v.startsWith("oklch")) return oklchARgb(v);
   // Tres números sueltos: así viven los tokens en `globals.css`.
   if (/^-?[\d.]+\s+[\d.]+%\s+[\d.]+%$/.test(v)) return hslARgb(v);
   return claseARgb(v);

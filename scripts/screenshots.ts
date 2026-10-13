@@ -283,7 +283,8 @@ async function main() {
   try {
     for (const shot of SHOTS) {
       const page = await browser.newPage();
-      page.on("pageerror", (e) => console.error(`  [error de página ${shot.file}]`, e.message));
+      // puppeteer 25 tipa el error como `unknown`: puede no ser un Error.
+      page.on("pageerror", (e) => console.error(`  [error de página ${shot.file}]`, e instanceof Error ? e.message : String(e)));
       await page.evaluateOnNewDocument(electronStubSource());
       if (shot.seed) await page.evaluateOnNewDocument(seedStorageSource(savedFiles));
       await page.goto(BASE + shot.path, { waitUntil: "networkidle2", timeout: 120_000 });
