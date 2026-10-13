@@ -175,6 +175,12 @@ npm run electron-dev</code></pre>
             copiar y pegar, subprocesos embebidos, texto libre redimensionable y cajas que rotulás a
             mano. En tema claro u oscuro, a gusto.
           </p>
+          <p>
+            Cada caja puede llevar el <strong>logo de su tecnología</strong> —PostgreSQL, Kafka,
+            Android, Google Cloud, Stripe— desde un catálogo de 150 iconos que viaja dentro de la
+            app. Y la <strong>skin editorial</strong> cambia la simbología de colores por tinta sobre
+            papel cuando el diagrama va a un documento o a una lámina.
+          </p>
           <p class="detalle"><strong>«Organizar»</strong> reacomoda la vista por capas y rutea las líneas esquivando las cajas, midiendo la legibilidad para que una vista densa se lea de un vistazo. Y si un filtro vacía el resultado, el lienzo vuelve a la vista general e incluye los nodos sueltos: nunca queda en blanco.</p>
           <a class="ampliar" href="img/02-canvas.png">Ver la captura a tamaño completo</a>
         </figcaption>
@@ -203,6 +209,8 @@ npm run electron-dev</code></pre>
           <p>
             La guía del puente MCP viene dentro de la app. Claude Code o Codex leen tus documentos
             o tu repo, arman el modelo y lo exportan al lienzo; vos corregís lo que la máquina leyó mal.
+            Y si ya tenés diagramas en Mermaid, «Importar Mermaid…» los redibuja con el layout de la app
+            y te dice qué entró y qué no.
           </p>
           <p class="detalle">El documento fuente viaja dentro del proyecto: la cita de una caja resuelve al fragmento exacto que la originó.</p>
           <a class="ampliar" href="img/04-mcp.png">Ver la captura a tamaño completo</a>
@@ -292,7 +300,12 @@ npm run electron-dev</code></pre>
       <article class="ventaja">
         <p class="clave">Interoperable</p>
         <h3>Entra por MCP, sale como texto</h3>
-        <p>Claude Code y Codex construyen el modelo desde tus documentos o tu código. De vuelta salen Mermaid, Markdown estructurado y PDF: cosas que viven en el repo y se revisan en un PR.</p>
+        <p>Claude Code y Codex construyen el modelo desde tus documentos o tu código, o entra un Mermaid que ya tenías. De vuelta salen Mermaid, Markdown estructurado, PDF y una página HTML autocontenida con presets para documento, lámina 16:9 o impresión A4: cosas que viven en el repo y se revisan en un PR.</p>
+      </article>
+      <article class="ventaja">
+        <p class="clave">Marca</p>
+        <h3>El diagrama sale con los colores del cliente</h3>
+        <p>Un perfil de marca por organización: paleta y tipografía a mano, o extraídas del sitio web del cliente con la IA. Un recibo de contraste avisa si la combinación no se lee, antes de que llegue a la propuesta.</p>
       </article>
       <article class="ventaja">
         <p class="clave">Robustez</p>
