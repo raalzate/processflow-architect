@@ -34,6 +34,7 @@ marcadas con 🔒; el resto es criterio.
 | Punta y trazo de una arista según la relación (UML: herencia, composición…) | `src/lib/edge-relations.ts` (`relationStyle`, `edgeIsDashed`) + los marcadores `uml-*` del `<defs>` del lienzo | pintar todas las relaciones con la misma flecha, o decidir el `strokeDasharray` en el componente |
 | Acento de una acción asistida por IA («Sugerir», «Siguiente paso») | tokens `ai` del tema: `text-ai`, `bg-ai-surface`, `border-ai-border` (`src/app/globals.css` + `tailwind.config.ts`) | `text-purple-600` u otro color crudo pensado para fondo blanco: la app se muestra oscura y queda a 2,4:1 (regla TOKENS + `theme-contrast.test.ts`) |
 | 🔒 Consultar un registro con una clave que viene de afuera (tecla, dato guardado, MCP) | `src/lib/registro.ts` (`enRegistro`, `deRegistro`, `clavesDe`) | `clave in REGISTRO` ni `REGISTRO[clave]` ni `hasOwnProperty` a mano: `in` ve el prototipo y `"toString"` da clave válida (regla REGISTRO de `scripts/repo-lint.mjs`, #282) |
+| Leer texto en voz alta (español, local) | `src/lib/tts/` (`fonematizar` de `g2p-es.ts`, `textoHablable`/`partirEnFrases`, catálogo y ajustes de `kokoro-catalogo.ts`) + `useLeerEnVoz` y el worker `src/workers/kokoro.worker.ts`; el modelo lo baja y sirve el main (`main/services/kokoro-models.ts`, #605) | `speechSynthesis`, el `phonemizer` de kokoro-js (sólo inglés) o espeak-ng con español (GPL-3), o bajar el modelo desde el renderer (CSP) |
 | Componentes de UI base | `src/components/ui/` (shadcn) | escribir un botón/diálogo desde cero |
 
 ## Cómo se agrega una fila

@@ -37,6 +37,7 @@ import { initAppReadBridge } from './services/mcp-app-read';
 import { initAppActionBridge } from './services/mcp-app-action';
 import type { AppState } from '../src/lib/mcp/app-state';
 import { getSystemInfo } from './services/system-info';
+import { deleteKokoro, downloadKokoro, kokoroStatus } from './services/kokoro-models';
 import { leerSitio } from './services/brand-site';
 import { playgroundListTools, playgroundCallTool } from './services/mcp-playground';
 import { cancelAgentCli, cliStatus, generateWithCli, runAgentCli } from './services/agent-cli';
@@ -191,6 +192,13 @@ export function registerIpcHandlers() {
 
   // --- Información del sistema (vista de Configuración) ---
   ipcMain.handle('system-info', async () => getSystemInfo());
+
+  // --- Voz local con Kokoro (#605): mismo esquema que los .litertlm ---
+  ipcMain.handle('kokoro-status', async () => kokoroStatus());
+  ipcMain.handle('kokoro-download', async (event: IpcMainInvokeEvent) =>
+    downloadKokoro((percent) => event.sender.send('kokoro-progress', percent))
+  );
+  ipcMain.handle('kokoro-delete', async () => deleteKokoro());
 
   // --- Captura de una región de la página a PNG ---
   // Rasteriza lo REALMENTE pintado (incluye el foreignObject de los nodos, que
