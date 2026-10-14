@@ -80,6 +80,7 @@ describe("capacidadesDe", () => {
     expect(c.captura).toBe(false);
     expect(c.sistema).toBe(false);
     expect(c.menuNativo).toBe(false);
+    expect(c.usoRecursos).toBe(false);
   });
 
   it("el escritorio completo tiene todas", () => {
@@ -98,6 +99,7 @@ describe("capacidadesDe", () => {
       captureCanvas: vi.fn(),
       copyToClipboard: vi.fn(),
       systemInfo: vi.fn(),
+      appUsage: vi.fn(),
       windowMenuPopup: vi.fn(),
       brandFetchSite: vi.fn(),
     };
