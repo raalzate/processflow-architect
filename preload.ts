@@ -115,6 +115,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // --- Información del sistema (Configuración → Sistema) ---
   systemInfo: (): Promise<any> => ipcRenderer.invoke('system-info'),
+  /** Consumo de la app (CPU/memoria por proceso) para el indicador de IA local. */
+  appUsage: (): Promise<any> => ipcRenderer.invoke('app-usage'),
 
   // --- IA remota (opcional): llaves cifradas en el main + generación de texto ---
   setAiKey: (provider: string, key: string): Promise<{ ok: boolean; error?: string }> =>

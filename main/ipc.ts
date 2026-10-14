@@ -37,6 +37,7 @@ import { initAppReadBridge } from './services/mcp-app-read';
 import { initAppActionBridge } from './services/mcp-app-action';
 import type { AppState } from '../src/lib/mcp/app-state';
 import { getSystemInfo } from './services/system-info';
+import { getAppUsage } from './services/app-usage';
 import { leerSitio } from './services/brand-site';
 import { playgroundListTools, playgroundCallTool } from './services/mcp-playground';
 import { cancelAgentCli, cliStatus, generateWithCli, runAgentCli } from './services/agent-cli';
@@ -191,6 +192,8 @@ export function registerIpcHandlers() {
 
   // --- Información del sistema (vista de Configuración) ---
   ipcMain.handle('system-info', async () => getSystemInfo());
+  // Consumo de la app para el indicador de IA local junto al botón MCP (#602).
+  ipcMain.handle('app-usage', async () => getAppUsage());
 
   // --- Captura de una región de la página a PNG ---
   // Rasteriza lo REALMENTE pintado (incluye el foreignObject de los nodos, que

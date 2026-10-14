@@ -35,6 +35,8 @@ export interface PlaygroundCallResult {
   isError: boolean;
 }
 
+import type { MuestraUso } from "@/lib/ai/resource-usage";
+
 // Espejo de main/services/system-info.ts (viaja por IPC).
 export interface SystemInfo {
   osName: string;
@@ -140,6 +142,8 @@ export interface ElectronAPI {
 
   // Información del sistema (Configuración → Sistema).
   systemInfo: () => Promise<SystemInfo>;
+  /** Espejo de main/services/app-usage.ts (#602). */
+  appUsage: () => Promise<MuestraUso>;
 
   // IA remota (opcional): llaves cifradas en el proceso main + generación de texto.
   setAiKey: (provider: string, key: string) => Promise<{ ok: boolean; error?: string }>;
