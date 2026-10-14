@@ -13,6 +13,7 @@ import {
   resolveNotations,
   buildContext,
   escapeStrayQuotes,
+  esObjetoSinCerrar,
 } from "../litert-agent";
 import { budgetFromWindow } from "../agent-run";
 
@@ -322,10 +323,40 @@ describe("repairProtocolJson · turnos de protocolo con JSON roto", () => {
     expect(repairProtocolJson('{"thought":"pensando"}')).toBeNull();
   });
 
-  it("reconoce las cuatro claves del protocolo", () => {
-    for (const clave of ["action", "plan", "question", "final"]) {
+  it("reconoce las claves del protocolo", () => {
+    for (const clave of ["thought", "action", "plan", "question", "final"]) {
       expect(looksLikeProtocol(`{"${clave}": "x"}`)).toBe(true);
     }
+  });
+
+  it("un turno cortado que sólo alcanzó a escribir `thought` es protocolo (#601)", () => {
+    // El caso de la captura: la ventana se llenó a mitad del thought.
+    expect(
+      looksLikeProtocol('{"thought":"Tengo suficiente información para proponer el plan, consolidando')
+    ).toBe(true);
+  });
+});
+
+describe("esObjetoSinCerrar · el motor corta el stream sin avisar (#601)", () => {
+  it("un objeto que se cortó a mitad de un string está sin cerrar", () => {
+    expect(esObjetoSinCerrar('{"thought":"Tengo suficiente información, consolidando')).toBe(true);
+  });
+
+  it("un objeto cortado entre claves también", () => {
+    expect(esObjetoSinCerrar('{"thought":"pienso","plan":{"title":"X","sections":[')).toBe(true);
+  });
+
+  it("las llaves dentro de los strings no cuentan", () => {
+    expect(esObjetoSinCerrar('{"thought":"usa { y [ en el texto","final":"ok"}')).toBe(false);
+  });
+
+  it("un objeto completo, con prosa alrededor, no está cortado", () => {
+    expect(esObjetoSinCerrar('Acá va: {"final":"listo"} y nada más')).toBe(false);
+  });
+
+  it("prosa sin objeto no es un objeto cortado", () => {
+    expect(esObjetoSinCerrar("Hola, esto es una explicación.")).toBe(false);
+    expect(esObjetoSinCerrar("")).toBe(false);
   });
 });
 
