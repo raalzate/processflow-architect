@@ -86,6 +86,8 @@ export interface CapacidadesHost {
   portapapeles: boolean;
   /** Información del equipo (Configuración → Sistema). */
   sistema: boolean;
+  /** Leer en voz alta con Kokoro: bajar el modelo y servirlo (#605). */
+  vozLocal: boolean;
   /** Menú nativo de la ventana (Windows/Linux). */
   menuNativo: boolean;
   /** Leer el sitio de un cliente para proponer su marca (spec 023); la red es del host. */
@@ -104,6 +106,7 @@ export const SIN_CAPACIDADES: CapacidadesHost = Object.freeze({
   captura: false,
   portapapeles: false,
   sistema: false,
+  vozLocal: false,
   menuNativo: false,
   marcaDesdeSitio: false,
 });
@@ -128,6 +131,7 @@ export function capacidadesDe(bridge: Partial<HostBridge> | undefined): Capacida
     captura: tiene("captureCanvas"),
     portapapeles: tiene("copyToClipboard"),
     sistema: tiene("systemInfo"),
+    vozLocal: tiene("kokoroStatus") && tiene("kokoroDownload") && tiene("onKokoroProgress"),
     menuNativo: tiene("windowMenuPopup"),
     marcaDesdeSitio: tiene("brandFetchSite"),
   };

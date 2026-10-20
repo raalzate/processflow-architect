@@ -42,7 +42,10 @@ import {
   Layers,
   Plus,
   Hammer,
+  Volume2,
+  Square,
 } from "lucide-react";
+import { useLeerEnVoz } from "@/hooks/useLeerEnVoz";
 import { documentDefinitions, getDefinition } from "@/lib/artifacts/registry";
 import { getAgentProfile } from "@/lib/ai/agent-profiles";
 import { resolveContextRevisions } from "@/lib/artifacts/versioning";
@@ -312,7 +315,51 @@ function StepsTrace({ steps }: { steps: AgentStep[] }) {
   );
 }
 
+/**
+ * «Escuchar» de una respuesta (#605): el mismo botón empieza y detiene. Mientras
+ * se baja el modelo o se prepara la primera frase, el icono gira para que no
+ * parezca colgado.
+ */
+function BotonEscuchar({
+  id,
+  contenido,
+  voz,
+}: {
+  id: string;
+  contenido: string;
+  voz: ReturnType<typeof useLeerEnVoz>;
+}) {
+  const activo = voz.estado.id === id;
+  const fase = activo ? voz.estado.fase : "idle";
+  const label =
+    fase === "descargando"
+      ? `Bajando la voz (${voz.estado.progreso}%) · clic: ${accion("detener").toLowerCase()}`
+      : fase === "preparando"
+        ? `Preparando la voz · clic: ${accion("detener").toLowerCase()}`
+        : fase === "hablando"
+          ? accion("detener", "lectura")
+          : accion("escuchar", "respuesta");
+  return (
+    <IconAction
+      variant="ghost"
+      className="h-6 w-6 text-muted-foreground hover:text-foreground"
+      onClick={() => voz.alternar(id, contenido)}
+      label={label}
+      icon={
+        fase === "descargando" || fase === "preparando" ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : fase === "hablando" ? (
+          <Square className="h-3 w-3 fill-current" />
+        ) : (
+          <Volume2 className="h-3.5 w-3.5" />
+        )
+      }
+    />
+  );
+}
+
 export function AgentChatPanel() {
+  const voz = useLeerEnVoz();
   const {
     messages,
     busy,
@@ -528,7 +575,16 @@ export function AgentChatPanel() {
               )}
             >
               {m.role === "assistant" && !m.error ? (
-                <Markdown content={m.content} className="wrap-break-word text-sm leading-relaxed" />
+                <>
+                  <Markdown content={m.content} className="wrap-break-word text-sm leading-relaxed" />
+                  {/* No en el mensaje que todavía se escribe: leería texto a medias y le
+                      quitaría CPU al modelo mientras genera. */}
+                  {voz.disponible && !!m.content.trim() && !(busy && m.id === messages[messages.length - 1]?.id) && (
+                    <div className="-mb-1 mt-1 flex justify-end">
+                      <BotonEscuchar id={m.id} contenido={m.content} voz={voz} />
+                    </div>
+                  )}
+                </>
               ) : (
                 <p className="whitespace-pre-wrap wrap-break-word leading-relaxed">{m.content}</p>
               )}
