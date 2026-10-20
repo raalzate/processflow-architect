@@ -115,6 +115,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // --- Información del sistema (Configuración → Sistema) ---
   systemInfo: (): Promise<any> => ipcRenderer.invoke('system-info'),
+  /** Consumo de la app (CPU/memoria por proceso) para el indicador de IA local. */
+  appUsage: (): Promise<any> => ipcRenderer.invoke('app-usage'),
 
   // --- Voz local con Kokoro (#605) ---
   kokoroStatus: (): Promise<{ descargado: boolean; bytes: number; bytesTotales: number }> =>
