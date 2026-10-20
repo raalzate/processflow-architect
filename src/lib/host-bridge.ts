@@ -88,6 +88,8 @@ export interface CapacidadesHost {
   sistema: boolean;
   /** Medir el consumo de la app (indicador de IA local, #602). */
   usoRecursos: boolean;
+  /** Leer en voz alta con Kokoro: bajar el modelo y servirlo (#605). */
+  vozLocal: boolean;
   /** Menú nativo de la ventana (Windows/Linux). */
   menuNativo: boolean;
   /** Leer el sitio de un cliente para proponer su marca (spec 023); la red es del host. */
@@ -107,6 +109,7 @@ export const SIN_CAPACIDADES: CapacidadesHost = Object.freeze({
   portapapeles: false,
   sistema: false,
   usoRecursos: false,
+  vozLocal: false,
   menuNativo: false,
   marcaDesdeSitio: false,
 });
@@ -132,6 +135,7 @@ export function capacidadesDe(bridge: Partial<HostBridge> | undefined): Capacida
     portapapeles: tiene("copyToClipboard"),
     sistema: tiene("systemInfo"),
     usoRecursos: tiene("appUsage"),
+    vozLocal: tiene("kokoroStatus") && tiene("kokoroDownload") && tiene("onKokoroProgress"),
     menuNativo: tiene("windowMenuPopup"),
     marcaDesdeSitio: tiene("brandFetchSite"),
   };

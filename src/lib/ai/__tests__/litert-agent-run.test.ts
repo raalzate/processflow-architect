@@ -731,6 +731,27 @@ describe("runLitertAgent — JSON con comillas sueltas y plan de rescate", () =>
     expect(res.reply).toContain("Pagos");
   });
 
+  it("un turno cortado por la ventana no se imprime: arma el plan con lo leído (#601)", async () => {
+    // LiteRT corta el stream en silencio cuando se llena la ventana: el turno
+    // llega sin cerrar y con sólo `thought`. Antes el chat mostraba ese JSON.
+    const send = scriptConvo([
+      '{"thought":"leo","action":"read_view","args":{"name":"Pagos"}}',
+      '{"thought":"Tengo suficiente información para proponer el plan de la propuesta técnica, consolidando',
+    ]);
+    const res = await runLitertAgent({
+      modelFile: "m",
+      message: "generá la propuesta técnica",
+      catalog,
+    });
+    expect(res.reply).not.toContain("thought");
+    expect(res.reply).not.toContain("{");
+    // Sin reintentos contra una ventana que ya está llena.
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(res.run?.pause?.kind).toBe("plan");
+    expect(res.run?.plan?.sections.flatMap((s) => s.sources)).toEqual(["Pagos"]);
+    expect(res.reply).toContain("Pagos");
+  });
+
   it("si no leyó nada, avisa en vez de inventar un plan", async () => {
     const roto = '{"thought":"pienso","plan":{"title":"X","sections":[{"title":"A","sources":[';
     scriptConvo([roto, roto, roto]);

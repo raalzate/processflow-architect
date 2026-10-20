@@ -81,6 +81,7 @@ describe("capacidadesDe", () => {
     expect(c.sistema).toBe(false);
     expect(c.menuNativo).toBe(false);
     expect(c.usoRecursos).toBe(false);
+    expect(c.vozLocal).toBe(false);
   });
 
   it("el escritorio completo tiene todas", () => {
@@ -100,6 +101,9 @@ describe("capacidadesDe", () => {
       copyToClipboard: vi.fn(),
       systemInfo: vi.fn(),
       appUsage: vi.fn(),
+      kokoroStatus: vi.fn(),
+      kokoroDownload: vi.fn(),
+      onKokoroProgress: vi.fn(),
       windowMenuPopup: vi.fn(),
       brandFetchSite: vi.fn(),
     };
@@ -112,6 +116,8 @@ describe("capacidadesDe", () => {
     expect(capacidadesDe({ mcpPlaygroundCall: vi.fn() }).mcpPlayground).toBe(false);
     // La pestaña «Agente» lanza y consulta; un host que sólo genera texto no la sostiene.
     expect(capacidadesDe({ agentCliSend: vi.fn() }).chatCli).toBe(false);
+    // La voz consulta, baja y escucha el progreso: con sólo el estado no se puede bajar.
+    expect(capacidadesDe({ kokoroStatus: vi.fn() }).vozLocal).toBe(false);
   });
 
   it("el CLI como motor del router y el chat con el CLI son capacidades separadas", () => {

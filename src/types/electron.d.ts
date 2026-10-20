@@ -144,6 +144,11 @@ export interface ElectronAPI {
   systemInfo: () => Promise<SystemInfo>;
   /** Espejo de main/services/app-usage.ts (#602). */
   appUsage: () => Promise<MuestraUso>;
+  /** Voz local con Kokoro (#605): espejo de main/services/kokoro-models.ts. */
+  kokoroStatus: () => Promise<{ descargado: boolean; bytes: number; bytesTotales: number }>;
+  kokoroDownload: () => Promise<{ ok: boolean; error?: string }>;
+  kokoroDelete: () => Promise<{ ok: boolean; error?: string }>;
+  onKokoroProgress: (cb: (percent: number) => void) => () => void;
 
   // IA remota (opcional): llaves cifradas en el proceso main + generación de texto.
   setAiKey: (provider: string, key: string) => Promise<{ ok: boolean; error?: string }>;

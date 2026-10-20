@@ -118,6 +118,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** Consumo de la app (CPU/memoria por proceso) para el indicador de IA local. */
   appUsage: (): Promise<any> => ipcRenderer.invoke('app-usage'),
 
+  // --- Voz local con Kokoro (#605) ---
+  kokoroStatus: (): Promise<{ descargado: boolean; bytes: number; bytesTotales: number }> =>
+    ipcRenderer.invoke('kokoro-status'),
+  kokoroDownload: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('kokoro-download'),
+  kokoroDelete: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('kokoro-delete'),
+  onKokoroProgress: (cb: (percent: number) => void): (() => void) => {
+    const listener = (_e: unknown, percent: number) => cb(percent);
+    ipcRenderer.on('kokoro-progress', listener);
+    return () => ipcRenderer.removeListener('kokoro-progress', listener);
+  },
+
   // --- IA remota (opcional): llaves cifradas en el main + generación de texto ---
   setAiKey: (provider: string, key: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('ai-key-set', provider, key),
