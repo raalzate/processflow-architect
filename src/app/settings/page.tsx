@@ -17,6 +17,7 @@ import {
   MonitorCog,
   Sun,
   Palette,
+  AudioLines,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -42,6 +43,7 @@ import { McpServerConfig } from "@/components/settings/McpServerConfig";
 import { SystemInfoCard } from "@/components/settings/SystemInfoCard";
 import { UpdateConfig } from "@/components/settings/UpdateConfig";
 import { AppearanceConfig } from "@/components/settings/AppearanceConfig";
+import { VoiceConfig } from "@/components/settings/VoiceConfig";
 import { BrandConfig } from "@/components/settings/BrandConfig";
 import type { LitertModelStatus } from "@/types/electron";
 import { hostBridge } from "@/lib/host-bridge";
@@ -52,6 +54,7 @@ const api = () => hostBridge() as any;
 const SECTIONS = [
   { id: "modelo", label: "Modelo de IA", icon: Download },
   { id: "motor", label: "Motor de IA", icon: BrainCircuit },
+  { id: "voz", label: "Voz", icon: AudioLines },
   { id: "mcp", label: "Servidor MCP", icon: Plug },
   { id: "apariencia", label: "Apariencia", icon: Sun },
   { id: "marca", label: "Marca", icon: Palette },
@@ -343,6 +346,11 @@ export default function SettingsPage() {
             {/* IA remota opcional (llaves cifradas + conmutador de motor) */}
             <section id="motor" className="scroll-mt-4">
               <RemoteAiConfig />
+            </section>
+
+            {/* Voz local (#605): Kokoro lee las respuestas del agente */}
+            <section id="voz" className="scroll-mt-4">
+              <VoiceConfig />
             </section>
 
             {/* Servidor MCP embebido (opt-in): Claude Code/Codex diseñan sobre la app */}
