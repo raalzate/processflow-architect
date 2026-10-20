@@ -1,12 +1,14 @@
 import 'dotenv/config'; // Carga .env en el proceso main (los flujos de IA leen process.env aquí).
 import { app, BrowserWindow, protocol, net } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { pathToFileURL } from 'url';
 import { setupProdLogger } from './main/logger';
 import { registerPrivilegedSchemes } from './main/schemes';
 import { createMainWindow } from './main/window';
 import { registerIpcHandlers } from './main/ipc';
 import { cancelAllAgentCli } from './main/services/agent-cli';
+import { kokoroArchivoLocal } from './main/services/kokoro-models';
 import { resumenGpu } from './src/lib/gpu-status';
 
 // Schemes privilegiados: registrar AQUÍ (tras los imports, antes de ready) para
@@ -29,6 +31,13 @@ app.whenReady().then(() => {
   protocol.handle('litert-model', (request) => {
     const url = new URL(request.url);
     const file = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+    // Voz local (#605): litert-model://m/kokoro/<ruta>. Sólo los archivos del
+    // catálogo; lo demás es 404 (transformers.js prueba opcionales y sigue).
+    if (file.startsWith('kokoro/')) {
+      const local = kokoroArchivoLocal(file.slice('kokoro/'.length));
+      if (!local || !fs.existsSync(local)) return new Response(null, { status: 404 });
+      return net.fetch(pathToFileURL(local).toString(), { headers: request.headers, method: request.method });
+    }
     // Evita path traversal: solo el basename dentro de litertDir.
     const safe = path.join(litertDir, path.basename(file));
     return net.fetch(pathToFileURL(safe).toString(), {
