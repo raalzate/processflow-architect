@@ -80,6 +80,7 @@ describe("capacidadesDe", () => {
     expect(c.captura).toBe(false);
     expect(c.sistema).toBe(false);
     expect(c.menuNativo).toBe(false);
+    expect(c.usoRecursos).toBe(false);
     expect(c.vozLocal).toBe(false);
   });
 
@@ -99,6 +100,7 @@ describe("capacidadesDe", () => {
       captureCanvas: vi.fn(),
       copyToClipboard: vi.fn(),
       systemInfo: vi.fn(),
+      appUsage: vi.fn(),
       kokoroStatus: vi.fn(),
       kokoroDownload: vi.fn(),
       onKokoroProgress: vi.fn(),

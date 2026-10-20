@@ -32,6 +32,7 @@ import {
   FileDown,
   FileUp,
   Plug,
+  Cpu,
   Search,
   X,
   FolderOpen,
@@ -106,7 +107,9 @@ import {
   notationContainerLabel,
   type NotationId,
 } from "@/lib/notations";
-import { hostBridge } from "@/lib/host-bridge";
+import { capacidadesHost, hostBridge } from "@/lib/host-bridge";
+import { loadAiSettings } from "@/lib/ai/remote-settings";
+import { debeMostrarUso, formatearMB, resumirUso, type ResumenUso } from "@/lib/ai/resource-usage";
       
 interface AppHeaderProps {
   savedFiles: SavedFile[];
@@ -188,6 +191,66 @@ const McpStatusButton = () => {
         )}
       </Link>
     </Button>
+  );
+};
+
+/** Color del punto según el semáforo: mismo vocabulario que el estado del MCP. */
+const COLOR_NIVEL: Record<ResumenUso["nivel"], string> = {
+  bajo: "bg-success",
+  medio: "bg-warning",
+  alto: "bg-destructive",
+};
+
+/**
+ * Consumo de la app mientras la IA es local (#602): CPU del equipo y memoria, con
+ * la del proceso GPU aparte porque ahí vive el modelo de LiteRT. Se sondea cada 2 s
+ * y se pausa con la ventana oculta; el modo se relee en cada vuelta porque Ajustes
+ * no emite evento al cambiarlo. En modo nube/CLI o en la edición web no aparece.
+ */
+const AiUsageIndicator = () => {
+  const [uso, setUso] = useState<ResumenUso | null>(null);
+
+  useEffect(() => {
+    const host = hostBridge();
+    if (!capacidadesHost().usoRecursos || !host?.appUsage) return;
+    let alive = true;
+    const medir = () => {
+      if (document.hidden) return;
+      if (!debeMostrarUso(loadAiSettings().mode, true)) {
+        setUso(null);
+        return;
+      }
+      host
+        .appUsage()
+        .then((m) => alive && setUso(resumirUso(m)))
+        .catch(() => {});
+    };
+    medir();
+    const timer = setInterval(medir, 2000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  if (!uso) return null;
+  const rotulo = `IA local · CPU ${uso.cpuPct}% · memoria de la app ${formatearMB(uso.ramMB)}${
+    uso.ramPct !== null ? ` (${uso.ramPct}% del equipo)` : ""
+  } · proceso GPU (modelo) ${formatearMB(uso.gpuMB)}`;
+
+  return (
+    <span
+      role="status"
+      aria-label={rotulo}
+      title={rotulo}
+      className="inline-flex h-7 items-center gap-1.5 rounded-full border bg-card px-2 text-xs tabular-nums text-muted-foreground"
+    >
+      <span className={cn("h-2 w-2 rounded-full", COLOR_NIVEL[uso.nivel])} />
+      <Cpu className="h-3.5 w-3.5" />
+      <span>{uso.cpuPct}%</span>
+      <span aria-hidden>·</span>
+      <span>{formatearMB(uso.ramMB)}</span>
+    </span>
   );
 };
 
@@ -647,7 +710,11 @@ const FileManagement: React.FC<
           header, y ahí libera sitio para el selector de proyecto. */}
       <EnLaBarraDeTitulo slot={TITLEBAR_RIGHT_SLOT}>
         {(enLaBarra) => (
-          <span style={enLaBarra ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}>
+          <span
+            className="inline-flex items-center gap-1"
+            style={enLaBarra ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}
+          >
+            <AiUsageIndicator />
             <McpStatusButton />
           </span>
         )}
