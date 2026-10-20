@@ -288,8 +288,12 @@ export function looksDegenerate(text: string): boolean {
   return total > 20 && ajenos / total > 0.15;
 }
 
-/** Claves del protocolo: si el crudo trae una, es un turno de protocolo, no prosa. */
-const CLAVES_PROTOCOLO = ["action", "plan", "question", "final"] as const;
+/**
+ * Claves del protocolo: si el crudo trae una, es un turno de protocolo, no prosa.
+ * `thought` cuenta: un turno que la ventana cortó a mitad del razonamiento sólo
+ * alcanzó a escribir esa clave, y sin ella se imprimía en el chat (#601).
+ */
+const CLAVES_PROTOCOLO = ["thought", "action", "plan", "question", "final"] as const;
 
 /**
  * ¿El turno intentaba hablar el protocolo? Se decide por la presencia de sus
@@ -298,6 +302,35 @@ const CLAVES_PROTOCOLO = ["action", "plan", "question", "final"] as const;
  */
 export function looksLikeProtocol(raw: string): boolean {
   return CLAVES_PROTOCOLO.some((k) => new RegExp(`"${k}"\\s*:`).test(raw));
+}
+
+/**
+ * ¿El turno es un objeto JSON que quedó SIN CERRAR? Cuando se llena la ventana a
+ * mitad de una respuesta, LiteRT corta el stream en silencio (no lanza «Too many
+ * tokens»): el turno llega truncado y no hay error que atrapar (#601). Se cuentan
+ * llaves y corchetes fuera de los strings; si al final queda alguno abierto, el
+ * objeto se cortó. Reintentar contra una ventana llena no arregla nada.
+ */
+export function esObjetoSinCerrar(raw: string): boolean {
+  const inicio = (raw || "").search(/[{[]/);
+  if (inicio < 0) return false;
+  let profundidad = 0;
+  let enString = false;
+  for (let i = inicio; i < raw.length; i++) {
+    const ch = raw[i];
+    if (enString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') enString = false;
+      continue;
+    }
+    if (ch === '"') enString = true;
+    else if (ch === "{" || ch === "[") profundidad++;
+    else if (ch === "}" || ch === "]") {
+      profundidad--;
+      if (profundidad === 0) return false; // el objeto cerró: lo que siga es prosa
+    }
+  }
+  return profundidad > 0;
 }
 
 /**
@@ -1144,7 +1177,10 @@ ${exploreToolMenu(cat, invMax, input.requestedKind)}${clamp(ctx, ctxMax)}${memor
       // al usuario el JSON del bucle (que no es una respuesta).
       if (looksLikeProtocol(raw)) {
         malformados++;
-        if (malformados <= 2) {
+        // Turno cortado por la ventana (#601): el próximo intento muere igual,
+        // así que si ya hay material leído se salta directo al plan de rescate.
+        const cortado = esObjetoSinCerrar(raw) && state.read.length > 0;
+        if (malformados <= 2 && !cortado) {
           // El segundo aviso trae el molde exacto: repetir el mismo reproche no
           // corrige a un modelo chico, mostrarle la forma sí.
           nextUser =
@@ -1168,8 +1204,11 @@ ${exploreToolMenu(cat, invMax, input.requestedKind)}${clamp(ctx, ctxMax)}${memor
               content: state.plan!.sections.map((sec) => `${sec.title} ← ${sec.sources.join(", ")}`).join(" · "),
             });
             await convo.close();
+            const motivo = cortado
+              ? "Se llenó la ventana del modelo a mitad de un paso."
+              : "El modelo no logró escribir un paso válido tres veces.";
             return {
-              reply: `El modelo no logró escribir un paso válido tres veces. Armé el plan con lo que ya leí (${state.read.join(
+              reply: `${motivo} Armé el plan con lo que ya leí (${state.read.join(
                 ", "
               )}): revisalo y aprobalo para que genere el artefacto.`,
               artifacts,
@@ -1177,6 +1216,14 @@ ${exploreToolMenu(cat, invMax, input.requestedKind)}${clamp(ctx, ctxMax)}${memor
               run: state,
             };
           }
+        }
+        if (cortado) {
+          // Sin plan rescatable (ya había uno aprobado, p.ej.): es la ventana, y
+          // el cierre de abajo lo nombra y ofrece ampliarla.
+          paso({ type: "observation", content: "Se llenó la ventana del modelo: consolido con lo leído." });
+          state = { ...state, budgetLeft: 0 };
+          desborde = true;
+          break;
         }
         reply =
           "No pude seguir: el modelo devolvió un formato inválido tres veces y todavía no había leído nada. Probá de nuevo, con menos vistas en el pedido, o con un modelo más grande.";
