@@ -35,3 +35,26 @@ export function splitEdgeLabel(label: string | undefined | null): EdgeLabelParts
   if (!nota) return { texto };
   return texto ? { texto, nota } : { texto: "", nota };
 }
+
+/**
+ * Ancho mínimo del halo. Un enlace sin etiqueta no pinta texto, pero el halo es
+ * el único blanco del doble clic que abre su ficha (el de la línea añade un
+ * quiebre): sin un mínimo, el enlace se selecciona y no se puede editar (#619).
+ */
+export const EDGE_LABEL_MIN_HIT = 24;
+
+/**
+ * Caja del halo de la etiqueta: se ajusta al renglón más largo y, con nota, crece
+ * a dos renglones. Nunca baja de `EDGE_LABEL_MIN_HIT` de ancho.
+ */
+export function edgeLabelBox(
+  texto: string,
+  nota: string,
+  charPx: number
+): { width: number; height: number } {
+  const width = Math.max(
+    Math.max(texto.length, nota.length) * charPx + 10,
+    EDGE_LABEL_MIN_HIT
+  );
+  return { width, height: texto && nota ? 30 : 20 };
+}

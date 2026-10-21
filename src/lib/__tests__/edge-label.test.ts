@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitEdgeLabel } from "../edge-label";
+import { EDGE_LABEL_MIN_HIT, edgeLabelBox, splitEdgeLabel } from "../edge-label";
 
 describe("splitEdgeLabel", () => {
   it("parte `acción [nota]` en sus dos mitades", () => {
@@ -32,5 +32,18 @@ describe("splitEdgeLabel", () => {
     expect(splitEdgeLabel(undefined)).toEqual({ texto: "" });
     expect(splitEdgeLabel(null)).toEqual({ texto: "" });
     expect(splitEdgeLabel("  cobra   [API]  ")).toEqual({ texto: "cobra", nota: "API" });
+  });
+});
+
+describe("edgeLabelBox", () => {
+  it("dimensiona el halo con el renglón más largo", () => {
+    expect(edgeLabelBox("usa", "", 5)).toEqual({ width: 25, height: 20 });
+    expect(edgeLabelBox("consume", "HTTPS/JSON", 5)).toEqual({ width: 60, height: 30 });
+  });
+
+  it("un enlace SIN etiqueta conserva un blanco donde hacer doble clic (#619)", () => {
+    const box = edgeLabelBox("", "", 5);
+    expect(box.width).toBe(EDGE_LABEL_MIN_HIT);
+    expect(box.height).toBe(20);
   });
 });
