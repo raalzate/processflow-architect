@@ -101,6 +101,8 @@ export function ArtifactViewerDialog({
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  /** Título en edición: renombrar también es una revisión nueva (#614). */
+  const [titulo, setTitulo] = useState("");
   const [preview, setPreview] = useState(true);
   const [ancho, setAncho] = useState(true);
   /** Borrador encontrado al abrir: se ofrece recuperar, no se aplica solo. */
@@ -118,12 +120,16 @@ export function ArtifactViewerDialog({
   useEffect(() => {
     setEditing(false);
     setDraft("");
+    setTitulo("");
     const guardado = artifact ? readDraft(artifact.id) : null;
     setRescate(guardado && guardado !== source ? guardado : null);
   }, [artifact?.id, source]);
 
   const Icon = artifact ? iconForArtifact(artifact) : null;
-  const sucio = editing && draft !== source;
+  // Un título en blanco no renombra (reviseArtifact conserva el anterior), así
+  // que tampoco cuenta como cambio.
+  const renombrado = editing && !!titulo.trim() && titulo.trim() !== artifact?.title;
+  const sucio = editing && (draft !== source || renombrado);
 
   // El borrador se persiste mientras se escribe: cerrar la modal sin guardar (o
   // que se cierre la app) no puede costar media hora de edición.
@@ -139,6 +145,7 @@ export function ArtifactViewerDialog({
 
   const editar = (texto = source) => {
     setDraft(texto);
+    setTitulo(artifact?.title ?? "");
     setEditing(true);
     setRescate(null);
   };
@@ -179,8 +186,8 @@ export function ArtifactViewerDialog({
     if (!draft.trim()) {
       return toast({ variant: "destructive", title: "Un artefacto vacío no se guarda" });
     }
-    if (draft === source) return;
-    editArtifact(artifact.id, draft);
+    if (!sucio) return;
+    editArtifact(artifact.id, draft, renombrado ? titulo : undefined);
     clearDraft(artifact.id);
     setEditing(false);
     // La revisión nueva es otro artefacto: el visor se cierra en vez de mostrar
@@ -193,7 +200,9 @@ export function ArtifactViewerDialog({
     // Cerrar el editor con cambios NO los tira: se persiste el borrador y la
     // vista de lectura ofrece recuperarlo ahí mismo (antes había que cerrar y
     // volver a abrir la modal para que apareciera el aviso).
-    if (sucio && artifact) {
+    // Sólo el cuerpo tiene borrador persistido: un renombre sin guardar se pierde
+    // al cerrar, y ofrecer «recuperar» un cuerpo idéntico sería ruido.
+    if (sucio && artifact && draft !== source) {
       writeDraft(artifact.id, draft);
       setRescate(draft);
     }
@@ -213,7 +222,17 @@ export function ArtifactViewerDialog({
         <DialogHeader className="border-b px-4 py-2.5">
           <DialogTitle className="flex items-center gap-2 text-base">
             {Icon && <Icon className="h-4 w-4 text-primary" />}
-            <span className="truncate">{artifact?.title}</span>
+            {editing ? (
+              <input
+                value={titulo}
+                onChange={(e) => setTitulo(e.target.value)}
+                aria-label="Nombre del artefacto"
+                placeholder={artifact?.title}
+                className="min-w-0 flex-1 rounded border bg-background px-2 py-0.5 text-base font-semibold focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            ) : (
+              <span className="truncate">{artifact?.title}</span>
+            )}
             {artifact && revisionLabel(artifact) && (
               <span className="rounded bg-primary/15 px-1.5 text-xs font-semibold text-primary">
                 {revisionLabel(artifact)}
