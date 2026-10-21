@@ -124,7 +124,7 @@ import {
   estiloTextoSvg,
   xSegunAlineacion,
 } from "@/lib/element-style";
-import { splitEdgeLabel } from "@/lib/edge-label";
+import { edgeLabelBox, splitEdgeLabel } from "@/lib/edge-label";
 import { edgeIsDashed, relationStyle, type EdgeMarker } from "@/lib/edge-relations";
 import {
   clampPanelWidth,
@@ -2090,9 +2090,12 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   const { texto, nota } = splitEdgeLabel(link.descripcion);
   const labelText = truncateEdgeLabel(texto);
   const notaText = nota ? truncateEdgeLabel(nota) : "";
-  const labelWidth =
-    Math.max(labelText.length, notaText.length) * EDGE_LABEL_CHAR_PX + 10;
-  const labelHeight = notaText && labelText ? 30 : 20;
+  const { width: labelWidth, height: labelHeight } = edgeLabelBox(
+    labelText,
+    notaText,
+    EDGE_LABEL_CHAR_PX
+  );
+  const sinEtiqueta = !labelText && !notaText;
 
   // Dirección de la(s) flecha(s) y RELACIÓN (UML): la relación manda sobre la
   // punta —un triángulo hueco dice "hereda" y una flecha no— pero `arrow:
@@ -2157,15 +2160,31 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
       />
       <g
         onDoubleClick={onDoubleClick}
-        onMouseDown={onLabelMouseDown}
-        className={onLabelMouseDown ? "cursor-move" : "cursor-text"}
+        // Sin etiqueta no hay nada que separar del trazo: arrastrar movería un
+        // halo invisible.
+        onMouseDown={sinEtiqueta ? undefined : onLabelMouseDown}
+        className={sinEtiqueta ? "cursor-pointer" : onLabelMouseDown ? "cursor-move" : "cursor-text"}
       >
+        {/* Sin etiqueta, el halo se pinta transparente pero se pinta: es el único
+            blanco del doble clic que abre la ficha del enlace (#619). `fill`
+            transparente —no `none`— para que siga recibiendo el puntero. */}
+        {sinEtiqueta && (
+          <rect
+            x={labelX - labelWidth / 2}
+            y={labelY - labelHeight / 2}
+            width={labelWidth}
+            height={labelHeight}
+            fill="transparent"
+          >
+            <title>Doble clic para editar el enlace</title>
+          </rect>
+        )}
         {/* El halo se dimensiona con el texto. Antes era un rect fijo de 80×20 y
             una etiqueta larga («cotiza y diligencia su solicitud [navegador web]»,
             ~240 px) se desbordaba sin fondo, cruzando líneas, nodos y títulos de
             contenedor. Se acota a EDGE_LABEL_MAX_CHARS y el texto completo queda
             en el tooltip: una relación bien documentada no debe tapar el diagrama. */}
-        {!!(labelText || notaText) && (
+        {!sinEtiqueta && (
           <>
             <title>{link.descripcion}</title>
             <rect
