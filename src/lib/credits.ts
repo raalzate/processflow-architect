@@ -8,7 +8,7 @@
  * falla si ambos números difieren, así que la duplicación no puede quedar vieja.
  */
 
-export const APP_VERSION = "0.15.0";
+export const APP_VERSION = "0.16.0";
 
 /** La app aún no es estable: se anuncia como beta en la UI. */
 export const RELEASE_CHANNEL = "beta" as const;
