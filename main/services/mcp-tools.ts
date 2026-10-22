@@ -51,6 +51,7 @@ import {
   type DiagramModel,
 } from "../../src/lib/mcp/diagram-builder";
 import { resumenDeLegibilidad } from "../../src/lib/layout/legible";
+import { numerarPasos } from "../../src/lib/mcp/numeracion";
 import {
   getElementSpec,
   setElementSpec,
@@ -418,7 +419,11 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
   async function saveModel(id: string, model: DiagramModel, org?: string | null): Promise<void> {
     const destino = org === undefined ? await activeOrg() : org;
     await ensureDir(diagramsDirOf(destino));
-    await fs.writeFile(modelPathIn(destino, id), JSON.stringify(model, null, 2), "utf8");
+    // Los pasos de un flujo se renumeran en CADA guardado (#618): agregar, mover
+    // o borrar un paso no puede dejar huecos ni duplicados. Un diagrama que no
+    // es de flujo pasa igual.
+    const numerado = numerarPasos(model);
+    await fs.writeFile(modelPathIn(destino, id), JSON.stringify(numerado, null, 2), "utf8");
   }
 
   async function loadModel(id: string, org?: string | null): Promise<DiagramModel> {
