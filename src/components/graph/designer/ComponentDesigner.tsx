@@ -122,6 +122,7 @@ import {
   type EdgeRelationKind,
 } from "@/lib/edge-relations";
 import { useToast } from "@/hooks/use-toast";
+import { focoEn, opacidadEnFoco } from "@/lib/canvas-focus";
 import { useAi } from "@/hooks/useAi";
 import { orderLanesTask } from "@/lib/ai/tasks";
 import {
@@ -1311,7 +1312,11 @@ const EditNodeDialog: React.FC<{
   onCreateNext: (fromNode: DesignerNode, sug: { tipo: string; nombre: string; relacion: string }) => void;
   /** Nombre del proyecto: contexto del chat con el agente externo (feature 020). */
   projectName?: string;
-}> = ({ node, nodes, links, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext, projectName }) => {
+  /** Enfoca en el lienzo la caja de una entrada/salida de la spec (#617). */
+  onEnfocar?: (id: string) => void;
+  /** ¿Hay foco activo? Lo consulta Escape para no cerrar la ficha con él. */
+  focoActivo?: () => boolean;
+}> = ({ node, nodes, links, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext, projectName, onEnfocar, focoActivo }) => {
   // El chat con un agente externo y el botón de entrega dependen de capacidades
   // distintas del host: el CLI y el servidor MCP corren hoy en el proceso main, y
   // una edición web puede tener uno sin el otro.
@@ -1656,6 +1661,11 @@ const EditNodeDialog: React.FC<{
       <DrawerPrimitive.Portal>
         <DrawerPrimitive.Content
           onInteractOutside={(e) => e.preventDefault()}
+          // Con foco activo, Escape sólo apaga el foco (lo hace el atajo del
+          // lienzo): la ficha desde la que se enfocó queda abierta (#617).
+          onEscapeKeyDown={(e) => {
+            if (focoActivo?.()) e.preventDefault();
+          }}
           onOpenAutoFocus={(e) => e.preventDefault()}
           // El ancho lo decide `panel-size.ts`; acá sólo se aplica (por eso va
           // en `style` y no como clase: `55vw` no es una clase de Tailwind).
@@ -2111,6 +2121,7 @@ const EditNodeDialog: React.FC<{
                 elementName={draft.nombre}
                 flujoVecinos={flujoVecinos}
                 resolveNodeName={resolveNodeName}
+                onEnfocar={onEnfocar}
                 suggestButton={
                   <SugBtn field="spec" onClick={suggestSpec} disabled={!draft.descripcion?.trim()} />
                 }
@@ -2855,6 +2866,23 @@ export const ComponentDesigner: React.FC<{
     () => neighborhoodOf(capturing ? new Set<string>() : selectedIds, links.values()),
     [selectedIds, links, capturing]
   );
+
+  // Modo foco (#617): una caja y con quién habla, el resto atenuado. Se guarda
+  // sólo el CENTRO y el subgrafo se deriva, así sigue vigente si cambian las
+  // aristas mientras está activo. Una caja que ya no existe apaga el foco.
+  const [focoCentro, setFocoCentro] = useState<string | null>(null);
+  const foco = useMemo(() => {
+    if (capturing || !focoCentro || !nodes.has(focoCentro)) return null;
+    const contenedorPorNombre = new Map<string, string>();
+    for (const n of nodes.values()) if (isContainerType(n.tipo_elemento)) contenedorPorNombre.set(n.nombre, n.id);
+    const contenedorDe = (id: string) => {
+      const n = nodes.get(id);
+      return n && !isContainerType(n.tipo_elemento) && n.agregado ? contenedorPorNombre.get(n.agregado) : undefined;
+    };
+    return focoEn(focoCentro, links.values(), contenedorDe);
+  }, [focoCentro, nodes, links, capturing]);
+  const focoRef = useRef(foco);
+  focoRef.current = foco;
   /**
    * Barras de activación (T20). Se CALCULAN de los mensajes y no se guardan:
    * algo derivable que se persiste es una segunda fuente de verdad que se
@@ -2943,6 +2971,10 @@ export const ComponentDesigner: React.FC<{
     { x0: number; y0: number; x1: number; y1: number; additive: boolean } | null
   >(null);
   const [editingNode, setEditingNode] = useState<DesignerNode | null>(null);
+  // El foco nace de la ficha abierta: cerrarla, o pasar a la ficha de otra
+  // caja, vuelve la vista normal (#617).
+  const fichaAbiertaId = editingNode?.id;
+  useEffect(() => setFocoCentro(null), [fichaAbiertaId]);
   const [editingLink, setEditingLink] = useState<DesignerLink | null>(null);
   const [metaOpen, setMetaOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
@@ -3046,6 +3078,27 @@ export const ComponentDesigner: React.FC<{
       w.scrollTop = cy * zoom - w.clientHeight / 2;
     },
     [zoom]
+  );
+
+  // Enfoca una caja desde la Spec (#617): la selecciona, la centra y atenúa lo
+  // que no habla con ella. Sin cambiar la ficha abierta: seleccionar por código
+  // no pasa por el mousedown que cambia el inspector.
+  const enfocarCaja = useCallback(
+    (id: string) => {
+      const n = nodesRef.current.get(id);
+      if (!n) {
+        toast({
+          title: "No hay componente que enfocar",
+          description: "Esa entrada/salida apunta a una caja que ya no está en el lienzo.",
+        });
+        return;
+      }
+      setSelectedIds(new Set([id]));
+      setFocoCentro(id);
+      const { w, h } = nodeBox(n, notationId);
+      navigateTo(n.x + w / 2, n.y + h / 2);
+    },
+    [navigateTo, notationId, toast]
   );
 
   // Ajusta el zoom y el scroll para encuadrar TODO el contenido con un margen.
@@ -3717,6 +3770,12 @@ export const ComponentDesigner: React.FC<{
           target.getAttribute("contenteditable") === "true");
 
       if (e.key === "Escape") {
+        // Con foco activo, el primer Escape sólo lo apaga (#617): la ficha desde
+        // la que se enfocó sigue abierta.
+        if (focoRef.current) {
+          setFocoCentro(null);
+          return;
+        }
         // Con la ficha abierta, Escape la CIERRA (ya no hay nada que descartar:
         // se guarda sola). Sin ficha, cancela la conexión o deselecciona.
         if (editorOpenRef.current) {
@@ -3935,6 +3994,7 @@ export const ComponentDesigner: React.FC<{
       if (connectFromRef.current) return;
       const p = toSvgPoint(e.clientX, e.clientY);
       const additive = e.shiftKey || e.metaKey || e.ctrlKey;
+      setFocoCentro(null); // clic en el fondo: vuelve la vista normal (#617)
       if (!additive) clearSelection();
       setMarquee({ x0: p.x, y0: p.y, x1: p.x, y1: p.y, additive });
     },
@@ -5373,8 +5433,8 @@ export const ComponentDesigner: React.FC<{
             {/* Capa 0-2: Contenedores (cualquier notación), de mayor a menor área */}
             <g>
               {containerNodes.map((node) => (
+                <g key={node.id} opacity={opacidadEnFoco(node.id, foco)}>
                 <DesignerNodeComponent
-                  key={node.id}
                   node={node}
                   notation={notationId}
                   isSelected={isSelected(node.id)}
@@ -5391,6 +5451,7 @@ export const ComponentDesigner: React.FC<{
                   onHover={(e) => showHoverCard(e, node)}
                   onHoverEnd={hideHoverCard}
                 />
+                </g>
               ))}
             </g>
             {/* Capa 2.5: barras de ACTIVACIÓN. Van debajo de los mensajes para
@@ -5414,8 +5475,8 @@ export const ComponentDesigner: React.FC<{
             {/* Capa 3: Enlaces */}
             <g>
               {visto.links.map((link) => (
+                <g key={link.id} opacity={opacidadEnFoco(link.id, foco)}>
                 <DesignerLinkComponent
-                  key={link.id}
                   link={link}
                   nodes={nodes}
                   notation={notationId}
@@ -5428,6 +5489,7 @@ export const ComponentDesigner: React.FC<{
                   onLabelMouseDown={(e) => startLabelDrag(e, link.id)}
                   onLineMouseDown={(e) => startMessageReorder(e, link.id)}
                 />
+                </g>
               ))}
             </g>
             {/* Línea guía de conexión (mientras se arrastra desde un puerto) */}
@@ -5454,8 +5516,8 @@ export const ComponentDesigner: React.FC<{
             {/* Capa 4: Nodos */}
             <g>
               {plainNodes.map((node) => (
+                <g key={node.id} opacity={opacidadEnFoco(node.id, foco)}>
                 <DesignerNodeComponent
-                  key={node.id}
                   node={node}
                   notation={notationId}
                   isSelected={isSelected(node.id)}
@@ -5472,6 +5534,7 @@ export const ComponentDesigner: React.FC<{
                   onHover={(e) => showHoverCard(e, node)}
                   onHoverEnd={hideHoverCard}
                 />
+                </g>
               ))}
             </g>
 
@@ -5673,6 +5736,8 @@ export const ComponentDesigner: React.FC<{
         }
         onCreateNext={createNextElement}
         projectName={graphData?.nombre_proyecto}
+        onEnfocar={enfocarCaja}
+        focoActivo={() => !!focoRef.current}
       />
       <EditLinkDialog
         link={editingLink}
