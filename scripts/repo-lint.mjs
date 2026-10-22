@@ -13,6 +13,7 @@
  *   PUREZA    src/lib/** es lógica pura: sin React, sin Electron, sin Next, sin UI.
  *   NOTACION  los tipos de componente sólo se cablean en src/lib/notations.ts (+ allowlist de deuda).
  *   ONLY      nada de .only( en tests: apaga la suite entera en silencio.
+ *   RELOJ     un test no lee el reloj de pared: el tiempo se inyecta (`ahora`) o se finge.
  *   DEPSHOOK  un useMemo/useCallback declara en sus dependencias todo estado que lee.
  *   TOKENS    la UI usa los tokens del tema, no colores crudos de Tailwind ni tamaños en px.
  *   SVGFILL   un <text> de SVG pinta con `fill`: sin él, una clase text-* cae a negro.
@@ -385,6 +386,24 @@ function checkFile(relPath, contenidoDado = null) {
     const m = /(?:describe|it|test)\.only\s*\(/.exec(content);
     if (m) {
       fail(relPath, lineOf(content, m.index), "ONLY", "`.only(` apaga el resto de la suite: el verde deja de significar nada. Quitalo antes de entregar.");
+    }
+  }
+
+  // RELOJ — un test que mide el reloj de pared mide la máquina del día (#376).
+  // El gotcha ya pedía usarlo «sólo como red, con tope holgado» y la red se
+  // rompió igual (860 ms contra 600 bajo cobertura): ningún tope fijo es seguro
+  // cuando la instrumentación multiplica el tiempo. Lo que se prueba es el
+  // MECANISMO con un reloj inyectado (`ahora`) o `vi.useFakeTimers()`.
+  if (isTest(relPath)) {
+    const codigo = content.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+    const m = /\b(?:Date|performance)\.now\s*\(/.exec(codigo);
+    if (m) {
+      fail(
+        relPath,
+        lineOf(codigo, m.index),
+        "RELOJ",
+        "un test no lee el reloj de pared: bajo cobertura el mismo cálculo tarda varias veces más y el test pasa a medir la máquina. Inyectá el reloj (`ahora: () => t`) y probá el corte por presupuesto, o usá `vi.useFakeTimers()`.",
+      );
     }
   }
 }

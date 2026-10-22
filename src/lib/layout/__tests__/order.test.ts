@@ -113,4 +113,14 @@ describe("ordenarCapas", () => {
     const out = ordenarCapas(cajas, relaciones, { presupuestoMs: 0, ahora: () => 10_000 });
     expect(out).toHaveLength(cajas.length);
   });
+
+  it("FR-012 · agotado, no corre ni una pasada: el cruce queda como estaba", () => {
+    // Con un reloj CONSTANTE el presupuesto nunca se agota (lo transcurrido es 0),
+    // así que el caso de arriba pasaba aunque el corte no existiera. Este reloj
+    // avanza más que el presupuesto en cada consulta.
+    const { cajas, relaciones } = cruzado();
+    let t = 0;
+    const out = ordenarCapas(cajas, relaciones, { presupuestoMs: 10, ahora: () => (t += 11) });
+    expect(medirLegibilidad(out, relaciones).cruces).toBe(1);
+  });
 });

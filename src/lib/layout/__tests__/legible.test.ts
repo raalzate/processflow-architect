@@ -37,14 +37,27 @@ describe("disponerLegible", () => {
     expect(d.legibilidad.despues.sobreCaja).toBeLessThanOrEqual(d.legibilidad.antes.sobreCaja);
   });
 
-  it("TS-006 · SC-003 · un diagrama de 50 elementos respeta su presupuesto de 200 ms", () => {
-    // El tope del test es más ancho que el presupuesto a propósito: bajo la
-    // instrumentación de cobertura el mismo cálculo tarda varias veces más, y lo
-    // que hay que probar es que la disposición SE CORTA sola, no cuánto corre la
-    // máquina del día. Sin cobertura, este diagrama se dispone en ~45 ms.
-    const t0 = Date.now();
-    relayout(diagramaDe(50));
-    expect(Date.now() - t0).toBeLessThan(PRESUPUESTO_MS * 3);
+  it("TS-006 · SC-003 · con el presupuesto agotado no corre ni una pasada de orden ni de ruteo", () => {
+    // Sin reloj de pared (#376 y su reincidencia): cronometrar `relayout` medía
+    // también la estrategia y la medición final, que no tienen presupuesto, y
+    // bajo cobertura ningún tope fijo era seguro (860 ms contra 600). Lo que
+    // SC-003 exige es que el cálculo SE CORTE: con un reloj que agota el
+    // presupuesto en la primera consulta, el ordenamiento y el ruteo no hacen
+    // nada, y el resultado se declara parcial.
+    const modelo = diagramaDe(50);
+    let t = 0;
+    let consultas = 0;
+    const d = disponerLegible(relayout(modelo, { ahora: () => 0 }), {
+      ahora: () => {
+        consultas++;
+        return (t += PRESUPUESTO_MS + 1);
+      },
+    });
+    expect(d.parcial).toBe(true);
+    expect(d.model.edges.every((e) => !e.midpoints?.length)).toBe(true);
+    // Una consulta por relación (el ruteo la salta) más las de arranque y cierre:
+    // si alguna fase iterara sin mirar el reloj, esto crecería.
+    expect(consultas).toBeLessThanOrEqual(modelo.edges.length + 8);
   });
 
   it("C3 · el presupuesto es 200 ms hasta 50 elementos y 2 s por encima", () => {

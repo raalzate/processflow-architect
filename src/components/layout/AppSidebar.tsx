@@ -37,6 +37,7 @@ import {
   Workflow,
   Component,
   Layers,
+  Maximize2,
   Sparkles as SparklesIcon,
 } from "lucide-react";
 import { useGraphContext } from "@/context/GraphContext";
@@ -45,6 +46,9 @@ import { useAgent } from "@/context/AgentContext";
 import type { Artifact } from "@/lib/agent-types";
 import { getNotation, DEFAULT_NOTATION_ID, notationBadgeClass } from "@/lib/notations";
 import { collectGraphNodes } from "@/lib/view-nodes";
+import type { EntradaDeElemento } from "@/lib/element-browser";
+import type { GraphNode } from "@/lib/types";
+import { ElementsBrowserDialog } from "@/components/layout/ElementsBrowserDialog";
 import { nodeTypeColor } from "@/lib/graph-constants";
 import {
   formatNodeTreeToMarkdown,
@@ -139,6 +143,7 @@ function TaskListPanel() {
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiContent, setAiContent] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [listaAbierta, setListaAbierta] = useState<string | null>(null);
 
   // Elementos diseñados en las VISTAS custom (BPMN/C4/UML): el modelo del
   // proyecto no los contiene, pero también son trabajo por hacer. Cada entrada
@@ -187,34 +192,43 @@ function TaskListPanel() {
     }
   };
 
-  // Fila de un elemento que vive en una vista: clic → activa esa vista.
-  const ViewNodeRow = ({ e }: { e: (typeof viewEntries)[number] }) => (
-    <li key={`${e.viewId}-${e.node.id}`}>
-      <div
-        onClick={() => setActiveView(e.viewId)}
-        className="flex items-center gap-2 p-1 rounded-md cursor-pointer hover:bg-muted"
-        title={`${e.node.nombre} — vista «${e.viewName}»`}
-      >
-        <span
-          className={cn(
-            "w-2 h-2 rounded-full",
-            nodeTypeColor(e.node.tipo_elemento)
-          )}
-        ></span>
-        <span
-          className={cn(
-            "flex-1 truncate block max-w-[180px]",
-            e.node.estado_comparativo === "eliminado" && "line-through text-muted-foreground"
-          )}
-        >
-          {e.node.nombre}
-        </span>
-        <Badge variant="outline" className="shrink-0 text-2xs px-1 py-0 max-w-[80px] truncate">
-          {e.viewName}
-        </Badge>
-      </div>
-    </li>
-  );
+  // Cada lista abre la modal de consulta: el sidebar no daba ni para el nombre
+  // entero y para ver qué ERA un elemento había que saltar al lienzo.
+  const modelo = views.find((v) => v.kind === "design");
+  const entradasDe = (
+    modeloNodes: GraphNode[],
+    deVistas: typeof viewEntries
+  ): EntradaDeElemento[] => [
+    ...modeloNodes.map((node) => ({
+      node,
+      viewId: modelo?.id ?? "",
+      viewName: modelo?.name ?? "Modelo",
+      grafo: graphData ?? undefined,
+    })),
+    ...deVistas.map((e) => ({
+      ...e,
+      grafo: views.find((v) => v.id === e.viewId)?.graph ?? undefined,
+    })),
+  ];
+  const listas = [
+    { id: "nuevos", titulo: "Cambios nuevos", entradas: entradasDe(taskListNodes.new, viewNew), clase: "" },
+    { id: "modificados", titulo: "Modificados", entradas: entradasDe(taskListNodes.modified, viewModified), clase: "" },
+    {
+      id: "eliminados",
+      titulo: "Eliminados",
+      entradas: entradasDe(taskListNodes.deleted, viewDeleted),
+      clase: "text-destructive",
+    },
+  ].filter((l) => l.entradas.length > 0);
+  const abierta = listas.find((l) => l.id === listaAbierta);
+
+  const irAlLienzo = (e: EntradaDeElemento) => {
+    setListaAbierta(null);
+    if (e.viewId === modelo?.id) {
+      revealNode(e.node.agregado, e.node.tipo_elemento);
+      handleNodeSelectFromSidebar(e.node);
+    } else setActiveView(e.viewId);
+  };
 
   return (
     <SidebarGroup>
@@ -257,112 +271,34 @@ function TaskListPanel() {
         <p className="text-xs italic px-2 mb-2 text-muted-foreground">
          {graphData?.notas}
       </p>
-      <Accordion
-        type="multiple"
-        className="w-full"
-        defaultValue={["nuevos", "modificados", "eliminados"]}
-      >
-        {/* ... Accordion Items ... */}
-        {hasNew && (
-          <AccordionItem value="nuevos">
-            <AccordionTrigger className="text-sm font-medium px-2 py-1.5 hover:bg-muted rounded-md">
-              Cambios nuevos ({taskListNodes.new.length + viewNew.length})
-            </AccordionTrigger>
-            <AccordionContent className="pt-1">
-              <ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain py-1 pl-4 pr-1 text-xs">
-                {taskListNodes.new.map((node) => (
-                  <li key={node.id}>
-                    <div
-                      onClick={() => { revealNode(node.agregado, node.tipo_elemento); handleNodeSelectFromSidebar(node); }}
-                      className="flex items-center gap-2 p-1 rounded-md cursor-pointer hover:bg-muted"
-                    >
-                      <span
-                        className={cn(
-                          "w-2 h-2 rounded-full",
-                          nodeTypeColor(node.tipo_elemento)
-                        )}
-                      ></span>
-                      <span   className="flex-1 truncate block max-w-[250px]" title={node.nombre}>
-                        {node.nombre}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-                {viewNew.map((e) => (
-                  <ViewNodeRow key={`${e.viewId}-${e.node.id}`} e={e} />
-                ))}
-              </ul>
-            </AccordionContent>
-          </AccordionItem>
-        )}
-        {hasModified && (
-          <AccordionItem value="modificados">
-            <AccordionTrigger className="text-sm font-medium px-2 py-1.5 hover:bg-muted rounded-md">
-              Modificados ({taskListNodes.modified.length + viewModified.length})
-            </AccordionTrigger>
-            <AccordionContent className="pt-1">
-              <ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain py-1 pl-4 pr-1 text-xs">
-                {taskListNodes.modified.map((node) => (
-                  <li key={node.id}>
-                    <div
-                      onClick={() => { revealNode(node.agregado, node.tipo_elemento); handleNodeSelectFromSidebar(node); }}
-                      className="flex items-center gap-2 p-1 rounded-md cursor-pointer hover:bg-muted"
-                    >
-                      <span
-                        className={cn(
-                          "w-2 h-2 rounded-full",
-                          nodeTypeColor(node.tipo_elemento)
-                        )}
-                      ></span>
-                      <span   className="flex-1 truncate block max-w-[250px]" title={node.nombre}>
-                        {node.nombre}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-                {viewModified.map((e) => (
-                  <ViewNodeRow key={`${e.viewId}-${e.node.id}`} e={e} />
-                ))}
-              </ul>
-            </AccordionContent>
-          </AccordionItem>
-        )}
-        {hasDeleted && (
-          <AccordionItem value="eliminados">
-            <AccordionTrigger className="text-sm font-medium px-2 py-1.5 hover:bg-muted rounded-md text-destructive">
-              Eliminados ({taskListNodes.deleted.length + viewDeleted.length})
-            </AccordionTrigger>
-            <AccordionContent className="pt-1">
-              <ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain py-1 pl-4 pr-1 text-xs">
-                {taskListNodes.deleted.map((node) => (
-                  <li key={node.id}>
-                    <div
-                      onClick={() => { revealNode(node.agregado, node.tipo_elemento); handleNodeSelectFromSidebar(node); }}
-                      className="flex items-center gap-2 p-1 rounded-md cursor-pointer hover:bg-muted"
-                    >
-                      <span
-                        className={cn(
-                          "w-2 h-2 rounded-full",
-                          nodeTypeColor(node.tipo_elemento)
-                        )}
-                      ></span>
-                      <span
-                        className="flex-1 truncate block max-w-[250px] line-through text-muted-foreground"
-                        title={node.nombre}
-                      >
-                        {node.nombre}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-                {viewDeleted.map((e) => (
-                  <ViewNodeRow key={`${e.viewId}-${e.node.id}`} e={e} />
-                ))}
-              </ul>
-            </AccordionContent>
-          </AccordionItem>
-        )}
-      </Accordion>
+      <ul className="space-y-0.5 px-1">
+        {listas.map((l) => (
+          <li key={l.id}>
+            <button
+              type="button"
+              onClick={() => setListaAbierta(l.id)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium hover:bg-muted",
+                l.clase
+              )}
+              title={`Ver ${l.titulo.toLowerCase()}`}
+            >
+              <span className="flex-1">{l.titulo}</span>
+              <span className="text-2xs tabular-nums opacity-70">{l.entradas.length}</span>
+              <Maximize2 className="h-3.5 w-3.5 shrink-0 opacity-60" />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <ElementsBrowserDialog
+        open={!!abierta}
+        onOpenChange={(o) => !o && setListaAbierta(null)}
+        titulo={abierta?.titulo ?? ""}
+        subtitulo={abierta ? `${abierta.entradas.length} elementos del modelo y de las vistas` : undefined}
+        entradas={abierta?.entradas ?? []}
+        mostrarVista
+        onIrAlLienzo={irAlLienzo}
+      />
       
       <AiGenerationModal 
         isOpen={isAiModalOpen}
@@ -545,22 +481,16 @@ function EmptyGraphState() {
 // ====================================================================
 // --- Panel: Vistas del Diseñador ---
 // ====================================================================
-/** Punto de color del estado del cambio (nuevo/modificado/eliminado). */
-const ESTADO_DOT: Record<string, string> = {
-  nuevo: "bg-success",
-  modificado: "bg-warning",
-  eliminado: "bg-destructive",
-};
-
 /**
  * Lista las vistas del proyecto activo (la built-in «Modelo» + las creadas por
- * el usuario o recibidas por MCP). Cada vista es un acordeón: al expandirla se
- * ven SUS elementos (con su estado del cambio); el clic en la vista la activa
- * en el lienzo y el clic en un elemento también salta a su vista.
+ * el usuario o recibidas por MCP). El clic en la vista la activa en el lienzo;
+ * sus elementos se consultan en una modal (buscable, con la ficha de cada uno)
+ * en vez de desplegarse en el sidebar, donde los nombres no cabían.
  */
 function DesignViewsPanel() {
   const { views, activeViewId, setActiveView } = useViews();
   const { graphData } = useGraphContext();
+  const [vistaAbierta, setVistaAbierta] = useState<string | null>(null);
 
   if (views.length <= 1) return null; // solo «Modelo»: la barra inferior basta
 
@@ -568,91 +498,70 @@ function DesignViewsPanel() {
   // las custom, su propio grafo.
   const nodesOf = (v: (typeof views)[number]) =>
     v.kind === "design" ? collectGraphNodes(graphData) : collectGraphNodes(v.graph);
+  const abierta = views.find((v) => v.id === vistaAbierta);
+  const entradasAbiertas: EntradaDeElemento[] = abierta
+    ? nodesOf(abierta).map((node) => ({
+        node,
+        viewId: abierta.id,
+        viewName: abierta.name,
+        grafo: (abierta.kind === "design" ? graphData : abierta.graph) ?? undefined,
+      }))
+    : [];
 
   return (
     <SidebarGroup>
       <SidebarGroupLabel className="flex items-center gap-2">
         <Layers className="w-5 h-5" /> Vistas
       </SidebarGroupLabel>
-      <Accordion type="multiple" className="w-full px-1" defaultValue={[activeViewId]}>
+      <ul className="space-y-0.5 px-1">
         {views.map((v) => {
           const isActive = v.id === activeViewId;
           const notationLabel = getNotation(v.notation ?? DEFAULT_NOTATION_ID).id.toUpperCase();
           const nodes = nodesOf(v);
           return (
-            <AccordionItem value={v.id} key={v.id} className="border-none">
-              <AccordionTrigger
+            <li key={v.id} className="group flex items-center gap-1">
+              <button
+                type="button"
                 onClick={() => setActiveView(v.id)}
                 className={cn(
-                  "rounded-md px-2 py-1.5 text-sm hover:bg-muted hover:no-underline",
+                  "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted",
                   isActive ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground"
                 )}
                 title={v.description || v.name}
               >
-                <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-left">{v.name}</span>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "shrink-0 border-transparent px-1 py-0 text-2xs",
-                      notationBadgeClass(v.notation)
-                    )}
-                  >
-                    {notationLabel}
-                  </Badge>
-                  <span className="shrink-0 text-2xs tabular-nums opacity-70">
-                    {nodes.length}
-                  </span>
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="pt-1">
-                {nodes.length === 0 ? (
-                  <p className="pl-4 py-1 text-xs italic text-muted-foreground">
-                    Sin elementos todavía.
-                  </p>
-                ) : (
-                  <ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain py-1 pl-4 pr-1 text-xs">
-                    {nodes.map((node) => (
-                      <li key={`${v.id}-${node.id}`}>
-                        <div
-                          onClick={() => setActiveView(v.id)}
-                          className="flex items-center gap-2 p-1 rounded-md cursor-pointer hover:bg-muted"
-                          title={`${node.tipo_elemento} · ${node.nombre}`}
-                        >
-                          <span
-                            className={cn(
-                              "w-2 h-2 rounded-full shrink-0",
-                              nodeTypeColor(node.tipo_elemento)
-                            )}
-                          ></span>
-                          <span
-                            className={cn(
-                              "flex-1 truncate block max-w-[220px]",
-                              node.estado_comparativo === "eliminado" &&
-                                "line-through text-muted-foreground"
-                            )}
-                          >
-                            {node.nombre}
-                          </span>
-                          {ESTADO_DOT[node.estado_comparativo] && (
-                            <span
-                              title={node.estado_comparativo}
-                              className={cn(
-                                "w-1.5 h-1.5 rounded-full shrink-0",
-                                ESTADO_DOT[node.estado_comparativo]
-                              )}
-                            ></span>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </AccordionContent>
-            </AccordionItem>
+                <span className="min-w-0 flex-1 truncate">{v.name}</span>
+                <Badge
+                  variant="outline"
+                  className={cn("shrink-0 border-transparent px-1 py-0 text-2xs", notationBadgeClass(v.notation))}
+                >
+                  {notationLabel}
+                </Badge>
+              </button>
+              <button
+                type="button"
+                onClick={() => setVistaAbierta(v.id)}
+                disabled={nodes.length === 0}
+                className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1.5 text-2xs tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                title={nodes.length ? `Ver los ${nodes.length} elementos de «${v.name}»` : "Sin elementos todavía"}
+                aria-label={`Ver elementos de ${v.name}`}
+              >
+                {nodes.length}
+                <Maximize2 className="h-3.5 w-3.5" />
+              </button>
+            </li>
           );
         })}
-      </Accordion>
+      </ul>
+      <ElementsBrowserDialog
+        open={!!abierta}
+        onOpenChange={(o) => !o && setVistaAbierta(null)}
+        titulo={abierta ? `Elementos de «${abierta.name}»` : ""}
+        entradas={entradasAbiertas}
+        onIrAlLienzo={(e) => {
+          setVistaAbierta(null);
+          setActiveView(e.viewId);
+        }}
+      />
     </SidebarGroup>
   );
 }

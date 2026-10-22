@@ -1068,7 +1068,9 @@ hallazgos de calidad con su regla:
 - Corregí con **\`update_element\` / \`update_edge\`** (conservan id y relaciones), no
   borrando y recreando; al acortar un nombre o una etiqueta, el texto completo va
   a \`description\`. Si el diagrama viene de antes o de un import,
-  **\`relayout_diagram\`** antes de exportar.
+  **\`relayout_diagram\`** antes de exportar. Si no sabés qué disposición le
+  conviene, \`strategy: "auto"\`: el asesor mira la notación, los grupos y la forma
+  de las relaciones, mide las candidatas y responde por qué eligió la que eligió.
 - **avisos** se corrigen o se justifican en una línea al usuario.
 
 \`render_mermaid\` para comprobar la topología (el preview auto-ordena: no es el
