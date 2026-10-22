@@ -279,6 +279,21 @@ Para CADA diagrama:
    contenedor/fase y qué mirada complementaria sostiene el material. No metas 60
    elementos en una vista.
 
+### Numeración de los pasos (flujos)
+
+En los diagramas de **flujo** (BPMN, actividad y máquina de estados UML,
+secuencia) los pasos se numeran **dentro del \`name\`**: \`"1. Validar cliente"\`.
+No lo escribas a mano: el MCP numera solo en cada guardado, en orden de flujo
+desde el inicio, y renumera al agregar, mover o borrar.
+
+- Se numeran las tareas/estados; inicio, fin, compuertas y eventos **no**.
+- Una bifurcación da sub-números por rama: \`3.1\`, \`3.2\` (y \`3.1.1\`, \`3.1.2\` si
+  una rama tiene varios pasos o anida otra). Donde se reúnen sigue \`4.\`.
+- En una secuencia, la etiqueta del mensaje lleva su orden: \`"2. buscarPersona()"\`.
+- Event Storming, C4 y MER no se numeran.
+- \`validate_diagram\`/\`review_diagram\` avisan (\`NUMERACION\`) pasos sin número,
+  fuera de orden o repetidos (típico en algo importado).
+
 ### El diagrama fijado y el proyecto destino
 
 \`create_diagram\` e \`import_diagram\` dejan **fijado** el modelo: las llamadas
@@ -780,6 +795,21 @@ Convenciones: nombres en el idioma de la fuente, **\`name\` de máx ~21 caracter
 (más largo lo recorta el lienzo) y **\`label\` de arista de máx ~30** (verbo +
 \`[tecnología]\`; se dibuja suelta sobre la línea y tapa los nodos vecinos). El
 detalle va en \`description\`. Ids autogenerados salvo necesidad.
+
+### Numeración de los pasos (flujos)
+
+En los diagramas de **flujo** (BPMN, actividad y máquina de estados UML,
+secuencia) los pasos se numeran **dentro del \`name\`**: \`"1. Validar cliente"\`.
+No lo escribas a mano: el MCP numera solo en cada guardado, en orden de flujo
+desde el inicio, y renumera al agregar, mover o borrar.
+
+- Se numeran las tareas/estados; inicio, fin, compuertas y eventos **no**.
+- Una bifurcación da sub-números por rama: \`3.1\`, \`3.2\` (y \`3.1.1\`, \`3.1.2\` si
+  una rama tiene varios pasos o anida otra). Donde se reúnen sigue \`4.\`.
+- En una secuencia, la etiqueta del mensaje lleva su orden: \`"2. buscarPersona()"\`.
+- Event Storming, C4 y MER no se numeran.
+- \`validate_diagram\`/\`review_diagram\` avisan (\`NUMERACION\`) pasos sin número,
+  fuera de orden o repetidos (típico en algo importado).
 
 ### El diagrama fijado y el proyecto destino
 

@@ -22,6 +22,7 @@ import { resolveCita } from "../source-docs";
 import { isContainerType } from "./catalog";
 import { hayProblemaDeLegibilidad } from "../layout/metrics";
 import { medirDisposicion } from "../layout/legible";
+import { problemasDeNumeracion } from "./numeracion";
 import {
   layout,
   MAX_EDGE_LABEL_CHARS,
@@ -451,9 +452,19 @@ function focalFindings(model: DiagramModel): QualityFinding[] {
   ];
 }
 
+/**
+ * Pasos de un flujo sin numerar, fuera de orden o repetidos (#618). Por MCP se
+ * numeran solos al guardar; esto atrapa lo que llegó de otro lado (un import, una
+ * edición a mano) y lo dice antes de que el humano lo lea mal.
+ */
+function numeracionFindings(model: DiagramModel): QualityFinding[] {
+  return problemasDeNumeracion(model).map((message) => ({ level: "aviso" as const, rule: "NUMERACION", message }));
+}
+
 export function qualityFindings(model: DiagramModel): QualityFinding[] {
   const all = [
     ...focalFindings(model),
+    ...numeracionFindings(model),
     ...sourceFindings(model),
     ...legibilidadFindings(model),
     ...flowFindings(model),
