@@ -52,17 +52,41 @@ export interface Muestra {
 }
 
 /**
- * Segundos de síntesis por segundo de audio. `<= 1` significa que la síntesis va
- * más rápido que la reproducción y se puede sonar en cuanto hay algo. La primera
- * muestra no cuenta: lleva el arranque del motor (cargar el modelo, la voz) y con
- * ella cualquier lectura parecería lenta. Sin muestras útiles se asume 1: ni
- * optimista ni pesimista hasta medir.
+ * Cuánto pesa el ritmo de lecturas anteriores frente a lo que se mide ahora, en
+ * segundos de audio: con 5 s medidos, lo nuevo y lo previo pesan igual; con un
+ * minuto, manda lo nuevo. Así una frase atípica no tira por la borda lo aprendido.
  */
-export function ritmoDeSintesis(todas: readonly Muestra[]): number {
-  const muestras = todas.slice(1);
+export const PESO_DEL_RITMO_PREVIO_S = 5;
+
+/**
+ * Segundos de síntesis por segundo de audio. `<= 1` significa que la síntesis va
+ * más rápido que la reproducción y se puede sonar en cuanto hay algo.
+ *
+ * Sin `previo` (primera lectura de la sesión) la primera muestra no cuenta: lleva
+ * el arranque del motor (cargar el modelo, la voz) y con ella cualquier lectura
+ * parecería lenta; sin muestras útiles se asume 1.
+ *
+ * Con `previo` —el ritmo que se midió en lecturas anteriores (#637)— el motor ya
+ * estaba caliente, así que cuenta todo y lo previo entra como peso inicial. Antes
+ * cada lectura arrancaba asumiendo 1, empezaba a sonar con la primera frase sola
+ * y, si la síntesis era más lenta que el habla, quedaba un silencio en cada frase.
+ */
+export function ritmoDeSintesis(todas: readonly Muestra[], previo?: number): number {
+  const muestras = previo === undefined ? todas.slice(1) : todas;
   const audio = muestras.reduce((s, m) => s + m.audioS, 0);
-  if (audio <= 0) return 1;
-  return muestras.reduce((s, m) => s + m.sintesisS, 0) / audio;
+  const sintesis = muestras.reduce((s, m) => s + m.sintesisS, 0);
+  if (previo === undefined) return audio > 0 ? sintesis / audio : 1;
+  return (sintesis + previo * PESO_DEL_RITMO_PREVIO_S) / (audio + PESO_DEL_RITMO_PREVIO_S);
+}
+
+/**
+ * ¿Lo que se programó ya terminó (o está por terminar) cuando llega el buffer
+ * siguiente? Entonces la síntesis se quedó atrás: en vez de sonar a saltos —una
+ * frase, silencio, otra frase— conviene volver a juntar audio (#637). Si todavía
+ * no se programó nada, no hay corte: es el arranque.
+ */
+export function seQuedaSinAudio(ahora: number, finProgramado: number, margen = MARGEN_S): boolean {
+  return finProgramado > 0 && finProgramado < ahora + margen;
 }
 
 /** Segundos de audio que produce un carácter, medido; sin muestras, ~15 car/s del habla. */
@@ -75,13 +99,19 @@ export function segundosPorCaracter(muestras: readonly Muestra[]): number {
 /**
  * ¿Ya se puede empezar a sonar? Mientras suena lo que hay en cola (`enColaS`), la
  * síntesis sigue con lo que falta (`faltaS` de audio, que tarda `ritmo · faltaS`).
- * No hay silencio si lo que falta se termina de sintetizar antes de que se acabe lo
- * que suena: `enColaS >= (ritmo - 1) · faltaS`. Si no falta nada, se suena ya.
+ *
+ * Una frase sólo suena cuando está ENTERA. La frase j que falta (con `a_j` de audio
+ * acumulado hasta ella inclusive y `d_j` propio) llega en `ritmo · a_j` y tiene que
+ * empezar en `enColaS + a_j − d_j`, así que no hay silencio si
+ * `enColaS ≥ (ritmo − 1) · a_j + d_j` para toda j. La cota que se usa es
+ * `max(0, ritmo − 1) · faltaS + min(ritmo, 1) · fraseMaxS`. La versión de #612 no
+ * sumaba la frase entera y la última llegaba tarde aun con el ritmo bien medido
+ * (#637). Si no falta nada, se suena ya.
  */
-export function debeArrancar(enColaS: number, faltaS: number, ritmo: number): boolean {
+export function debeArrancar(enColaS: number, faltaS: number, ritmo: number, fraseMaxS = 0): boolean {
   if (enColaS <= 0) return false;
   if (faltaS <= 0) return true;
-  return enColaS >= Math.max(0, ritmo - 1) * faltaS;
+  return enColaS >= Math.max(0, ritmo - 1) * faltaS + Math.min(ritmo, 1) * Math.min(fraseMaxS, faltaS);
 }
 
 /**
@@ -90,4 +120,24 @@ export function debeArrancar(enColaS: number, faltaS: number, ritmo: number): bo
  */
 export function inicioDelSiguiente(ahora: number, finProgramado: number, margen = MARGEN_S): number {
   return Math.max(ahora + margen, finProgramado);
+}
+
+/**
+ * La decisión que se toma cada vez que llega una frase sintetizada: ¿se programa
+ * lo que hay en cola o se sigue juntando? Mientras suena, se sigue sonando; si ya
+ * se quedó sin audio, se vuelve a juntar hasta que el colchón cubra lo que falta
+ * (`debeArrancar`). Es lo que aplica `useLeerEnVoz` frase por frase (#637).
+ */
+export function decidirSonar(p: {
+  sonando: boolean;
+  ahora: number;
+  fin: number;
+  enColaS: number;
+  faltaS: number;
+  /** Audio de la frase más larga que falta sintetizar. */
+  fraseMaxS?: number;
+  ritmo: number;
+}): boolean {
+  if (p.sonando && !seQuedaSinAudio(p.ahora, p.fin)) return true;
+  return debeArrancar(p.enColaS, p.faltaS, p.ritmo, p.fraseMaxS);
 }
