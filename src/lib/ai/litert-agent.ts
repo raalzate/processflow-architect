@@ -21,7 +21,8 @@ import {
   diagramDefinitions,
 } from "@/lib/artifacts/registry";
 import { artifactRequestDirective, resolveArtifactRequest } from "@/lib/artifacts/request";
-import type { AgentHint, AgentRunState, AgentStep } from "@/lib/agent-types";
+import { textoDelModelo } from "./pause-summary";
+import type { AgentHint, AgentPause, AgentRunState, AgentStep } from "@/lib/agent-types";
 import { formatInventory, listViews, sourceInventory, type Catalog } from "./agent-retrieval";
 import {
   applyToolCall,
@@ -993,7 +994,7 @@ ${clamp(formatInventory(listViews(cat)), invMax)}${
   }`;
 }
 
-function planFromJson(raw: any): { kind: "plan"; title: string; artifactKind: string; sections: { title: string; sources: string[] }[] } | null {
+function planFromJson(raw: any): Extract<AgentPause, { kind: "plan" }> | null {
   const p = raw?.plan ?? raw;
   if (!p || typeof p !== "object") return null;
   const secciones = Array.isArray(p.sections) ? p.sections : [];
@@ -1007,10 +1008,13 @@ function planFromJson(raw: any): { kind: "plan"; title: string; artifactKind: st
         .filter(Boolean)
         .map((x: any) => String(x)),
     })),
+    // El qué y el porqué, para que el humano sepa lo que aprueba (#613). Si no
+    // viene, la tarjeta arma uno determinista (`pause-summary.ts`).
+    ...(textoDelModelo(p.summary) ? { summary: textoDelModelo(p.summary) } : {}),
   };
 }
 
-function questionFromJson(raw: any): { kind: "question"; id: string; text: string; options: string[] } | null {
+function questionFromJson(raw: any): Extract<AgentPause, { kind: "question" }> | null {
   const q = raw?.question ?? raw;
   if (!q || typeof q !== "object" || !q.text) return null;
   return {
@@ -1018,6 +1022,7 @@ function questionFromJson(raw: any): { kind: "question"; id: string; text: strin
     id: String(q.id ?? slugishId(String(q.text))),
     text: String(q.text),
     options: (Array.isArray(q.options) ? q.options : []).map((o: any) => String(o)),
+    ...(textoDelModelo(q.why) ? { why: textoDelModelo(q.why) } : {}),
   };
 }
 
@@ -1090,8 +1095,8 @@ async function exploreLoop(
 Trabajas en un bucle Razonamiento→Acción sobre un proyecto cuyo contenido NO conocés todavía: lo LEÉS con herramientas.
 En CADA turno respondés con UN ÚNICO objeto JSON, sin texto fuera de él y sin fences:
 - Leer o generar: {"thought":"por qué","action":"<nombre>","args":{...}}
-- Proponer el plan (obligatorio antes de generar): {"thought":"...","plan":{"title":"...","artifactKind":"<kind>","sections":[{"title":"...","sources":["<vista o documento>"]}]}}
-- Preguntar al humano SÓLO si la respuesta cambia el resultado: {"thought":"...","question":{"id":"<corto>","text":"...","options":["opción por defecto","alternativa"]}}
+- Proponer el plan (obligatorio antes de generar): {"thought":"...","plan":{"title":"...","artifactKind":"<kind>","summary":"qué vas a generar, para qué sirve y por qué ese enfoque, en 1-2 frases para el humano","sections":[{"title":"...","sources":["<vista o documento>"]}]}}
+- Preguntar al humano SÓLO si la respuesta cambia el resultado: {"thought":"...","question":{"id":"<corto>","text":"...","why":"qué cambia según la opción, en una frase","options":["opción por defecto","alternativa"]}}
 - Cerrar conversando: {"thought":"...","final":"<respuesta>"}
 
 Reglas: el campo thought va en UNA frase corta (máximo 15 palabras): lo que escribís de más son segundos de espera para el humano. Ya tenés el inventario abajo, así que empezá leyendo en lote lo que te sirva. Un proyecto suele tener vistas de VARIAS notaciones (DDD, BPMN, C4, UML) y cada una aporta algo distinto: mirá el inventario completo y no planifiques con la primera vista que abriste. Si descartás vistas, decí en el plan por qué. No inventes nombres de vistas (usá los del inventario); no repitas una pregunta ya respondida; cuando te digan que no hay presupuesto, consolidá con lo anotado.
