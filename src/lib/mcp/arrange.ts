@@ -19,9 +19,11 @@ import {
   fromGraphData,
   relayoutConMedida,
   reorderLanesConMedida,
+  elegirEstrategia,
   type BuilderEdge,
   type LayoutOptions,
 } from "./diagram-builder";
+import type { RecomendacionDeLayout } from "./layout-advisor";
 
 export interface ArrangedBox {
   x: number;
@@ -71,6 +73,21 @@ export function laneSummary(graph: GraphData): string {
       return `${a.nombre_agregado}: ${hijos || "(vacío)"}`;
     })
     .join("\n");
+}
+
+/**
+ * Qué estrategia conviene a este grafo y por qué (ver `layout-advisor`). Es lo
+ * que el menú «Organizar» marca como sugerida.
+ */
+export function recommendArrangement(
+  graph: GraphData,
+  notation: NotationId | string | undefined,
+  density?: LayoutOptions["density"]
+): RecomendacionDeLayout {
+  return elegirEstrategia(
+    fromGraphData(graph, (notation as NotationId) || (graph.notation as NotationId) || "ddd"),
+    { density }
+  );
 }
 
 /**

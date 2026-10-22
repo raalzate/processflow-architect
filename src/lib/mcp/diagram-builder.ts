@@ -64,8 +64,10 @@ import {
 import { disponerLegible, medirDisposicion, type DisposicionLegible } from "../layout/legible";
 import { validTypesFor } from "./catalog";
 import { mermaidSafeId } from "./mermaid-id";
+import { recomendarEstrategia, type RecomendacionDeLayout } from "./layout-advisor";
 import {
   getPreset,
+  LAYOUT_STRATEGIES,
   resolveStrategy,
   scalePreset,
   type LayoutDensity,
@@ -1139,7 +1141,8 @@ const ROLES_ABAJO: ElementRole[] = ["system", "datastore", "external", "command"
 /** Opciones de disposición: densidad y estrategia (ver `layout-presets`). */
 export interface LayoutOptions {
   density?: LayoutDensity;
-  strategy?: LayoutStrategy;
+  /** `auto` = la que recomienda `layout-advisor` para ESTE diagrama. */
+  strategy?: LayoutStrategy | "auto";
   /** Techo de tiempo de la fase de legibilidad (ver `layout/legible.ts`). */
   presupuestoMs?: number;
   /**
@@ -1510,6 +1513,392 @@ function layoutRadial(model: DiagramModel, preset: LayoutPreset): DiagramModel {
 }
 
 /**
+ * Orden de LECTURA dentro de una columna o de una rejilla: quién actúa, qué pide,
+ * qué pasa y cómo se reacciona, y al final de qué se depende. Se decide por el
+ * rol que declara la notación (P6); lo que no juega ningún rol va al final.
+ */
+const ORDEN_DE_LECTURA: ElementRole[] = [
+  "actor",
+  "command",
+  "start",
+  "task",
+  "gateway",
+  "event",
+  "end",
+  "policy",
+  "rule",
+  "entity",
+  "relationship",
+  "attribute",
+  "system",
+  "external",
+  "datastore",
+];
+
+function pesoDeLectura(notation: NotationId, tipo: string): number {
+  const rol = roleOfType(notation, tipo);
+  const i = rol ? ORDEN_DE_LECTURA.indexOf(rol) : -1;
+  return i < 0 ? ORDEN_DE_LECTURA.length : i;
+}
+
+/** Aristas entre elementos de un mismo grupo, sin los flujos de mensaje. */
+const aristasDelGrupo = (model: DiagramModel, ids: Set<string>): BuilderEdge[] =>
+  model.edges.filter((e) => ids.has(e.fuente) && ids.has(e.destino) && !isMessageEdge(model, e));
+
+/**
+ * Herencia y realización apuntan al PADRE (el triángulo va en el destino). En un
+ * árbol el padre va arriba, así que para rankear se leen al revés; composición y
+ * agregación ya salen del todo, que es lo que tiene que quedar arriba.
+ */
+const RELACIONES_HACIA_EL_PADRE = new Set<EdgeRelationKind>(["herencia", "realizacion"]);
+const haciaAbajo = (e: BuilderEdge): BuilderEdge =>
+  e.relation && RELACIONES_HACIA_EL_PADRE.has(e.relation) ? { ...e, fuente: e.destino, destino: e.fuente } : e;
+
+/**
+ * Layout JERÁRQUICO, para lo que se lee como árbol (herencia, descomposición de
+ * un sistema, árboles de decisión): niveles de arriba abajo por longest-path, y
+ * dentro de cada nivel cada elemento se pone debajo del baricentro de quienes lo
+ * traen. Cada grupo es un bloque propio y los bloques van lado a lado: si un
+ * contenedor envolviera hijos de varios niveles mezclados con los del vecino,
+ * las cajas se pisarían.
+ *
+ * Determinista: el nivel sale del grafo, el orden del baricentro y los empates
+ * los rompe el orden de declaración.
+ */
+function layoutJerarquico(model: DiagramModel, preset: LayoutPreset): DiagramModel {
+  const sz = cellSize(model);
+  const containers = model.nodes.filter(isContainerNode);
+  const nodes = model.nodes.filter((n) => !isContainerNode(n));
+  const containerNames = new Set(containers.map((c) => c.nombre));
+  const orden = new Map(model.nodes.map((n, i) => [n.id, i]));
+  // Las relaciones de un árbol corren en VERTICAL: el hueco entre niveles es el
+  // que el preset da entre columnas, y el de hermanos uno intermedio.
+  const pasoX = sz.w + Math.round((preset.hGap + preset.vGap) / 2);
+  const pasoY = sz.h + Math.round(preset.hGap * 0.75);
+
+  /** Niveles del grupo y la x (relativa) de cada elemento. */
+  const bloque = (grupo: BuilderNode[]) => {
+    const ids = new Set(grupo.map((n) => n.id));
+    const aristas = aristasDelGrupo(model, ids).map(haciaAbajo);
+    const rank = rankByFlow(grupo.map((n) => n.id), aristas);
+    const padres = new Map<string, string[]>(grupo.map((n) => [n.id, []]));
+    for (const e of aristas)
+      if ((rank.get(e.fuente) ?? 0) < (rank.get(e.destino) ?? 0)) padres.get(e.destino)!.push(e.fuente);
+
+    const niveles = new Map<number, BuilderNode[]>();
+    for (const n of grupo) {
+      const r = rank.get(n.id) ?? 0;
+      (niveles.get(r) ?? niveles.set(r, []).get(r)!).push(n);
+    }
+    const x = new Map<string, number>();
+    const filas: BuilderNode[][] = [];
+    for (const r of [...niveles.keys()].sort((a, b) => a - b)) {
+      // Dónde QUERRÍA ir cada uno: debajo del promedio de sus padres.
+      const deseo = (n: BuilderNode) => {
+        const ps = padres.get(n.id)!.filter((p) => x.has(p));
+        return ps.length ? ps.reduce((t, p) => t + x.get(p)!, 0) / ps.length : Number.POSITIVE_INFINITY;
+      };
+      const fila = [...niveles.get(r)!].sort((a, b) => {
+        const da = deseo(a);
+        const db = deseo(b);
+        if (da !== db) return da < db ? -1 : 1;
+        return orden.get(a.id)! - orden.get(b.id)!;
+      });
+      // Barrido: cada uno en su deseo, pero nunca a menos de un paso del de su
+      // izquierda. Después la fila entera se corre para quedar centrada sobre
+      // lo que pedía: el corrimiento no rompe ninguna separación.
+      const puestos: number[] = [];
+      fila.forEach((n, i) => {
+        const d = deseo(n);
+        const minimo = i ? puestos[i - 1] + pasoX : Number.NEGATIVE_INFINITY;
+        const libre = Number.isFinite(d) ? d : i ? puestos[i - 1] + pasoX : 0;
+        puestos.push(Math.max(minimo, libre));
+      });
+      const conDeseo = fila.map((n, i) => ({ d: deseo(n), p: puestos[i] })).filter((v) => Number.isFinite(v.d));
+      const corrimiento = conDeseo.length
+        ? conDeseo.reduce((t, v) => t + (v.d - v.p), 0) / conDeseo.length
+        : -(puestos[puestos.length - 1] - puestos[0]) / 2;
+      fila.forEach((n, i) => x.set(n.id, puestos[i] + corrimiento));
+      filas.push(fila);
+    }
+    const xs = [...x.values()];
+    const minX = xs.length ? Math.min(...xs) : 0;
+    const ancho = xs.length ? Math.max(...xs) - minX + sz.w : sz.w;
+    const alto = Math.max(1, filas.length) * pasoY - (pasoY - sz.h);
+    return { filas, x, minX, ancho, alto };
+  };
+
+  const out: BuilderNode[] = [];
+  const cajas: BuilderNode[] = [];
+  let cursorX = X0;
+  const colocar = (grupo: BuilderNode[], caja?: BuilderNode) => {
+    const { filas, x, minX, ancho, alto } = bloque(grupo);
+    const padX = caja ? preset.lanePadX : 0;
+    const padTop = caja ? preset.lanePadTop : 0;
+    filas.forEach((fila, r) =>
+      fila.forEach((n) =>
+        out.push({
+          ...n,
+          x: Math.round(cursorX + padX + x.get(n.id)! - minX),
+          y: Y0 + padTop + r * pasoY,
+          width: sz.w,
+          height: sz.h,
+        })
+      )
+    );
+    const anchoCaja = ancho + 2 * padX;
+    if (caja) cajas.push({ ...caja, x: cursorX, y: Y0, width: anchoCaja, height: padTop + alto + preset.lanePadBottom });
+    cursorX += anchoCaja + preset.hGap;
+  };
+
+  const sueltos = nodes.filter((n) => !n.container || !containerNames.has(n.container));
+  if (sueltos.length) colocar(sueltos);
+  for (const c of containers) colocar(nodes.filter((n) => n.container === c.nombre), c);
+
+  // Los recuadros comparten alto: lado a lado se leen como ramas comparables.
+  const altoComun = Math.max(0, ...cajas.map((c) => c.height!));
+  return { ...model, nodes: [...cajas.map((c) => ({ ...c, height: altoComun })), ...out] };
+}
+
+/**
+ * Layout de LÍNEA DE TIEMPO, para historias que cruzan grupos (Event Storming
+ * Big Picture, un proceso entre varios participantes): una banda por grupo como
+ * en el flujo, pero el rango es GLOBAL. En el flujo cada carril cuenta su propio
+ * avance y un paso de un contexto queda a la altura de algo que en realidad pasó
+ * antes en otro; aquí la columna ES el momento, así que lo posterior queda a la
+ * derecha aunque cambie de banda.
+ *
+ * Dentro de una columna se apila por orden de lectura (quién, qué pide, qué
+ * pasa, cómo se reacciona). Lo que no se relaciona con nada no tiene momento: va
+ * en una fila aparte al pie de su banda, en vez de engordar la primera columna.
+ */
+function layoutLineaDeTiempo(model: DiagramModel, preset: LayoutPreset): DiagramModel {
+  const sz = cellSize(model);
+  const { colX, laneWidthFor } = metrics(preset, sz);
+  const containers = model.nodes.filter(isContainerNode);
+  const nodes = model.nodes.filter((n) => !isContainerNode(n));
+  const containerNames = new Set(containers.map((c) => c.nombre));
+  const { notation } = model.meta;
+  const orden = new Map(model.nodes.map((n, i) => [n.id, i]));
+
+  // Aquí SÍ cuentan los mensajes: un mensaje enviado ocurre antes de recibirse,
+  // y eso es justo lo que el eje común tiene que mostrar.
+  const idsNodo = new Set(nodes.map((n) => n.id));
+  const rank = rankByFlow(nodes.map((n) => n.id), model.edges);
+  const conectados = new Set<string>();
+  for (const e of model.edges) {
+    if (e.fuente === e.destino || !idsNodo.has(e.fuente) || !idsNodo.has(e.destino)) continue;
+    conectados.add(e.fuente);
+    conectados.add(e.destino);
+  }
+  // Lo que sólo DISPARA (un actor, un sistema externo que manda algo) no tiene
+  // un momento propio: va justo antes de lo primero que provoca. Con el rango a
+  // secas todos caían en la columna 0 y la primera columna era una torre de
+  // actores lejos del paso que cada uno arranca.
+  const conPredecesor = new Set<string>();
+  const sucesores = new Map<string, string[]>();
+  for (const e of model.edges) {
+    if (e.fuente === e.destino || !idsNodo.has(e.fuente) || !idsNodo.has(e.destino)) continue;
+    conPredecesor.add(e.destino);
+    (sucesores.get(e.fuente) ?? sucesores.set(e.fuente, []).get(e.fuente)!).push(e.destino);
+  }
+  for (const [fuente, destinos] of sucesores) {
+    if (conPredecesor.has(fuente)) continue;
+    const primero = Math.min(...destinos.map((d) => rank.get(d) ?? 0));
+    rank.set(fuente, Math.max(0, primero - 1));
+  }
+  const momentos = Math.max(1, ...nodes.filter((n) => conectados.has(n.id)).map((n) => (rank.get(n.id) ?? 0) + 1));
+  const lectura = (a: BuilderNode, b: BuilderNode) =>
+    pesoDeLectura(notation, a.tipo_elemento) - pesoDeLectura(notation, b.tipo_elemento) ||
+    orden.get(a.id)! - orden.get(b.id)!;
+
+  const banda = (grupo: BuilderNode[], top: number, padTop: number) => {
+    const porMomento = new Map<number, BuilderNode[]>();
+    for (const n of grupo.filter((n) => conectados.has(n.id))) {
+      const r = rank.get(n.id) ?? 0;
+      (porMomento.get(r) ?? porMomento.set(r, []).get(r)!).push(n);
+    }
+    const laid: BuilderNode[] = [];
+    let filas = 0;
+    for (const [r, col] of porMomento) {
+      col.sort(lectura).forEach((n, j) =>
+        laid.push({ ...n, x: colX(r), y: top + padTop + j * (sz.h + preset.vGap), width: sz.w, height: sz.h })
+      );
+      filas = Math.max(filas, col.length);
+    }
+    const sinMomento = grupo.filter((n) => !conectados.has(n.id));
+    const colsSueltos = Math.max(momentos, Math.min(preset.colsPerRow, sinMomento.length));
+    sinMomento.forEach((n, i) =>
+      laid.push({
+        ...n,
+        x: colX(i % colsSueltos),
+        y: top + padTop + (filas + Math.floor(i / colsSueltos)) * (sz.h + preset.vGap),
+        width: sz.w,
+        height: sz.h,
+      })
+    );
+    filas += Math.ceil(sinMomento.length / colsSueltos);
+    const cols = sinMomento.length ? colsSueltos : momentos;
+    const height = padTop + Math.max(1, filas) * (sz.h + preset.vGap) - preset.vGap + preset.lanePadBottom;
+    return { laid, height, cols };
+  };
+
+  const out: BuilderNode[] = [];
+  let cursorY = Y0;
+  const sueltos = nodes.filter((n) => !n.container || !containerNames.has(n.container));
+  if (sueltos.length) {
+    const { laid, height } = banda(sueltos, cursorY, 0);
+    out.push(...laid);
+    cursorY += height + preset.laneGap;
+  }
+  const bandas: Array<{ c: BuilderNode; top: number; height: number; cols: number }> = [];
+  for (const c of containers) {
+    const { laid, height, cols } = banda(nodes.filter((n) => n.container === c.nombre), cursorY, preset.lanePadTop);
+    out.push(...laid);
+    bandas.push({ c, top: cursorY, height, cols });
+    cursorY += height + preset.laneGap;
+  }
+  // Un solo eje para todos: las bandas miden lo mismo y el tiempo se lee de corrido.
+  const anchoComun = laneWidthFor(Math.max(momentos, ...bandas.map((b) => b.cols)));
+  for (const { c, top, height } of bandas) out.push({ ...c, x: X0, y: top, width: anchoComun, height });
+  return { ...model, nodes: out };
+}
+
+/**
+ * Layout POR GRUPOS (mosaico), para diagramas con muchos grupos: apilados en
+ * bandas, diez contextos son una torre que no entra en pantalla; en mosaico se
+ * leen como un mapa. Cada grupo es una celda con su contenido en rejilla casi
+ * cuadrada, y las celdas se alinean en columnas y filas para que el mapa se lea
+ * como tabla.
+ *
+ * El orden de las celdas acerca a los grupos que más se relacionan: arranca por
+ * el más conectado y sigue, en cadena, por el que más relaciones tiene con lo ya
+ * puesto. Los empates los rompe el orden de declaración (determinista).
+ */
+function layoutPorGrupos(model: DiagramModel, preset: LayoutPreset): DiagramModel {
+  const sz = cellSize(model);
+  const containers = model.nodes.filter(isContainerNode);
+  const nodes = model.nodes.filter((n) => !isContainerNode(n));
+  const containerNames = new Set(containers.map((c) => c.nombre));
+  const { notation } = model.meta;
+  const orden = new Map(model.nodes.map((n, i) => [n.id, i]));
+  const pasoX = sz.w + Math.round(preset.hGap / 2);
+  const pasoY = sz.h + preset.vGap;
+
+  interface Bloque {
+    caja?: BuilderNode;
+    hijos: BuilderNode[];
+    cols: number;
+    w: number;
+    h: number;
+    padX: number;
+    padTop: number;
+  }
+  const armar = (hijos: BuilderNode[], caja?: BuilderNode): Bloque => {
+    const ids = new Set(hijos.map((n) => n.id));
+    const rank = rankByFlow(hijos.map((n) => n.id), aristasDelGrupo(model, ids));
+    // Dentro de la celda se lee en orden de avance y, a igual avance, por rol.
+    const ordenados = [...hijos].sort(
+      (a, b) =>
+        (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0) ||
+        pesoDeLectura(notation, a.tipo_elemento) - pesoDeLectura(notation, b.tipo_elemento) ||
+        orden.get(a.id)! - orden.get(b.id)!
+    );
+    const cols = Math.max(1, Math.min(preset.colsPerRow, Math.ceil(Math.sqrt(hijos.length))));
+    const filas = Math.max(1, Math.ceil(hijos.length / cols));
+    const padX = caja ? preset.lanePadX : 0;
+    const padTop = caja ? preset.lanePadTop : 0;
+    return {
+      caja,
+      hijos: ordenados,
+      cols,
+      padX,
+      padTop,
+      w: 2 * padX + (cols - 1) * pasoX + sz.w,
+      h: padTop + (filas - 1) * pasoY + sz.h + (caja ? preset.lanePadBottom : 0),
+    };
+  };
+
+  const bloques: Bloque[] = [];
+  const sueltos = nodes.filter((n) => !n.container || !containerNames.has(n.container));
+  if (sueltos.length) bloques.push(armar(sueltos));
+  for (const c of containers) bloques.push(armar(nodes.filter((n) => n.container === c.nombre), c));
+
+  // Peso entre celdas: cuántas relaciones cruzan de una a otra.
+  const bloqueDe = new Map<string, number>();
+  bloques.forEach((b, i) => b.hijos.forEach((n) => bloqueDe.set(n.id, i)));
+  const peso = bloques.map(() => bloques.map(() => 0));
+  for (const e of model.edges) {
+    const a = bloqueDe.get(e.fuente);
+    const b = bloqueDe.get(e.destino);
+    if (a === undefined || b === undefined || a === b) continue;
+    peso[a][b]++;
+    peso[b][a]++;
+  }
+  const total = (i: number) => peso[i].reduce((t, v) => t + v, 0);
+  const restantes = bloques.map((_, i) => i);
+  const secuencia: number[] = [];
+  const tomar = (puntaje: (i: number) => number) => {
+    // `reduce` sobre índices ascendentes: a igual puntaje gana el declarado antes.
+    const mejor = restantes.reduce((m, i) => (puntaje(i) > puntaje(m) ? i : m), restantes[0]);
+    restantes.splice(restantes.indexOf(mejor), 1);
+    secuencia.push(mejor);
+  };
+  if (restantes.length) tomar(total);
+  while (restantes.length) {
+    const ultimo = secuencia[secuencia.length - 1];
+    // Pesa el doble el vecino inmediato: es el que queda pegado en el mosaico.
+    tomar((i) => 2 * peso[ultimo][i] + secuencia.reduce((t, j) => t + peso[j][i], 0));
+  }
+
+  // Rejilla casi cuadrada de celdas, con columnas y filas alineadas.
+  const porFila = Math.max(1, Math.ceil(Math.sqrt(secuencia.length)));
+  const anchoCol: number[] = [];
+  const altoFila: number[] = [];
+  secuencia.forEach((b, k) => {
+    const col = k % porFila;
+    const fila = Math.floor(k / porFila);
+    anchoCol[col] = Math.max(anchoCol[col] ?? 0, bloques[b].w);
+    altoFila[fila] = Math.max(altoFila[fila] ?? 0, bloques[b].h);
+  });
+  const xCol = (col: number) => X0 + anchoCol.slice(0, col).reduce((t, v) => t + v, 0) + col * preset.hGap;
+  const yFila = (fila: number) => Y0 + altoFila.slice(0, fila).reduce((t, v) => t + v, 0) + fila * preset.laneGap;
+
+  const cajas: BuilderNode[] = [];
+  const out: BuilderNode[] = [];
+  secuencia.forEach((b, k) => {
+    const bloque = bloques[b];
+    const col = k % porFila;
+    const fila = Math.floor(k / porFila);
+    const x0 = xCol(col);
+    const y0 = yFila(fila);
+    // El contenido va centrado en la celda; el recuadro la ocupa entera.
+    const margen = Math.round((anchoCol[col] - bloque.w) / 2);
+    bloque.hijos.forEach((n, i) =>
+      out.push({
+        ...n,
+        x: x0 + margen + bloque.padX + (i % bloque.cols) * pasoX,
+        y: y0 + bloque.padTop + Math.floor(i / bloque.cols) * pasoY,
+        width: sz.w,
+        height: sz.h,
+      })
+    );
+    if (bloque.caja) cajas.push({ ...bloque.caja, x: x0, y: y0, width: anchoCol[col], height: altoFila[fila] });
+  });
+  return { ...model, nodes: [...cajas, ...out] };
+}
+
+/** Qué función dibuja cada estrategia. Un `Record` obliga a cubrirlas todas. */
+const DISPOSICIONES: Record<LayoutStrategy, (model: DiagramModel, preset: LayoutPreset) => DiagramModel> = {
+  flujo: layoutPorFlujo,
+  capas: layoutPorRol,
+  radial: layoutRadial,
+  jerarquia: layoutJerarquico,
+  linea_tiempo: layoutLineaDeTiempo,
+  grupos: layoutPorGrupos,
+};
+
+/**
  * Descarta la geometría y vuelve a calcularla. Necesario porque `layout()`
  * respeta un modelo ya posicionado: un diagrama construido antes de una mejora
  * de layout —o importado desde la app, que siempre trae x/y— se quedaría con la
@@ -1603,13 +1992,13 @@ export function layoutConMedida(
 
   // El aire se escala al tamaño de nodo de la notación (ver `scalePreset`).
   const preset = scalePreset(getPreset(opts.density), cellSize(model));
-  const strategy = resolveStrategy(opts.strategy, model.meta.notation);
-  const dispuesto =
-    strategy === "flujo"
-      ? layoutPorFlujo(model, preset)
-      : strategy === "radial"
-        ? layoutRadial(model, preset)
-        : layoutPorRol(model, preset);
+  // `auto` pregunta al asesor: decide por la notación Y por lo que el diagrama
+  // tiene, con reglas fijas (`layout-advisor.ts`).
+  const strategy =
+    opts.strategy === "auto"
+      ? elegirEstrategia(model, { density: opts.density }).strategy
+      : resolveStrategy(opts.strategy, model.meta.notation);
+  const dispuesto = DISPOSICIONES[strategy](model, preset);
   const legible = disponerLegible(dispuesto, {
     presupuestoMs: opts.presupuestoMs,
     ahora: opts.ahora,
@@ -1622,6 +2011,56 @@ export function layoutConMedida(
       ...legible.model,
       meta: { ...legible.model.meta, layout: { density: preset.id, strategy } },
     },
+  };
+}
+
+/**
+ * Hasta cuántos elementos se MIDE cada candidata antes de elegir. La medida corre
+ * con el reloj congelado —todas las pasadas, resultado determinista—, así que su
+ * coste crece con el diagrama; por encima de esto manda sólo la regla.
+ */
+export const ELEMENTOS_PARA_MEDIR = 80;
+
+/** Coste de legibilidad: un cruce molesta más que pasar sobre una caja. */
+const costeDeLegibilidad = (l: { cruces: number; sobreCaja: number; solape: number }) =>
+  3 * l.cruces + 2 * l.sobreCaja + l.solape;
+
+/**
+ * La estrategia para ESTE diagrama: el asesor propone por reglas (notación,
+ * grupos, forma de las relaciones) y aquí se miden sus candidatas con la misma
+ * medida de legibilidad del gate. Gana la de menor coste; a igual coste, la que
+ * la regla puso primero. Sin azar y sin reloj real: el mismo diagrama recibe
+ * siempre la misma respuesta.
+ */
+export function elegirEstrategia(
+  model: DiagramModel,
+  opts: { density?: LayoutDensity } = {}
+): RecomendacionDeLayout {
+  const regla = recomendarEstrategia(model);
+  const candidatas = [regla.strategy, ...regla.alternativas];
+  if (candidatas.length < 2 || regla.senales.secuencia || regla.senales.elementos > ELEMENTOS_PARA_MEDIR)
+    return regla;
+
+  const desnudo = { ...model, nodes: model.nodes.map(({ x, y, width, height, ...n }) => n) };
+  const medidas = candidatas.map((strategy) => ({
+    strategy,
+    medida: layoutConMedida(desnudo, { density: opts.density, strategy, ahora: () => 0 }).legibilidad.despues,
+  }));
+  const mejor = medidas.reduce((m, c) => (costeDeLegibilidad(c.medida) < costeDeLegibilidad(m.medida) ? c : m));
+  if (mejor.strategy === regla.strategy) return regla;
+
+  const propuesta = medidas[0].medida;
+  const etiqueta = (id: LayoutStrategy) => LAYOUT_STRATEGIES[id].label.toLowerCase();
+  return {
+    ...regla,
+    strategy: mejor.strategy,
+    // El motivo dice la medida, no la regla: la regla pedía otra cosa y repetirla
+    // al lado de lo contrario se leería como contradicción.
+    motivo:
+      `Medido en este diagrama: ${etiqueta(mejor.strategy)} deja ${mejor.medida.cruces} cruces ` +
+      `y ${mejor.medida.sobreCaja} sobre caja; ${etiqueta(regla.strategy)}, ` +
+      `${propuesta.cruces} y ${propuesta.sobreCaja}.`,
+    alternativas: candidatas.filter((c) => c !== mejor.strategy),
   };
 }
 

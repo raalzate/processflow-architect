@@ -313,6 +313,24 @@ describe("relayout_diagram", () => {
     );
     expect(nuevo.edges).toEqual(viejo.edges);
   });
+
+  it("con strategy=auto elige el asesor y la respuesta dice por qué", async () => {
+    const t = toolsFor();
+    const created = await t.textOf("create_diagram", { name: "Árbol", notation: "c4" });
+    const id = /diagramId="([^"]+)"/.exec(created)![1];
+    for (const n of ["raiz", "a", "b", "c", "d"])
+      await t.call("add_node", { diagramId: id, id: n, name: n, type: tipo("c4", "system") });
+    for (const [from, to] of [["raiz", "a"], ["raiz", "b"], ["a", "c"], ["a", "d"]])
+      await t.call("add_edge", { diagramId: id, from, to, label: "contiene" });
+
+    const out = await t.textOf("relayout_diagram", { diagramId: id, strategy: "auto" });
+    expect(out).toMatch(/Disposición: \w+ · jerarquia\./);
+    expect(out).toContain("Elegida por el asesor:");
+
+    // Lo guardado es la estrategia concreta: repetir sin argumentos la reproduce.
+    const file = path.join(workspace, ".processflow", "diagrams", `${id}.json`);
+    expect(JSON.parse(await fs.readFile(file, "utf8")).meta.layout.strategy).toBe("jerarquia");
+  });
 });
 
 describe("suggest_views", () => {

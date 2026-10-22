@@ -108,7 +108,7 @@ ser —no inventar un sinónimo de algo que ya existe en otro grupo—, sólo de
 | `remove_element` / `remove_edge` | borran nodo/contenedor (con sus aristas) o una relación. |
 
 Los tres primeros aceptan `estado` (`existente` · `modificado` · `nuevo` · `sin_cambios` · `eliminado`), el vocabulario que distingue **documentar lo que hay** de **diseñar lo que viene**. Por defecto es `nuevo`: sin declararlo, el lienzo pinta como propuesta un sistema que ya está en producción. Sale de un solo lugar (`ESTADOS` en `src/lib/mcp/diagram-builder.ts`).
-| `relayout_diagram` | rehace la disposición con estrategia y densidad (`src/lib/mcp/layout-presets.ts`), y responde cuánto mejoró la legibilidad: cruces y relaciones sobre caja ajena, antes y después ([ADR 0003](../decisions/0003-legibilidad-de-la-disposicion.md)). |
+| `relayout_diagram` | rehace la disposición con estrategia y densidad (`src/lib/mcp/layout-presets.ts`): `flujo`, `linea_tiempo`, `capas`, `jerarquia`, `grupos`, `radial`, o `auto` —el asesor determinista de `src/lib/mcp/layout-advisor.ts` propone por reglas y `elegirEstrategia` mide las candidatas—, y responde cuánto mejoró la legibilidad: cruces y relaciones sobre caja ajena, antes y después ([ADR 0003](../decisions/0003-legibilidad-de-la-disposicion.md)). |
 | `render_mermaid` | vista previa Mermaid del modelo. |
 
 ### 4 · Revisión — el filtro antes de subir

@@ -21,8 +21,11 @@ export type NotationId = "ddd" | "bpmn" | "c4" | "uml" | "mer" | "general";
  *  - flujo:  bandas y avance de izquierda a derecha (hay inicio y fin).
  *  - capas:  filas por rol semántico (actores arriba, dependencias abajo).
  *  - radial: un concepto central y anillos concéntricos de relaciones.
+ *  - jerarquia: niveles de arriba abajo; lo que cuelga va debajo de quien lo trae.
+ *  - linea_tiempo: bandas sobre un eje de tiempo COMÚN a todos los grupos.
+ *  - grupos: los grupos en mosaico, cada uno con su contenido en rejilla.
  */
-export type LayoutHint = "flujo" | "capas" | "radial";
+export type LayoutHint = "flujo" | "capas" | "radial" | "jerarquia" | "linea_tiempo" | "grupos";
 
 /**
  * Forma SVG con la que se dibuja un nodo NO contenedor en el lienzo.

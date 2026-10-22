@@ -67,7 +67,7 @@ puede cumplirlas); por stdio no se registran.
 | | `add_edge` | Conectar dos elementos (clasifica solo: interna / política / big picture). |
 | | `update_element` / `update_edge` | Corregir sin borrar y recrear (conserva id, citas y geometría). En `update_element`, `metadata` agrega/reemplaza referencias por clave y `metadataRemove` las borra. |
 | | `remove_element` / `remove_edge` | Borrar nodo/contenedor con sus aristas, o una relación. |
-| | `relayout_diagram` | Rehacer la disposición (estrategia + densidad). |
+| | `relayout_diagram` | Rehacer la disposición (estrategia + densidad; `strategy: "auto"` la elige el asesor y dice por qué). |
 | | `render_mermaid` | Vista previa Mermaid. |
 | Revisión | `validate_diagram` | ¿La app puede importar esto? Tipos, ids duplicados, aristas colgantes, aislados + calidad. |
 | | `review_diagram` | Paquete para el humano: historia, tabla «elemento ← fuente», decisiones y pendientes, hallazgos, veredicto. |

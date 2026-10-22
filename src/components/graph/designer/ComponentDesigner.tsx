@@ -133,7 +133,7 @@ import {
   SIN_PREVIOS,
   type PreviosIA,
 } from "@/lib/ai/suggestion-undo";
-import { arrangeGraphData, laneNames, laneSummary } from "@/lib/mcp/arrange";
+import { arrangeGraphData, laneNames, laneSummary, recommendArrangement } from "@/lib/mcp/arrange";
 import { aplicarRecorridos } from "./link-arrange";
 import {
   DEFAULT_DENSITY,
@@ -4617,6 +4617,16 @@ export const ComponentDesigner: React.FC<{
     [arrangement, meta, notationId, pushSnapshot, updateNodes]
   );
 
+  // La sugerida se pide al abrir el menú: el asesor lee el diagrama de ESE momento.
+  const recommendStrategy = useCallback(() => {
+    if (!meta) return undefined;
+    return recommendArrangement(
+      buildContent(nodesRef.current, linksRef.current, meta, notationId),
+      notationId,
+      arrangement.density
+    );
+  }, [arrangement.density, meta, notationId]);
+
   const suggestArrangementWithAi = useCallback(async () => {
     if (!meta) return;
     const content = buildContent(nodesRef.current, linksRef.current, meta, notationId);
@@ -5052,6 +5062,7 @@ export const ComponentDesigner: React.FC<{
             hasLanes={Array.from(nodes.values()).some((n) => isContainerType(n.tipo_elemento))}
             onArrange={applyArrangement}
             onSuggestWithAi={suggestArrangementWithAi}
+            recommend={recommendStrategy}
           />
 
           {/* Skin del proyecto (spec 022): canónica para trabajar, editorial para
