@@ -235,6 +235,10 @@ export interface Agregado {
    * lo que viene; sin esto el lienzo pintaba como nuevo todo contenedor.
    */
   estado_comparativo?: GraphNode["estado_comparativo"];
+  /** Operador del fragmento combinado, si el contenedor lo es (ver `GraphNode.fragmentOp`). */
+  fragmentOp?: FragmentOp;
+  /** Operandos del fragmento (ver `GraphNode.fragmentParts`). */
+  fragmentParts?: FragmentPart[];
 }
 
 export interface BigPicture {

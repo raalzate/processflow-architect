@@ -213,6 +213,9 @@ export function canvasToGraphData(
       // El contenedor también declara si ya existe o es nuevo: se conserva o el
       // ida y vuelta por el lienzo lo devuelve a "nuevo".
       estado_comparativo: c.estado_comparativo,
+      // Un fragmento sin su operador vuelve como caja genérica al recargar (#616).
+      fragmentOp: c.fragmentOp,
+      fragmentParts: c.fragmentParts,
     }));
   const aggByName = new Map(agregados.map((a) => [a.nombre_agregado, a]));
 
@@ -253,6 +256,10 @@ export function canvasToGraphData(
       midpoints: l.midpoints,
       geometriaAuto: l.geometriaAuto,
       labelOffset: l.labelOffset,
+      // El orden de la secuencia no se puede re-derivar de la altura al
+      // recargar: la altura SALE del orden (#616).
+      orden: l.orden,
+      messageKind: l.messageKind,
     };
     // Sólo cuenta como "dentro de un agregado" si el agregado EXISTE como contenedor
     // (un nodo puede referenciar un agregado ya borrado → su enlace va al Big Picture).
@@ -380,6 +387,8 @@ export function graphDataToCanvas(content: GraphData | null | undefined): {
       metadata: normalizarLista((agg as any).metadata),
       spec: sanitizeSpec((agg as any).spec),
       adjuntos: docsParaGuardar((agg as any).adjuntos),
+      fragmentOp: agg.fragmentOp,
+      fragmentParts: agg.fragmentParts,
       x: pos.x,
       y: pos.y,
       width: w,
@@ -473,6 +482,8 @@ function addLink(
     midpoints?: DesignerLink["midpoints"];
     geometriaAuto?: DesignerLink["geometriaAuto"];
     labelOffset?: DesignerLink["labelOffset"];
+    orden?: DesignerLink["orden"];
+    messageKind?: DesignerLink["messageKind"];
   }
 ) {
   const id = `link-${a.fuente}-${a.destino}-${crypto.randomUUID()}`;
@@ -494,6 +505,8 @@ function addLink(
     // (FR-017) y lo único que impide que un «Organizar» borre su trabajo.
     geometriaAuto: a.geometriaAuto,
     labelOffset: a.labelOffset,
+    orden: a.orden,
+    messageKind: a.messageKind,
   });
 }
 

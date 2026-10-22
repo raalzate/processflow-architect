@@ -27,6 +27,14 @@ export const SECUENCIA_LAYOUT = {
   primeraColumna: 80,
   /** Separación entre participantes. */
   pasoParticipante: 320,
+  /** Ancho de la caja del participante: deja aire para la etiqueta del mensaje. */
+  anchoParticipante: 200,
+  /** Aire del fragmento por encima de su primer mensaje: lo ocupa la pestaña del operador. */
+  aireSobreFragmento: 36,
+  /** Aire del fragmento por debajo de su último mensaje. */
+  aireBajoFragmento: 20,
+  /** Margen lateral del fragmento respecto de las líneas de vida que abarca. */
+  margenFragmento: 24,
 } as const;
 
 /** Un índice o un orden utilizable; lo roto cae al primero (SC-008). */
@@ -86,4 +94,76 @@ export function ordenarParticipantes(
 ): ParticipantePuesto[] {
   const height = altoNecesario(cantidadMensajes);
   return ids.map((id, i) => ({ id, x: columnaDeParticipante(i), y: 0, height }));
+}
+
+/** Lo que el layout necesita de un mensaje: su lugar y sus extremos. */
+export interface MensajeAColocar {
+  orden: number;
+  fuente: string;
+  destino: string;
+}
+
+/** Un fragmento a colocar: el tramo de orden que encierra. */
+export interface FragmentoAColocar {
+  id: string;
+  desde: number;
+  hasta: number;
+  /** Ancho que pide su guarda para leerse entera (ver `anchoParaGuarda`). */
+  anchoMinimo?: number;
+}
+
+export interface Caja {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Coloca una secuencia entera (#616): participantes en columnas con el alto que
+ * pide la cantidad de mensajes, y cada fragmento sobre el tramo de tiempo que
+ * encierra y sólo sobre las líneas de vida que participan de ese tramo.
+ *
+ * El fragmento se coloca por su RANGO porque el lienzo hace el camino inverso:
+ * deriva el rango de la geometría (`rangoPorGeometria`). Una caja que no tapa la
+ * altura de sus mensajes llega al lienzo encerrando nada —la «caja suelta debajo
+ * de todo» de #616—. Las alturas salen de `alturaDeMensaje`, la misma que usa el
+ * lienzo, así que no pueden discrepar.
+ */
+export function disponerSecuencia(
+  participantes: readonly string[],
+  mensajes: readonly MensajeAColocar[],
+  fragmentos: readonly FragmentoAColocar[]
+): Map<string, Caja> {
+  const L = SECUENCIA_LAYOUT;
+  const out = new Map<string, Caja>();
+  const columna = new Map<string, number>();
+  for (const p of ordenarParticipantes(participantes, mensajes.length)) {
+    columna.set(p.id, p.x);
+    out.set(p.id, { x: p.x, y: p.y, width: L.anchoParticipante, height: p.height });
+  }
+  if (!participantes.length) return out;
+
+  const xs = [...columna.values()];
+  const todo = { min: Math.min(...xs), max: Math.max(...xs) };
+  for (const f of fragmentos) {
+    const desde = sano(Math.min(f.desde, f.hasta), 1);
+    const hasta = sano(Math.max(f.desde, f.hasta), 1);
+    const cols = mensajes
+      .filter((m) => m.orden >= desde && m.orden <= hasta)
+      .flatMap((m) => [columna.get(m.fuente), columna.get(m.destino)])
+      .filter((x): x is number => x !== undefined);
+    const min = cols.length ? Math.min(...cols) : todo.min;
+    const max = cols.length ? Math.max(...cols) : todo.max;
+    const x = min - L.margenFragmento;
+    const ancho = max + L.anchoParticipante + L.margenFragmento - x;
+    // La guarda puede pedir más ancho, pero nunca más que la secuencia entera:
+    // lo que no entra se recorta con «…» en el lienzo.
+    const tope = todo.max + L.anchoParticipante + L.margenFragmento - x;
+    const width = Math.max(ancho, Math.min(f.anchoMinimo ?? 0, tope));
+    const y = alturaDeMensaje(desde) - L.aireSobreFragmento;
+    const height = alturaDeMensaje(hasta) - alturaDeMensaje(desde) + L.aireSobreFragmento + L.aireBajoFragmento;
+    out.set(f.id, { x, y, width, height });
+  }
+  return out;
 }

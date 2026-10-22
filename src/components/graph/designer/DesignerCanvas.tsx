@@ -169,7 +169,7 @@ import { MIN_PALETTE_QUERY, filtrarPaleta } from "@/lib/palette-search";
 import { CANVAS_CHROME } from "@/lib/canvas-chrome";
 import { CONTAINER_TREATMENT, SKIN_DEFAULT, edgeTreatment, nodeTreatment, type SkinId } from "@/lib/skin";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
-import { FRAGMENT_OPS, esOperador, type FragmentPart } from "@/lib/sequence/fragments";
+import { FRAGMENT_OPS, GUARDA_X, esOperador, guardaVisible, type FragmentPart } from "@/lib/sequence/fragments";
 import {
   clipToShape,
   handleGeom,
@@ -1414,13 +1414,13 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
             {node.nombre && (
               /* La guarda: la condición bajo la que ocurre lo que encierra. */
               <text
-                x={96}
+                x={GUARDA_X}
                 y={14}
                 dominantBaseline="central"
                 fill="currentColor"
                 className={cn("text-[11px] select-none pointer-events-none opacity-80", color.text)}
               >
-                {`[${node.nombre}]`}
+                {guardaVisible(node.nombre, width - GUARDA_X - 8)}
               </text>
             )}
           </>
@@ -1448,7 +1448,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                     fill="currentColor"
                     className={cn("text-[11px] select-none pointer-events-none opacity-80", color.text)}
                   >
-                    {`[${parte.guarda || "…"}]`}
+                    {guardaVisible(parte.guarda, width - 16) || "[…]"}
                   </text>
                 </g>
               );
