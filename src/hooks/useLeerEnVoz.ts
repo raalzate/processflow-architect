@@ -6,13 +6,14 @@ import { partirEnFrases, textoHablable } from "@/lib/tts/texto-hablable";
 import { KOKORO_BYTES_TOTALES, cargarAjustesVoz } from "@/lib/tts/kokoro-catalogo";
 import {
   POR_ADELANTADO,
-  debeArrancar,
+  decidirSonar,
   inicioDelSiguiente,
   primeraCorta,
   ritmoDeSintesis,
   segundosPorCaracter,
   type Muestra,
 } from "@/lib/tts/cola-voz";
+import { CacheDeAudio, claveDeAudio } from "@/lib/tts/cache-voz";
 import { useToast } from "@/hooks/use-toast";
 
 export type FaseVoz = "idle" | "descargando" | "preparando" | "hablando" | "pausado";
@@ -33,7 +34,26 @@ let worker: Worker | null = null;
 let pedidos = 0;
 const pendientes = new Map<number, { ok: (a: Float32Array, sr: number) => void; mal: (e: Error) => void }>();
 
-function sintetizar(texto: string): Promise<{ audio: Float32Array; sr: number }> {
+/* Lo ya sintetizado, por voz + velocidad + frase (#637): volver a escuchar una
+   respuesta no la sintetiza otra vez. Vive mientras la app está abierta. */
+const cache = new CacheDeAudio();
+
+/* Ritmo de síntesis medido en lecturas anteriores (#637). Sin esto cada lectura
+   arrancaba asumiendo que la síntesis iba a la par del habla y, si era más lenta,
+   quedaba un silencio entre frases. */
+let ritmoAprendido: number | undefined;
+
+function claveDe(texto: string): string {
+  const { voz, velocidad } = cargarAjustesVoz();
+  return claveDeAudio(voz, velocidad, texto);
+}
+
+const enCache = (texto: string) => cache.leer(claveDe(texto)) !== undefined;
+
+function sintetizar(texto: string): Promise<{ audio: Float32Array; sr: number; deCache?: boolean }> {
+  const clave = claveDe(texto);
+  const guardado = cache.leer(clave);
+  if (guardado) return Promise.resolve({ ...guardado, deCache: true });
   if (!worker) {
     worker = new Worker(new URL("../workers/kokoro.worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (e: MessageEvent<{ id: number; audio?: Float32Array; sr?: number; error?: string }>) => {
@@ -47,7 +67,13 @@ function sintetizar(texto: string): Promise<{ audio: Float32Array; sr: number }>
   const { voz, velocidad } = cargarAjustesVoz();
   const id = ++pedidos;
   return new Promise((ok, mal) => {
-    pendientes.set(id, { ok: (audio, sr) => ok({ audio, sr }), mal });
+    pendientes.set(id, {
+      ok: (audio, sr) => {
+        cache.guardar(clave, audio, sr);
+        ok({ audio, sr });
+      },
+      mal,
+    });
     worker!.postMessage({ id, texto, voz, velocidad });
   });
 }
@@ -108,7 +134,10 @@ async function reproducir(id: string, frases: string[], vigente: () => boolean) 
   if (audio.state === "suspended") await audio.resume();
 
   const muestras: Muestra[] = [];
-  const pedidos: Promise<{ audio: Float32Array; sr: number }>[] = [];
+  const pedidos: Promise<{ audio: Float32Array; sr: number; deCache?: boolean }>[] = [];
+  // El ritmo con que arrancó esta lectura: lo aprendido antes, o nada si es la primera.
+  const ritmoPrevio = ritmoAprendido;
+  const ritmo = () => ritmoDeSintesis(muestras, ritmoPrevio);
   const pedidoEn: number[] = [];
   const pedirHasta = (n: number) => {
     for (let k = pedidos.length; k < Math.min(n, frases.length); k++) {
@@ -150,15 +179,28 @@ async function reproducir(id: string, frases: string[], vigente: () => boolean) 
     if (!r.audio.length) continue;
     const buf = audio.createBuffer(1, r.audio.length, r.sr);
     buf.copyToChannel(r.audio as Float32Array<ArrayBuffer>, 0);
-    muestras.push({ caracteres: frases[i].length, sintesisS, audioS: buf.duration });
+    // Lo que salió de la caché no tardó nada: contarlo haría creer que la síntesis
+    // es instantánea y se arrancaría sin colchón.
+    if (!r.deCache) {
+      muestras.push({ caracteres: frases[i].length, sintesisS, audioS: buf.duration });
+      ritmoAprendido = ritmo();
+    }
     enCola.push(buf);
 
-    if (!sonando) {
-      const enColaS = enCola.reduce((s, b) => s + b.duration, 0);
-      const faltan = frases.slice(i + 1).reduce((s, f) => s + f.length, 0);
-      const faltaS = faltan * segundosPorCaracter(muestras);
-      sonando = debeArrancar(enColaS, faltaS, ritmoDeSintesis(muestras));
-    }
+    // Si la síntesis se quedó atrás y lo que sonaba ya terminó, `decidirSonar`
+    // vuelve a juntar audio en vez de seguir a saltos (frase, silencio, frase).
+    // Lo que ya está en caché no hay que sintetizarlo: no cuenta como espera.
+    const porSintetizar = frases.slice(i + 1).filter((f) => !enCache(f));
+    const spc = segundosPorCaracter(muestras);
+    sonando = decidirSonar({
+      sonando,
+      ahora: audio.currentTime,
+      fin,
+      enColaS: enCola.reduce((s, b) => s + b.duration, 0),
+      faltaS: porSintetizar.reduce((s, f) => s + f.length, 0) * spc,
+      fraseMaxS: Math.max(0, ...porSintetizar.map((f) => f.length)) * spc,
+      ritmo: ritmo(),
+    });
     if (sonando) programar();
   }
   if (enCola.length) programar();
@@ -179,7 +221,9 @@ async function reproducir(id: string, frases: string[], vigente: () => boolean) 
 /**
  * Lee en voz alta las respuestas del agente con Kokoro (#605). La primera vez
  * baja el modelo (~93 MB); después la primera frase sale corta y las siguientes
- * se sintetizan por adelantado y se encadenan sin hueco (#612). Se puede pausar y
+ * se sintetizan por adelantado y se encadenan sin hueco (#612). Lo sintetizado
+ * queda en caché mientras la app está abierta y el ritmo medido se recuerda
+ * entre lecturas, así volver a escuchar es inmediato y no suena a saltos (#637). Se puede pausar y
  * reanudar desde el mismo punto: se suspende el reloj del AudioContext.
  */
 export function useLeerEnVoz() {
