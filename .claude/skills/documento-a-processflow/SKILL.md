@@ -274,9 +274,19 @@ no hay ambigüedad, pero el que vale es el que devuelve `add_node`.
 ### Profundidad: otra VISTA, no un contenedor dentro de otro
 
 Los contenedores **no se anidan** (el formato de proyecto es de un nivel, ADR 0002). Para el nivel
-de abajo —los Componentes de un Contenedor en C4, un subproceso dentro de un carril en BPMN— creá
-OTRA vista con ese detalle y enlazala desde el elemento padre con `viewRef`. Meterlo como banda
+de abajo —los Componentes de un Contenedor en C4, un subproceso dentro de un carril en BPMN— el
+elemento padre se vuelve **subproceso**: entra a OTRA vista con ese detalle. Meterlo como banda
 hermana en el mismo lienzo dice que son del mismo rango, que es justo lo que no son.
+
+Con la app conectada, dos herramientas (las mismas que «Vista embebida (subproceso)» de la ficha):
+
+1. **`add_subview`** `{ element, name?, notation? }` — crea la vista de detalle y enlaza el
+   elemento a ella en un paso. El lienzo le pone la marca ⊞ y al abrirlo entra a esa vista.
+2. Llená la vista nueva con `add_view_element` / `add_view_edge` pasando `view` con su nombre
+   (o `set_view_graph` si ya tenés el grafo entero).
+
+Si la vista de detalle YA existe, enlazala con **`update_view_element`** y `subview: "<nombre>"`
+(`subview: ""` desenlaza). `get_view_element` dice a qué vista entra cada subproceso.
 
 ### Estado: documentar lo que HAY vs diseñar lo que VIENE
 

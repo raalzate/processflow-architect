@@ -46,9 +46,26 @@ export interface ExportProjectRequest {
   org: string | null;
 }
 
+/**
+ * Crear la vista de detalle de un elemento y enlazarlo a ella, en un paso: el
+ * «+» de «Vista embebida (subproceso)» de la ficha (#638).
+ */
+export interface CreateSubviewRequest {
+  kind: "create-subview";
+  /** Elemento que se vuelve subproceso (por nombre, como en el lienzo). */
+  element: string;
+  /** Nombre de la vista nueva (por defecto, el del elemento). */
+  name?: string;
+  /** Notación de la vista nueva (por defecto, la de la vista del elemento). */
+  notation?: string;
+  /** Vista donde está el elemento (por defecto, la abierta). */
+  view?: string;
+}
+
 export type AppActionRequest =
   | { kind: "delete-view"; name: string }
   | { kind: "rename-view"; name: string; newName: string }
+  | CreateSubviewRequest
   | ProjectActionRequest
   | ExportProjectRequest
   | ViewEditRequest;
@@ -61,7 +78,7 @@ export const esAccionDeProyecto = (r: AppActionRequest): r is ProjectActionReque
 
 /** true → la petición edita el grafo de una vista (y no la vista como pestaña ni un proyecto). */
 export const esEdicionDeVista = (r: AppActionRequest): r is ViewEditRequest =>
-  r.kind !== "delete-view" && r.kind !== "rename-view" && !esAccionDeProyecto(r);
+  r.kind !== "delete-view" && r.kind !== "rename-view" && r.kind !== "create-subview" && !esAccionDeProyecto(r);
 
 export type AppActionResult = { ok: true; message: string } | { ok: false; error: string };
 
@@ -147,4 +164,58 @@ export function planViewEdit(
   }
   const lista = vistas.map((v) => `"${v.name}"`).join(", ") || "(ninguna)";
   return { ok: false, error: `No hay una vista llamada "${pedido}". Las que hay: ${lista}.` };
+}
+
+/**
+ * A qué vista entra un elemento, nombrada como la ve el humano (#638). El enlace
+ * se guarda por id (`viewRef`), que el agente no conoce. Vacío = desenlazar. No
+ * se enlaza a la vista del sistema (el modelo no es el detalle de nadie) ni a la
+ * propia vista del elemento (entrar a ella sería no moverse).
+ */
+export function resolverSubvista(
+  nombre: string,
+  vistas: VistaConocida[],
+  vistaDelElemento: string
+): { ok: true; id: string | null; name?: string } | { ok: false; error: string } {
+  const pedido = nombre.trim();
+  if (!pedido) return { ok: true, id: null };
+  const propias = vistas.filter((v) => !v.builtin);
+  const candidatas = propias.filter((v) => plano(v.name) === plano(pedido));
+  if (candidatas.length > 1) {
+    return { ok: false, error: `Hay más de una vista llamada "${pedido}". Renombrá una antes de enlazarla.` };
+  }
+  const v = candidatas[0];
+  if (!v) {
+    const lista = propias.map((x) => `"${x.name}"`).join(", ") || "(ninguna)";
+    return {
+      ok: false,
+      error: `No hay una vista llamada "${pedido}" para enlazar. Las que hay: ${lista}. Para crearla y enlazarla en un paso, usá add_subview.`,
+    };
+  }
+  if (v.id === vistaDelElemento) {
+    return { ok: false, error: `"${v.name}" es la vista donde está el elemento: un subproceso entra a OTRA vista.` };
+  }
+  return { ok: true, id: v.id, name: v.name };
+}
+
+/** Qué vista crea el «+» de la ficha: su nombre, o por qué no se puede. */
+export function planCrearSubvista(
+  request: Pick<CreateSubviewRequest, "element" | "name">,
+  vistas: VistaConocida[],
+  cupo: number
+): { ok: true; name: string } | { ok: false; error: string } {
+  const nombre = (request.name ?? "").trim() || request.element.trim();
+  if (!nombre) return { ok: false, error: "Falta el nombre del elemento." };
+  const propias = vistas.filter((v) => !v.builtin);
+  const existente = vistas.find((v) => plano(v.name) === plano(nombre));
+  if (existente) {
+    return {
+      ok: false,
+      error: `Ya hay una vista llamada "${existente.name}". Si es el detalle de este elemento, enlazala con update_view_element y \`subview\`; si no, elegí otro \`name\`.`,
+    };
+  }
+  if (propias.length >= cupo) {
+    return { ok: false, error: `El proyecto ya tiene ${propias.length} vistas propias (el tope es ${cupo}). Borrá alguna antes de crear otra.` };
+  }
+  return { ok: true, name: nombre };
 }

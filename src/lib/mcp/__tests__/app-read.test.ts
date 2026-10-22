@@ -429,3 +429,41 @@ describe("element · la ficha de cualquier caja por nombre (#636)", () => {
     expect(r.options).toEqual(["API de Pagos", "DB"]);
   });
 });
+
+describe("la ficha dice a qué vista entra un subproceso (#638)", () => {
+  const conSub = (viewRef: string): AppReadContext => ({
+    active: { id: "f1", name: "Seguros" },
+    projects: [{ id: "f1", name: "Seguros" }],
+    artifactsOf: () => [],
+    viewsOf: () => [
+      {
+        id: "v1",
+        name: "Proceso",
+        kind: "graph",
+        notation: "bpmn",
+        graph: {
+          ...graph(0),
+          big_picture: {
+            descripcion: "",
+            hotspots: [],
+            nodos: [{ id: "val", nombre: "Validar póliza", tipo_elemento: "Subproceso", estado_comparativo: "nuevo", viewRef } as any],
+            aristas: [],
+          },
+        } as any,
+      },
+      { id: "v2", name: "Detalle de validación", kind: "graph", notation: "bpmn", graph: graph(0) },
+    ],
+  });
+
+  it("nombra la vista enlazada y lo escribe en la ficha", () => {
+    const r = resolveAppRead({ kind: "element", name: "Validar póliza" }, conSub("v2"));
+    expect(r.ok && r.kind === "element" && r.element.subview).toBe("Detalle de validación");
+    if (!r.ok || r.kind !== "element") return;
+    expect(formatFocusedElement(r.project, r.element)).toContain('entra a la vista "Detalle de validación"');
+  });
+
+  it("un enlace a una vista que ya no existe no se informa", () => {
+    const r = resolveAppRead({ kind: "element", name: "Validar póliza" }, conSub("borrada"));
+    expect(r.ok && r.kind === "element" && r.element.subview).toBeUndefined();
+  });
+});

@@ -62,6 +62,8 @@ export interface FocusedElement {
   description?: string;
   /** De dónde sale (campo `fuente` del elemento, #636). */
   source?: string;
+  /** Vista a la que entra el elemento si es un subproceso (#638), por nombre. */
+  subview?: string;
   estado?: string;
   tags?: string[];
   spec?: ElementSpec;
@@ -311,6 +313,8 @@ export function selectArtifact(
 
 /** Vista tal como la tiene el renderer. */
 export interface ViewInput {
+  /** Id de la vista: es lo que guarda el `viewRef` de un subproceso (#638). */
+  id?: string;
   name: string;
   kind: string;
   notation?: NotationId;
@@ -373,7 +377,12 @@ export interface AppReadContext {
  * null si la caja ya no está (se borró con la ficha abierta): el llamador lo
  * dice en vez de inventar una caja vacía.
  */
-export function focusedElement(view: ViewInput, focus: AppFocus): FocusedElement | null {
+export function focusedElement(
+  view: ViewInput,
+  focus: AppFocus,
+  /** Nombre de una vista por id: con él, la ficha dice a qué vista entra el subproceso. */
+  nombreDeVista: (id: string) => string | undefined = () => undefined
+): FocusedElement | null {
   if (!view.graph) return null;
   // El mismo camino que el resto del MCP: el modelo del constructor unifica nodos
   // y contenedores (id `agg-<nombre>`, igual que el lienzo) y trae spec, metadatos
@@ -396,6 +405,8 @@ export function focusedElement(view: ViewInput, focus: AppFocus): FocusedElement
     ...(node.container ? { container: node.container } : {}),
     ...(node.descripcion ? { description: node.descripcion } : {}),
     ...(node.source ? { source: node.source } : {}),
+    // Un viewRef a una vista que ya no existe no se informa: entrar no llevaría a nada.
+    ...(node.viewRef && nombreDeVista(node.viewRef) ? { subview: nombreDeVista(node.viewRef) } : {}),
     ...(node.estado_comparativo ? { estado: node.estado_comparativo } : {}),
     ...(node.tags_tecnologia?.length ? { tags: node.tags_tecnologia } : {}),
     ...(node.spec ? { spec: node.spec } : {}),
@@ -416,6 +427,7 @@ export function formatFocusedElement(project: string, el: FocusedElement): strin
     `Descripción: ${el.description?.trim() || "(sin descripción)"}`,
     `Fuente: ${el.source?.trim() || "(sin fuente)"}`,
   ];
+  if (el.subview) lines.push(`Subproceso: entra a la vista "${el.subview}" (leela con get_view).`);
   if (el.tags?.length) lines.push(`Tags: ${el.tags.join(", ")}`);
   if (el.metadata?.length) lines.push(`Metadatos: ${el.metadata.map((m) => `${m.clave} = ${m.valor}`).join(" · ")}`);
   lines.push(`Entrantes (quién la llama): ${lista(el.incoming)}`, `Salientes (a quién llama): ${lista(el.outgoing)}`);
@@ -429,6 +441,9 @@ export function formatFocusedElement(project: string, el: FocusedElement): strin
   );
   return lines.join("\n");
 }
+
+/** Nombre de una vista por su id (el `viewRef` de un subproceso). */
+const nombrePorId = (vistas: ViewInput[]) => (id: string) => vistas.find((v) => v.id === id)?.name;
 
 /** Nombres disponibles, para que el error diga qué SÍ se puede pedir. */
 const nombres = <T>(items: T[], nameOf: (i: T) => string) => items.map(nameOf);
@@ -496,7 +511,7 @@ export function resolveAppRead(req: AppReadRequest, ctx: AppReadContext): AppRea
         options: nombres(vistas, (v) => v.name),
       };
     }
-    const element = focusedElement(vista, focus);
+    const element = focusedElement(vista, focus, nombrePorId(vistas));
     if (!element) {
       return {
         ok: false,
@@ -527,7 +542,11 @@ export function resolveAppRead(req: AppReadRequest, ctx: AppReadContext): AppRea
     );
     if (hallados.length === 1) {
       const { v, n } = hallados[0];
-      const element = focusedElement(v, { viewId: "", viewName: v.name, elementId: n.id, elementName: n.nombre });
+      const element = focusedElement(
+        v,
+        { viewId: "", viewName: v.name, elementId: n.id, elementName: n.nombre },
+        nombrePorId(ctx.viewsOf(proyecto.id))
+      );
       if (element) return { ok: true, project: proyecto.name, kind: "element", element };
     }
     if (hallados.length > 1) {

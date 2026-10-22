@@ -373,9 +373,10 @@ function metadataDeEntrada(lista: ElementMetadata[] | undefined): ElementMetadat
 export const SIN_ANIDAMIENTO =
   "Un contenedor no puede colgar de otro: el formato de proyecto es de UN nivel (ADR 0002). " +
   "Para el nivel de abajo —los Componentes de un Contenedor en C4, un subproceso dentro de un " +
-  "carril en BPMN— creá OTRA VISTA con ese detalle y enlazala desde el elemento padre con " +
-  "`viewRef` (export_as_view). Meterlo como banda hermana en el mismo lienzo dice que son del " +
-  "mismo rango, que es justo lo que no son.";
+  "carril en BPMN— el elemento padre se vuelve SUBPROCESO: `add_subview` crea OTRA VISTA con " +
+  "ese detalle y lo enlaza a ella (su `viewRef`); si la vista ya existe, `update_view_element` " +
+  "con `subview`. Meterlo como banda hermana en el mismo lienzo dice que son del mismo rango, " +
+  "que es justo lo que no son.";
 
 /** Añade un CONTENEDOR (Agregado, Pool, Límite, Paquete…). Lanza si el tipo no es contenedor. */
 export function addContainer(

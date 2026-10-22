@@ -224,6 +224,14 @@ describe("contrato del arnés dentro del skill", () => {
     }
   });
 
+  it("los skills que dan profundidad nombran la herramienta real del subproceso (#638)", () => {
+    for (const id of [...DESIGN_SKILL_IDS, "actualizar-diagrama"]) {
+      const md = getSkill(id)!.files[0].content;
+      expect(md, `${id} no menciona add_subview`).toContain("add_subview");
+      expect(md, `${id} no dice cómo enlazar una vista existente`).toContain("subview");
+    }
+  });
+
   it("los skills de diseño documentan el material adjunto de la caja (#366)", () => {
     // Una tool que el agente externo no ve, no la usa: el skill es su única
     // forma de enterarse de que la caja puede llevar su contrato.
