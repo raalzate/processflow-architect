@@ -349,6 +349,29 @@ describe("runLitertAgent — contexto por partes + human-in-the-loop", () => {
     expect(res.steps.some((s) => s.type === "decision" && s.content.includes("No"))).toBe(true);
   });
 
+  it("el plan y la pregunta traen el qué y el porqué del modelo hasta la pausa (#613)", async () => {
+    scriptConvo([
+      '{"thought":"leo pagos","action":"read_view","args":{"name":"Pagos"}}',
+      '{"thought":"leo pedidos","action":"read_view","args":{"name":"Pedidos"}}',
+      JSON.stringify({
+        plan: {
+          title: "Drivers de arquitectura",
+          artifactKind: "drivers",
+          summary: "Un documento con los drivers para el comité.",
+          sections: [{ title: "Rendimiento", sources: ["Pagos"] }],
+        },
+      }),
+    ]);
+    const plan = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    expect(plan.run?.pause).toMatchObject({ kind: "plan", summary: "Un documento con los drivers para el comité." });
+
+    scriptConvo([
+      '{"thought":"dudo","question":{"id":"q","text":"¿Incluyo costos?","why":"Cambia el alcance.","options":["Sí","No"]}}',
+    ]);
+    const pregunta = await runLitertAgent({ modelFile: "m", message: "generá los drivers", catalog });
+    expect(pregunta.run?.pause).toMatchObject({ kind: "question", why: "Cambia el alcance." });
+  });
+
   it("un plan que cita una vista inexistente se corrige sin molestar al humano", async () => {
     scriptConvo([
       JSON.stringify({
