@@ -39,6 +39,7 @@ import {
   slugify,
   relayout,
   relayoutConMedida,
+  elegirEstrategia,
   recordAmbiguity,
   resolveAmbiguity,
   pendingAmbiguities,
@@ -52,6 +53,7 @@ import {
 } from "../../src/lib/mcp/diagram-builder";
 import { resumenDeLegibilidad } from "../../src/lib/layout/legible";
 import { numerarPasos } from "../../src/lib/mcp/numeracion";
+import { STRATEGY_ORDER, type LayoutStrategy } from "../../src/lib/mcp/layout-presets";
 import {
   getElementSpec,
   setElementSpec,
@@ -2404,10 +2406,10 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .optional()
           .describe("Aire del diagrama. Por defecto, el que ya tenía (o `comodo`)."),
         strategy: z
-          .enum(["flujo", "capas", "radial"])
+          .enum(["auto", ...STRATEGY_ORDER] as ["auto", ...LayoutStrategy[]])
           .optional()
           .describe(
-            "flujo = bandas por participante, de izquierda a derecha (procesos); capas = filas por rol, actores arriba y externos abajo (arquitectura); radial = concepto central y anillos de relaciones alrededor (mapas de dominio DDD). Por defecto, la natural de la notación."
+            "auto = la que recomienda el asesor para ESTE diagrama (mira la notación, los grupos y la forma de las relaciones); flujo = bandas por participante, de izquierda a derecha (procesos); linea_tiempo = bandas sobre un eje de tiempo común, lo posterior a la derecha aunque cambie de grupo (Event Storming, procesos entre participantes); capas = filas por rol, actores arriba y externos abajo (arquitectura); jerarquia = niveles de arriba abajo, cada elemento debajo de quien lo trae (herencia, descomposición); grupos = los grupos en mosaico con su contenido en rejilla (muchos contextos o esquemas); radial = concepto central y anillos de relaciones alrededor (mapas de conceptos). Por defecto, la natural de la notación."
           ),
       },
     },
@@ -2421,7 +2423,13 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         return fail(e.message);
       }
       const model = await loadModel(diagramId);
-      const { model: next, legibilidad, parcial } = relayoutConMedida(model, { density, strategy });
+      // Con `auto` el motivo viaja en la respuesta: sin él, el agente no sabría
+      // por qué el asesor eligió esa disposición ni cuándo contradecirlo.
+      const sugerida = strategy === "auto" ? elegirEstrategia(model, { density }) : undefined;
+      const { model: next, legibilidad, parcial } = relayoutConMedida(model, {
+        density,
+        strategy: sugerida?.strategy ?? strategy,
+      });
       await saveModel(diagramId, next);
       const bandas = next.nodes.filter((n) => isContainerType(n.tipo_elemento));
       const ancho = Math.max(...next.nodes.map((n) => (n.x ?? 0) + (n.width ?? 160)), 0);
@@ -2429,6 +2437,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       return text(
         `Layout rehecho para "${diagramId}" (${model.meta.notation}).\n` +
           `Disposición: ${next.meta.layout?.density} · ${next.meta.layout?.strategy}.\n` +
+          (sugerida ? `Elegida por el asesor: ${sugerida.motivo}\n` : "") +
           `Lienzo: ${Math.round(ancho)}×${Math.round(alto)} px · ${bandas.length} banda(s).\n` +
           // Sin número, "quedó feo" no es accionable y el agente no puede
           // decidir si vale la pena probar otra disposición (FR-007).

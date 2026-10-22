@@ -29,6 +29,15 @@ export type LayoutDensity = "compacto" | "comodo" | "expandido";
  *    qué depende— sin suponer que hay un flujo (arquitectura: C4).
  *  - `radial`: un concepto central y anillos concéntricos por distancia de
  *    relación (mapas de conceptos: el modelo de dominio de DDD).
+ *  - `jerarquia`: niveles de arriba abajo; cada elemento debajo de quien lo
+ *    trae (herencia, descomposición, árboles de decisión).
+ *  - `linea_tiempo`: una banda por grupo, pero las columnas son un eje de
+ *    tiempo COMÚN: lo que pasa después queda a la derecha aunque cambie de
+ *    grupo (Event Storming, procesos que cruzan participantes).
+ *  - `grupos`: los grupos en mosaico y no apilados; cada uno con su contenido
+ *    en rejilla (mapas de contextos, esquemas, muchos límites).
+ *
+ * Cuál conviene a un diagrama concreto lo dice `layout-advisor.ts`.
  */
 export type LayoutStrategy = LayoutHint;
 
@@ -121,7 +130,32 @@ export const LAYOUT_STRATEGIES: Record<LayoutStrategy, { id: LayoutStrategy; lab
     label: "Radial (mapa de conceptos)",
     hint: "Concepto central y anillos con lo que se relaciona alrededor.",
   },
+  jerarquia: {
+    id: "jerarquia",
+    label: "Jerárquico (árbol)",
+    hint: "Niveles de arriba abajo: lo que cuelga queda debajo de quien lo trae.",
+  },
+  linea_tiempo: {
+    id: "linea_tiempo",
+    label: "Línea de tiempo",
+    hint: "Un eje de tiempo común a todos los grupos: lo posterior, a la derecha.",
+  },
+  grupos: {
+    id: "grupos",
+    label: "Por grupos (mosaico)",
+    hint: "Cada grupo en su recuadro, en mosaico, con su contenido en rejilla.",
+  },
 };
+
+/** Orden del menú: de las más generales a las más específicas. */
+export const STRATEGY_ORDER: LayoutStrategy[] = [
+  "flujo",
+  "linea_tiempo",
+  "capas",
+  "jerarquia",
+  "grupos",
+  "radial",
+];
 
 /**
  * Ancho con el que se midieron los huecos de los presets. Es una referencia
