@@ -218,3 +218,29 @@ export function repartirOperandos(
   }
   return partes;
 }
+
+/** Dónde arranca la guarda: a la derecha de la pestaña del operador. */
+export const GUARDA_X = 96;
+/** Ancho medio de un carácter de la guarda (11 px), en coords del lienzo. */
+export const PX_POR_CARACTER_GUARDA = 6.2;
+
+/**
+ * La guarda tal como entra en el marco: entre corchetes y recortada con «…» si
+ * no cabe (#616). Sin recorte, una condición larga («bandera del token = agente
+ * / persona que ya existe / persona nueva») se salía de la caja y se montaba
+ * sobre las líneas de vida de al lado. El texto completo sigue en la ficha.
+ */
+export function guardaVisible(guarda: string, anchoDisponible: number): string {
+  const texto = guarda.trim();
+  if (!texto) return "";
+  const cabe = Math.floor(Math.max(0, anchoDisponible) / PX_POR_CARACTER_GUARDA) - 2; // los corchetes
+  if (texto.length <= cabe) return `[${texto}]`;
+  if (cabe < 2) return "[…]";
+  return `[${texto.slice(0, cabe - 1).trimEnd()}…]`;
+}
+
+/** Ancho que pide un fragmento para que su guarda se lea entera. */
+export function anchoParaGuarda(guarda: string): number {
+  const texto = guarda.trim();
+  return texto ? Math.ceil(GUARDA_X + (texto.length + 2) * PX_POR_CARACTER_GUARDA + 12) : GUARDA_X;
+}

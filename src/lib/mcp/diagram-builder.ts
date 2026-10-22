@@ -25,11 +25,14 @@ import { problemasDePropiedades } from "../element-properties";
 import { sanitizeSpec, type ElementSpec } from "../element-spec";
 import { docsParaGuardar, type ElementDoc } from "../element-docs";
 import { sanitizeSourceDocs, type SourceDoc } from "../source-docs";
-import { moverMensaje } from "../sequence/order";
+import { moverMensaje, normalizarOrden } from "../sequence/order";
+import { SECUENCIA_LAYOUT, alturaDeMensaje, disponerSecuencia } from "../sequence/layout";
 import {
   FRAGMENT_OPS_LIST,
+  anchoParaGuarda,
   esOperador,
   normalizarOperandos,
+  rangoDe,
   type FragmentOp,
   type FragmentPart,
 } from "../sequence/fragments";
@@ -48,6 +51,8 @@ import {
   isTableType,
   NOTATION_IDS,
   isBlobContainer,
+  isFragmentContainer,
+  isLifelineContainer,
   isNotationContainer,
   nodeSizeForNotation,
   DEFAULT_NODE_SIZE,
@@ -879,6 +884,68 @@ export function bpmnFlowWarnings(model: DiagramModel): string[] {
   return warnings;
 }
 
+/**
+ * Reglas de una secuencia UML (#616). Un diagrama de líneas de vida sin mensajes
+ * ordenados «pasaba» la validación y llegaba al lienzo sin tiempo: participantes
+ * apilados y un fragmento que no encierra nada. Son errores lo que el lienzo no
+ * puede dibujar bien (mensaje sin orden, fragmento fuera de la secuencia); lo
+ * demás, avisos.
+ */
+export function sequenceWarnings(model: DiagramModel): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const lineas = lineasDeVida(model);
+  if (!lineas.length) return { errors, warnings };
+  const esLinea = new Set(lineas.map((n) => n.id));
+  const nombre = (id: string) => findNode(model, id)?.nombre ?? id;
+
+  const mensajes = model.edges.filter((e) => esLinea.has(e.fuente) && esLinea.has(e.destino));
+  if (!mensajes.length) {
+    warnings.push(
+      "La secuencia no tiene mensajes: agregalos con add_message (from, to, label, messageKind), en el orden en que ocurren."
+    );
+  }
+  const sinOrden = mensajes.filter((e) => e.orden === undefined);
+  if (sinOrden.length) {
+    errors.push(
+      `${sinOrden.length} mensaje(s) sin orden (${sinOrden
+        .slice(0, 3)
+        .map((e) => `${nombre(e.fuente)}→${nombre(e.destino)}`)
+        .join(", ")}${sinOrden.length > 3 ? "…" : ""}): en una secuencia se crean con add_message, no con add_edge, o salen a la misma altura y se pisan.`
+    );
+  }
+  const ordenes = mensajes.map((e) => e.orden).filter((o): o is number => o !== undefined).sort((a, b) => a - b);
+  if (ordenes.some((o, i) => o !== i + 1)) {
+    warnings.push(
+      `El orden de los mensajes tiene huecos o duplicados (${ordenes.join(", ")}): debería ir de 1 a ${ordenes.length}. Reordená con move_message.`
+    );
+  }
+  for (const e of model.edges) {
+    const a = esLinea.has(e.fuente);
+    const b = esLinea.has(e.destino);
+    if (a !== b || (e.orden !== undefined && !(a && b))) {
+      warnings.push(
+        `«${nombre(e.fuente)}→${nombre(e.destino)}» no une dos líneas de vida: en una secuencia los mensajes van entre participantes.`
+      );
+    }
+  }
+
+  for (const f of model.nodes.filter((n) => isFragmentContainer(n.tipo_elemento))) {
+    if (!f.fragmentOp) {
+      errors.push(`El fragmento «${f.nombre}» no tiene operador: crealo con add_fragment (loop | alt | opt | par).`);
+    }
+    const rango = rangoDe(f.fragmentParts ?? []);
+    if (!rango) {
+      warnings.push(`El fragmento «${f.nombre}» no abarca ningún mensaje: indicá from/to con las posiciones de los mensajes que encierra.`);
+    } else if (rango.hasta > mensajes.length) {
+      errors.push(
+        `El fragmento «${f.nombre}» abarca los mensajes ${rango.desde}–${rango.hasta}, pero la secuencia tiene ${mensajes.length}.`
+      );
+    }
+  }
+  return { errors, warnings };
+}
+
 export function validate(model: DiagramModel): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -937,6 +1004,10 @@ export function validate(model: DiagramModel): ValidationResult {
   warnings.push(...colWarnings);
   // Reglas de flujo propias de la notación (hoy BPMN: pools vs carriles).
   warnings.push(...bpmnFlowWarnings(model));
+  // Secuencia UML: mensajes con orden y fragmentos sobre un tramo real (#616).
+  const seq = sequenceWarnings(model);
+  errors.push(...seq.errors);
+  warnings.push(...seq.warnings);
   // Trazabilidad contra la fuente (sostiene la revisión humana).
   warnings.push(...traceabilityWarnings(model));
 
@@ -1525,6 +1596,11 @@ export function layoutConMedida(
   // recalcular pasa por `relayout()`, que desnuda la geometría primero.
   if (allPlaced) return medirDisposicion(model);
 
+  // SECUENCIA: no hay flujo ni roles, hay participantes y tiempo. El layout
+  // general apilaba las líneas de vida y dejaba el fragmento suelto (#616); va
+  // por su preset, el mismo que usa «Organizar» en el lienzo.
+  if (esSecuencia(model)) return medirDisposicion(layoutSecuencia(model));
+
   // El aire se escala al tamaño de nodo de la notación (ver `scalePreset`).
   const preset = scalePreset(getPreset(opts.density), cellSize(model));
   const strategy = resolveStrategy(opts.strategy, model.meta.notation);
@@ -1547,6 +1623,81 @@ export function layoutConMedida(
       meta: { ...legible.model.meta, layout: { density: preset.id, strategy } },
     },
   };
+}
+
+/** Líneas de vida del modelo, en el orden en que se declararon. */
+const lineasDeVida = (model: DiagramModel): BuilderNode[] =>
+  model.nodes.filter((n) => isLifelineContainer(n.tipo_elemento));
+
+/**
+ * ¿Es una secuencia? Lo dicen sus participantes, no la notación: en UML conviven
+ * clases, estados y secuencia. Dos líneas de vida, el mismo umbral que el lienzo.
+ */
+export function esSecuencia(model: DiagramModel): boolean {
+  return lineasDeVida(model).length >= 2;
+}
+
+/** Los mensajes de la secuencia (aristas entre líneas de vida), con orden denso. */
+function mensajesDeSecuencia(model: DiagramModel) {
+  const ids = new Set(lineasDeVida(model).map((n) => n.id));
+  return normalizarOrden(
+    model.edges
+      .map((e, i) => ({ ...e, id: String(i) }))
+      .filter((e) => ids.has(e.fuente) && ids.has(e.destino))
+  );
+}
+
+/**
+ * Geometría de una secuencia: participantes en columnas, fragmentos sobre su
+ * tramo (`disponerSecuencia`) y lo demás donde no estorbe. Las aristas no llevan
+ * quiebres: la altura del mensaje sale de su orden.
+ */
+function layoutSecuencia(model: DiagramModel): DiagramModel {
+  const lineas = lineasDeVida(model);
+  const mensajes = mensajesDeSecuencia(model).map((m) => ({
+    orden: m.orden,
+    fuente: m.fuente,
+    destino: m.destino,
+  }));
+  const fragmentos = model.nodes
+    .filter((n) => isFragmentContainer(n.tipo_elemento))
+    .map((n) => {
+      const r = rangoDe(n.fragmentParts ?? []) ?? { desde: 1, hasta: Math.max(1, mensajes.length) };
+      return { id: n.id, ...r, anchoMinimo: anchoParaGuarda(n.nombre) };
+    });
+  const cajas = disponerSecuencia(
+    lineas.map((n) => n.id),
+    mensajes,
+    fragmentos
+  );
+
+  // Lo que cuelga de una línea de vida (notas, activaciones) baja por su eje;
+  // lo suelto va en fila debajo de la secuencia, sin tapar nada.
+  const { w, h } = cellSize(model);
+  const fondo = Math.max(0, ...[...cajas.values()].map((c) => c.y + c.height)) + 60;
+  const porLinea = new Map<string, number>();
+  let suelto = 0;
+  const nodes = model.nodes.map((n) => {
+    const caja = cajas.get(n.id);
+    if (caja) return { ...n, ...caja };
+    const padre = n.container ? lineas.find((l) => l.nombre === n.container) : undefined;
+    const cajaPadre = padre && cajas.get(padre.id);
+    if (cajaPadre) {
+      const k = (porLinea.get(padre.id) ?? 0) + 1;
+      porLinea.set(padre.id, k);
+      return {
+        ...n,
+        x: cajaPadre.x + (cajaPadre.width - w) / 2,
+        y: alturaDeMensaje(k),
+        width: n.width ?? w,
+        height: n.height ?? h,
+      };
+    }
+    const x = SECUENCIA_LAYOUT.primeraColumna + suelto++ * (w + 40);
+    return { ...n, x, y: fondo, width: n.width ?? w, height: n.height ?? h };
+  });
+  const edges = model.edges.map(({ midpoints: _m, geometriaAuto: _g, ...e }) => e);
+  return { ...model, nodes, edges };
 }
 
 // =============================================================================
@@ -1611,6 +1762,10 @@ export function toGraphData(input: DiagramModel): GraphData {
     // Un contenedor también documenta lo que YA existe: sin esto el estado que
     // declara el agente moría en la serialización (sólo lo llevaban los nodos).
     estado_comparativo: c.estado_comparativo,
+    // Sin operador ni tramo, un fragmento llega al lienzo como una caja punteada
+    // que no encierra nada (#616).
+    fragmentOp: c.fragmentOp,
+    fragmentParts: c.fragmentParts,
   }));
   const aggByName = new Map(agregados.map((a) => [a.nombre_agregado, a]));
 
@@ -1655,6 +1810,10 @@ export function toGraphData(input: DiagramModel): GraphData {
       // el lienzo recibiría las cajas ordenadas y las líneas sin rutear (FR-009).
       midpoints: e.midpoints,
       geometriaAuto: e.geometriaAuto,
+      // El tiempo de la secuencia: sin `orden` el lienzo re-deriva el orden de
+      // la altura y los mensajes salen en el orden de la lista (#616).
+      orden: e.orden,
+      messageKind: e.messageKind,
     };
     if (sa && ta && sa === ta) aggByName.get(sa)!.aristas.push(arista);
     else if (sa && ta && sa !== ta) policies.push(arista);
@@ -1712,6 +1871,8 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       spec: sanitizeSpec((agg as any).spec),
       adjuntos: docsParaGuardar((agg as any).adjuntos),
       icono: (agg as any).icono,
+      fragmentOp: agg.fragmentOp,
+      fragmentParts: agg.fragmentParts,
       x: agg.x,
       y: agg.y,
       width: agg.width,
@@ -1741,6 +1902,8 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
         relation: (a as any).relation,
         midpoints: (a as any).midpoints,
         geometriaAuto: (a as any).geometriaAuto,
+        orden: (a as any).orden,
+        messageKind: (a as any).messageKind,
       });
     }
   }
@@ -1768,6 +1931,8 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       relation: a.relation,
       midpoints: a.midpoints,
       geometriaAuto: a.geometriaAuto,
+      orden: a.orden,
+      messageKind: a.messageKind,
     });
   for (const a of data.big_picture?.aristas || []) pushEdge(a);
   for (const a of data.politicas_inter_agregados || []) pushEdge(a);

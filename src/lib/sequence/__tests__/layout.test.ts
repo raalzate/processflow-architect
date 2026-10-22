@@ -4,8 +4,10 @@ import {
   alturaDeMensaje,
   altoNecesario,
   columnaDeParticipante,
+  disponerSecuencia,
   ordenarParticipantes,
 } from "@/lib/sequence/layout";
+import { rangoPorGeometria } from "@/lib/sequence/fragments";
 
 describe("la altura sale del ORDEN, no del arrastre (T2 · #265)", () => {
   it("dos mensajes consecutivos no comparten altura", () => {
@@ -98,5 +100,57 @@ describe("preset de secuencia (T12 · #275)", () => {
 
   it("sin participantes devuelve una lista vacía, no explota", () => {
     expect(ordenarParticipantes([], 3)).toEqual([]);
+  });
+});
+
+describe("disponerSecuencia (#616)", () => {
+  const mensajes = [
+    { orden: 1, fuente: "a", destino: "b" },
+    { orden: 2, fuente: "b", destino: "c" },
+    { orden: 3, fuente: "c", destino: "b" },
+    { orden: 4, fuente: "b", destino: "a" },
+  ];
+
+  it("participantes en columnas lado a lado, misma y, alto para todos los mensajes", () => {
+    const cajas = disponerSecuencia(["a", "b", "c"], mensajes, []);
+    const [a, b, c] = ["a", "b", "c"].map((id) => cajas.get(id)!);
+    expect(new Set([a.y, b.y, c.y])).toEqual(new Set([0]));
+    expect(a.x).toBeLessThan(b.x);
+    expect(b.x).toBeLessThan(c.x);
+    expect(b.x - a.x).toBe(SECUENCIA_LAYOUT.pasoParticipante);
+    expect(a.height).toBe(altoNecesario(4));
+    // Las cajas no se pisan.
+    expect(a.x + a.width).toBeLessThan(b.x);
+  });
+
+  it("el fragmento tapa la altura de sus mensajes: el lienzo le deriva el MISMO rango", () => {
+    const cajas = disponerSecuencia(["a", "b", "c"], mensajes, [{ id: "f", desde: 2, hasta: 3 }]);
+    const f = cajas.get("f")!;
+    const colocados = mensajes.map((m) => ({ orden: m.orden, y: alturaDeMensaje(m.orden) }));
+    expect(rangoPorGeometria({ y: f.y, height: f.height }, colocados)).toEqual({ desde: 2, hasta: 3 });
+  });
+
+  it("el fragmento abarca sólo las líneas de vida de su tramo", () => {
+    const cajas = disponerSecuencia(["a", "b", "c"], mensajes, [{ id: "f", desde: 2, hasta: 3 }]);
+    const f = cajas.get("f")!;
+    const a = cajas.get("a")!;
+    const b = cajas.get("b")!;
+    const c = cajas.get("c")!;
+    expect(f.x).toBeGreaterThan(a.x + a.width);
+    expect(f.x).toBeLessThan(b.x);
+    expect(f.x + f.width).toBeGreaterThan(c.x + c.width);
+  });
+
+  it("una guarda larga ensancha el fragmento, pero no más allá de la secuencia", () => {
+    const cajas = disponerSecuencia(["a", "b", "c"], mensajes, [
+      { id: "f", desde: 1, hasta: 1, anchoMinimo: 5000 },
+    ]);
+    const f = cajas.get("f")!;
+    const c = cajas.get("c")!;
+    expect(f.x + f.width).toBe(c.x + c.width + SECUENCIA_LAYOUT.margenFragmento);
+  });
+
+  it("sin participantes no inventa cajas", () => {
+    expect(disponerSecuencia([], [], [{ id: "f", desde: 1, hasta: 2 }]).size).toBe(0);
   });
 });
