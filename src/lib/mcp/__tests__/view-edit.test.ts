@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyViewEdit, fundir, reconciliarIds } from "../view-edit";
+import { applyViewEdit, fundir, loQueSePierde, reconciliarIds } from "../view-edit";
 import type { GraphData } from "../../types";
 
 const nodo = (id: string, nombre: string, tipo: string, extra: Record<string, unknown> = {}) =>
@@ -216,7 +216,8 @@ describe("set-graph", () => {
     const reconciliado = reconciliarIds(vista(), entrante);
     expect(reconciliado.big_picture.nodos[0].id).toBe("web");
 
-    const r = applyViewEdit(vista(), { kind: "set-graph", graph: entrante }, "c4");
+    // Quita API y su relación a propósito: desde #636 eso se declara.
+    const r = applyViewEdit(vista(), { kind: "set-graph", graph: entrante, allowRemovals: true }, "c4");
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(nodos(r.graph)[0]).toMatchObject({ id: "web", x: 10, y: 20 });
@@ -270,5 +271,70 @@ describe("revisarGrafoEntrante · la puerta de un cliente MCP externo", () => {
 
   it("un grafo correcto pasa", () => {
     expect(applyViewEdit(vista(), { kind: "set-graph", graph: vista() }, "c4").ok).toBe(true);
+  });
+});
+
+describe("reemplazar una vista no pierde relaciones en silencio (#636)", () => {
+  it("loQueSePierde nombra los elementos y relaciones que el grafo entrante no trae", () => {
+    const entrante = vista();
+    entrante.big_picture.nodos = [nodo("web", "Web", "Contenedor")];
+    entrante.big_picture.aristas = [];
+    expect(loQueSePierde(vista(), entrante)).toEqual({ elementos: ["API"], relaciones: ["Web → API"] });
+  });
+
+  it("compara por nombre: otro id para la misma caja no es una pérdida", () => {
+    const entrante = vista();
+    entrante.big_picture.nodos = [nodo("n_web", "Web", "Contenedor"), nodo("n_api", "API", "Componente")];
+    entrante.big_picture.aristas = [{ fuente: "n_web", destino: "n_api", descripcion: "llama" }];
+    expect(loQueSePierde(vista(), entrante)).toEqual({ elementos: [], relaciones: [] });
+  });
+
+  it("set-graph que quita algo se rechaza con la lista, salvo que se declare", () => {
+    const entrante = vista();
+    entrante.big_picture.aristas = [];
+    const r = applyViewEdit(vista(), { kind: "set-graph", graph: entrante }, "c4");
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toContain("Web → API");
+    expect(r.error).toContain("allowRemovals");
+
+    const declarado = applyViewEdit(vista(), { kind: "set-graph", graph: entrante, allowRemovals: true }, "c4");
+    expect(declarado.ok).toBe(true);
+  });
+
+  it("agregar sin quitar pasa sin declarar nada", () => {
+    const entrante = vista();
+    entrante.big_picture.nodos.push(nodo("db", "DB", "Base de Datos", { x: undefined, y: undefined }));
+    entrante.big_picture.aristas.push({ fuente: "api", destino: "db", descripcion: "lee" } as any);
+    expect(applyViewEdit(vista(), { kind: "set-graph", graph: entrante }, "c4").ok).toBe(true);
+  });
+});
+
+describe("update-element como lo usa un agente de código (#636)", () => {
+  it("escribe fuente y metadatos por clave sin tocar relaciones, lugar ni las otras claves", () => {
+    const g = vista();
+    (g.big_picture.nodos[1] as any).metadata = [{ clave: "owner", valor: "Equipo Pagos" }];
+    const r = applyViewEdit(
+      g,
+      {
+        kind: "update-element",
+        name: "API",
+        description: "Recibe las órdenes del portal y valida el medio de pago con la pasarela.",
+        source: "src/pagos/api.ts:12",
+        metadata: [{ clave: "repo", valor: "https://github.com/acme/pagos", tipo: "url" } as any],
+      },
+      "c4"
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const api = nodos(r.graph).find((n) => n.id === "api")!;
+    expect(api).toMatchObject({
+      fuente: "src/pagos/api.ts:12",
+      descripcion: "Recibe las órdenes del portal y valida el medio de pago con la pasarela.",
+      x: 10,
+      y: 20,
+    });
+    expect(api.metadata?.map((m) => m.clave).sort()).toEqual(["owner", "repo"]);
+    expect(aristas(r.graph)).toHaveLength(1);
   });
 });

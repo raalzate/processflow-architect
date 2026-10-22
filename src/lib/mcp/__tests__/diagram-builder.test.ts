@@ -33,6 +33,7 @@ import {
   type DiagramModel,
 } from "../diagram-builder";
 import { processGraphData } from "../../graph-processor";
+import type { GraphData, GraphNode } from "../../types";
 import { isLifelineContainer, notationTypes, typesWithRole } from "../../notations";
 import { DEFAULT_DENSITY } from "../layout-presets";
 import { isContainerType } from "../catalog";
@@ -649,7 +650,7 @@ describe("layout · presets", () => {
 // baja la carga cognitiva del humano que revisa (lee "elemento ← cita").
 // -----------------------------------------------------------------------------
 describe("trazabilidad (source)", () => {
-  it("lleva la cita de la fuente a la descripción del nodo serializado", () => {
+  it("la cita viaja en el campo `fuente`, no en la descripción (#636)", () => {
     let m = emptyDiagram(base);
     m = addNode(m, {
       nombre: "Pagar Pedido",
@@ -662,8 +663,24 @@ describe("trazabilidad (source)", () => {
 
     const g = toGraphData(m);
     const nodo = g.big_picture.nodos.find((n) => n.id === "pagar-pedido")!;
-    expect(nodo.descripcion).toContain("El cliente paga.");
-    expect(nodo.descripcion).toContain("Fuente: PRD §3.2 (p. 7)");
+    expect(nodo.descripcion).toBe("El cliente paga.");
+    expect(nodo.fuente).toBe("PRD §3.2 (p. 7)");
+  });
+
+  it("la ida y vuelta conserva la fuente y migra la cita heredada (#636)", () => {
+    let m = emptyDiagram(base);
+    m = addNode(m, { id: "a", nombre: "Pagar", tipo_elemento: "Comando", descripcion: "Paga.", source: "PRD §3" }).model;
+    const ida = toGraphData(m);
+    expect(fromGraphData(ida).nodes.find((n) => n.id === "a")!.source).toBe("PRD §3");
+
+    // Un proyecto guardado antes de #636 trae la cita pegada a la descripción.
+    ida.big_picture.nodos[0] = { ...ida.big_picture.nodos[0], fuente: undefined, descripcion: "Paga.\n\nFuente: viejo.md:9" };
+    const vuelta = fromGraphData(ida).nodes.find((n) => n.id === "a")!;
+    expect(vuelta.source).toBe("viejo.md:9");
+    expect(vuelta.descripcion).toBe("Paga.");
+    // Y al volver a salir no se duplica.
+    const otra = toGraphData(fromGraphData(ida)).big_picture.nodos[0];
+    expect(otra).toMatchObject({ descripcion: "Paga.", fuente: "viejo.md:9" });
   });
 
   it("avisa de los nodos sin fuente cuando el diagrama YA usa fuentes", () => {
@@ -1098,5 +1115,117 @@ describe("mensajes de secuencia desde el MCP (T15 · #278)", () => {
     expect(arista.messageKind).toBe("sync");
     expect(typeof arista.fuente).toBe("string");
     expect(typeof arista.destino).toBe("string");
+  });
+});
+
+describe("ida y vuelta sin perder lo que dibujó el humano (#636)", () => {
+  /** Un grafo de la app con todo lo que el constructor no usaba para nada. */
+  function grafoDibujado(): GraphData {
+    return {
+      nombre_proyecto: "P",
+      version: "1",
+      fecha_analisis: "2026-10-22",
+      notation: "c4",
+      big_picture: {
+        descripcion: "",
+        hotspots: [],
+        nodos: [
+          {
+            id: "a",
+            nombre: "API",
+            tipo_elemento: "Contenedor",
+            estado_comparativo: "existente",
+            descripcion: "Expone las consultas de observación a los clientes.",
+            estilo: { fontSize: 18 } as GraphNode["estilo"],
+            viewRef: "vista-api",
+            x: 10,
+            y: 20,
+            width: 220,
+            height: 104,
+          },
+          { id: "b", nombre: "DB", tipo_elemento: "Base de Datos", estado_comparativo: "existente", x: 400, y: 20, width: 220, height: 104 },
+        ],
+        aristas: [
+          {
+            fuente: "a",
+            destino: "b",
+            descripcion: "lee series",
+            estado_comparativo: "modificado",
+            routing: "curved",
+            midpoints: [{ x: 300, y: 5 }],
+            midpoint: { x: 300, y: 5 },
+            labelOffset: { x: 4, y: -12 },
+            sourceAnchor: { x: 1, y: 0.5 },
+            targetAnchor: { x: 0, y: 0.5 },
+          },
+        ],
+      },
+      agregados: [],
+      read_models: [],
+      responsables: [],
+      notas: "",
+      transcript: "",
+    };
+  }
+
+  it("la relación vuelve con su estado, anclas, etiqueta y trazo", () => {
+    const vuelta = toGraphData(fromGraphData(grafoDibujado(), "c4"));
+    expect(vuelta.big_picture.aristas[0]).toMatchObject({
+      estado_comparativo: "modificado",
+      routing: "curved",
+      midpoints: [{ x: 300, y: 5 }],
+      midpoint: { x: 300, y: 5 },
+      labelOffset: { x: 4, y: -12 },
+      sourceAnchor: { x: 1, y: 0.5 },
+      targetAnchor: { x: 0, y: 0.5 },
+    });
+  });
+
+  it("el elemento vuelve con su estilo, su subvista y su lugar", () => {
+    const a = toGraphData(fromGraphData(grafoDibujado(), "c4")).big_picture.nodos.find((n) => n.id === "a")!;
+    expect(a).toMatchObject({ estilo: { fontSize: 18 }, viewRef: "vista-api", x: 10, y: 20 });
+  });
+
+  it("agregar una caja sin lugar no mueve las que ya estaban", () => {
+    let m = fromGraphData(grafoDibujado(), "c4");
+    m = addNode(m, { id: "c", nombre: "Cola", tipo_elemento: "Contenedor", descripcion: "Encola los avisos." }).model;
+    m = addEdge(m, { fuente: "a", destino: "c", descripcion: "publica" });
+    const g = toGraphData(m);
+    const por = (id: string) => g.big_picture.nodos.find((n) => n.id === id)!;
+    expect(por("a")).toMatchObject({ x: 10, y: 20 });
+    expect(por("b")).toMatchObject({ x: 400, y: 20 });
+    // La nueva tiene lugar y no pisa a ninguna.
+    const c = por("c");
+    expect(typeof c.x).toBe("number");
+    for (const otro of [por("a"), por("b")]) {
+      const pisa =
+        c.x! < otro.x! + otro.width! && otro.x! < c.x! + c.width! && c.y! < otro.y! + otro.height! && otro.y! < c.y! + c.height!;
+      expect(pisa).toBe(false);
+    }
+    // Y la relación que ya tenía trazo lo conserva.
+    expect(g.big_picture.aristas.find((e) => e.destino === "b")).toMatchObject({ midpoints: [{ x: 300, y: 5 }] });
+  });
+
+  it("lo nuevo dentro de un contenedor acomodado va adentro, y el contenedor crece si hace falta", () => {
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "c4" });
+    m = addContainer(m, { nombre: "Motor", tipo_elemento: "Límite de Sistema" }).model;
+    m = addNode(m, { id: "x", nombre: "X", tipo_elemento: "Contenedor", container: "Motor" }).model;
+    // El humano ya acomodó todo, con el contenedor justo para una caja.
+    const puesto = toGraphData(m);
+    const caja = puesto.agregados[0];
+    let m2 = fromGraphData(puesto, "c4");
+    m2 = addNode(m2, { id: "y", nombre: "Y", tipo_elemento: "Contenedor", container: "Motor" }).model;
+    m2 = addNode(m2, { id: "z", nombre: "Z", tipo_elemento: "Contenedor", container: "Motor" }).model;
+    const g = toGraphData(m2);
+    const motor = g.agregados[0];
+    expect(motor).toMatchObject({ x: caja.x, y: caja.y });
+    expect(motor.nodos.find((n) => n.id === "x")).toMatchObject({
+      x: caja.nodos[0].x,
+      y: caja.nodos[0].y,
+    });
+    for (const n of motor.nodos) {
+      expect(n.x!).toBeGreaterThanOrEqual(motor.x!);
+      expect(n.y! + n.height!).toBeLessThanOrEqual(motor.y! + motor.height!);
+    }
   });
 });
