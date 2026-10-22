@@ -46,8 +46,8 @@ Reglas del plan:
 - **Corregir ≠ recrear.** Una caja mal nombrada o mal tipada se arregla con
   `update_view_element`. Nunca `remove` + `add`.
 - **Cada caja nueva lleva `description` y `source`.** La descripción dice qué es
-  y qué hace (1 a 3 frases); la fuente es una propiedad aparte (`docs/x.md:36`,
-  `src/pagos/api.ts:120`). Nunca pegues «Fuente: …» en la descripción.
+  y qué hace (1 a 3 frases); la fuente es una propiedad aparte (`prd.md:36`,
+  `pagos/api.ts:120`). Nunca pegues «Fuente: …» en la descripción.
 - **Quitar se pregunta.** Si el cambio implica quitar algo, listalo aparte y
   esperá el sí del humano para ESO en particular.
 - **Nombres repetidos:** si la herramienta dice que hay dos cajas con ese nombre,

@@ -26,7 +26,7 @@ Arnés: `ubicar → leer → implementar → escribir de vuelta → verificar`.
    contenedores o componentes): qué cajas hay y cómo se conectan.
 3. Identificá la(s) caja(s) que tu tarea toca. Si el código ya está mapeado, la
    **fuente** o el metadato **`repo`** de la caja apuntan a él
-   (`src/pagos/api.ts:12`, `https://github.com/acme/pagos`).
+   (`pagos/api.ts:12`, `https://github.com/acme/pagos`).
 
 ## 1 · Leer el contexto (antes de programar)
 
@@ -64,7 +64,7 @@ una prueba; cada escenario Given/When/Then es un caso de prueba natural.
 Con aprobación del humano, y sólo sobre las cajas que tocaste:
 
 1. **Dónde vive** — `update_view_element` con:
-   - `source`: el punto de entrada en el código (`src/pagos/api.ts:12`). Es una
+   - `source`: el punto de entrada en el código (`pagos/api.ts:12`). Es una
      PROPIEDAD de la caja; nunca la pegues en la descripción.
    - `metadata` por clave: `repo`, `puerto`, `owner` (las demás claves se
      conservan).
