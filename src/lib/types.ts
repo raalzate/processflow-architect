@@ -124,6 +124,14 @@ export interface GraphNode extends SimulationNodeDatum {
    * un "call activity" BPMN: al abrirlo se entra a esa vista para dar profundidad.
    */
   viewRef?: string;
+  /**
+   * De dónde sale el elemento: la cita que lo justifica (`docs/pagos.md:36`,
+   * `acta del 12-mar`, `src/cobros/api.ts:120`). Es una PROPIEDAD y no parte de
+   * la descripción: antes de #636 el MCP la pegaba al final de `descripcion`
+   * («Fuente: …») y la descripción dejaba de describir. Los proyectos viejos se
+   * migran al leerse (`conFuenteSeparada` en `source-docs.ts`).
+   */
+  fuente?: string;
   // Propiedades adicionales utilizadas por la visualización (opcional)
   isGroup?: boolean;
   _initialDragX?: number;
@@ -215,6 +223,8 @@ export interface Agregado {
   // Tipo de contenedor en el lienzo. DDD usa Agregado/Contexto Delimitado/Subdominio;
   // otras notaciones (BPMN/C4/UML) guardan aquí su propio tipo (Pool, Límite de Sistema, ...).
   tipo_contenedor?: string;
+  /** De dónde sale el contenedor (ver `GraphNode.fuente`). */
+  fuente?: string;
   /** Color de fondo personalizado del contenedor (hex). */
   color?: string;
   /** Color de borde/contorno personalizado del contenedor (hex). */

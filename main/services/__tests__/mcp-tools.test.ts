@@ -177,7 +177,8 @@ describe("trazabilidad y ambigüedades", () => {
     await t.call("export_to_app", { diagramId: id });
     const graph = JSON.parse(await fs.readFile(path.join(workspace, `${id}.json`), "utf8"));
     const nodo = graph.agregados[0].nodos.find((n: any) => n.id === "cmd");
-    expect(nodo.descripcion).toContain("Fuente: PRD §4.2 (p. 11)");
+    expect(nodo.fuente).toBe("PRD §4.2 (p. 11)");
+    expect(nodo.descripcion ?? "").not.toContain("Fuente:");
   });
 
   it("registra, resuelve y entrega las ambigüedades al humano", async () => {
@@ -330,6 +331,80 @@ describe("relayout_diagram", () => {
     // Lo guardado es la estrategia concreta: repetir sin argumentos la reproduce.
     const file = path.join(workspace, ".processflow", "diagrams", `${id}.json`);
     expect(JSON.parse(await fs.readFile(file, "utf8")).meta.layout.strategy).toBe("jerarquia");
+  });
+});
+
+describe("export_as_view replace no pierde relaciones en silencio (#636)", () => {
+  const vistaActual = {
+    nombre_proyecto: "P",
+    version: "1",
+    fecha_analisis: "x",
+    notation: "c4",
+    big_picture: {
+      descripcion: "",
+      hotspots: [],
+      nodos: [
+        { id: "web", nombre: "Web", tipo_elemento: "Contenedor", estado_comparativo: "existente" },
+        { id: "api", nombre: "API", tipo_elemento: "Contenedor", estado_comparativo: "existente" },
+      ],
+      aristas: [{ fuente: "web", destino: "api", descripcion: "llama" }],
+    },
+    agregados: [],
+    read_models: [],
+    responsables: [],
+    notas: "",
+    transcript: "",
+  };
+  const entregas: unknown[] = [];
+  const t = () =>
+    toolsFor({
+      getAppState: () => ({ projectName: "P", views: [{ id: "v1", name: "Contenedores", kind: "graph", notation: "c4" }] }),
+      readApp: async () => ({ ok: true, project: "P", kind: "view", view: { name: "Contenedores", kind: "graph", notation: "c4", elements: 2, graph: vistaActual } }),
+      exportViewToApp: async (...args: unknown[]) => (entregas.push(args), true),
+    });
+  const sinRelacion = JSON.stringify({ ...vistaActual, big_picture: { ...vistaActual.big_picture, aristas: [] } });
+
+  it("rechaza la entrega que quita una relación y no entrega nada", async () => {
+    entregas.length = 0;
+    const r = await t().call("export_as_view", { viewName: "Contenedores", replace: true, notation: "c4", graph: sinRelacion });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain("Web → API");
+    expect(entregas).toHaveLength(0);
+  });
+
+  it("con allowRemovals la entrega pasa", async () => {
+    entregas.length = 0;
+    const r = await t().call("export_as_view", {
+      viewName: "Contenedores",
+      replace: true,
+      notation: "c4",
+      graph: sinRelacion,
+      allowRemovals: true,
+    });
+    expect(r.isError).toBeFalsy();
+    expect(entregas).toHaveLength(1);
+  });
+});
+
+describe("subprocesos por MCP (#638)", () => {
+  const pedidos: any[] = [];
+  const t = () =>
+    toolsFor({
+      readApp: async () => ({ ok: false, error: "no hace falta" }),
+      actOnApp: async (req: any) => (pedidos.push(req), { ok: true, message: "hecho" }),
+    });
+
+  it("add_subview pide a la app crear y enlazar la vista de detalle", async () => {
+    pedidos.length = 0;
+    const out = await t().textOf("add_subview", { element: "Validar póliza", notation: "bpmn" });
+    expect(out).toContain("hecho");
+    expect(pedidos[0]).toMatchObject({ kind: "create-subview", element: "Validar póliza", notation: "bpmn" });
+  });
+
+  it("update_view_element con subview enlaza a una vista existente por nombre", async () => {
+    pedidos.length = 0;
+    await t().call("update_view_element", { name: "Validar póliza", subview: "Detalle" });
+    expect(pedidos[0]).toMatchObject({ kind: "update-element", name: "Validar póliza", subview: "Detalle" });
   });
 });
 

@@ -1,6 +1,6 @@
 ---
 name: pulir-elemento
-description: Pule UN elemento de Processflow Architect —la caja cuya ficha tiene abierta el humano— usando el MCP processflow-architect. Lee la ficha entera (descripción, spec, metadatos, adjuntos, vecinos), propone la especificación, espera aprobación y la escribe donde el humano la ve. Úsalo cuando el usuario pida "pulí esta caja", "completá la spec de este elemento", "mejorá la descripción de este componente" o pegue el prompt del botón «Enviar al agente» de la ficha.
+description: Pule UN elemento de Processflow Architect —la caja cuya ficha tiene abierta el humano, o la que nombre— usando el MCP processflow-architect. Lee la ficha entera (descripción, fuente, spec, metadatos, adjuntos, vecinos), propone una especificación que un agente de código pueda implementar y probar, espera aprobación y la escribe donde el humano la ve. Úsalo cuando el usuario pida "pulí esta caja", "completá la spec de este elemento", "mejorá la descripción de este componente" o pegue el prompt del botón «Enviar al agente» de la ficha.
 ---
 
 # Pulir un elemento con el MCP de Processflow Architect
@@ -14,13 +14,18 @@ Arnés: `ingesta → leer la ficha → proponer → confirmar → escribir → c
 ## 0 · Ingesta
 
 1. **`get_app_state`** — confirma que la app está conectada y mirá la línea
-   «Ficha abierta»: dice qué caja y en qué vista. Si dice «ninguna», pedile al
-   humano que abra la caja (doble clic en el lienzo) o que la nombre, y en ese
-   caso usá `get_view` para encontrarla. No adivines.
-2. **`get_focused_element`** — la ficha entera en una llamada: tipo, descripción,
-   estado, metadatos, **spec actual**, índice de adjuntos y vecinos (quién la
-   llama, a quién llama). Es la fuente. Si hay adjuntos, leé los relevantes con
-   `read_element_doc` y `search_docs`: el contrato real está ahí, no en tu memoria.
+   «Ficha abierta»: dice qué caja y en qué vista.
+2. La ficha entera en una llamada —tipo, descripción, **fuente**, estado,
+   metadatos, **spec actual**, índice de adjuntos y vecinos (quién la llama, a
+   quién llama)—:
+   - **`get_focused_element`** si hay una ficha abierta;
+   - **`get_view_element`** con el nombre si el humano la NOMBRÓ (o si no hay
+     ficha abierta). Si el nombre está en varias vistas, te lo dice: preguntá
+     cuál. No adivines.
+3. Si hay adjuntos, leé los relevantes (`get_view` con `importAs: true`, después
+   `read_element_doc` y `search_docs`): el contrato real está ahí, no en tu
+   memoria. Si la caja tiene **fuente**, leé esa sección del documento o ese
+   archivo del código.
 
 ## 1 · Proponer (sin escribir)
 
@@ -34,6 +39,31 @@ Con la ficha leída, redactá la especificación con la forma de `set_element_sp
 - **entidades** y **casos límite** si la fuente los sostiene.
 - Lo que la fuente NO decide se marca `needsClarification: true`. Nunca se rellena.
 
+### Lista de calidad de la spec (revisala antes de mostrarla)
+
+La spec la van a leer humanos y **agentes de código que la toman como contrato**
+para implementar. Tiene que poder programarse y probarse sin preguntarte nada:
+
+| Pregunta | Si la respuesta es no |
+|---|---|
+| ¿Cada paso nombra un vecino REAL y dice qué hace la conexión (`hace`)? | quitalo o conectá la caja primero |
+| ¿Cada paso tiene al menos un escenario Given/When/Then con datos concretos? | escribilo; un escenario vago no es una prueba |
+| ¿Cada requisito dice QUÉ, sin tecnología («valida el medio de pago», no «usa Stripe»)? | reescribilo |
+| ¿Cada criterio es medible, con número y unidad («p95 < 300 ms», «0 cobros duplicados»)? | ponele número o marcalo `needsClarification` |
+| ¿Están los casos límite que la fuente menciona (timeouts, reintentos, duplicados, vacíos)? | agregalos |
+| ¿Lo que no está decidido quedó marcado y no inventado? | marcá `needsClarification: true` |
+
+**Estado de la spec** (`status`): una spec nueva nace `borrador`; pasala a
+`revision` cuando la propongas para aprobar. **Nunca** la marques `aprobada`:
+aprobar es del humano.
+
+### Descripción y fuente de la caja
+
+Si la descripción no dice qué es y qué hace (menos de seis palabras, el nombre
+repetido, o con «Fuente: …» pegado al final), proponé también una nueva: 1 a 3
+frases con su responsabilidad, qué recibe o produce y por qué existe. La cita va
+en la **fuente** de la caja, que es una propiedad aparte.
+
 Mostrale la propuesta al humano **antes** de escribir, en una tabla corta
 (qué agregás, qué cambiás, qué marcás por aclarar). Si la caja ya tenía spec,
 decí explícitamente qué conservás: lo que escribió una persona no se pisa.
@@ -43,8 +73,9 @@ decí explícitamente qué conservás: lo que escribió una persona no se pisa.
 - **`set_view_element_spec`** con `name` = el nombre exacto de la caja y
   **`merge: true`** si ya tenía spec (suma; lo que no mandás se conserva). Sin
   spec previa, mandala completa.
-- Si querés corregir también la descripción o los metadatos, `update_view_element`
-  (descripción) — y nada de renombrar ni mover sin que lo pidan.
+- Si corregís también la descripción, la fuente o los metadatos,
+  `update_view_element` con `description`, `source` y `metadata` (por clave: las
+  demás se conservan) — y nada de renombrar, mover ni borrar sin que lo pidan.
 - Dos cajas con el mismo nombre ⇒ la herramienta no elige: preguntá cuál.
 
 ## 3 · Cerrar

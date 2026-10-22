@@ -115,15 +115,43 @@ export function removeSourceDoc(docs: readonly SourceDoc[], nombre: string): Sou
   return docs.filter((d) => d.nombre.toLowerCase() !== clave);
 }
 
+/** La cita HEREDADA: la última línea «Fuente: …» que el MCP pegaba a la descripción. */
+const CITA_HEREDADA = /(?:^|\n)\s*Fuente:\s*([^\n]+?)\s*$/;
+
 /**
- * La cita que el MCP anexa a la descripción («Fuente: docs/pagos.md:36»). Se lee
- * de ahí y no de un campo propio porque es donde vive hoy, en todos los proyectos
- * ya guardados: un campo nuevo dejaría fuera justo a los diagramas que la tienen
- * (ver `toDomainNode` en `mcp/diagram-builder.ts`).
+ * La cita que el MCP anexaba a la descripción («Fuente: docs/pagos.md:36»).
+ * Desde #636 la fuente es el campo `fuente` del elemento; esto queda para leer
+ * los proyectos guardados antes, hasta que `conFuenteSeparada` los migre.
  */
 export function citaDe(descripcion: string | undefined): string | undefined {
-  const m = /(?:^|\n)\s*Fuente:\s*(.+)\s*$/.exec(descripcion ?? "");
-  return m ? m[1].trim() : undefined;
+  return CITA_HEREDADA.exec(descripcion ?? "")?.[1].trim();
+}
+
+/**
+ * Separa la cita heredada de la descripción. Sin cita no toca nada —ni los
+ * espacios—: lo que el humano escribió vuelve tal cual.
+ */
+export function separarCita(descripcion: string | undefined): { descripcion: string | undefined; cita?: string } {
+  const m = CITA_HEREDADA.exec(descripcion ?? "");
+  if (!m || descripcion === undefined) return { descripcion };
+  return { descripcion: descripcion.slice(0, m.index).trimEnd(), cita: m[1].trim() };
+}
+
+/**
+ * Migra un elemento: la cita heredada pasa al campo `fuente` y sale de la
+ * descripción. Si ya tiene `fuente`, manda el campo y no se toca nada; sin
+ * nada que migrar devuelve el MISMO objeto, para no cambiar de forma lo que
+ * ya estaba bien.
+ */
+export function conFuenteSeparada<T extends { fuente?: string; descripcion?: string }>(n: T): T {
+  if (n.fuente?.trim()) return n;
+  const { descripcion, cita } = separarCita(n.descripcion);
+  return cita ? { ...n, descripcion, fuente: cita } : n;
+}
+
+/** La fuente de un elemento: el campo propio y, si falta, la cita heredada. */
+export function fuenteDelElemento(n: { fuente?: string; descripcion?: string }): string | undefined {
+  return n.fuente?.trim() || citaDe(n.descripcion);
 }
 
 /** Una cita leída: qué documento nombra y qué líneas. */

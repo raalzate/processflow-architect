@@ -1411,3 +1411,33 @@ describe("columnas de tabla", () => {
     expect(graphDataToCanvas(g).nodes.get("reserva")!.columnas).toEqual([{ nombre: "id" }]);
   });
 });
+
+describe("la fuente es una propiedad del elemento (#636)", () => {
+  it("abrir un proyecto viejo saca la cita de la descripción y la pone en `fuente`", () => {
+    const g = emptyGraphData("P", "2026-10-22");
+    g.big_picture.nodos.push({
+      id: "liq",
+      nombre: "Liquidación",
+      tipo_elemento: "Comando",
+      estado_comparativo: "nuevo",
+      descripcion: "Liquidación y médicos auditores.\n\nFuente: fuente-cac3.md:428 (5. Infraestructura)",
+    });
+    const { nodes } = graphDataToCanvas(g);
+    expect(nodes.get("liq")).toMatchObject({
+      descripcion: "Liquidación y médicos auditores.",
+      fuente: "fuente-cac3.md:428 (5. Infraestructura)",
+    });
+  });
+
+  it("guardar conserva la fuente de nodos y contenedores, y no la repite en la descripción", () => {
+    const nodes = new Map<string, DesignerNode>([
+      ["agg-Motor", makeNode({ id: "agg-Motor", nombre: "Motor", tipo_elemento: "Agregado", fuente: "acta.md:3" })],
+      ["c1", makeNode({ id: "c1", agregado: "Motor", descripcion: "Cobra.", fuente: "prd.md:12" })],
+    ]);
+    const g = canvasToGraphData(nodes, new Map(), { nombre_proyecto: "P", fecha_analisis: "x" });
+    expect(g.agregados[0].fuente).toBe("acta.md:3");
+    expect(g.agregados[0].nodos[0]).toMatchObject({ descripcion: "Cobra.", fuente: "prd.md:12" });
+    // Y la vuelta al lienzo la mantiene.
+    expect(graphDataToCanvas(g).nodes.get("c1")?.fuente).toBe("prd.md:12");
+  });
+});

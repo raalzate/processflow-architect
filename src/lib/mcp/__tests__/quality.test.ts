@@ -429,3 +429,32 @@ describe("regla LEGIBILIDAD (feature 017)", () => {
     expect(rules(m)).not.toContain("LEGIBILIDAD");
   });
 });
+
+describe("descripción que describe (#636)", () => {
+  const conDescripcion = (descripcion?: string) => {
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "c4" });
+    m = addNode(m, { id: "liq", nombre: "Liquidación", tipo_elemento: tipo("c4", "system"), descripcion }).model;
+    return qualityFindings(m).filter((f) => f.rule === "DESCRIPCION-POBRE");
+  };
+
+  it("avisa si falta, si es una frase de dos palabras o si sólo repite el nombre", () => {
+    expect(conDescripcion(undefined)).toHaveLength(1);
+    expect(conDescripcion("Liquidación y auditores.")).toHaveLength(1);
+    expect(conDescripcion("Liquidación")).toHaveLength(1);
+    expect(conDescripcion(undefined)[0]).toMatchObject({ level: "aviso", nodeId: "liq" });
+  });
+
+  it("avisa si la cita quedó pegada a la descripción: va en `source`", () => {
+    const f = conDescripcion(
+      "Calcula la liquidación mensual de los prestadores y la envía a Tesorería.\n\nFuente: a.md:3"
+    );
+    expect(f).toHaveLength(1);
+    expect(f[0].message).toMatch(/source/);
+  });
+
+  it("una descripción que dice qué hace y para qué no avisa", () => {
+    expect(
+      conDescripcion("Calcula la liquidación mensual de los prestadores a partir de las prestaciones auditadas.")
+    ).toHaveLength(0);
+  });
+});

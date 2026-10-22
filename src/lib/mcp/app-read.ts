@@ -40,6 +40,12 @@ export type AppReadRequest =
   | { kind: "view"; name: string; project?: string }
   /** La caja cuya ficha tiene abierta el humano (feature 019). Siempre del proyecto activo. */
   | { kind: "focused" }
+  /**
+   * La ficha de CUALQUIER caja, por nombre (#636). Es lo que lee un agente de
+   * código antes de tocar el componente: no tiene la ficha abierta, sabe cómo se
+   * llama. Sin `view` se busca en todas las vistas con grafo.
+   */
+  | { kind: "element"; name: string; view?: string; project?: string }
   /** Todos los proyectos guardados con su organización (`list_projects`, #534). */
   | { kind: "projects" };
 
@@ -54,6 +60,10 @@ export interface FocusedElement {
   type: string;
   container?: string;
   description?: string;
+  /** De dónde sale (campo `fuente` del elemento, #636). */
+  source?: string;
+  /** Vista a la que entra el elemento si es un subproceso (#638), por nombre. */
+  subview?: string;
   estado?: string;
   tags?: string[];
   spec?: ElementSpec;
@@ -107,6 +117,7 @@ export type AppReadResult =
   | { ok: true; project: string; kind: "views"; views: ViewBrief[] }
   | { ok: true; project: string; kind: "view"; view: ViewPayload }
   | { ok: true; project: string; kind: "focused"; element: FocusedElement }
+  | { ok: true; project: string; kind: "element"; element: FocusedElement }
   | { ok: true; project: string; kind: "projects"; projects: ProyectoBrief[] }
   /** `options` = qué SÍ existe, para que el agente no adivine en el siguiente turno. */
   | { ok: false; error: string; options?: string[] };
@@ -302,6 +313,8 @@ export function selectArtifact(
 
 /** Vista tal como la tiene el renderer. */
 export interface ViewInput {
+  /** Id de la vista: es lo que guarda el `viewRef` de un subproceso (#638). */
+  id?: string;
   name: string;
   kind: string;
   notation?: NotationId;
@@ -364,7 +377,12 @@ export interface AppReadContext {
  * null si la caja ya no está (se borró con la ficha abierta): el llamador lo
  * dice en vez de inventar una caja vacía.
  */
-export function focusedElement(view: ViewInput, focus: AppFocus): FocusedElement | null {
+export function focusedElement(
+  view: ViewInput,
+  focus: AppFocus,
+  /** Nombre de una vista por id: con él, la ficha dice a qué vista entra el subproceso. */
+  nombreDeVista: (id: string) => string | undefined = () => undefined
+): FocusedElement | null {
   if (!view.graph) return null;
   // El mismo camino que el resto del MCP: el modelo del constructor unifica nodos
   // y contenedores (id `agg-<nombre>`, igual que el lienzo) y trae spec, metadatos
@@ -386,6 +404,9 @@ export function focusedElement(view: ViewInput, focus: AppFocus): FocusedElement
     type: node.tipo_elemento,
     ...(node.container ? { container: node.container } : {}),
     ...(node.descripcion ? { description: node.descripcion } : {}),
+    ...(node.source ? { source: node.source } : {}),
+    // Un viewRef a una vista que ya no existe no se informa: entrar no llevaría a nada.
+    ...(node.viewRef && nombreDeVista(node.viewRef) ? { subview: nombreDeVista(node.viewRef) } : {}),
     ...(node.estado_comparativo ? { estado: node.estado_comparativo } : {}),
     ...(node.tags_tecnologia?.length ? { tags: node.tags_tecnologia } : {}),
     ...(node.spec ? { spec: node.spec } : {}),
@@ -404,7 +425,9 @@ export function formatFocusedElement(project: string, el: FocusedElement): strin
     `# ${el.name} (${el.type}) · id "${el.id}"`,
     `Proyecto "${project}" · vista "${el.view}"${el.container ? ` · dentro de "${el.container}"` : ""}${el.estado ? ` · estado ${el.estado}` : ""}`,
     `Descripción: ${el.description?.trim() || "(sin descripción)"}`,
+    `Fuente: ${el.source?.trim() || "(sin fuente)"}`,
   ];
+  if (el.subview) lines.push(`Subproceso: entra a la vista "${el.subview}" (leela con get_view).`);
   if (el.tags?.length) lines.push(`Tags: ${el.tags.join(", ")}`);
   if (el.metadata?.length) lines.push(`Metadatos: ${el.metadata.map((m) => `${m.clave} = ${m.valor}`).join(" · ")}`);
   lines.push(`Entrantes (quién la llama): ${lista(el.incoming)}`, `Salientes (a quién llama): ${lista(el.outgoing)}`);
@@ -418,6 +441,9 @@ export function formatFocusedElement(project: string, el: FocusedElement): strin
   );
   return lines.join("\n");
 }
+
+/** Nombre de una vista por su id (el `viewRef` de un subproceso). */
+const nombrePorId = (vistas: ViewInput[]) => (id: string) => vistas.find((v) => v.id === id)?.name;
 
 /** Nombres disponibles, para que el error diga qué SÍ se puede pedir. */
 const nombres = <T>(items: T[], nameOf: (i: T) => string) => items.map(nameOf);
@@ -485,7 +511,7 @@ export function resolveAppRead(req: AppReadRequest, ctx: AppReadContext): AppRea
         options: nombres(vistas, (v) => v.name),
       };
     }
-    const element = focusedElement(vista, focus);
+    const element = focusedElement(vista, focus, nombrePorId(vistas));
     if (!element) {
       return {
         ok: false,
@@ -494,6 +520,48 @@ export function resolveAppRead(req: AppReadRequest, ctx: AppReadContext): AppRea
       };
     }
     return { ok: true, project: proyecto.name, kind: "focused", element };
+  }
+
+  if (req.kind === "element") {
+    const conGrafo = ctx.viewsOf(proyecto.id).filter((v) => v.graph);
+    const donde = req.view?.trim()
+      ? conGrafo.filter((v) => v === pickByName(conGrafo, req.view!, (x) => x.name))
+      : conGrafo;
+    if (req.view?.trim() && !donde.length) {
+      return {
+        ok: false,
+        error: `En "${proyecto.name}" no hay una vista con grafo que resuelva a "${req.view}".`,
+        options: nombres(conGrafo, (v) => v.name),
+      };
+    }
+    const buscado = normalizeRef(req.name);
+    const hallados = donde.flatMap((v) =>
+      fromGraphData(v.graph!, v.notation ?? v.graph!.notation ?? "ddd")
+        .nodes.filter((n) => normalizeRef(n.nombre) === buscado)
+        .map((n) => ({ v, n }))
+    );
+    if (hallados.length === 1) {
+      const { v, n } = hallados[0];
+      const element = focusedElement(
+        v,
+        { viewId: "", viewName: v.name, elementId: n.id, elementName: n.nombre },
+        nombrePorId(ctx.viewsOf(proyecto.id))
+      );
+      if (element) return { ok: true, project: proyecto.name, kind: "element", element };
+    }
+    if (hallados.length > 1) {
+      // Elegir entre homónimos de vistas distintas es adivinar qué caja tocar.
+      return {
+        ok: false,
+        error: `"${req.name}" está en ${hallados.length} lugares: decí en qué vista (\`view\`).`,
+        options: hallados.map(({ v, n }) => `${n.nombre} en «${v.name}»`),
+      };
+    }
+    return {
+      ok: false,
+      error: `No hay ninguna caja llamada "${req.name}"${req.view ? ` en «${donde[0].name}»` : ""}.`,
+      options: donde.flatMap((v) => fromGraphData(v.graph!, v.notation ?? v.graph!.notation ?? "ddd").nodes.map((n) => n.nombre)),
+    };
   }
 
   if (req.kind === "artifact") {

@@ -381,3 +381,89 @@ describe("resolveAppRead", () => {
     expect(r.ok && r.kind === "view" && r.view.graph?.big_picture?.nodos).toHaveLength(4);
   });
 });
+
+describe("element · la ficha de cualquier caja por nombre (#636)", () => {
+  const cajas = (nodos: Array<{ id: string; nombre: string; fuente?: string }>): GraphData =>
+    ({
+      ...graph(0),
+      big_picture: {
+        descripcion: "",
+        hotspots: [],
+        nodos: nodos.map((n) => ({ ...n, tipo_elemento: "Contenedor", estado_comparativo: "existente", descripcion: `Hace ${n.nombre}.` })),
+        aristas: [],
+      },
+    }) as any;
+  const conVistas: AppReadContext = {
+    active: { id: "f1", name: "Seguros" },
+    projects: [{ id: "f1", name: "Seguros" }],
+    artifactsOf: () => [],
+    viewsOf: () => [
+      { name: "Contenedores", kind: "graph", notation: "c4", graph: cajas([{ id: "api", nombre: "API de Pagos", fuente: "src/pagos/api.ts:12" }, { id: "db", nombre: "DB" }]) },
+      { name: "Componentes", kind: "graph", notation: "c4", graph: cajas([{ id: "db2", nombre: "DB" }]) },
+    ],
+  };
+
+  it("encuentra la caja por nombre (sin tildes ni mayúsculas) aunque no se diga la vista", () => {
+    const r = resolveAppRead({ kind: "element", name: "api de pagos" }, conVistas);
+    expect(r.ok && r.kind === "element" && r.element).toMatchObject({
+      view: "Contenedores",
+      id: "api",
+      name: "API de Pagos",
+      source: "src/pagos/api.ts:12",
+    });
+  });
+
+  it("si el nombre está en varias vistas, no elige: pide la vista y dice cuáles", () => {
+    const r = resolveAppRead({ kind: "element", name: "DB" }, conVistas);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.options).toEqual(["DB en «Contenedores»", "DB en «Componentes»"]);
+    const conVista = resolveAppRead({ kind: "element", name: "DB", view: "Componentes" }, conVistas);
+    expect(conVista.ok && conVista.kind === "element" && conVista.element.id).toBe("db2");
+  });
+
+  it("si no existe, dice qué cajas hay", () => {
+    const r = resolveAppRead({ kind: "element", name: "Cola", view: "Contenedores" }, conVistas);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.options).toEqual(["API de Pagos", "DB"]);
+  });
+});
+
+describe("la ficha dice a qué vista entra un subproceso (#638)", () => {
+  const conSub = (viewRef: string): AppReadContext => ({
+    active: { id: "f1", name: "Seguros" },
+    projects: [{ id: "f1", name: "Seguros" }],
+    artifactsOf: () => [],
+    viewsOf: () => [
+      {
+        id: "v1",
+        name: "Proceso",
+        kind: "graph",
+        notation: "bpmn",
+        graph: {
+          ...graph(0),
+          big_picture: {
+            descripcion: "",
+            hotspots: [],
+            nodos: [{ id: "val", nombre: "Validar póliza", tipo_elemento: "Subproceso", estado_comparativo: "nuevo", viewRef } as any],
+            aristas: [],
+          },
+        } as any,
+      },
+      { id: "v2", name: "Detalle de validación", kind: "graph", notation: "bpmn", graph: graph(0) },
+    ],
+  });
+
+  it("nombra la vista enlazada y lo escribe en la ficha", () => {
+    const r = resolveAppRead({ kind: "element", name: "Validar póliza" }, conSub("v2"));
+    expect(r.ok && r.kind === "element" && r.element.subview).toBe("Detalle de validación");
+    if (!r.ok || r.kind !== "element") return;
+    expect(formatFocusedElement(r.project, r.element)).toContain('entra a la vista "Detalle de validación"');
+  });
+
+  it("un enlace a una vista que ya no existe no se informa", () => {
+    const r = resolveAppRead({ kind: "element", name: "Validar póliza" }, conSub("borrada"));
+    expect(r.ok && r.kind === "element" && r.element.subview).toBeUndefined();
+  });
+});

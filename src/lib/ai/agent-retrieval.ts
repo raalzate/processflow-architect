@@ -19,7 +19,7 @@ import { collectGraphNodes } from "../view-nodes";
 import { countGraph } from "../mcp/app-state";
 import { specToContext } from "./graph-toon";
 import {
-  citaDe,
+  fuenteDelElemento,
   formatSourceInventory,
   readSourceRange,
   resolveCita,
@@ -531,10 +531,10 @@ export function readElement(cat: Catalog, name: string, budget: number): ToolRes
   if (spec.length) lineas.push("Especificación:", ...spec);
   else lineas.push("Sin especificación escrita todavía.");
 
-  // La cita de la caja viaja dentro de la descripción («Fuente: docs/…:36»). Si
-  // el documento está adjunto al proyecto, la ficha trae el TROZO que la
-  // sostiene: sin esto la cita nombra un archivo que la app no tiene (#240).
-  const cita = citaDe(node.descripcion);
+  // La cita de la caja (`fuente`, o la heredada pegada a la descripción). Si el
+  // documento está adjunto al proyecto, la ficha trae el TROZO que la sostiene:
+  // sin esto la cita nombra un archivo que la app no tiene (#240 · #636).
+  const cita = fuenteDelElemento(node);
   if (cita) {
     const r = resolveCita(cat.sources ?? [], cita);
     if (r.estado === "ok") lineas.push(`Fuente ${r.doc}:`, r.fragmento);

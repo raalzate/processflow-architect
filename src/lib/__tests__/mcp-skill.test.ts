@@ -38,8 +38,10 @@ describe("skills embebidos", () => {
   // La exención del arnés de diseño la decide una constante de producción: sacar
   // un skill de DESIGN_SKILL_IDS lo liberaría del contrato sin tocar este test.
   // Se fija la partición (revisión de #461).
-  it("la partición de skills es exacta: los de diseño más pulir-elemento", () => {
-    expect([...SKILL_IDS].sort()).toEqual([...DESIGN_SKILL_IDS, "pulir-elemento"].sort());
+  it("la partición de skills es exacta: los de diseño más los que trabajan sobre lo que existe", () => {
+    expect([...SKILL_IDS].sort()).toEqual(
+      [...DESIGN_SKILL_IDS, "pulir-elemento", "actualizar-diagrama", "contexto-para-codigo"].sort()
+    );
     expect(DESIGN_SKILL_IDS).toEqual(["documento-a-processflow", "disenar-diagrama"]);
   });
 
@@ -191,6 +193,43 @@ describe("contrato del arnés dentro del skill", () => {
     // Proponer va antes que escribir: es la regla de todo el arnés.
     expect(md.indexOf("Proponer")).toBeLessThan(md.indexOf("set_view_element_spec"));
     expect(md).not.toContain("export_to_app");
+  });
+
+  it("actualizar-diagrama opera puntual, verifica antes y después y no autoriza quitar a ciegas (#636)", () => {
+    const md = getSkill("actualizar-diagrama")!.files[0].content;
+    for (const tool of ["get_view", "get_view_element", "update_view_element", "add_view_element", "add_view_edge", "update_view_edge", "set_view_element_spec", "allowRemovals"]) {
+      expect(md, `actualizar-diagrama no menciona ${tool}`).toContain(tool);
+    }
+    // Leer va antes que tocar, y se verifica al final.
+    expect(md.indexOf("Leer")).toBeLessThan(md.indexOf("Aplicar"));
+    expect(md.indexOf("Aplicar")).toBeLessThan(md.indexOf("Verificar"));
+    expect(md).toMatch(/Nunca\s+borrar y recrear/);
+    expect(md).toMatch(/Nunca.{0,40}allowRemovals: true/);
+  });
+
+  it("contexto-para-codigo lee la ficha antes de programar y escribe de vuelta sin aprobar specs (#636)", () => {
+    const md = getSkill("contexto-para-codigo")!.files[0].content;
+    for (const tool of ["get_view_element", "read_element_doc", "update_view_element", "set_view_element_spec", "merge: true", "needsClarification", "metadata", "source"]) {
+      expect(md, `contexto-para-codigo no menciona ${tool}`).toContain(tool);
+    }
+    expect(md.indexOf("Leer el contexto")).toBeLessThan(md.indexOf("Implementar"));
+    expect(md).toMatch(/Nunca la apruebes vos/);
+    expect(md).not.toContain("export_to_app");
+  });
+
+  it("los skills que crean cajas piden descripción que describa y la fuente como propiedad (#636)", () => {
+    for (const id of [...DESIGN_SKILL_IDS, "pulir-elemento", "actualizar-diagrama", "contexto-para-codigo"]) {
+      const md = getSkill(id)!.files[0].content;
+      expect(md, `${id}: no dice que la fuente no va en la descripción`).toMatch(/[Nn]unca.{0,20}(pegues|pegado).{0,30}Fuente|Fuente: …» pegado|PROPIEDAD/);
+    }
+  });
+
+  it("los skills que dan profundidad nombran la herramienta real del subproceso (#638)", () => {
+    for (const id of [...DESIGN_SKILL_IDS, "actualizar-diagrama"]) {
+      const md = getSkill(id)!.files[0].content;
+      expect(md, `${id} no menciona add_subview`).toContain("add_subview");
+      expect(md, `${id} no dice cómo enlazar una vista existente`).toContain("subview");
+    }
   });
 
   it("los skills de diseño documentan el material adjunto de la caja (#366)", () => {

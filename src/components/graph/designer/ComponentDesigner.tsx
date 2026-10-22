@@ -168,7 +168,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useGraphContext } from "@/context/GraphContext";
-import { citaDe, resolveCita, type SourceDoc } from "@/lib/source-docs";
+import { fuenteDelElemento, resolveCita, type SourceDoc } from "@/lib/source-docs";
 import {
   attachElementDoc,
   removeElementDoc,
@@ -1262,8 +1262,7 @@ const AdjuntosField: React.FC<{
   );
 };
 
-const FuenteCitada: React.FC<{ descripcion?: string; docs: SourceDoc[] }> = ({ descripcion, docs }) => {
-  const cita = citaDe(descripcion);
+const FuenteCitada: React.FC<{ cita?: string; docs: SourceDoc[] }> = ({ cita, docs }) => {
   const resuelta = useMemo(() => resolveCita(docs, cita), [docs, cita]);
   if (!cita || resuelta.estado === "sin-cita") return null;
   return (
@@ -1809,7 +1808,17 @@ const EditNodeDialog: React.FC<{
               }}
               className="min-h-[180px]"
             />
-            <FuenteCitada descripcion={draft.descripcion} docs={sourceDocs} />
+          </div>
+          <div>
+            <Label htmlFor="node-fuente">Fuente</Label>
+            <Input
+              id="node-fuente"
+              value={draft.fuente ?? ""}
+              onChange={(e) => setDraft({ ...draft, fuente: e.target.value })}
+              placeholder="docs/pagos.md:36 · acta del 12-mar · src/cobros/api.ts:120"
+              className="mt-1"
+            />
+            <FuenteCitada cita={fuenteDelElemento(draft)} docs={sourceDocs} />
           </div>
             </div>
 

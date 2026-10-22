@@ -53,6 +53,7 @@ import {
 } from "../../src/lib/mcp/diagram-builder";
 import { resumenDeLegibilidad } from "../../src/lib/layout/legible";
 import { numerarPasos } from "../../src/lib/mcp/numeracion";
+import { explicarPerdida, loQueSePierde } from "../../src/lib/mcp/view-edit";
 import { STRATEGY_ORDER, type LayoutStrategy } from "../../src/lib/mcp/layout-presets";
 import {
   getElementSpec,
@@ -271,6 +272,17 @@ const diagramIdSchema = z
   .describe(
     "Id del diagrama. Opcional: sin él se usa el fijado con use_diagram, el de la configuración del servidor, o el único que haya en el workspace."
   );
+
+/**
+ * Qué se pide en la descripción y en la fuente de un elemento. Un solo texto
+ * para todas las herramientas que crean o corrigen cajas: si cada una lo
+ * explicara a su modo, el agente escribiría descripciones distintas según por
+ * dónde entrara (#636).
+ */
+const DESCRIPCION_DEL_ELEMENTO =
+  "Qué ES y qué HACE el elemento, en 1 a 3 frases que se entiendan sin abrir el documento: su responsabilidad, qué recibe o produce y por qué existe (\"Calcula la liquidación mensual de los prestadores a partir de las prestaciones auditadas y la envía a Tesorería.\"). NO repitas el nombre ni pegues la cita: la fuente va en `source`.";
+const FUENTE_DEL_ELEMENTO =
+  "De DÓNDE sale (\"docs/prd.md:36\", \"PRD §3.2 (p. 7)\", \"acta 12-mar\", \"src/pagos/service.ts:120\"). Se guarda como PROPIEDAD del elemento —campo `fuente`, separado de la descripción— y alimenta la tabla elemento←fuente de review_diagram: sin ella el humano no puede contrastar el diagrama.";
 
 const estadoSchema = z
   .enum(ESTADOS as unknown as [string, ...string[]])
@@ -1165,12 +1177,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .describe(
             "NO soportado: un contenedor no cuelga de otro (el formato es de un nivel, ADR 0002). Para el nivel de abajo creá otra vista y enlazala con viewRef. Está declarado para poder explicarlo cuando lo intentes."
           ),
-        source: z
-          .string()
-          .optional()
-          .describe(
-            "Cita de DÓNDE sale en la fuente (\"PRD §3.2 (p. 7)\", \"acta 12-mar\", \"src/pagos/service.ts\"). Sostiene la revisión humana: aparece en la tabla elemento←fuente de review_diagram."
-          ),
+        source: z.string().optional().describe(FUENTE_DEL_ELEMENTO),
         metadata: metadataSchema.describe(
             "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}${p.obligatoria ? ", OBLIGATORIA en lo desplegable" : ""})`).join(" · ") + ". Un elemento desplegable (Contenedor, Componente, Base de Datos, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
           ),
@@ -1215,7 +1222,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         name: z.string(),
         type: z.string().describe("Tipo NO contenedor válido de la notación."),
         container: z.string().optional().describe("Nombre de un contenedor existente."),
-        description: z.string().optional(),
+        description: z.string().optional().describe(DESCRIPCION_DEL_ELEMENTO),
         estado: estadoSchema,
         tags: z.array(z.string()).optional().describe("Etiquetas de tecnología."),
         icon: z
@@ -1223,12 +1230,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .optional()
           .describe("Icono de TECNOLOGÍA del catálogo (id de list_icons: `si-postgresql`, `dv-slack`, `lu-Cloud`). Se dibuja en la caja en vez del icono del tipo; un id desconocido no entra y validate_diagram lo avisa."),
         id: z.string().optional().describe("Id explícito (por defecto se deriva del nombre)."),
-        source: z
-          .string()
-          .optional()
-          .describe(
-            "Cita de DÓNDE sale en la fuente (\"PRD §3.2 (p. 7)\", \"acta 12-mar\", \"src/pagos/service.ts\"). Aparece en la descripción del elemento y en la tabla elemento←fuente de review_diagram: sin ella el humano no puede contrastar el diagrama."
-          ),
+        source: z.string().optional().describe(FUENTE_DEL_ELEMENTO),
         columns: columnsSchema.describe(
             "Columnas, SÓLO para los tipos que se dibujan como caja de tabla (MER físico: `Tabla Relacional`). De ellas salen los compartimentos que muestra la caja: «column» son las filas, y «FK», «index» y «PK» se DEDUCEN de sus marcas — no se declaran aparte. Ejemplo: [{nombre:\"id\", tipo:\"integer\", pk:true}, {nombre:\"servicio_id\", tipo:\"integer\", fk:true, referencia:\"servicio.id\", indice:true}, {nombre:\"nombre\", tipo:\"varchar(50)\"}]. Una tabla sin `pk` pasa validate_diagram con AVISO; una FK sin `referencia` es error."
           ),
@@ -1467,9 +1469,9 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .describe(
             "Tipo nuevo, de la MISMA familia (nodo→nodo, contenedor→contenedor). Para reclasificar: un Carril que en realidad es un participante independiente pasa a Pool."
           ),
-        description: z.string().optional().describe("Descripción nueva (aquí va el detalle largo)."),
+        description: z.string().optional().describe(DESCRIPCION_DEL_ELEMENTO),
         estado: estadoSchema,
-        source: z.string().optional().describe("Cita de la fuente."),
+        source: z.string().optional().describe(FUENTE_DEL_ELEMENTO),
         tags: z.array(z.string()).optional(),
         icon: z
           .string()
@@ -2621,6 +2623,26 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         return text(formatFocusedElement(r.project, r.element));
       }
     );
+
+    server.registerTool(
+      "get_view_element",
+      {
+        title: "La ficha de un elemento, por nombre",
+        description:
+          "La ficha ENTERA de un elemento del proyecto activo NOMBRÁNDOLO, sin que el humano la tenga abierta: tipo, descripción, fuente, estado, metadatos (repo, puerto, owner…), spec actual, índice de adjuntos y vecinos entrantes/salientes. Es el CONTEXTO que lee un agente de código antes de tocar el componente que esa caja representa. Sin `view` busca en todas las vistas; si el nombre está en varias, no elige: te dice dónde y pedís la vista.",
+        inputSchema: {
+          name: z.string().describe("Nombre del elemento, como se ve en el lienzo."),
+          view: z.string().optional().describe("Vista donde buscarlo (si el nombre se repite entre vistas)."),
+          project: z.string().optional().describe("Otro proyecto guardado (por defecto, el activo)."),
+        },
+      },
+      async ({ name, view, project }) => {
+        const r = await opts.readApp!({ kind: "element", name, view, project });
+        if (!r.ok) return noSePudo(r);
+        if (r.kind !== "element") return fail("Respuesta inesperada.");
+        return text(formatFocusedElement(r.project, r.element));
+      }
+    );
   }
 
   // -- 4d. Skills: el arnés del agente externo -----------------------------------
@@ -2919,9 +2941,24 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             .describe(
               "Proyecto donde DEBE caer la pestaña. Si el activo en la app es otro, no se entrega nada y se avisa: así una vista no termina en el proyecto equivocado."
             ),
+          allowRemovals: z
+            .boolean()
+            .optional()
+            .describe(
+              "Con `replace`: true = quitar A PROPÓSITO los elementos y relaciones de la pestaña que lo entregado no trae. Sin esto, una entrega que pierde algo se rechaza con la lista."
+            ),
         },
       },
-      async ({ diagramId: diagramIdEntrada, viewName, replace, graph: graphEntrada, notation, project }) => {
+      async ({ diagramId: diagramIdEntrada, viewName, replace, graph: graphEntrada, notation, project, allowRemovals }) => {
+      // Reemplazar una pestaña que pierde relaciones o elementos se rechaza
+      // ANTES de entregar (#636): la app aplica sin preguntar, y un grafo armado
+      // de memoria omitía en silencio lo que el humano había dibujado.
+      const perdidaAlReemplazar = async (nombre: string, entrante: GraphData): Promise<string | null> => {
+        if (!replace || allowRemovals || !opts.readApp) return null;
+        const r = await opts.readApp({ kind: "view", name: nombre });
+        if (!r.ok || r.kind !== "view" || !r.view.graph) return null;
+        return explicarPerdida(loQueSePierde(r.view.graph, entrante));
+      };
       // `project` explícito (#534): la pestaña va SIEMPRE al proyecto activo; si el
       // agente esperaba otro, se rechaza en vez de colgarla donde no era.
       const activoAhora = opts.getAppState?.() ?? null;
@@ -2957,6 +2994,8 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         if (replace) {
           const vistas = opts.getAppState?.()?.views ?? [];
           if (!resolveViewRef(nombre, vistas).existe) return fail(vistaInexistente(nombre, vistas));
+          const perdida = await perdidaAlReemplazar(nombre, directo);
+          if (perdida) return fail(perdida);
         }
         const entregada = await opts.exportViewToApp!(nombre, directo, notation as NotationId, replace);
         if (!entregada) {
@@ -2991,6 +3030,8 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           const vistas = opts.getAppState?.()?.views ?? [];
           const ref = resolveViewRef(name, vistas);
           if (!ref.existe) return fail(vistaInexistente(name, vistas));
+          const perdida = await perdidaAlReemplazar(ref.name, graph);
+          if (perdida) return fail(perdida);
         }
 
         const delivered = await opts.exportViewToApp!(name, graph, model.meta.notation, replace);
@@ -3212,12 +3253,13 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           name: z.string().describe("Nombre del elemento."),
           type: z.string().describe("Tipo de la notación de la vista."),
           container: z.string().optional().describe("Nombre del contenedor donde va (vacío = suelto)."),
-          description: z.string().optional(),
+          description: z.string().optional().describe(DESCRIPCION_DEL_ELEMENTO),
+          source: z.string().optional().describe(FUENTE_DEL_ELEMENTO),
           ...vista,
         },
       },
-      async ({ name, type, container, description, view }) =>
-        editar({ kind: "add-element", name, type, container, description, view })
+      async ({ name, type, container, description, source, view }) =>
+        editar({ kind: "add-element", name, type, container, description, source, view })
     );
 
     server.registerTool(
@@ -3230,13 +3272,44 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           name: z.string().describe("Nombre actual del elemento."),
           newName: z.string().optional(),
           type: z.string().optional(),
-          description: z.string().optional(),
+          description: z.string().optional().describe(DESCRIPCION_DEL_ELEMENTO),
+          source: z.string().optional().describe(FUENTE_DEL_ELEMENTO),
           container: z.string().optional(),
+          metadata: metadataSchema
+            .optional()
+            .describe(
+              "Referencias de DÓNDE VIVE (repo, puerto, owner, wiki): se agregan o reemplazan POR CLAVE y las demás se conservan. Es lo que deja un agente de código para que el siguiente encuentre el componente."
+            ),
+          subview: z
+            .string()
+            .optional()
+            .describe(
+              "SUBPROCESO: nombre de la vista EXISTENTE a la que entra este elemento (lo que la ficha llama «Vista embebida»). El lienzo le pone la marca ⊞ y al abrirlo entra a esa vista. \"\" lo desenlaza. Si la vista todavía no existe, usá add_subview, que la crea y la enlaza."
+            ),
           ...vista,
         },
       },
-      async ({ name, newName, type, description, container, view }) =>
-        editar({ kind: "update-element", name, newName, type, description, container, view })
+      async ({ name, newName, type, description, source, container, metadata, subview, view }) =>
+        editar({ kind: "update-element", name, newName, type, description, source, container, metadata, subview, view })
+    );
+
+    server.registerTool(
+      "add_subview",
+      {
+        title: "Crear y enlazar un subproceso",
+        description:
+          "Convierte un elemento en SUBPROCESO: crea una vista nueva para su detalle y lo enlaza a ella en un solo paso (el «+» de «Vista embebida (subproceso)» de la ficha). El lienzo le pone la marca ⊞ y al abrirlo entra a esa vista. Es la forma de dar PROFUNDIDAD sin anidar contenedores (ADR 0002): el Subproceso de BPMN, los Componentes de un Contenedor C4, el detalle de un caso de uso. Después llená la vista nueva con add_view_element / add_view_edge (o set_view_graph) pasando `view` con su nombre.",
+        inputSchema: {
+          element: z.string().describe("Nombre del elemento que se vuelve subproceso, como se ve en el lienzo."),
+          name: z.string().optional().describe("Nombre de la vista de detalle (por defecto, el del elemento)."),
+          notation: NOTATION.optional().describe(
+            "Notación de la vista de detalle (por defecto, la de la vista del elemento). Un Contenedor C4 se detalla en c4; un Subproceso BPMN, en bpmn."
+          ),
+          view: z.string().optional().describe("Vista donde está el elemento (por defecto, la abierta)."),
+        },
+      },
+      async ({ element, name, notation, view }) =>
+        editar({ kind: "create-subview", element, name, notation, view })
     );
 
     server.registerTool(
@@ -3307,17 +3380,23 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           "Reemplaza el CONTENIDO de una vista con un GraphData completo, conservando la posición que el humano le dio a lo que ya estaba (se reconcilia por nombre). Es la puerta del modo creativo: un diagrama entero de una sola vez. Un grafo sin elementos se rechaza — el lienzo no queda en blanco.",
         inputSchema: {
           graph: z.string().describe("GraphData completo en JSON."),
+          allowRemovals: z
+            .boolean()
+            .optional()
+            .describe(
+              "true = quitar A PROPÓSITO los elementos y relaciones de la vista que el grafo no trae. Sin esto, un grafo que pierde algo se rechaza con la lista: para cambios chicos usá update_view_element / add_view_edge, que no tocan lo demás."
+            ),
           ...vista,
         },
       },
-      async ({ graph, view }) => {
+      async ({ graph, allowRemovals, view }) => {
         let parsed: unknown;
         try {
           parsed = JSON.parse(graph);
         } catch (e: any) {
           return fail(`El grafo no es JSON válido: ${String(e?.message ?? e)}`);
         }
-        return editar({ kind: "set-graph", graph: parsed as any, view });
+        return editar({ kind: "set-graph", graph: parsed as any, allowRemovals, view });
       }
     );
 
