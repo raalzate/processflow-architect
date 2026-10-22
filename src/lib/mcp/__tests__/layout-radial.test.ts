@@ -36,8 +36,9 @@ const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
 describe("estrategia radial", () => {
   it("la estrategia radial se puede pedir y está en el menú", () => {
     // DDD dejó de nacer radial (#387): medido sobre los diagramas de referencia,
-    // el flujo deja menos cruces. La estrategia sigue existiendo y se pide a mano.
-    expect(defaultStrategyFor("ddd")).toBe("flujo");
+    // el flujo dejaba menos cruces, y hoy la línea de tiempo menos aún (TS-023).
+    // La radial sigue existiendo y se pide a mano.
+    expect(defaultStrategyFor("ddd")).toBe("linea_tiempo");
     expect(resolveStrategy("radial", "ddd")).toBe("radial");
     expect(LAYOUT_STRATEGIES.radial.id).toBe("radial");
     // El MER sí sigue siendo radial: una entidad con sus atributos alrededor.

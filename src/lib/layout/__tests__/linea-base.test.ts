@@ -121,7 +121,7 @@ describe("estrategia por defecto", () => {
       expect(porDefecto.cruces).toBeLessThanOrEqual(total(estrategia).cruces);
     }
     // Queda escrito cuál es hoy; el registro es quien la declara (P6).
-    expect(defaultStrategyFor("ddd")).toBe("flujo");
+    expect(defaultStrategyFor("ddd")).toBe("linea_tiempo");
   });
 
   it("TS-024 · con la estrategia por defecto ningún diagrama de dominio empeora", () => {

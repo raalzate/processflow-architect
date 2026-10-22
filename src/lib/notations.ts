@@ -429,7 +429,11 @@ const DDD: Notation = {
   // de referencia el avance por flujo es el que menos cruces deja: 0 contra 1 del
   // radial, y ninguna relación por encima de una caja contra 2 (#387 · #391).
   // El radial repartía en anillos y las relaciones se cortaban en el centro.
-  defaultLayout: "flujo",
+  // Con la línea de tiempo (eje común a todos los contextos, y quien sólo
+  // dispara justo antes de lo que provoca) el Big Picture baja de 2 cruces a 0:
+  // es lo que el Event Storming es, una historia contada en el tiempo. TS-023
+  // lo mide en el gate.
+  defaultLayout: "linea_tiempo",
   flowRules:
     "- Actor → Comando (relación \"ejecuta\")\n" +
     "- Comando → Evento (relación \"produce\")\n" +
