@@ -30,6 +30,7 @@ import {
   ChevronRight,
   ChevronUp,
   ClipboardCopy,
+  Crosshair,
   Download,
   HelpCircle,
   Plus,
@@ -188,10 +189,11 @@ const PasoCard: React.FC<{
   total: number;
   flujoVecinos: FlujoVecinos;
   resolveNodeName: (id: string) => string;
+  onEnfocar?: (id: string) => void;
   onChange: (h: SpecStep) => void;
   onMover: (desde: number, hasta: number) => void;
   onQuitar: () => void;
-}> = ({ paso, indice, total, flujoVecinos, resolveNodeName, onChange, onMover, onQuitar }) => {
+}> = ({ paso, indice, total, flujoVecinos, resolveNodeName, onEnfocar, onChange, onMover, onQuitar }) => {
   const [abierta, setAbierta] = useState(true);
   const set = (parche: Partial<SpecStep>) => onChange({ ...paso, ...parche });
   const escenarios = paso.escenarios;
@@ -226,7 +228,15 @@ const PasoCard: React.FC<{
           </SelectContent>
         </Select>
         <div className="min-w-0 flex-1">
-          <Select value={paso.ref || undefined} onValueChange={(id) => set({ ref: id })}>
+          {/* Elegir la caja también la enfoca en el lienzo (#617): de dónde viene
+              o a dónde va la dependencia, sin perderse en un diagrama grande. */}
+          <Select
+            value={paso.ref || undefined}
+            onValueChange={(id) => {
+              set({ ref: id });
+              onEnfocar?.(id);
+            }}
+          >
             <SelectTrigger
               className={cn("h-8", !refConectado && "border-warning text-warning")}
               title={
@@ -258,6 +268,16 @@ const PasoCard: React.FC<{
             </SelectContent>
           </Select>
         </div>
+        {onEnfocar && paso.ref && (
+          <IconAction
+            type="button"
+            variant="ghost"
+            className="h-8 w-8 shrink-0"
+            label={accion("enfocar", "en el lienzo")}
+            icon={<Crosshair className="h-4 w-4" />}
+            onClick={() => onEnfocar(paso.ref!)}
+          />
+        )}
         <FilaAcciones
           indice={indice}
           total={total}
@@ -401,6 +421,8 @@ export interface SpecTabProps {
   /** Resuelve el id de un nodo a su nombre (para chips y markdown). Ausente →
    * se muestra el id. */
   resolveNodeName?: (id: string) => string;
+  /** Enfoca en el lienzo la caja de una entrada/salida (#617). Ausente → sin botón. */
+  onEnfocar?: (id: string) => void;
 }
 
 const SIN_VECINOS: FlujoVecinos = { entrantes: [], salientes: [] };
@@ -417,6 +439,7 @@ export const SpecTab: React.FC<SpecTabProps> = ({
   onExportar,
   flujoVecinos = SIN_VECINOS,
   resolveNodeName = (id) => id,
+  onEnfocar,
 }) => {
   const spec = value ?? emptySpec();
 
@@ -535,6 +558,7 @@ export const SpecTab: React.FC<SpecTabProps> = ({
             total={spec.stories.length}
             flujoVecinos={flujoVecinos}
             resolveNodeName={resolveNodeName}
+            onEnfocar={onEnfocar}
             onChange={(nueva) => set({ stories: spec.stories.map((x) => (x.id === h.id ? nueva : x)) })}
             onMover={(desde, hasta) => set({ stories: moveItem(spec.stories, desde, hasta) })}
             onQuitar={() => set({ stories: spec.stories.filter((x) => x.id !== h.id) })}
