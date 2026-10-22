@@ -510,13 +510,19 @@ Causa:   el gate corre `vitest run --coverage`, y la instrumentación V8 multipl
          veces el tiempo de un cálculo que es puro CPU. No hay variable de entorno que lo delate
          desde el test (`NODE_V8_COVERAGE` llega vacía), así que el test no puede saber en qué
          régimen corre. La aserción medía la máquina del día, no el producto.
-Regla:   un requisito de tiempo no se prueba con el reloj de pared. Se prueba el MECANISMO que lo
-         hace cumplir: el cálculo lleva presupuesto y, agotado, devuelve la mejor solución hallada
-         marcada como parcial. El reloj sólo se usa como red, con un tope holgado y el número real
-         escrito al lado.
-Mecanismo: `presupuestoDe` en `src/lib/layout/legible.ts` (200 ms hasta 50 elementos, techo de 2 s)
-         + `TS-007` (presupuesto agotado → disposición parcial, con reloj inyectado) y `TS-006`
-         en `src/lib/layout/__tests__/legible.test.ts`, cuyo tope es el presupuesto por tres.
+         **Reincidió** (2026-10-22, gate de #621): la «red» de ×3 que dejó este gotcha falló con
+         «expected 860 to be less than 600». Cronometraba todo `relayout`, incluida la estrategia
+         y la medición final, que no tienen presupuesto. Y dos pruebas del corte eran ciegas:
+         FR-012 usaba un reloj constante (lo transcurrido es 0, nunca se agota) y un mutante sin
+         corte en `ordenarCapas` pasaba toda la suite.
+Regla:   un test no lee el reloj de pared, ni siquiera como red. Se prueba el MECANISMO con un
+         reloj inyectado que AVANZA: agotado, ninguna fase corre una pasada y el resultado se
+         declara parcial. Un reloj constante no agota nada.
+Mecanismo: regla RELOJ de `scripts/repo-lint.mjs` (`Date.now()`/`performance.now()` en un test
+         falla; caso en `harness-selftest`) + `TS-006` y `TS-007` en
+         `src/lib/layout/__tests__/legible.test.ts` y «FR-012 · agotado, no corre ni una pasada»
+         en `order.test.ts`, con reloj que avanza. Los tres matan al mutante sin corte de cada
+         fase (ruteo y ordenamiento).
 
 ### GOTCHA: un parche de electron-serve borró el scheme de los modelos
 
