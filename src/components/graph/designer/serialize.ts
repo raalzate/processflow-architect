@@ -23,6 +23,7 @@ import { type FragmentOp, type FragmentPart } from "@/lib/sequence/fragments";
 import { normalizarLista, type ElementMetadata } from "@/lib/element-metadata";
 import { sanitizeSpec, type ElementSpec } from "@/lib/element-spec";
 import { docsParaGuardar, type ElementDoc } from "@/lib/element-docs";
+import { conFuenteSeparada } from "@/lib/source-docs";
 import { estiloParaGuardar, normalizarEstilo, type ElementStyle } from "@/lib/element-style";
 import { normalizarColumnas, type TableColumn } from "@/lib/mer/table-box";
 import {
@@ -83,6 +84,8 @@ export interface DesignerNode {
   columnas?: TableColumn[];
   /** Id de la vista embebida (subproceso): abrirlo entra a esa vista. */
   viewRef?: string;
+  /** De dónde sale el elemento (ver `GraphNode.fuente`). */
+  fuente?: string;
   /**
    * Operador de un FRAGMENTO combinado de secuencia. Tipado y no metadato
    * libre: «loop» mal escrito no es un operador.
@@ -201,6 +204,7 @@ export function canvasToGraphData(
       height: c.height,
       // Conserva el tipo de contenedor REAL (DDD o de otra notación) para round-trip 1:1.
       tipo_contenedor: c.tipo_elemento,
+      ...(c.fuente?.trim() ? { fuente: c.fuente.trim() } : {}),
       color: c.color,
       borderColor: c.borderColor,
       icono: c.icono,
@@ -314,6 +318,7 @@ function toDomainNode(n: DesignerNode): Omit<GraphNode, "agregado"> {
     // DDD usa tipos de NODE_TYPES; otras notaciones aportan tipos libres (se guardan tal cual).
     tipo_elemento: n.tipo_elemento as unknown as GraphNode["tipo_elemento"],
     descripcion: n.descripcion,
+    ...(n.fuente?.trim() ? { fuente: n.fuente.trim() } : {}),
     estado_comparativo: n.estado_comparativo || "nuevo",
     tags_tecnologia: n.tags_tecnologia ?? null,
     color: n.color,
@@ -375,6 +380,7 @@ export function graphDataToCanvas(content: GraphData | null | undefined): {
           ? agg.tipo_contenedor
           : "Agregado",
       descripcion: agg.descripcion || agg.entidad_raiz || "",
+      ...(agg.fuente?.trim() ? { fuente: agg.fuente.trim() } : {}),
       agregado: agg.nombre_agregado,
       estado_comparativo: agg.estado_comparativo || "nuevo",
       color: (agg as any).color,
@@ -419,13 +425,16 @@ export function graphDataToCanvas(content: GraphData | null | undefined): {
 }
 
 function hydrateNode(
-  n: any,
+  crudo: any,
   agregado: string,
   containerPos: { x: number; y: number },
   containerWidth: number,
   index: number,
   bigPicture = false
 ): DesignerNode {
+  // Un proyecto anterior a #636 trae la cita pegada a la descripción: al abrirlo
+  // pasa a su campo, y el siguiente guardado ya lo deja migrado.
+  const n = conFuenteSeparada(crudo);
   const hasPos = typeof n.x === "number" && typeof n.y === "number";
   let x = n.x;
   let y = n.y;
@@ -444,6 +453,7 @@ function hydrateNode(
     nombre: n.nombre,
     tipo_elemento: n.tipo_elemento,
     descripcion: n.descripcion,
+    ...(n.fuente?.trim() ? { fuente: n.fuente.trim() } : {}),
     agregado,
     estado_comparativo: n.estado_comparativo || "nuevo",
     tags_tecnologia: n.tags_tecnologia ?? null,

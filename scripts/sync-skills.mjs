@@ -23,7 +23,13 @@ const START = "// <<<SKILLS_CONTENT_START>>>";
 const END = "// <<<SKILLS_CONTENT_END>>>";
 
 /** Skills que se entregan (el resto de `.claude/skills/` es de uso interno). */
-const SHIPPED = ["documento-a-processflow", "disenar-diagrama", "pulir-elemento"];
+const SHIPPED = [
+  "documento-a-processflow",
+  "disenar-diagrama",
+  "pulir-elemento",
+  "actualizar-diagrama",
+  "contexto-para-codigo",
+];
 
 /** Archivos .md de un skill, con ruta relativa a su carpeta (orden estable). */
 function skillFiles(dir) {

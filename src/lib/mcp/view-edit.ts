@@ -16,6 +16,7 @@
  */
 
 import type { GraphData, GraphLink, GraphNode } from "../types";
+import type { ElementMetadata } from "../element-metadata";
 import { isNotationContainer, notationTypes, type NotationId } from "../notations";
 import {
   addContainer,
@@ -36,14 +37,25 @@ import { normalizarTipo, plano } from "./tipo-notacion";
 
 /** Operación de edición sobre el grafo de una vista. */
 export type ViewEdit =
-  | { kind: "add-element"; name: string; type: string; container?: string; description?: string }
+  | {
+      kind: "add-element";
+      name: string;
+      type: string;
+      container?: string;
+      description?: string;
+      /** De dónde sale: va al campo `fuente`, nunca a la descripción (#636). */
+      source?: string;
+    }
   | {
       kind: "update-element";
       name: string;
       newName?: string;
       type?: string;
       description?: string;
+      source?: string;
       container?: string;
+      /** Referencias por CLAVE (repo, puerto, owner): agrega o reemplaza, no borra las otras. */
+      metadata?: ElementMetadata[];
     }
   | { kind: "remove-element"; name: string }
   | { kind: "add-edge"; from: string; to: string; label?: string; dashed?: boolean; arrow?: GraphLink["arrow"] }
@@ -58,7 +70,16 @@ export type ViewEdit =
       invert?: boolean;
     }
   | { kind: "remove-edge"; from: string; to: string }
-  | { kind: "set-graph"; graph: GraphData }
+  | {
+      kind: "set-graph";
+      graph: GraphData;
+      /**
+       * true = el agente QUIERE quitar lo que el grafo entrante no trae. Sin
+       * esto, reemplazar una vista que pierde elementos o relaciones se rechaza
+       * con la lista (#636): un grafo armado de memoria las omitía en silencio.
+       */
+      allowRemovals?: boolean;
+    }
   /**
    * Escribe la SPEC de un elemento de la vista (feature 019). Antes la única
    * forma de que un agente externo escribiera el contrato de una caja del lienzo
@@ -273,6 +294,61 @@ export function revisarGrafoEntrante(
   return { ok: true };
 }
 
+/** Lo que un reemplazo de vista quitaría, por NOMBRE (lo que el humano reconoce). */
+export interface PerdidaDeVista {
+  elementos: string[];
+  relaciones: string[];
+}
+
+/**
+ * Qué elementos y relaciones de la vista actual no vienen en el grafo entrante.
+ * Compara por nombre y no por id: la vuelta por Mermaid o por otro agente cambia
+ * los ids de las mismas cajas, y eso no es perderlas (ver `reconciliarIds`).
+ */
+export function loQueSePierde(actual: GraphData, entrante: GraphData): PerdidaDeVista {
+  const nombres = (g: GraphData) => {
+    const porId = new Map<string, string>();
+    for (const n of nodosDe(g)) porId.set(n.id, n.nombre);
+    for (const a of g.agregados ?? []) porId.set(`agg-${a.nombre_agregado}`, a.nombre_agregado);
+    return porId;
+  };
+  const cajas = (g: GraphData) => [
+    ...nodosDe(g).map((n) => n.nombre),
+    ...(g.agregados ?? []).map((a) => a.nombre_agregado),
+  ];
+  const nombreA = nombres(actual);
+  const nombreE = nombres(entrante);
+  // Un extremo puede ser un contenedor nombrado directamente (no por id).
+  const extremo = (m: Map<string, string>, x: string) => m.get(x) ?? x;
+  const clave = (a: string, b: string) => `${plano(a)}→${plano(b)}`;
+
+  const quedan = new Set(cajas(entrante).map(plano));
+  const relacionesQueQuedan = new Set(
+    aristasDe(entrante).map((e) => clave(extremo(nombreE, e.fuente), extremo(nombreE, e.destino)))
+  );
+  return {
+    elementos: cajas(actual).filter((n) => !quedan.has(plano(n))),
+    relaciones: aristasDe(actual)
+      .map((e) => [extremo(nombreA, e.fuente), extremo(nombreA, e.destino)] as const)
+      .filter(([a, b]) => !relacionesQueQuedan.has(clave(a, b)))
+      .map(([a, b]) => `${a} → ${b}`),
+  };
+}
+
+/** El rechazo de un reemplazo que perdería algo, con la salida para cada caso. */
+export function explicarPerdida(p: PerdidaDeVista): string | null {
+  if (!p.elementos.length && !p.relaciones.length) return null;
+  const lista = (xs: string[]) => xs.slice(0, 10).join(", ") + (xs.length > 10 ? ` y ${xs.length - 10} más` : "");
+  const partes = [];
+  if (p.elementos.length) partes.push(`${p.elementos.length} elemento(s): ${lista(p.elementos)}`);
+  if (p.relaciones.length) partes.push(`${p.relaciones.length} relación(es): ${lista(p.relaciones)}`);
+  return (
+    `El grafo entrante QUITARÍA de la vista ${partes.join("; ")}. No se aplicó nada. ` +
+    "Si querés conservarlas, agregalas al grafo (o usá update_view_element / add_view_edge para cambios puntuales). " +
+    "Si quitarlas es a propósito, reintentá con allowRemovals: true."
+  );
+}
+
 export function applyViewEdit(
   actual: GraphData,
   edit: ViewEdit,
@@ -286,6 +362,10 @@ export function applyViewEdit(
     const nodos = nodosDe(edit.graph).length + (edit.graph.agregados?.length ?? 0);
     // §P8: ningún camino deja el lienzo en blanco.
     if (!nodos) return { ok: false, error: "El grafo entrante no tiene elementos: no se publica vacío." };
+    if (!edit.allowRemovals) {
+      const perdida = explicarPerdida(loQueSePierde(actual, edit.graph));
+      if (perdida) return { ok: false, error: perdida };
+    }
     return {
       ok: true,
       graph: fundir(actual, reconciliarIds(actual, edit.graph)),
@@ -306,6 +386,7 @@ export function applyViewEdit(
           nombre: edit.name?.trim(),
           tipo_elemento: t.tipo,
           descripcion: edit.description,
+          ...(edit.source?.trim() ? { source: edit.source.trim() } : {}),
         };
         if (!base.nombre) return { ok: false, error: "Falta el nombre del elemento." };
         nuevo = isNotationContainer(t.tipo)
@@ -326,6 +407,8 @@ export function applyViewEdit(
         nuevo = updateNode(model, r.node.id, {
           ...(edit.newName ? { nombre: edit.newName } : {}),
           ...(edit.description !== undefined ? { descripcion: edit.description } : {}),
+          ...(edit.source !== undefined ? { source: edit.source } : {}),
+          ...(edit.metadata?.length ? { metadata: edit.metadata } : {}),
           ...(tipo ? { tipo_elemento: tipo } : {}),
         });
         if (edit.container !== undefined && !isNotationContainer(r.node.tipo_elemento)) {

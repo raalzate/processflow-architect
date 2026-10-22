@@ -168,11 +168,11 @@ lienzo era `export_as_view`, que pisa la pestaña entera (#332).
 
 | Herramienta | Qué hace |
 |---|---|
-| `add_view_element` **app** | agrega UN elemento al grafo de una vista. El tipo se valida contra la notación de esa vista (§P6). |
-| `update_view_element` **app** | cambia nombre, tipo, descripción o contenedor de un elemento, resuelto por NOMBRE. Dos homónimos ⇒ no elige: lo dice. |
+| `add_view_element` **app** | agrega UN elemento al grafo de una vista. El tipo se valida contra la notación de esa vista (§P6). Acepta `description` y `source`; la fuente va al campo `fuente` del elemento, nunca a la descripción (#636). Las cajas que ya tenían lugar no se mueven: la nueva va a un hueco libre. |
+| `update_view_element` **app** | cambia nombre, tipo, descripción, fuente, contenedor o metadatos (por clave) de un elemento, resuelto por NOMBRE. Dos homónimos ⇒ no elige: lo dice. |
 | `remove_view_element` **app** | quita un elemento y las relaciones que lo tocan. Destructiva: pasa por confirmación del humano. |
 | `add_view_edge` / `update_view_edge` / `remove_view_edge` **app** | relaciones entre elementos nombrados. `invert: true` da vuelta la flecha; la relación se encuentra aunque se nombre al revés de como está dibujada. |
-| `set_view_graph` **app** | reemplaza el contenido de una vista con un `GraphData` completo. Reconcilia por nombre para conservar la posición de lo que ya estaba, y **rechaza un grafo vacío** (§P8). |
+| `set_view_graph` **app** | reemplaza el contenido de una vista con un `GraphData` completo. Reconcilia por nombre para conservar la posición de lo que ya estaba, y **rechaza un grafo vacío** (§P8). Si el grafo entrante **quita** elementos o relaciones, se rechaza con la lista salvo `allowRemovals: true` (`loQueSePierde` en `view-edit.ts`, #636); `export_as_view` con `replace` aplica la misma guarda. |
 
 Sin `view`, todas caen en la vista **abierta**: es el «acá» del humano. La regla de a qué
 vista va vive en `planViewEdit` (`src/lib/mcp/app-actions.ts`) y la operación sobre el grafo
@@ -191,7 +191,8 @@ soporta (electron #40380); el equivalente de escritorio es este servidor MCP.
 | Pieza | Qué hace |
 |---|---|
 | `AppState.focus` | la ficha abierta (vista, elemento, tab). La publica la ficha vía `ViewsContext.setFocus` y `get_app_state` la imprime como «Ficha abierta». |
-| `get_focused_element` **app** | la ficha ENTERA en una lectura (`{ kind: "focused" }` en `app-read.ts`): tipo, descripción, estado, metadatos, spec, índice de adjuntos y vecinos. Sin foco, lo dice y ofrece las vistas. |
+| `get_focused_element` **app** | la ficha ENTERA en una lectura (`{ kind: "focused" }` en `app-read.ts`): tipo, descripción, fuente, estado, metadatos, spec, índice de adjuntos y vecinos. Sin foco, lo dice y ofrece las vistas. |
+| `get_view_element` **app** | la misma ficha, de CUALQUIER caja nombrándola (`{ kind: "element" }`): es el contexto que lee un agente de código antes de tocar el componente. Sin `view` busca en todas; con homónimos en varias vistas no elige y dice dónde están (#636). |
 | `set_view_element_spec` **app** | escribe la spec de una caja de la vista abierta (`ViewEdit set-spec`, con `setElementSpec`): `merge: true` parchea, vacío sin merge borra, homónimos ⇒ opciones. |
 | Botón «Enviar al agente» (ficha) | enciende el servidor MCP si está apagado y copia el prompt de entrega (`src/lib/mcp/handoff.ts`). Es el tope: la app no puede abrir Claude Code ni empujarle un prompt. |
 | Skill `pulir-elemento` | el arnés corto: leer la ficha → proponer → confirmar → escribir. No diseña ni exporta. |

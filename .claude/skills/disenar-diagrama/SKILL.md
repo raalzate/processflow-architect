@@ -66,7 +66,20 @@ tipos.
 
 Lee los documentos/código ANTES de crear nodos. Por cada elemento anota de dónde
 sale (sección, página, archivo:línea) y pásalo en el parámetro `source`: la app
-lo muestra en la descripción y es lo que el revisor contrasta.
+lo guarda como la PROPIEDAD «Fuente» del elemento y es lo que el revisor
+contrasta. **Nunca** pegues «Fuente: …» en la descripción.
+
+La `description` es lo que leen el humano en la ficha y los agentes de código
+que toman el diagrama como contexto: tiene que **describir**. En 1 a 3 frases,
+qué ES el elemento, qué HACE (qué recibe, qué produce) y por qué existe:
+
+| ❌ Pobre | ✅ Descriptiva |
+|---|---|
+| «Liquidación y médicos auditores.» | «Calcula la liquidación mensual de los prestadores a partir de las prestaciones que aprobaron los médicos auditores y la envía a Tesorería para el pago.» |
+| «API de pagos» (repite el nombre) | «Recibe las órdenes de cobro del portal, valida el medio de pago con la pasarela y publica el resultado en la cola de eventos.» |
+
+`validate_diagram` avisa `DESCRIPCION-POBRE` cuando falta, tiene menos de seis
+palabras, repite el nombre o trae la cita pegada.
 
 - **ddd**: actores, comandos (imperativo), eventos (pasado), agregados y
   contextos (contenedores), políticas, sistemas externos.

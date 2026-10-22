@@ -142,8 +142,15 @@ la columna «cita» es obligatoria, es la que sostiene la revisión humana:
 | Áreas de negocio | equipos, departamentos, workstreams | DDD (Contexto Delimitado/Subdominio) | §/pág. |
 
 Esa cita se pasa tal cual en el parámetro \`source\` de \`add_node\` /
-\`add_container\`. La app la muestra en la descripción del elemento: el revisor
-lee «elemento ← fuente» sin volver al PDF.
+\`add_container\`. La app la guarda como la PROPIEDAD «Fuente» del elemento —no en
+la descripción—: el revisor lee «elemento ← fuente» sin volver al PDF.
+
+La \`description\` es otra cosa: **qué es, qué hace y por qué existe**, en 1 a 3
+frases que se entiendan sin abrir el documento («Calcula la liquidación mensual
+de los prestadores a partir de las prestaciones auditadas y la envía a
+Tesorería»). Una frase de dos palabras o el nombre repetido no le sirve al
+humano ni a los agentes de código que después leen el diagrama como contexto;
+\`validate_diagram\` lo marca como \`DESCRIPCION-POBRE\`.
 
 ### Adjuntá el documento, no sólo su nombre
 
@@ -700,7 +707,20 @@ tipos.
 
 Lee los documentos/código ANTES de crear nodos. Por cada elemento anota de dónde
 sale (sección, página, archivo:línea) y pásalo en el parámetro \`source\`: la app
-lo muestra en la descripción y es lo que el revisor contrasta.
+lo guarda como la PROPIEDAD «Fuente» del elemento y es lo que el revisor
+contrasta. **Nunca** pegues «Fuente: …» en la descripción.
+
+La \`description\` es lo que leen el humano en la ficha y los agentes de código
+que toman el diagrama como contexto: tiene que **describir**. En 1 a 3 frases,
+qué ES el elemento, qué HACE (qué recibe, qué produce) y por qué existe:
+
+| ❌ Pobre | ✅ Descriptiva |
+|---|---|
+| «Liquidación y médicos auditores.» | «Calcula la liquidación mensual de los prestadores a partir de las prestaciones que aprobaron los médicos auditores y la envía a Tesorería para el pago.» |
+| «API de pagos» (repite el nombre) | «Recibe las órdenes de cobro del portal, valida el medio de pago con la pasarela y publica el resultado en la cola de eventos.» |
+
+\`validate_diagram\` avisa \`DESCRIPCION-POBRE\` cuando falta, tiene menos de seis
+palabras, repite el nombre o trae la cita pegada.
 
 - **ddd**: actores, comandos (imperativo), eventos (pasado), agregados y
   contextos (contenedores), políticas, sistemas externos.
@@ -1131,7 +1151,7 @@ conoce la fuente y notaría la ausencia.
   "pulir-elemento": {
     "SKILL.md": `---
 name: pulir-elemento
-description: Pule UN elemento de Processflow Architect —la caja cuya ficha tiene abierta el humano— usando el MCP processflow-architect. Lee la ficha entera (descripción, spec, metadatos, adjuntos, vecinos), propone la especificación, espera aprobación y la escribe donde el humano la ve. Úsalo cuando el usuario pida "pulí esta caja", "completá la spec de este elemento", "mejorá la descripción de este componente" o pegue el prompt del botón «Enviar al agente» de la ficha.
+description: Pule UN elemento de Processflow Architect —la caja cuya ficha tiene abierta el humano, o la que nombre— usando el MCP processflow-architect. Lee la ficha entera (descripción, fuente, spec, metadatos, adjuntos, vecinos), propone una especificación que un agente de código pueda implementar y probar, espera aprobación y la escribe donde el humano la ve. Úsalo cuando el usuario pida "pulí esta caja", "completá la spec de este elemento", "mejorá la descripción de este componente" o pegue el prompt del botón «Enviar al agente» de la ficha.
 ---
 
 # Pulir un elemento con el MCP de Processflow Architect
@@ -1145,13 +1165,18 @@ Arnés: \`ingesta → leer la ficha → proponer → confirmar → escribir → 
 ## 0 · Ingesta
 
 1. **\`get_app_state\`** — confirma que la app está conectada y mirá la línea
-   «Ficha abierta»: dice qué caja y en qué vista. Si dice «ninguna», pedile al
-   humano que abra la caja (doble clic en el lienzo) o que la nombre, y en ese
-   caso usá \`get_view\` para encontrarla. No adivines.
-2. **\`get_focused_element\`** — la ficha entera en una llamada: tipo, descripción,
-   estado, metadatos, **spec actual**, índice de adjuntos y vecinos (quién la
-   llama, a quién llama). Es la fuente. Si hay adjuntos, leé los relevantes con
-   \`read_element_doc\` y \`search_docs\`: el contrato real está ahí, no en tu memoria.
+   «Ficha abierta»: dice qué caja y en qué vista.
+2. La ficha entera en una llamada —tipo, descripción, **fuente**, estado,
+   metadatos, **spec actual**, índice de adjuntos y vecinos (quién la llama, a
+   quién llama)—:
+   - **\`get_focused_element\`** si hay una ficha abierta;
+   - **\`get_view_element\`** con el nombre si el humano la NOMBRÓ (o si no hay
+     ficha abierta). Si el nombre está en varias vistas, te lo dice: preguntá
+     cuál. No adivines.
+3. Si hay adjuntos, leé los relevantes (\`get_view\` con \`importAs: true\`, después
+   \`read_element_doc\` y \`search_docs\`): el contrato real está ahí, no en tu
+   memoria. Si la caja tiene **fuente**, leé esa sección del documento o ese
+   archivo del código.
 
 ## 1 · Proponer (sin escribir)
 
@@ -1165,6 +1190,31 @@ Con la ficha leída, redactá la especificación con la forma de \`set_element_s
 - **entidades** y **casos límite** si la fuente los sostiene.
 - Lo que la fuente NO decide se marca \`needsClarification: true\`. Nunca se rellena.
 
+### Lista de calidad de la spec (revisala antes de mostrarla)
+
+La spec la van a leer humanos y **agentes de código que la toman como contrato**
+para implementar. Tiene que poder programarse y probarse sin preguntarte nada:
+
+| Pregunta | Si la respuesta es no |
+|---|---|
+| ¿Cada paso nombra un vecino REAL y dice qué hace la conexión (\`hace\`)? | quitalo o conectá la caja primero |
+| ¿Cada paso tiene al menos un escenario Given/When/Then con datos concretos? | escribilo; un escenario vago no es una prueba |
+| ¿Cada requisito dice QUÉ, sin tecnología («valida el medio de pago», no «usa Stripe»)? | reescribilo |
+| ¿Cada criterio es medible, con número y unidad («p95 < 300 ms», «0 cobros duplicados»)? | ponele número o marcalo \`needsClarification\` |
+| ¿Están los casos límite que la fuente menciona (timeouts, reintentos, duplicados, vacíos)? | agregalos |
+| ¿Lo que no está decidido quedó marcado y no inventado? | marcá \`needsClarification: true\` |
+
+**Estado de la spec** (\`status\`): una spec nueva nace \`borrador\`; pasala a
+\`revision\` cuando la propongas para aprobar. **Nunca** la marques \`aprobada\`:
+aprobar es del humano.
+
+### Descripción y fuente de la caja
+
+Si la descripción no dice qué es y qué hace (menos de seis palabras, el nombre
+repetido, o con «Fuente: …» pegado al final), proponé también una nueva: 1 a 3
+frases con su responsabilidad, qué recibe o produce y por qué existe. La cita va
+en la **fuente** de la caja, que es una propiedad aparte.
+
 Mostrale la propuesta al humano **antes** de escribir, en una tabla corta
 (qué agregás, qué cambiás, qué marcás por aclarar). Si la caja ya tenía spec,
 decí explícitamente qué conservás: lo que escribió una persona no se pisa.
@@ -1174,8 +1224,9 @@ decí explícitamente qué conservás: lo que escribió una persona no se pisa.
 - **\`set_view_element_spec\`** con \`name\` = el nombre exacto de la caja y
   **\`merge: true\`** si ya tenía spec (suma; lo que no mandás se conserva). Sin
   spec previa, mandala completa.
-- Si querés corregir también la descripción o los metadatos, \`update_view_element\`
-  (descripción) — y nada de renombrar ni mover sin que lo pidan.
+- Si corregís también la descripción, la fuente o los metadatos,
+  \`update_view_element\` con \`description\`, \`source\` y \`metadata\` (por clave: las
+  demás se conservan) — y nada de renombrar, mover ni borrar sin que lo pidan.
 - Dos cajas con el mismo nombre ⇒ la herramienta no elige: preguntá cuál.
 
 ## 3 · Cerrar
@@ -1190,6 +1241,205 @@ active Ajustes → Servidor MCP (o que pulse «Enviar al agente» en la ficha, q
 enciende) y que registre \`http://127.0.0.1:7331/mcp\` en su cliente MCP.
 `,
   },
+  "actualizar-diagrama": {
+    "SKILL.md": `---
+name: actualizar-diagrama
+description: Actualiza un diagrama que YA está en Processflow Architect sin dañar lo que el humano dibujó — relaciones, trazos, posiciones, specs y adjuntos — usando el MCP processflow-architect. Lee la vista, planea cambios PUNTUALES (renombrar, describir, citar, agregar, conectar), verifica antes y después que no se perdió ninguna relación y sólo quita algo si el humano lo aprobó. Úsalo cuando el usuario pida "actualizá el diagrama", "agregá X a la vista", "corregí las descripciones", "sincronizá el diagrama con el código", "reflejá este cambio en Processflow" o cualquier cambio sobre una vista existente.
+---
+
+# Actualizar un diagrama sin dañar las líneas
+
+La vista que vas a tocar es TRABAJO del humano: acomodó cajas, dibujó el recorrido
+de cada relación, escribió specs y adjuntó contratos. Tu cambio tiene que
+**sumar** sin borrar nada de eso. La regla de oro:
+
+> **Operaciones puntuales, nunca reemplazar la vista entera para un cambio chico.
+> Nunca borrar y recrear un elemento para "corregirlo".**
+
+Borrar y recrear una caja le cambia el id: se pierden sus relaciones, su lugar,
+su spec y sus adjuntos. Reemplazar la vista con un grafo armado de memoria omite
+relaciones que no viste.
+
+Arnés: \`leer → planear → confirmar → aplicar puntual → verificar → cerrar\`.
+
+## 0 · Leer lo que hay (ANTES de tocar nada)
+
+1. **\`get_app_state\`** — proyecto activo, vistas y si la app está conectada.
+2. **\`get_view\`** con el nombre de la vista — su contenido en Mermaid: qué cajas
+   hay y qué relaciones las unen. **Anotá el conteo** de elementos y relaciones:
+   es la línea base de la verificación.
+3. Para cada caja que vas a tocar, **\`get_view_element\`** — su ficha entera
+   (descripción, fuente, metadatos, spec, adjuntos y vecinos). No corrijas una
+   caja que no leíste.
+
+## 1 · Planear (sin escribir)
+
+Armá una tabla con CADA operación y la herramienta que la hace. Sólo estas:
+
+| Cambio | Herramienta | Qué conserva |
+|---|---|---|
+| Renombrar, cambiar tipo, descripción, fuente o contenedor | \`update_view_element\` | id, relaciones, lugar, spec, adjuntos |
+| Agregar una caja | \`add_view_element\` (con \`description\` y \`source\`) | todo lo demás: la caja nueva va a un hueco libre |
+| Conectar dos cajas | \`add_view_edge\` (con etiqueta) | las otras relaciones y sus trazos |
+| Cambiar etiqueta o sentido de una relación | \`update_view_edge\` | su recorrido y sus anclas |
+| Escribir o completar la spec | \`set_view_element_spec\` con \`merge: true\` | lo que ya escribió una persona |
+| **Quitar** una caja o relación | \`remove_view_element\` / \`remove_view_edge\` | — (destructivo: sólo con aprobación) |
+
+Reglas del plan:
+
+- **Corregir ≠ recrear.** Una caja mal nombrada o mal tipada se arregla con
+  \`update_view_element\`. Nunca \`remove\` + \`add\`.
+- **Cada caja nueva lleva \`description\` y \`source\`.** La descripción dice qué es
+  y qué hace (1 a 3 frases); la fuente es una propiedad aparte (\`docs/x.md:36\`,
+  \`src/pagos/api.ts:120\`). Nunca pegues «Fuente: …» en la descripción.
+- **Quitar se pregunta.** Si el cambio implica quitar algo, listalo aparte y
+  esperá el sí del humano para ESO en particular.
+- **Nombres repetidos:** si la herramienta dice que hay dos cajas con ese nombre,
+  preguntá cuál. No elijas.
+
+Mostrale el plan al humano (qué agregás, qué cambiás, qué quitarías) y esperá
+aprobación.
+
+## 2 · Aplicar, de a una operación
+
+Ejecutá las operaciones en este orden: **agregar cajas → corregir cajas →
+conectar → specs → (quitar, sólo lo aprobado)**. Conectar después de agregar
+evita relaciones colgando de una caja que todavía no existe.
+
+### Reemplazar la vista entera: sólo como último recurso
+
+\`set_view_graph\` y \`export_as_view\` con \`replace: true\` reemplazan el contenido
+de la pestaña. Úsalos sólo si el cambio es una reestructuración completa que el
+humano pidió. Están protegidos: si el grafo entrante **pierde** elementos o
+relaciones, la herramienta lo rechaza con la lista exacta y no aplica nada.
+
+- Si la lista te sorprende, tu grafo está incompleto: agregá lo que falta.
+- Si quitar esas cosas es lo aprobado, reintentá con \`allowRemovals: true\`.
+- **Nunca** pongas \`allowRemovals: true\` "por las dudas": es firmar que se borra.
+
+## 3 · Verificar (siempre)
+
+Volvé a llamar **\`get_view\`** y compará con la línea base:
+
+- elementos = antes + agregados − quitados aprobados;
+- relaciones = antes + conectadas − quitadas aprobadas;
+- cada relación que existía antes sigue estando (mismos extremos).
+
+Si un número no cierra, **pará y decilo**: qué esperabas, qué hay. No intentes
+"arreglarlo" recreando cosas.
+
+## 4 · Cerrar
+
+Resumí en una tabla corta qué cambió (agregado / corregido / conectado / quitado)
+y el conteo antes → después. Si quedaron descripciones pobres o cajas sin fuente,
+listalas como pendientes en vez de inventarlas.
+
+## Conexión
+
+Si \`get_app_state\` no responde, la app no está conectada: pedile al humano que
+active Ajustes → Servidor MCP y que registre \`http://127.0.0.1:7331/mcp\` en su
+cliente MCP.
+`,
+  },
+  "contexto-para-codigo": {
+    "SKILL.md": `---
+name: contexto-para-codigo
+description: Usa Processflow Architect como CONTEXTO de ingeniería para un agente de código, vía el MCP processflow-architect. Antes de programar, lee la ficha de los componentes que vas a tocar (descripción, spec, criterios, adjuntos, vecinos, dónde vive); al terminar, escribe de vuelta lo que el código decidió — fuente en el código, repo, estado de la spec, preguntas abiertas — sin dañar el diagrama. Úsalo cuando vayas a implementar, modificar o revisar código de un sistema modelado en Processflow, o cuando el usuario pida "leé el contexto en Processflow", "implementá según la spec del componente", "dejá documentado en Processflow lo que hiciste" o "sincronizá el diagrama con el código".
+---
+
+# Processflow como contexto para agentes de código
+
+Processflow es la **memoria de diseño** del sistema: qué componentes hay, qué
+hace cada uno, con quién habla, qué contrato cumple y por qué. Varios agentes
+leen y escriben ese contexto. Para que siga sirviendo:
+
+- **Leer antes de escribir código.** La spec y los adjuntos del componente son el
+  contrato; no lo reconstruyas de memoria ni del código viejo.
+- **Escribir de vuelta lo que el código decidió**, en el lugar donde el próximo
+  agente lo va a buscar —no en un comentario perdido ni en el chat.
+- **No dañar.** Toda escritura es puntual (ver el skill \`actualizar-diagrama\`):
+  nada de borrar y recrear, nada de reemplazar vistas.
+
+Arnés: \`ubicar → leer → implementar → escribir de vuelta → verificar\`.
+
+## 0 · Ubicar el componente
+
+1. **\`get_app_state\`** — proyecto activo y vistas. Si el proyecto no es el del
+   repo en el que trabajás, decilo y pedí que lo abran: no escribas en otro.
+2. **\`list_views\`** y **\`get_view\`** de la vista de arquitectura (C4 de
+   contenedores o componentes): qué cajas hay y cómo se conectan.
+3. Identificá la(s) caja(s) que tu tarea toca. Si el código ya está mapeado, la
+   **fuente** o el metadato **\`repo\`** de la caja apuntan a él
+   (\`src/pagos/api.ts:12\`, \`https://github.com/acme/pagos\`).
+
+## 1 · Leer el contexto (antes de programar)
+
+Por cada caja que vas a tocar, **\`get_view_element\`** con su nombre. Trae en una
+llamada:
+
+| Sección | Para qué te sirve |
+|---|---|
+| Descripción | la responsabilidad del componente: qué NO debería hacer tu cambio |
+| Fuente | de dónde salió (documento o código): leela si tu tarea la contradice |
+| Metadatos | dónde vive (\`repo\`, \`puerto\`, \`owner\`) |
+| **Spec** | pasos (entradas/salidas con escenarios Given/When/Then), requisitos \`FR-00N\`, criterios \`SC-00N\`, entidades, casos límite y lo marcado \`needsClarification\` |
+| Adjuntos | contratos (OpenAPI, esquemas, ejemplos): leelos, son la verdad del contrato |
+| Vecinos | quién llama a este componente y a quién llama: tu cambio no puede romperlos |
+
+- Los **adjuntos** se leen importando la vista: \`get_view\` con \`importAs: true\`
+  devuelve un \`diagramId\`; con él, \`list_element_docs\` y \`read_element_doc\` (o
+  \`search_docs\` para buscar dentro). Borrá la copia con \`delete_diagram\` al
+  terminar.
+- Decisiones de arquitectura (ADR, drivers, riesgos): **\`list_artifacts\`** y
+  **\`get_artifact\`**.
+- Lo marcado **\`needsClarification\`** NO se resuelve inventando: preguntá al
+  humano antes de implementar esa parte.
+
+Resumí al humano, antes de tocar código, el contrato que vas a cumplir: los
+requisitos y criterios que aplican y los vecinos afectados.
+
+## 2 · Implementar
+
+Programá contra la spec. Cada criterio \`SC-00N\` debería poder verificarse con
+una prueba; cada escenario Given/When/Then es un caso de prueba natural.
+
+## 3 · Escribir de vuelta (lo que el próximo agente necesita)
+
+Con aprobación del humano, y sólo sobre las cajas que tocaste:
+
+1. **Dónde vive** — \`update_view_element\` con:
+   - \`source\`: el punto de entrada en el código (\`src/pagos/api.ts:12\`). Es una
+     PROPIEDAD de la caja; nunca la pegues en la descripción.
+   - \`metadata\` por clave: \`repo\`, \`puerto\`, \`owner\` (las demás claves se
+     conservan).
+2. **Qué hace, si cambió** — \`update_view_element\` con una \`description\` de 1 a
+   3 frases: qué es, qué recibe o produce y por qué existe. Si la responsabilidad
+   no cambió, no la toques.
+3. **El contrato** — \`set_view_element_spec\` con **\`merge: true\`**:
+   - requisitos y criterios que el código ahora cumple o que descubriste;
+   - casos límite que encontraste al programar;
+   - lo que quedó sin decidir, con \`needsClarification: true\`;
+   - **estado**: si la spec estaba \`aprobada\` y la implementaste tal cual, dejala
+     \`aprobada\`; si tuviste que desviarte, pasala a \`revision\` y decí por qué.
+     Nunca la apruebes vos: aprobar es del humano.
+4. **Componentes nuevos** — si tu cambio creó un componente o una integración
+   que el diagrama no tiene, seguí el skill \`actualizar-diagrama\`:
+   \`add_view_element\` (con \`description\` y \`source\`) y \`add_view_edge\` con
+   etiqueta. No reorganices la vista.
+
+## 4 · Verificar
+
+\`get_view_element\` sobre cada caja que escribiste: la fuente, los metadatos y la
+spec tienen que decir lo que querías, y sus vecinos tienen que seguir siendo los
+mismos. Cerrá con una tabla «caja → qué quedó escrito».
+
+## Conexión
+
+Si \`get_app_state\` no responde, la app no está conectada: pedile al humano que
+active Ajustes → Servidor MCP y que registre \`http://127.0.0.1:7331/mcp\` en su
+cliente MCP.
+`,
+  },
 };
 // <<<SKILLS_CONTENT_END>>>
 
@@ -1200,11 +1450,24 @@ const SKILL_SUMMARIES: Record<string, string> = {
   "disenar-diagrama":
     "Diseña UN diagrama (DDD, BPMN, C4, UML o MER) con el mismo arnés en versión corta: ingesta, cita de la fuente, ambigüedades registradas, validación de calidad y revisión humana antes de exportar.",
   "pulir-elemento":
-    "Pule UNA caja —la que el humano tiene abierta en la ficha—: lee su ficha entera (get_focused_element), propone la especificación, espera aprobación y la escribe donde el humano la ve (set_view_element_spec). No diseña ni exporta.",
+    "Pule UNA caja —la abierta en la ficha o la que se nombre—: lee su ficha entera (get_focused_element / get_view_element), propone una spec que un agente de código pueda implementar y probar, espera aprobación y la escribe donde el humano la ve (set_view_element_spec). No diseña ni exporta.",
+  "actualizar-diagrama":
+    "Actualiza una vista EXISTENTE sin dañar lo que el humano dibujó: lee, planea operaciones puntuales (update_view_element, add_view_edge…), nunca borra y recrea, verifica antes y después que no se perdió ninguna relación y sólo quita lo aprobado.",
+  "contexto-para-codigo":
+    "Processflow como contexto de ingeniería para agentes de código: antes de programar lee la ficha del componente (get_view_element: spec, adjuntos, vecinos, dónde vive); al terminar escribe de vuelta fuente, repo, estado de la spec y preguntas abiertas, sin dañar el diagrama.",
 };
 
-/** Orden de entrega: primero el flujo completo, luego el puntual, luego el de una caja. */
-export const SKILL_IDS = ["documento-a-processflow", "disenar-diagrama", "pulir-elemento"] as const;
+/**
+ * Orden de entrega: primero el flujo completo, luego el puntual, luego el de una
+ * caja, y al final los que trabajan sobre lo que ya existe.
+ */
+export const SKILL_IDS = [
+  "documento-a-processflow",
+  "disenar-diagrama",
+  "pulir-elemento",
+  "actualizar-diagrama",
+  "contexto-para-codigo",
+] as const;
 
 /** Skills que DISEÑAN diagramas: los únicos obligados a nombrar el arnés completo (ingesta → export). */
 export const DESIGN_SKILL_IDS = ["documento-a-processflow", "disenar-diagrama"] as const;

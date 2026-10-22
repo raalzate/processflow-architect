@@ -18,7 +18,7 @@
 import { getNotation, hasRole, roleOfType, typesWithRole, type ElementRole } from "../notations";
 import { MAX_FOCAL } from "../skin";
 import { esIconoValido } from "../icons/catalog";
-import { resolveCita } from "../source-docs";
+import { citaDe, resolveCita } from "../source-docs";
 import { isContainerType } from "./catalog";
 import { hayProblemaDeLegibilidad } from "../layout/metrics";
 import { medirDisposicion } from "../layout/legible";
@@ -401,6 +401,46 @@ function sourceFindings(model: DiagramModel): QualityFinding[] {
   }));
 }
 
+/** Palabras por debajo de las cuales una descripción no alcanza a decir qué hace. */
+export const MIN_PALABRAS_DESCRIPCION = 6;
+
+const plana = (t: string) =>
+  t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * La descripción tiene que DESCRIBIR (#636): es lo que leen el humano en la
+ * ficha y los agentes de código que toman el diagrama como contexto. Una frase
+ * de dos palabras, el nombre repetido o la cita pegada al final no les dicen qué
+ * hace la caja. Aviso y no error: una caja obvia puede quedar así a sabiendas.
+ */
+function descripcionFindings(model: DiagramModel): QualityFinding[] {
+  const out: QualityFinding[] = [];
+  for (const n of model.nodes) {
+    const d = n.descripcion?.trim() ?? "";
+    const id = `"${n.nombre}" (${n.id})`;
+    if (citaDe(d)) {
+      out.push({
+        level: "aviso",
+        rule: "DESCRIPCION-POBRE",
+        nodeId: n.id,
+        message: `${id} trae la cita pegada a la descripción: pasala a \`source\` (es una propiedad) y dejá la descripción para lo que hace.`,
+      });
+      continue;
+    }
+    const palabras = plana(d).split(" ").filter(Boolean);
+    if (palabras.length >= MIN_PALABRAS_DESCRIPCION && plana(d) !== plana(n.nombre)) continue;
+    out.push({
+      level: "aviso",
+      rule: "DESCRIPCION-POBRE",
+      nodeId: n.id,
+      message: d
+        ? `${id}: la descripción ("${d}") no alcanza para saber qué hace. Decí su responsabilidad, qué recibe o produce y por qué existe.`
+        : `${id} no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe.`,
+    });
+  }
+  return out;
+}
+
 /**
  * Legibilidad de la DISPOSICIÓN (feature 017). No habla del modelado sino de lo
  * que se ve: una relación que atraviesa una caja ajena se lee mal por buena que
@@ -466,6 +506,7 @@ export function qualityFindings(model: DiagramModel): QualityFinding[] {
     ...focalFindings(model),
     ...numeracionFindings(model),
     ...sourceFindings(model),
+    ...descripcionFindings(model),
     ...legibilidadFindings(model),
     ...flowFindings(model),
     ...domainFindings(model),

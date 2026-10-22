@@ -7,6 +7,9 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  conFuenteSeparada,
+  fuenteDelElemento,
+  separarCita,
   MAX_DOCS,
   MAX_DOC_CHARS,
   attachSourceDoc,
@@ -193,5 +196,47 @@ describe("formatSourceInventory · el agente sabe qué hay sin recibir el conten
 
   it("sin documentos no dice nada (no gasta contexto por existir)", () => {
     expect(formatSourceInventory([])).toBe("");
+  });
+});
+
+describe("la fuente es una propiedad, no parte de la descripción (#636)", () => {
+  it("separa la cita heredada del final de la descripción", () => {
+    expect(separarCita("Liquidación y médicos auditores.\n\nFuente: fuente-cac3.md:428 (5. Infraestructura)")).toEqual({
+      descripcion: "Liquidación y médicos auditores.",
+      cita: "fuente-cac3.md:428 (5. Infraestructura)",
+    });
+  });
+
+  it("una descripción que es sólo la cita queda vacía", () => {
+    expect(separarCita("Fuente: docs/pagos.md:36")).toEqual({ descripcion: "", cita: "docs/pagos.md:36" });
+  });
+
+  it("sin cita no toca nada, ni siquiera los espacios", () => {
+    expect(separarCita("  Cobra la cuota.  ")).toEqual({ descripcion: "  Cobra la cuota.  " });
+    expect(separarCita(undefined)).toEqual({ descripcion: undefined });
+  });
+
+  it("«Fuente:» en mitad del texto no es la cita: sólo cuenta la última línea", () => {
+    const d = "Fuente: de ingresos principal.\nCobra la cuota.";
+    expect(separarCita(d)).toEqual({ descripcion: d });
+  });
+
+  it("conFuenteSeparada migra el elemento viejo y respeta el campo si ya existe", () => {
+    expect(conFuenteSeparada({ descripcion: "Cobra.\n\nFuente: a.md:1" })).toEqual({
+      descripcion: "Cobra.",
+      fuente: "a.md:1",
+    });
+    // Ya migrado: el campo manda y la descripción no se toca.
+    const migrado = { descripcion: "Cobra.", fuente: "b.md:2" };
+    expect(conFuenteSeparada(migrado)).toBe(migrado);
+    // Sin cita: el mismo objeto, para no cambiar de forma lo que no tiene nada que migrar.
+    const limpio = { descripcion: "Cobra." };
+    expect(conFuenteSeparada(limpio)).toBe(limpio);
+  });
+
+  it("fuenteDelElemento lee el campo y, si falta, la cita heredada", () => {
+    expect(fuenteDelElemento({ fuente: " b.md:2 ", descripcion: "x\n\nFuente: a.md:1" })).toBe("b.md:2");
+    expect(fuenteDelElemento({ descripcion: "x\n\nFuente: a.md:1" })).toBe("a.md:1");
+    expect(fuenteDelElemento({ descripcion: "x" })).toBeUndefined();
   });
 });

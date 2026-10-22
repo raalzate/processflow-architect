@@ -24,7 +24,7 @@ import type { GraphData, GraphNode, Agregado, ReadModel } from "../types";
 import { problemasDePropiedades } from "../element-properties";
 import { sanitizeSpec, type ElementSpec } from "../element-spec";
 import { docsParaGuardar, type ElementDoc } from "../element-docs";
-import { sanitizeSourceDocs, type SourceDoc } from "../source-docs";
+import { conFuenteSeparada, sanitizeSourceDocs, type SourceDoc } from "../source-docs";
 import { moverMensaje, normalizarOrden } from "../sequence/order";
 import { SECUENCIA_LAYOUT, alturaDeMensaje, disponerSecuencia } from "../sequence/layout";
 import {
@@ -195,6 +195,13 @@ export interface BuilderNode {
   fragmentOp?: FragmentOp;
   /** Operandos del fragmento: guarda y tramo de orden que abarca. */
   fragmentParts?: FragmentPart[];
+  /**
+   * Lo que el humano decidió en el lienzo y el constructor no usa: cómo se
+   * dibuja la caja y a qué subvista entra. Viaja de ida y vuelta para que
+   * editar por MCP no lo borre (#636).
+   */
+  estilo?: GraphNode["estilo"];
+  viewRef?: string;
   x?: number;
   y?: number;
   width?: number;
@@ -213,6 +220,17 @@ export interface BuilderEdge {
   orden?: number;
   /** Qué clase de mensaje es (sólo secuencia). Ver `sequence/messages.ts`. */
   messageKind?: SequenceMessageKind;
+  /**
+   * Lo que el humano dibujó en la relación y el constructor no calcula: de qué
+   * punto de cada caja sale y llega, dónde quedó la etiqueta, el quiebre único
+   * de los proyectos viejos y su estado del cambio. Sin esto la ida y vuelta
+   * por el MCP devolvía la línea «reseteada» (#636).
+   */
+  sourceAnchor?: { x: number; y: number };
+  targetAnchor?: { x: number; y: number };
+  midpoint?: { x: number; y: number };
+  labelOffset?: { x: number; y: number };
+  estado_comparativo?: Estado;
   /**
    * Qué RELACIÓN representa la arista: decide la marca de cada punta y si el
    * trazo va punteado (`src/lib/edge-relations.ts`). Es donde viven la
@@ -1992,6 +2010,11 @@ export function layoutConMedida(
 
   // El aire se escala al tamaño de nodo de la notación (ver `scalePreset`).
   const preset = scalePreset(getPreset(opts.density), cellSize(model));
+
+  // Disposición PARCIAL: el humano ya acomodó una parte y el agente agrega algo.
+  // Rehacer todo le borraba ese trabajo (#636): sólo se colocan las cajas nuevas,
+  // en un hueco libre, y lo que ya tenía lugar no se mueve ni se re-rutea.
+  if (model.nodes.some(tieneLugar)) return medirDisposicion(colocarNuevos(model, preset));
   // `auto` pregunta al asesor: decide por la notación Y por lo que el diagrama
   // tiene, con reglas fijas (`layout-advisor.ts`).
   const strategy =
@@ -2062,6 +2085,87 @@ export function elegirEstrategia(
       `${propuesta.cruces} y ${propuesta.sobreCaja}.`,
     alternativas: candidatas.filter((c) => c !== mejor.strategy),
   };
+}
+
+const tieneLugar = (n: BuilderNode): boolean => typeof n.x === "number" && typeof n.y === "number";
+
+/**
+ * Coloca SÓLO lo que no tiene lugar, sin mover nada de lo que ya lo tiene.
+ *
+ * - Un elemento nuevo dentro de un contenedor con lugar va al primer hueco
+ *   libre de su rejilla; si no cabe, el contenedor crece hacia abajo.
+ * - Lo nuevo suelto, y los contenedores nuevos, van en una franja debajo de
+ *   todo lo existente: nunca encima de algo que el humano acomodó.
+ *
+ * Determinista: los huecos se recorren en orden de fila y columna, y los
+ * elementos en el orden en que se declararon.
+ */
+function colocarNuevos(model: DiagramModel, preset: LayoutPreset): DiagramModel {
+  const sz = cellSize(model);
+  const pasoX = sz.w + Math.round(preset.hGap / 2);
+  const pasoY = sz.h + preset.vGap;
+  const nodos = new Map(model.nodes.map((n) => [n.id, { ...n }]));
+  type Rect = { x: number; y: number; w: number; h: number };
+  const rect = (n: BuilderNode): Rect => ({ x: n.x!, y: n.y!, w: n.width ?? sz.w, h: n.height ?? sz.h });
+  // Ocupado = cajas que NO son contenedor: un contenedor se puede llenar.
+  const ocupadas: Rect[] = [...nodos.values()].filter((n) => tieneLugar(n) && !isContainerNode(n)).map(rect);
+  const libre = (r: Rect) =>
+    ocupadas.every(
+      (o) =>
+        r.x + r.w + preset.vGap / 2 <= o.x ||
+        o.x + o.w + preset.vGap / 2 <= r.x ||
+        r.y + r.h + preset.vGap / 2 <= o.y ||
+        o.y + o.h + preset.vGap / 2 <= r.y
+    );
+  const fondo = () => Math.max(Y0, ...[...nodos.values()].filter(tieneLugar).map((n) => n.y! + (n.height ?? sz.h)));
+  const contenedorDe = (n: BuilderNode) =>
+    n.container ? [...nodos.values()].find((c) => isContainerNode(c) && c.nombre === n.container) : undefined;
+
+  // 1 · Contenedores nuevos: debajo de todo, con lugar para sus hijos nuevos.
+  for (const c of [...nodos.values()].filter((n) => isContainerNode(n) && !tieneLugar(n))) {
+    const hijos = [...nodos.values()].filter((n) => n.container === c.nombre && !isContainerNode(n));
+    const cols = Math.max(1, Math.min(preset.colsPerRow, Math.ceil(Math.sqrt(hijos.length || 1))));
+    const filas = Math.max(1, Math.ceil(hijos.length / cols));
+    c.x = X0;
+    c.y = fondo() + preset.laneGap;
+    c.width = 2 * preset.lanePadX + (cols - 1) * pasoX + sz.w;
+    c.height = preset.lanePadTop + (filas - 1) * pasoY + sz.h + preset.lanePadBottom;
+  }
+
+  // 2 · Elementos nuevos.
+  let filaSuelta: { y: number; x: number } | undefined;
+  for (const n of [...nodos.values()].filter((n) => !isContainerNode(n) && !tieneLugar(n))) {
+    const c = contenedorDe(n);
+    if (c && tieneLugar(c)) {
+      const ancho = c.width ?? sz.w;
+      const cols = Math.max(1, Math.floor((ancho - 2 * preset.lanePadX + pasoX - sz.w) / pasoX) + 1);
+      for (let k = 0; ; k++) {
+        const r = {
+          x: c.x! + preset.lanePadX + (k % cols) * pasoX,
+          y: c.y! + preset.lanePadTop + Math.floor(k / cols) * pasoY,
+          w: sz.w,
+          h: sz.h,
+        };
+        if (!libre(r)) continue;
+        Object.assign(n, { x: r.x, y: r.y, width: sz.w, height: sz.h });
+        ocupadas.push(r);
+        // El contenedor crece si el hueco quedó fuera de su caja.
+        const piso = r.y + r.h + preset.lanePadBottom;
+        if (piso > c.y! + (c.height ?? 0)) c.height = piso - c.y!;
+        break;
+      }
+      continue;
+    }
+    // Suelto: en la franja de abajo, de izquierda a derecha.
+    if (!filaSuelta) filaSuelta = { y: fondo() + preset.laneGap, x: X0 };
+    let r = { x: filaSuelta.x, y: filaSuelta.y, w: sz.w, h: sz.h };
+    while (!libre(r)) r = { ...r, x: r.x + pasoX };
+    Object.assign(n, { x: r.x, y: r.y, width: sz.w, height: sz.h });
+    ocupadas.push(r);
+    filaSuelta.x = r.x + pasoX;
+  }
+
+  return { ...model, nodes: model.nodes.map((n) => nodos.get(n.id)!) };
 }
 
 /** Líneas de vida del modelo, en el orden en que se declararon. */
@@ -2144,16 +2248,14 @@ function layoutSecuencia(model: DiagramModel): DiagramModel {
 // =============================================================================
 
 function toDomainNode(n: BuilderNode): Omit<GraphNode, "agregado"> {
-  // La cita de la fuente se anexa a la descripción: es el único campo que la app
-  // muestra al abrir el nodo, y es justo lo que el revisor humano necesita ver.
-  const descripcion = n.source?.trim()
-    ? [n.descripcion?.trim(), `Fuente: ${n.source.trim()}`].filter(Boolean).join("\n\n")
-    : n.descripcion;
+  // La cita va en su PROPIO campo (#636): pegada a la descripción, la ficha
+  // mostraba «Fuente: …» como si fuera parte de lo que el elemento hace.
   return {
     id: n.id,
     nombre: n.nombre,
     tipo_elemento: n.tipo_elemento as GraphNode["tipo_elemento"],
-    descripcion,
+    descripcion: n.descripcion,
+    ...(n.source?.trim() ? { fuente: n.source.trim() } : {}),
     metadata: n.metadata,
     spec: sanitizeSpec(n.spec),
     adjuntos: docsParaGuardar(n.adjuntos),
@@ -2163,6 +2265,8 @@ function toDomainNode(n: BuilderNode): Omit<GraphNode, "agregado"> {
     color: n.color,
     borderColor: n.borderColor,
     icono: n.icono,
+    ...(n.estilo ? { estilo: n.estilo } : {}),
+    ...(n.viewRef ? { viewRef: n.viewRef } : {}),
     x: n.x,
     y: n.y,
     width: n.width,
@@ -2192,12 +2296,14 @@ export function toGraphData(input: DiagramModel): GraphData {
     width: c.width,
     height: c.height,
     tipo_contenedor: c.tipo_elemento,
+    ...(c.source?.trim() ? { fuente: c.source.trim() } : {}),
     color: c.color,
     borderColor: c.borderColor,
     metadata: c.metadata,
     spec: sanitizeSpec(c.spec),
     adjuntos: docsParaGuardar(c.adjuntos),
     icono: c.icono,
+    ...(c.estilo ? { estilo: c.estilo } : {}),
     // Un contenedor también documenta lo que YA existe: sin esto el estado que
     // declara el agente moría en la serialización (sólo lo llevaban los nodos).
     estado_comparativo: c.estado_comparativo,
@@ -2253,6 +2359,12 @@ export function toGraphData(input: DiagramModel): GraphData {
       // la altura y los mensajes salen en el orden de la lista (#616).
       orden: e.orden,
       messageKind: e.messageKind,
+      // Lo que dibujó el humano vuelve como vino (#636).
+      sourceAnchor: e.sourceAnchor,
+      targetAnchor: e.targetAnchor,
+      midpoint: e.midpoint,
+      labelOffset: e.labelOffset,
+      estado_comparativo: e.estado_comparativo,
     };
     if (sa && ta && sa === ta) aggByName.get(sa)!.aristas.push(arista);
     else if (sa && ta && sa !== ta) policies.push(arista);
@@ -2290,6 +2402,45 @@ export function toGraphData(input: DiagramModel): GraphData {
 }
 
 /** Reconstruye un `DiagramModel` desde un `GraphData` (para editar diseños existentes). */
+/**
+ * Un nodo de la app tal como lo usa el constructor: la `fuente` vuelve a ser
+ * `source`, y la cita HEREDADA pegada a la descripción se separa (#636). Sin
+ * esto, todo diagrama importado se quedaba sin fuente —la validación avisaba
+ * que nada citaba— y el siguiente export la volvía a duplicar.
+ */
+/** Campos de una relación de la app que el constructor conserva tal cual. */
+const CAMPOS_DE_ARISTA = [
+  "descripcion",
+  // Estilo: punteado = retorno en secuencia, flecha, color, enrutado.
+  "dashed",
+  "arrow",
+  "color",
+  "routing",
+  "relation",
+  "midpoints",
+  "geometriaAuto",
+  "orden",
+  "messageKind",
+  // Lo que dibujó el humano (#636).
+  "sourceAnchor",
+  "targetAnchor",
+  "midpoint",
+  "labelOffset",
+  "estado_comparativo",
+] as const;
+
+/** Una relación de la app como la usa el constructor, sin perder nada de lo que dibujó el humano. */
+function aristaDeEntrada(a: any): BuilderEdge {
+  const e: BuilderEdge = { fuente: a.fuente, destino: a.destino };
+  for (const campo of CAMPOS_DE_ARISTA) if (a[campo] !== undefined) (e as any)[campo] = a[campo];
+  return e;
+}
+
+function nodoDeEntrada(n: Omit<GraphNode, "agregado">): any {
+  const { fuente, ...resto } = conFuenteSeparada(n as Omit<GraphNode, "agregado">);
+  return fuente?.trim() ? { ...resto, source: fuente.trim() } : resto;
+}
+
 export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): DiagramModel {
   const nodes: BuilderNode[] = [];
   const edges: BuilderEdge[] = [];
@@ -2302,6 +2453,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
         ? agg.tipo_contenedor
         : "Agregado",
       descripcion: agg.descripcion || agg.entidad_raiz || "",
+      ...(agg.fuente?.trim() ? { source: agg.fuente.trim() } : {}),
       container: "",
       estado_comparativo: agg.estado_comparativo,
       color: (agg as any).color,
@@ -2310,6 +2462,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       spec: sanitizeSpec((agg as any).spec),
       adjuntos: docsParaGuardar((agg as any).adjuntos),
       icono: (agg as any).icono,
+      ...((agg as any).estilo ? { estilo: (agg as any).estilo } : {}),
       fragmentOp: agg.fragmentOp,
       fragmentParts: agg.fragmentParts,
       x: agg.x,
@@ -2319,7 +2472,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
     });
     for (const n of agg.nodos || []) {
       nodes.push({
-        ...(n as any),
+        ...nodoDeEntrada(n),
         container: agg.nombre_agregado,
         metadata: normalizarLista((n as any).metadata),
         spec: sanitizeSpec((n as any).spec),
@@ -2328,27 +2481,11 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
         icono: (n as any).icono,
       });
     }
-    for (const a of agg.aristas || []) {
-      edges.push({
-        fuente: a.fuente,
-        destino: a.destino,
-        descripcion: (a as any).descripcion,
-        // Preservar el estilo de la arista (punteado = retorno en secuencia, etc.).
-        dashed: (a as any).dashed,
-        arrow: (a as any).arrow,
-        color: (a as any).color,
-        routing: (a as any).routing,
-        relation: (a as any).relation,
-        midpoints: (a as any).midpoints,
-        geometriaAuto: (a as any).geometriaAuto,
-        orden: (a as any).orden,
-        messageKind: (a as any).messageKind,
-      });
-    }
+    for (const a of agg.aristas || []) edges.push(aristaDeEntrada(a));
   }
   for (const n of data.big_picture?.nodos || []) {
     nodes.push({
-      ...(n as any),
+      ...nodoDeEntrada(n),
       container: "",
       metadata: normalizarLista((n as any).metadata),
       spec: sanitizeSpec((n as any).spec),
@@ -2357,22 +2494,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
       icono: (n as any).icono,
     });
   }
-  const pushEdge = (a: any) =>
-    edges.push({
-      fuente: a.fuente,
-      destino: a.destino,
-      descripcion: a.descripcion,
-      // Preservar el estilo (punteado = retorno en secuencia, flecha, color, enrutado).
-      dashed: a.dashed,
-      arrow: a.arrow,
-      color: a.color,
-      routing: a.routing,
-      relation: a.relation,
-      midpoints: a.midpoints,
-      geometriaAuto: a.geometriaAuto,
-      orden: a.orden,
-      messageKind: a.messageKind,
-    });
+  const pushEdge = (a: any) => edges.push(aristaDeEntrada(a));
   for (const a of data.big_picture?.aristas || []) pushEdge(a);
   for (const a of data.politicas_inter_agregados || []) pushEdge(a);
 

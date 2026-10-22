@@ -82,8 +82,15 @@ la columna «cita» es obligatoria, es la que sostiene la revisión humana:
 | Áreas de negocio | equipos, departamentos, workstreams | DDD (Contexto Delimitado/Subdominio) | §/pág. |
 
 Esa cita se pasa tal cual en el parámetro `source` de `add_node` /
-`add_container`. La app la muestra en la descripción del elemento: el revisor
-lee «elemento ← fuente» sin volver al PDF.
+`add_container`. La app la guarda como la PROPIEDAD «Fuente» del elemento —no en
+la descripción—: el revisor lee «elemento ← fuente» sin volver al PDF.
+
+La `description` es otra cosa: **qué es, qué hace y por qué existe**, en 1 a 3
+frases que se entiendan sin abrir el documento («Calcula la liquidación mensual
+de los prestadores a partir de las prestaciones auditadas y la envía a
+Tesorería»). Una frase de dos palabras o el nombre repetido no le sirve al
+humano ni a los agentes de código que después leen el diagrama como contexto;
+`validate_diagram` lo marca como `DESCRIPCION-POBRE`.
 
 ### Adjuntá el documento, no sólo su nombre
 

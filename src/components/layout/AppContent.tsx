@@ -17,6 +17,7 @@ import { describeAppState } from "@/lib/mcp/app-state";
 import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
 import { mergeProjectMeta, describeMetaAgregada } from "@/lib/mcp/project-meta";
 import { buscarProyectoGuardado, claveProyecto, mergeProjectGraph, nombreVisible, resolveViewRef } from "@/lib/mcp/project-update";
+import { fundir, reconciliarIds } from "@/lib/mcp/view-edit";
 import {
   planAppAction,
   planViewEdit,
@@ -448,9 +449,12 @@ const McpImportBridge = () => {
           }
           let id: string | null;
           if (objetivo) {
-            // Igual que al actualizar un proyecto: la estructura la trae el
-            // diseño nuevo, la geometría de lo que ya estaba la conserva la vista.
-            const { graph } = mergeProjectGraph(objetivo.graph ?? (content as GraphData), content as GraphData);
+            // La estructura la trae el diseño nuevo; la geometría, los trazos y
+            // las anclas que el humano dibujó los conserva la vista. Es el mismo
+            // camino que `set_view_graph` (#636): con `mergeProjectGraph` a secas
+            // se perdían las anclas y la etiqueta de cada relación.
+            const previo = objetivo.graph ?? (content as GraphData);
+            const graph = fundir(previo, reconciliarIds(previo, content as GraphData));
             updateViewGraph(objetivo.id, graph);
             if (view.notation) setViewNotation(objetivo.id, view.notation as NotationId);
             setActiveView(objetivo.id);
