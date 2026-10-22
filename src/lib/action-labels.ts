@@ -26,6 +26,8 @@ export const VERBO = {
   ayuda: "Ayuda y atajos",
   escuchar: "Escuchar",
   detener: "Detener",
+  pausar: "Pausar",
+  reanudar: "Reanudar",
 } as const;
 
 export type Verbo = keyof typeof VERBO;
