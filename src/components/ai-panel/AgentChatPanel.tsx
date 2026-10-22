@@ -44,6 +44,8 @@ import {
   Hammer,
   Volume2,
   Square,
+  Pause,
+  Play,
 } from "lucide-react";
 import { useLeerEnVoz } from "@/hooks/useLeerEnVoz";
 import { documentDefinitions, getDefinition } from "@/lib/artifacts/registry";
@@ -316,9 +318,10 @@ function StepsTrace({ steps }: { steps: AgentStep[] }) {
 }
 
 /**
- * «Escuchar» de una respuesta (#605): el mismo botón empieza y detiene. Mientras
- * se baja el modelo o se prepara la primera frase, el icono gira para que no
- * parezca colgado.
+ * «Escuchar» de una respuesta (#605). Quieto, un botón empieza. Mientras se baja
+ * el modelo o se prepara la primera frase, el icono gira (clic: detener) para que
+ * no parezca colgado. Mientras suena (#612), pausar/reanudar desde el mismo punto
+ * y detener, siempre a mano.
  */
 function BotonEscuchar({
   id,
@@ -331,25 +334,45 @@ function BotonEscuchar({
 }) {
   const activo = voz.estado.id === id;
   const fase = activo ? voz.estado.fase : "idle";
+  const estilo = "h-6 w-6 text-muted-foreground hover:text-foreground";
+
+  if (fase === "hablando" || fase === "pausado") {
+    const pausado = fase === "pausado";
+    return (
+      <>
+        <IconAction
+          variant="ghost"
+          className={estilo}
+          onClick={() => void (pausado ? voz.reanudar() : voz.pausar())}
+          label={pausado ? accion("reanudar", "lectura") : accion("pausar", "lectura")}
+          icon={pausado ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+        />
+        <IconAction
+          variant="ghost"
+          className={estilo}
+          onClick={voz.detener}
+          label={accion("detener", "lectura")}
+          icon={<Square className="h-3 w-3 fill-current" />}
+        />
+      </>
+    );
+  }
+
   const label =
     fase === "descargando"
       ? `Bajando la voz (${voz.estado.progreso}%) · clic: ${accion("detener").toLowerCase()}`
       : fase === "preparando"
         ? `Preparando la voz · clic: ${accion("detener").toLowerCase()}`
-        : fase === "hablando"
-          ? accion("detener", "lectura")
-          : accion("escuchar", "respuesta");
+        : accion("escuchar", "respuesta");
   return (
     <IconAction
       variant="ghost"
-      className="h-6 w-6 text-muted-foreground hover:text-foreground"
+      className={estilo}
       onClick={() => voz.alternar(id, contenido)}
       label={label}
       icon={
         fase === "descargando" || fase === "preparando" ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : fase === "hablando" ? (
-          <Square className="h-3 w-3 fill-current" />
         ) : (
           <Volume2 className="h-3.5 w-3.5" />
         )
@@ -578,9 +601,12 @@ export function AgentChatPanel() {
                 <>
                   <Markdown content={m.content} className="wrap-break-word text-sm leading-relaxed" />
                   {/* No en el mensaje que todavía se escribe: leería texto a medias y le
-                      quitaría CPU al modelo mientras genera. */}
-                  {voz.disponible && !!m.content.trim() && !(busy && m.id === messages[messages.length - 1]?.id) && (
-                    <div className="-mb-1 mt-1 flex justify-end">
+                      quitaría CPU al modelo mientras genera. Salvo que ya se esté
+                      leyendo: entonces tiene que quedar a mano para detenerlo (#612). */}
+                  {voz.disponible &&
+                    !!m.content.trim() &&
+                    (voz.estado.id === m.id || !(busy && m.id === messages[messages.length - 1]?.id)) && (
+                    <div className="-mb-1 mt-1 flex justify-end gap-0.5">
                       <BotonEscuchar id={m.id} contenido={m.content} voz={voz} />
                     </div>
                   )}
