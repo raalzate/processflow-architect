@@ -27,6 +27,8 @@ import {
   addNode,
   addFragment,
   addEdge,
+  addMessage,
+  reorderMessage,
   removeNode,
   removeEdge,
   updateNode,
@@ -140,7 +142,7 @@ import {
   type EdgeRelationKind,
 } from "../../src/lib/edge-relations";
 import { isLifelineContainer } from "../../src/lib/notations";
-import { SEQUENCE_MESSAGES, SEQUENCE_MESSAGE_KINDS } from "../../src/lib/sequence/messages";
+import { SEQUENCE_MESSAGES, SEQUENCE_MESSAGE_KINDS, type SequenceMessageKind } from "../../src/lib/sequence/messages";
 import { FRAGMENT_OPS, FRAGMENT_OPS_LIST, type FragmentOp } from "../../src/lib/sequence/fragments";
 import { MAX_CUSTOM_VIEWS } from "../../src/lib/views-types";
 import type { GraphData } from "../../src/lib/types";
@@ -630,6 +632,12 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             ...FRAGMENT_OPS_LIST.map(
               (o) => `- \`${o}\` — ${FRAGMENT_OPS[o].label}: ${FRAGMENT_OPS[o].hint}`
             ),
+            "",
+            "## Cómo se construye una secuencia (#616)",
+            "1. `add_container` — una línea de vida por participante, en el orden de las columnas (izquierda → derecha).",
+            "2. `add_message` — cada mensaje en el orden en que ocurre (from, to, label, messageKind). NO uses add_edge: no lleva orden y los mensajes se pisan. `move_message` reordena.",
+            "3. `add_fragment` — sobre las POSICIONES de los mensajes que encierra (from/to), una vez que existen.",
+            "4. `validate_diagram` avisa mensajes sin orden, huecos y fragmentos fuera de la secuencia; el layout pone las líneas de vida en columnas y cada fragmento sobre su tramo.",
           ].join("\n")
         : "";
       // La punta de la arista es simbología, igual que la forma del nodo: si el
@@ -1261,11 +1269,98 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
   );
 
   server.registerTool(
+    "add_message",
+    {
+      title: "Añadir mensaje de secuencia",
+      description:
+        "Añade un MENSAJE a una secuencia UML: una flecha entre dos líneas de vida con su lugar en el TIEMPO. Es la única forma de construir una secuencia por herramientas: add_edge no lleva orden y los mensajes salen a la misma altura. Flujo: add_container (una línea de vida por participante, en el orden de las columnas) → add_message (en el orden en que ocurren) → add_fragment (sobre las posiciones de los mensajes). Sin `position` va al final; con ella se inserta ahí y los demás se corren.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        from: z.string().describe("Id de la línea de vida que envía."),
+        to: z.string().describe("Id de la línea de vida que recibe (puede ser la misma: auto-mensaje)."),
+        label: z.string().optional().describe("Qué se envía: `crearCotización(datos)`, `200 OK`."),
+        messageKind: z
+          .enum(SEQUENCE_MESSAGE_KINDS as [SequenceMessageKind, ...SequenceMessageKind[]])
+          .optional()
+          .describe(
+            `Clase de mensaje (por defecto \`sync\`): ${SEQUENCE_MESSAGE_KINDS.map((k) => `\`${k}\` ${SEQUENCE_MESSAGES[k].label}`).join(" · ")}.`
+          ),
+        position: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Lugar en la secuencia (1 = el primero). Sin ella, al final."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, from, to, label, messageKind, position }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        const next = addMessage(model, {
+          fuente: from,
+          destino: to,
+          descripcion: label,
+          messageKind,
+          posicion: position,
+        });
+        await saveModel(diagramId, next);
+        const nuevo = position ? Math.min(position, next.edges.length) : next.edges.length;
+        const noLineas = [from, to].filter((id) => {
+          const n = next.nodes.find((x) => x.id === id || x.nombre === id);
+          return n && !isLifelineContainer(n.tipo_elemento);
+        });
+        const aviso = noLineas.length
+          ? ` Ojo: ${noLineas.join(", ")} no es línea de vida; en una secuencia los participantes se crean con add_container y un tipo de línea de vida (describe_notation).`
+          : "";
+        return text(`Mensaje ${from} → ${to} añadido en la posición ${nuevo} de ${next.edges.length}.${aviso}`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "move_message",
+    {
+      title: "Reordenar mensaje de secuencia",
+      description:
+        "Mueve el mensaje que está en la posición `from` a la posición `to` de la secuencia; los demás conservan su orden relativo y se renumeran sin huecos. Es como se corrige una interacción mal narrada sin borrar y rehacer. Los fragmentos siguen apuntando a posiciones: revisalos con validate_diagram después de mover.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        from: z.number().int().positive().describe("Posición actual del mensaje (1 = el primero)."),
+        to: z.number().int().positive().describe("Posición a la que va."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, from, to }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        const next = reorderMessage(model, from, to);
+        await saveModel(diagramId, next);
+        return text(`Mensaje ${from} movido a la posición ${Math.min(to, next.edges.length)}.`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
     "add_fragment",
     {
       title: "Añadir fragmento combinado",
       description:
-        "Encierra un tramo de una secuencia UML en un fragmento combinado: loop (repetición), alt (alternativa), opt (opcional) o par (paralelo). `from`/`to` son POSICIONES de mensaje (1 = el primero), ambas inclusive: el fragmento abarca un tramo del TIEMPO, no un rectángulo. La condición se dibuja entre corchetes al lado del operador. Consultá describe_notation(\"uml\") para ver los operadores.",
+        "Encierra un tramo de una secuencia UML en un fragmento combinado: loop (repetición), alt (alternativa), opt (opcional) o par (paralelo). `from`/`to` son POSICIONES de mensaje (1 = el primero), ambas inclusive: el fragmento abarca un tramo del TIEMPO, no un rectángulo. Se agrega DESPUÉS de los mensajes (add_message): sin mensajes no hay tramo que encerrar. La condición se dibuja entre corchetes al lado del operador. Consultá describe_notation(\"uml\") para ver los operadores.",
       inputSchema: {
         diagramId: diagramIdSchema,
         name: z.string().describe("Nombre del fragmento; si no hay `guard`, se usa como condición."),
