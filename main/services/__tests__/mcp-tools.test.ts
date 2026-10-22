@@ -2590,7 +2590,8 @@ describe("registerProcessflowTools · secuencia UML (#616)", () => {
     expect(new Set(lineas.map((a: any) => a.x)).size).toBe(3);
     const aristas = [...graph.big_picture.aristas, ...graph.politicas_inter_agregados, ...graph.agregados.flatMap((a: any) => a.aristas)];
     expect(aristas.map((a: any) => a.orden).sort()).toEqual([1, 2, 3, 4]);
-    expect(aristas.find((a: any) => a.descripcion === "crear").orden).toBe(2);
+    // Con #618 la etiqueta lleva el número de su orden.
+    expect(aristas.find((a: any) => a.descripcion === "2. crear").orden).toBe(2);
     const alt = graph.agregados.find((a: any) => a.tipo_contenedor === fragmento);
     expect(alt.fragmentOp).toBe("alt");
   });
