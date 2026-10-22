@@ -761,6 +761,21 @@ pedido ya fija notación, vista y contenido con exactitud.
    (el lienzo descarta los aislados). Etiqueta las aristas: condición de la rama
    en BPMN, verbo + tecnología en C4, «dispara»/«consulta» en DDD.
 
+**Secuencia UML** — otro flujo, porque el mensaje tiene lugar en el TIEMPO:
+
+1. \`add_container\` con el tipo de **línea de vida** (\`describe_notation("uml")\`),
+   uno por participante y en el orden de las columnas (izquierda → derecha).
+2. \`add_message\` para cada mensaje, **en el orden en que ocurre**:
+   \`{ from, to, label, messageKind }\` (\`sync\` · \`async\` · \`return\` · \`create\` ·
+   \`destroy\`). **No** uses \`add_edge\`: no lleva orden, los mensajes se pisan y
+   \`validate_diagram\` lo marca como error. \`move_message\` reordena sin huecos.
+3. \`add_fragment\` **después** de los mensajes, sobre sus POSICIONES:
+   \`{ op: "alt", from: 3, to: 5, guard: "persona nueva" }\`. Un fragmento creado
+   antes de los mensajes no encierra nada.
+
+El layout pone las líneas de vida en columnas y cada fragmento sobre su tramo;
+no hace falta acomodar nada a mano.
+
 Convenciones: nombres en el idioma de la fuente, **\`name\` de máx ~21 caracteres**
 (más largo lo recorta el lienzo) y **\`label\` de arista de máx ~30** (verbo +
 \`[tecnología]\`; se dibuja suelta sobre la línea y tapa los nodos vecinos). El

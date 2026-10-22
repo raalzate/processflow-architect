@@ -44,6 +44,8 @@ import {
   Hammer,
   Volume2,
   Square,
+  Pause,
+  Play,
 } from "lucide-react";
 import { useLeerEnVoz } from "@/hooks/useLeerEnVoz";
 import { documentDefinitions, getDefinition } from "@/lib/artifacts/registry";
@@ -58,6 +60,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Markdown } from "./Markdown";
+import { ArtifactViewerDialog } from "./ArtifactViewerDialog";
+import {
+  abrirAlTerminar,
+  artefactoPrincipal,
+  porQueDeLaPregunta,
+  resumenDelPlan,
+  revisionQueReemplaza,
+  type ResumenDePlan,
+} from "@/lib/ai/pause-summary";
 import { formatElapsed } from "@/lib/duration";
 import type { AgentStep, AgentDocument, Artifact, ChatMessage } from "@/lib/agent-types";
 
@@ -105,11 +116,14 @@ function RunPauseCard({
   message,
   busy,
   viewNames,
+  resumen,
   onDecide,
   onCancel,
 }: {
   message: ChatMessage;
   busy: boolean;
+  /** Qué se aprueba y qué efecto tiene (#613). Lo arma el panel: sabe qué artefactos existen. */
+  resumen?: ResumenDePlan;
   /** Vistas del proyecto: para contrastar contra lo que el agente leyó. */
   viewNames: string[];
   onDecide: (d: { kind: "approve" } | { kind: "adjust"; feedback: string } | { kind: "answer"; answer: string }) => void;
@@ -137,6 +151,14 @@ function RunPauseCard({
         <div className="flex items-center gap-1.5 text-xs font-semibold">
           <ListChecks className="h-3.5 w-3.5 text-primary" /> Plan de «{pause.title}»
         </div>
+        {/* El qué y el efecto, ANTES de las secciones: sin esto «Aprobar y generar»
+            se aprobaba a ciegas (#613). */}
+        {resumen && (
+          <div className="mt-1.5 space-y-0.5">
+            <p className="text-xs">{resumen.que}</p>
+            <p className="text-2xs text-muted-foreground">{resumen.efecto}</p>
+          </div>
+        )}
         <ul className="mt-1.5 space-y-1">
           {pause.sections.map((sec, i) => (
             <li key={i} className="text-xs">
@@ -214,6 +236,8 @@ function RunPauseCard({
         <HelpCircle className="h-3.5 w-3.5 text-warning" /> Decidí para seguir
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{pause.text}</p>
+      {/* Por qué pregunta y qué pasa con «No sé» (#613). */}
+      <p className="mt-1 text-2xs text-muted-foreground">{porQueDeLaPregunta(pause)}</p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {pause.options.map((op) => (
           <Button
@@ -316,9 +340,10 @@ function StepsTrace({ steps }: { steps: AgentStep[] }) {
 }
 
 /**
- * «Escuchar» de una respuesta (#605): el mismo botón empieza y detiene. Mientras
- * se baja el modelo o se prepara la primera frase, el icono gira para que no
- * parezca colgado.
+ * «Escuchar» de una respuesta (#605). Quieto, un botón empieza. Mientras se baja
+ * el modelo o se prepara la primera frase, el icono gira (clic: detener) para que
+ * no parezca colgado. Mientras suena (#612), pausar/reanudar desde el mismo punto
+ * y detener, siempre a mano.
  */
 function BotonEscuchar({
   id,
@@ -331,25 +356,45 @@ function BotonEscuchar({
 }) {
   const activo = voz.estado.id === id;
   const fase = activo ? voz.estado.fase : "idle";
+  const estilo = "h-6 w-6 text-muted-foreground hover:text-foreground";
+
+  if (fase === "hablando" || fase === "pausado") {
+    const pausado = fase === "pausado";
+    return (
+      <>
+        <IconAction
+          variant="ghost"
+          className={estilo}
+          onClick={() => void (pausado ? voz.reanudar() : voz.pausar())}
+          label={pausado ? accion("reanudar", "lectura") : accion("pausar", "lectura")}
+          icon={pausado ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+        />
+        <IconAction
+          variant="ghost"
+          className={estilo}
+          onClick={voz.detener}
+          label={accion("detener", "lectura")}
+          icon={<Square className="h-3 w-3 fill-current" />}
+        />
+      </>
+    );
+  }
+
   const label =
     fase === "descargando"
       ? `Bajando la voz (${voz.estado.progreso}%) · clic: ${accion("detener").toLowerCase()}`
       : fase === "preparando"
         ? `Preparando la voz · clic: ${accion("detener").toLowerCase()}`
-        : fase === "hablando"
-          ? accion("detener", "lectura")
-          : accion("escuchar", "respuesta");
+        : accion("escuchar", "respuesta");
   return (
     <IconAction
       variant="ghost"
-      className="h-6 w-6 text-muted-foreground hover:text-foreground"
+      className={estilo}
       onClick={() => voz.alternar(id, contenido)}
       label={label}
       icon={
         fase === "descargando" || fase === "preparando" ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : fase === "hablando" ? (
-          <Square className="h-3 w-3 fill-current" />
         ) : (
           <Volume2 className="h-3.5 w-3.5" />
         )
@@ -370,6 +415,8 @@ export function AgentChatPanel() {
     retryWithWiderWindow,
     agentId,
     artifacts,
+    lineages,
+    activeVersionId,
     contextArtifactIds,
     toggleContextArtifact,
     clearContextArtifacts,
@@ -393,6 +440,34 @@ export function AgentChatPanel() {
     return () => clearInterval(t);
   }, [busy]);
   const [input, setInput] = useState("");
+
+  // Al terminar una corrida que creó artefactos, se abre el principal (#613).
+  // Lo que ya estaba en el historial al montar no cuenta: reabrir el chat no
+  // puede disparar un diálogo por cada artefacto viejo.
+  const [abierto, setAbierto] = useState<Artifact | null>(null);
+  const atendidos = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const conArtefactos = messages.filter((m) => m.producedArtifactIds?.length);
+    if (!atendidos.current) {
+      atendidos.current = new Set(conArtefactos.map((m) => m.id));
+      return;
+    }
+    const nuevos = conArtefactos.filter((m) => !atendidos.current!.has(m.id));
+    if (!nuevos.length) return;
+    nuevos.forEach((m) => atendidos.current!.add(m.id));
+    const ultimo = nuevos[nuevos.length - 1];
+    const creados = ultimo
+      .producedArtifactIds!.map((id) => artifacts.find((a) => a.id === id))
+      .filter((a): a is Artifact => !!a);
+    const principal = artefactoPrincipal(creados);
+    const mirando = abrirAlTerminar({
+      ventanaActiva: document.visibilityState === "visible" && document.hasFocus(),
+      escribiendo: !!input.trim(),
+      otroDialogoAbierto: !!document.querySelector('[role="dialog"]'),
+    });
+    if (principal && mirando) setAbierto(principal);
+    // `input` se lee al terminar la corrida, no se observa: escribir no reabre nada.
+  }, [messages, artifacts]);
   // Artefacto pedido con el menú «+». Sin esto el agente dependía de que la frase
   // tuviera un verbo de generación: «Identifica riesgos y restricciones» sólo
   // conversaba y nunca ponía nada en el lienzo.
@@ -578,9 +653,12 @@ export function AgentChatPanel() {
                 <>
                   <Markdown content={m.content} className="wrap-break-word text-sm leading-relaxed" />
                   {/* No en el mensaje que todavía se escribe: leería texto a medias y le
-                      quitaría CPU al modelo mientras genera. */}
-                  {voz.disponible && !!m.content.trim() && !(busy && m.id === messages[messages.length - 1]?.id) && (
-                    <div className="-mb-1 mt-1 flex justify-end">
+                      quitaría CPU al modelo mientras genera. Salvo que ya se esté
+                      leyendo: entonces tiene que quedar a mano para detenerlo (#612). */}
+                  {voz.disponible &&
+                    !!m.content.trim() &&
+                    (voz.estado.id === m.id || !(busy && m.id === messages[messages.length - 1]?.id)) && (
+                    <div className="-mb-1 mt-1 flex justify-end gap-0.5">
                       <BotonEscuchar id={m.id} contenido={m.content} voz={voz} />
                     </div>
                   )}
@@ -664,6 +742,14 @@ export function AgentChatPanel() {
                   message={m}
                   busy={busy}
                   viewNames={views.map((v) => v.name)}
+                  resumen={
+                    m.run.pause.kind === "plan"
+                      ? resumenDelPlan(m.run.pause, {
+                          tipo: getDefinition(m.run.pause.artifactKind).label,
+                          existente: revisionQueReemplaza(m.run.pause, { lineages, artifacts }, activeVersionId),
+                        })
+                      : undefined
+                  }
                   onDecide={(d) => resumeRun(m.id, d)}
                   onCancel={() => cancelRun(m.id)}
                 />
@@ -678,8 +764,23 @@ export function AgentChatPanel() {
               )}
               {m.role === "assistant" && m.steps && <StepsTrace steps={m.steps} />}
               {m.role === "assistant" && !!m.producedArtifactIds?.length && (
-                <div className="mt-2 text-xs text-muted-foreground">
-                  ✓ {m.producedArtifactIds.length} artefacto(s) en el lienzo
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                  <span>✓ {m.producedArtifactIds.length} artefacto(s) en el lienzo</span>
+                  {/* A un clic, aunque no se haya abierto solo (#613). */}
+                  {m.producedArtifactIds
+                    .map((id) => artifacts.find((a) => a.id === id))
+                    .filter((a): a is Artifact => !!a)
+                    .map((a) => (
+                      <Button
+                        key={a.id}
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setAbierto(a)}
+                      >
+                        {accion("abrir")} «{a.title}»
+                      </Button>
+                    ))}
                 </div>
               )}
             </div>
@@ -922,6 +1023,7 @@ export function AgentChatPanel() {
           )}
         </div>
       </div>
+      <ArtifactViewerDialog artifact={abierto} onClose={() => setAbierto(null)} />
     </div>
   );
 }

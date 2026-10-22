@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { registerProcessflowTools } from "../mcp-tools";
-import { typesWithRole } from "../../../src/lib/notations";
+import { getNotation, typesWithRole } from "../../../src/lib/notations";
 
 /**
  * Descripciones (`.describe()`) de un esquema zod y de todo lo que envuelve:
@@ -2534,5 +2534,64 @@ describe("export_to_app espera a que el estado publicado refleje el proyecto (#5
     const id = /diagramId="([^"]+)"/.exec(creado)![1];
     await t.call("add_node", { diagramId: id, name: "Pedido creado", type: tipo("ddd", "event") });
     expect(await t.textOf("export_to_app", { diagramId: id, mode: "new" })).toMatch(/todavía no publicó/);
+  });
+});
+
+// =============================================================================
+// Secuencia UML por herramientas (#616)
+// =============================================================================
+
+describe("registerProcessflowTools · secuencia UML (#616)", () => {
+  let ws: string;
+  beforeEach(async () => {
+    ws = await fs.mkdtemp(path.join(os.tmpdir(), "pf-seq-"));
+  });
+  afterEach(async () => {
+    await fs.rm(ws, { recursive: true, force: true });
+  });
+
+  it("add_container → add_message → add_fragment → export: columnas, orden y alt", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: ws });
+    expect(tools.has("add_message")).toBe(true);
+    expect(tools.has("move_message")).toBe(true);
+    const guia = await tools.get("describe_notation")!.handler({ notation: "uml" });
+    expect(guia.content[0].text).toMatch(/add_message/);
+    const uml = getNotation("uml").elements;
+    const linea = uml.find((e) => e.containerStyle === "lifeline")!.type;
+    const fragmento = uml.find((e) => e.containerStyle === "fragment")!.type;
+
+    const creado = await tools.get("create_diagram")!.handler({ name: "Enrolamiento", notation: "uml" });
+    const id = /diagramId="([^"]+)"/.exec(creado.content[0].text)![1];
+    const ids: string[] = [];
+    for (const name of ["Motor", "BFF", "UserAPI"]) {
+      const r = await tools.get("add_container")!.handler({ diagramId: id, name, type: linea });
+      expect(r.isError).toBeUndefined();
+      ids.push(/id=([^)]+)\)/.exec(r.content[0].text)![1]);
+    }
+    const [motor, bff, user] = ids;
+    for (const [from, to, label] of [[motor, bff, "iniciar"], [bff, user, "buscar"], [bff, user, "crear"], [bff, motor, "ok"]]) {
+      const r = await tools.get("add_message")!.handler({ diagramId: id, from, to, label, messageKind: label === "ok" ? "return" : undefined });
+      expect(r.isError).toBeUndefined();
+    }
+    const fr = await tools.get("add_fragment")!.handler({ diagramId: id, name: "persona nueva", type: fragmento, op: "alt", from: 2, to: 3 });
+    expect(fr.isError).toBeUndefined();
+    const mov = await tools.get("move_message")!.handler({ diagramId: id, from: 3, to: 2 });
+    expect(mov.isError).toBeUndefined();
+
+    const val = await tools.get("validate_diagram")!.handler({ diagramId: id });
+    expect(val.content[0].text).not.toMatch(/sin orden|no abarca/);
+
+    const out = path.join(ws, "salida.json");
+    await tools.get("export_to_app")!.handler({ diagramId: id, outPath: out });
+    const graph = JSON.parse(await fs.readFile(out, "utf8"));
+    const lineas = graph.agregados.filter((a: any) => a.tipo_contenedor === linea);
+    expect(new Set(lineas.map((a: any) => a.y)).size).toBe(1);
+    expect(new Set(lineas.map((a: any) => a.x)).size).toBe(3);
+    const aristas = [...graph.big_picture.aristas, ...graph.politicas_inter_agregados, ...graph.agregados.flatMap((a: any) => a.aristas)];
+    expect(aristas.map((a: any) => a.orden).sort()).toEqual([1, 2, 3, 4]);
+    expect(aristas.find((a: any) => a.descripcion === "crear").orden).toBe(2);
+    const alt = graph.agregados.find((a: any) => a.tipo_contenedor === fragmento);
+    expect(alt.fragmentOp).toBe("alt");
   });
 });

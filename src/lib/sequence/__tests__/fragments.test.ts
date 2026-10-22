@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   FRAGMENT_OPS,
   FRAGMENT_OPS_LIST,
+  GUARDA_X,
+  PX_POR_CARACTER_GUARDA,
+  anchoParaGuarda,
   contieneOrden,
   esOperador,
   estaAnidado,
+  guardaVisible,
   normalizarOperandos,
   operandoDe,
   rangoDe,
@@ -214,5 +218,28 @@ describe("repartir el tramo entre operandos (T22 · #291)", () => {
     expect(out[0].desde).toBe(3);
     expect(out[out.length - 1].hasta).toBe(9);
     for (let i = 1; i < out.length; i++) expect(out[i].desde).toBe(out[i - 1].hasta + 1);
+  });
+});
+
+describe("guarda dentro del marco (#616)", () => {
+  it("una guarda corta entra entera entre corchetes", () => {
+    expect(guardaVisible("saldo > 0", 300)).toBe("[saldo > 0]");
+  });
+
+  it("una guarda larga se recorta con «…» y no pasa del ancho", () => {
+    const larga = "bandera del token = agente / persona que ya existe en Bupa / persona nueva";
+    const v = guardaVisible(larga, 200);
+    expect(v.endsWith("…]")).toBe(true);
+    expect(v.length * PX_POR_CARACTER_GUARDA).toBeLessThanOrEqual(200);
+  });
+
+  it("sin lugar, queda la marca y no un texto vacío", () => {
+    expect(guardaVisible("algo", 5)).toBe("[…]");
+    expect(guardaVisible("   ", 300)).toBe("");
+  });
+
+  it("el ancho pedido alcanza para mostrarla entera", () => {
+    const g = "persona nueva";
+    expect(guardaVisible(g, anchoParaGuarda(g) - GUARDA_X)).toBe(`[${g}]`);
   });
 });

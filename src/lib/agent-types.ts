@@ -133,8 +133,17 @@ export type AgentPause =
       title: string;
       artifactKind: string;
       sections: { title: string; sources: string[] }[];
+      /** Qué va a generar y para qué, en palabras del usuario (#613). Opcional: hay fallback. */
+      summary?: string;
     }
-  | { kind: "question"; id: string; text: string; options: string[] };
+  | {
+      kind: "question";
+      id: string;
+      text: string;
+      options: string[];
+      /** Por qué pregunta: qué cambia según la opción (#613). Opcional: hay fallback. */
+      why?: string;
+    };
 
 /** Decisión del humano ante una pregunta (o el supuesto por defecto). */
 export interface AgentDecision {
