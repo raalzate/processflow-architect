@@ -39,6 +39,7 @@ Armá una tabla con CADA operación y la herramienta que la hace. Sólo estas:
 | Conectar dos cajas | `add_view_edge` (con etiqueta) | las otras relaciones y sus trazos |
 | Cambiar etiqueta o sentido de una relación | `update_view_edge` | su recorrido y sus anclas |
 | Escribir o completar la spec | `set_view_element_spec` con `merge: true` | lo que ya escribió una persona |
+| Volver un elemento **subproceso** (detalle en otra vista) | `add_subview` (crea la vista y la enlaza) o `update_view_element` con `subview` si ya existe | el elemento y su lugar: sólo gana la marca ⊞ |
 | **Quitar** una caja o relación | `remove_view_element` / `remove_view_edge` | — (destructivo: sólo con aprobación) |
 
 Reglas del plan:

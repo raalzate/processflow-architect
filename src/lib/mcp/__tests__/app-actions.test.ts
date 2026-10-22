@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { planViewEdit, planAppAction, describeAccion, esAccionDeProyecto, esEdicionDeVista } from "../app-actions";
+import {
+  planViewEdit,
+  planAppAction,
+  planCrearSubvista,
+  describeAccion,
+  esAccionDeProyecto,
+  esEdicionDeVista,
+  resolverSubvista,
+} from "../app-actions";
 
 const vistas = [
   { id: "design", name: "Modelo", builtin: true },
@@ -126,5 +134,50 @@ describe("clasificar una acción: proyecto, vista o edición de grafo (#534)", (
     expect(esEdicionDeVista({ kind: "delete-view", name: "A" })).toBe(false);
     expect(esEdicionDeVista({ kind: "remove-element", name: "A" })).toBe(true);
     expect(esAccionDeProyecto({ kind: "remove-element", name: "A" })).toBe(false);
+  });
+});
+
+describe("subprocesos por MCP (#638)", () => {
+  it("resolverSubvista encuentra la vista por nombre y devuelve su id", () => {
+    expect(resolverSubvista("proceso de alta", vistas, "v1")).toEqual({ ok: true, id: "v2", name: "Proceso de alta" });
+  });
+
+  it("un nombre vacío desenlaza", () => {
+    expect(resolverSubvista("  ", vistas, "v1")).toEqual({ ok: true, id: null });
+  });
+
+  it("no enlaza un elemento a su propia vista ni a la del sistema", () => {
+    expect(resolverSubvista("Proceso de alta", vistas, "v2")).toMatchObject({ ok: false });
+    expect(resolverSubvista("Modelo", vistas, "v1")).toMatchObject({ ok: false });
+  });
+
+  it("si la vista no existe, lo dice con las que hay y cómo crearla", () => {
+    const r = resolverSubvista("Detalle", vistas, "v1");
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toContain("Proceso de alta");
+    expect(r.error).toContain("add_subview");
+  });
+
+  it("planCrearSubvista nombra la vista como el elemento si no se dice otra cosa", () => {
+    expect(planCrearSubvista({ element: "Validar póliza" }, vistas, 50)).toEqual({ ok: true, name: "Validar póliza" });
+    expect(planCrearSubvista({ element: "X", name: " Detalle de X " }, vistas, 50)).toEqual({ ok: true, name: "Detalle de X" });
+  });
+
+  it("no crea una segunda vista con un nombre que ya existe: dice que la enlace", () => {
+    const r = planCrearSubvista({ element: "Proceso de alta" }, vistas, 50);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toContain("subview");
+  });
+
+  it("respeta el cupo de vistas propias", () => {
+    expect(planCrearSubvista({ element: "Nueva" }, vistas, 2)).toMatchObject({ ok: false });
+  });
+
+  it("create-subview no es una edición de vista ni una acción de proyecto", () => {
+    const r = { kind: "create-subview", element: "X" } as const;
+    expect(esEdicionDeVista(r)).toBe(false);
+    expect(esAccionDeProyecto(r)).toBe(false);
   });
 });

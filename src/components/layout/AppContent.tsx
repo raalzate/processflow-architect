@@ -20,7 +20,9 @@ import { buscarProyectoGuardado, claveProyecto, mergeProjectGraph, nombreVisible
 import { fundir, reconciliarIds } from "@/lib/mcp/view-edit";
 import {
   planAppAction,
+  planCrearSubvista,
   planViewEdit,
+  resolverSubvista,
   describeAccion,
   esAccionDeProyecto,
   esEdicionDeVista,
@@ -176,6 +178,7 @@ const McpImportBridge = () => {
         // grafo vivo del lienzo, que puede diferir de lo persistido).
         if (projectId === currentFileId) {
           return views.map((v) => ({
+            id: v.id,
             name: v.name,
             kind: v.kind,
             notation: v.notation,
@@ -194,6 +197,7 @@ const McpImportBridge = () => {
           graph: archivo?.content,
         }));
         const custom = readStoredCustomViews(projectId).map((v) => ({
+          id: v.id,
           name: v.name,
           kind: v.kind,
           notation: v.notation,
@@ -320,31 +324,73 @@ const McpImportBridge = () => {
         // la vista abierta, que es el «acá» del humano. El resultado se aplica
         // en el momento, así que el lienzo lo muestra al aplicarse y no al
         // final de la corrida (FR-009).
-        if (esEdicionDeVista(request)) {
-          const destino = planViewEdit(request, views, activeView ?? undefined);
-          if (!destino.ok) {
-            electron.mcpAppActionReply?.(id, { ok: false, error: destino.error });
-            return;
-          }
+        // El grafo que se edita y su notación: la vista pedida, o la abierta.
+        const grafoDe = (pedido?: string) => {
+          const destino = planViewEdit({ kind: "remove-element", name: "", view: pedido }, views, activeView ?? undefined);
+          if (!destino.ok) return destino;
           const vista = views.find((v) => v.id === destino.id);
           const base = destino.id === "design" ? graphData : vista?.graph;
-          if (!base) {
-            electron.mcpAppActionReply?.(id, {
-              ok: false,
-              error: `La vista "${destino.name}" no tiene un grafo que editar.`,
-            });
+          if (!base) return { ok: false as const, error: `La vista "${destino.name}" no tiene un grafo que editar.` };
+          const notacion = (vista?.notation ?? base.notation ?? DEFAULT_NOTATION_ID) as NotationId;
+          return { ok: true as const, destino, base, notacion };
+        };
+        const guardar = (destinoId: string, graph: GraphData) => {
+          // La vista del sistema ES el documento del proyecto; una vista propia
+          // guarda su grafo aparte.
+          if (destinoId === "design") handleDesignUpdate(currentFileId, graph);
+          else updateViewGraph(destinoId, graph);
+        };
+
+        // El «+» de «Vista embebida (subproceso)» de la ficha, por MCP (#638): se
+        // valida el elemento ANTES de crear la vista, para no dejar una pestaña
+        // huérfana si el nombre no resuelve.
+        if (request.kind === "create-subview") {
+          const g = grafoDe(request.view);
+          if (!g.ok) return void electron.mcpAppActionReply?.(id, { ok: false, error: g.error });
+          const plan = planCrearSubvista(request, views, MAX_CUSTOM_VIEWS);
+          if (!plan.ok) return void electron.mcpAppActionReply?.(id, { ok: false, error: plan.error });
+          const prueba = applyViewEdit(g.base, { kind: "update-element", name: request.element, subviewId: "?" }, g.notacion);
+          if (!prueba.ok) return void electron.mcpAppActionReply?.(id, { ok: false, error: prueba.error });
+          const notacionNueva = (request.notation ?? g.notacion) as NotationId;
+          const nueva = createView({ name: plan.name, notation: notacionNueva, activate: false });
+          if (!nueva) {
+            return void electron.mcpAppActionReply?.(id, { ok: false, error: "Se alcanzó el límite de vistas del proyecto." });
+          }
+          const r = applyViewEdit(g.base, { kind: "update-element", name: request.element, subviewId: nueva }, g.notacion);
+          if (!r.ok) {
+            deleteView(nueva);
+            return void electron.mcpAppActionReply?.(id, { ok: false, error: r.error });
+          }
+          guardar(g.destino.id, r.graph);
+          return void electron.mcpAppActionReply?.(id, {
+            ok: true,
+            message: `"${request.element}" ahora es un subproceso: entra a la vista nueva "${plan.name}" (${notacionNueva}). Llenala con add_view_element / add_view_edge pasando view: "${plan.name}".`,
+          });
+        }
+
+        if (esEdicionDeVista(request)) {
+          const g = grafoDe(request.view);
+          if (!g.ok) {
+            electron.mcpAppActionReply?.(id, { ok: false, error: g.error });
             return;
           }
-          const notacion = (vista?.notation ?? base.notation ?? DEFAULT_NOTATION_ID) as NotationId;
-          const r = applyViewEdit(base, request, notacion);
+          const { destino, base, notacion } = g;
+          // El agente nombra la subvista; el enlace se guarda por id (#638).
+          let edicion = request;
+          if (request.kind === "update-element" && request.subview !== undefined) {
+            const sub = resolverSubvista(request.subview, views, destino.id);
+            if (!sub.ok) {
+              electron.mcpAppActionReply?.(id, { ok: false, error: sub.error });
+              return;
+            }
+            edicion = { ...request, subviewId: sub.id };
+          }
+          const r = applyViewEdit(base, edicion, notacion);
           if (!r.ok) {
             electron.mcpAppActionReply?.(id, { ok: false, error: r.error });
             return;
           }
-          // La vista del sistema ES el documento del proyecto; una vista propia
-          // guarda su grafo aparte.
-          if (destino.id === "design") handleDesignUpdate(currentFileId, r.graph);
-          else updateViewGraph(destino.id, r.graph);
+          guardar(destino.id, r.graph);
           electron.mcpAppActionReply?.(id, {
             ok: true,
             message: `${r.message} (vista "${destino.name}")`,
@@ -383,6 +429,8 @@ const McpImportBridge = () => {
     updateViewGraph,
     deleteView,
     renameView,
+    // El «+» del subproceso crea la vista (#638).
+    createView,
     // Acciones sobre proyectos (#534).
     savedFiles,
     orgFilter,

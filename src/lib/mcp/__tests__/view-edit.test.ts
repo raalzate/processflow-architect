@@ -338,3 +338,32 @@ describe("update-element como lo usa un agente de código (#636)", () => {
     expect(aristas(r.graph)).toHaveLength(1);
   });
 });
+
+describe("enlazar un elemento a su subvista (#638)", () => {
+  it("update-element con subviewId deja el viewRef y no toca nada más", () => {
+    const r = applyViewEdit(vista(), { kind: "update-element", name: "API", subviewId: "detalle-api" }, "c4");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(nodos(r.graph).find((n) => n.id === "api")).toMatchObject({ viewRef: "detalle-api", x: 10, y: 20 });
+    expect(aristas(r.graph)).toHaveLength(1);
+  });
+
+  it("subviewId null desenlaza", () => {
+    const g = vista();
+    (g.big_picture.nodos[1] as any).viewRef = "detalle-api";
+    const r = applyViewEdit(g, { kind: "update-element", name: "API", subviewId: null }, "c4");
+    expect(r.ok && nodos(r.graph).find((n) => n.id === "api")!.viewRef).toBeFalsy();
+  });
+
+  it("un subview pedido por nombre que nadie resolvió no se aplica a ciegas", () => {
+    const r = applyViewEdit(vista(), { kind: "update-element", name: "API", subview: "Detalle" }, "c4");
+    expect(r.ok).toBe(false);
+  });
+
+  it("un contenedor no se enlaza: el subproceso es un elemento", () => {
+    const g = vista();
+    g.agregados = [{ nombre_agregado: "Motor", entidad_raiz: "", descripcion: "", nodos: [], aristas: [], tipo_contenedor: "Límite de Sistema" } as any];
+    const r = applyViewEdit(g, { kind: "update-element", name: "Motor", subviewId: "x" }, "c4");
+    expect(r.ok).toBe(false);
+  });
+});

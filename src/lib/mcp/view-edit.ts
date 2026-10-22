@@ -56,6 +56,14 @@ export type ViewEdit =
       container?: string;
       /** Referencias por CLAVE (repo, puerto, owner): agrega o reemplaza, no borra las otras. */
       metadata?: ElementMetadata[];
+      /**
+       * Subvista pedida por NOMBRE (lo que manda el agente, #638). La app la
+       * resuelve a `subviewId` con `resolverSubvista` antes de aplicar: este
+       * módulo no conoce las vistas del proyecto.
+       */
+      subview?: string;
+      /** Id de la vista a la que entra el elemento; null = desenlazar. */
+      subviewId?: string | null;
     }
   | { kind: "remove-element"; name: string }
   | { kind: "add-edge"; from: string; to: string; label?: string; dashed?: boolean; arrow?: GraphLink["arrow"] }
@@ -411,6 +419,21 @@ export function applyViewEdit(
           ...(edit.metadata?.length ? { metadata: edit.metadata } : {}),
           ...(tipo ? { tipo_elemento: tipo } : {}),
         });
+        if (edit.subview !== undefined && edit.subviewId === undefined) {
+          return { ok: false, error: "La subvista no se resolvió contra las vistas del proyecto." };
+        }
+        if (edit.subviewId !== undefined) {
+          // El subproceso es un ELEMENTO que se abre en otra vista; un contenedor
+          // ya agrupa lo que tiene dentro y la ficha no lo ofrece.
+          if (isNotationContainer(r.node.tipo_elemento)) {
+            return { ok: false, error: `"${r.node.nombre}" es un contenedor: el subproceso se enlaza desde un elemento.` };
+          }
+          const viewRef = edit.subviewId ?? undefined;
+          nuevo = {
+            ...nuevo,
+            nodes: nuevo.nodes.map((n) => (n.id === r.node.id ? { ...n, viewRef } : n)),
+          };
+        }
         if (edit.container !== undefined && !isNotationContainer(r.node.tipo_elemento)) {
           nuevo = {
             ...nuevo,
@@ -516,5 +539,26 @@ export function applyViewEdit(
     return { ok: false, error: String(e?.message ?? e) };
   }
 
-  return { ok: true, graph: fundir(actual, toGraphData(nuevo)), message };
+  const graph = fundir(actual, toGraphData(nuevo));
+  // `fundir` repone el viewRef previo (#344: que una edición no borre el
+  // drill-down). Desenlazar es justo pedir borrarlo, así que va después.
+  if (edit.kind === "update-element" && edit.subviewId === null) {
+    return { ok: true, graph: sinViewRef(graph, nuevo.nodes.find((n) => plano(n.nombre) === plano(edit.newName ?? edit.name))?.id), message };
+  }
+  return { ok: true, graph, message };
+}
+
+/** El grafo sin el enlace a subvista de un elemento. */
+function sinViewRef(g: GraphData, id: string | undefined): GraphData {
+  if (!id) return g;
+  const nodo = (n: any) => {
+    if (n.id !== id) return n;
+    const { viewRef: _fuera, ...resto } = n;
+    return resto;
+  };
+  return {
+    ...g,
+    big_picture: { ...g.big_picture, nodos: (g.big_picture?.nodos ?? []).map(nodo) },
+    agregados: (g.agregados ?? []).map((a) => ({ ...a, nodos: (a.nodos ?? []).map(nodo) })),
+  };
 }

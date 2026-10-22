@@ -169,7 +169,8 @@ lienzo era `export_as_view`, que pisa la pestaña entera (#332).
 | Herramienta | Qué hace |
 |---|---|
 | `add_view_element` **app** | agrega UN elemento al grafo de una vista. El tipo se valida contra la notación de esa vista (§P6). Acepta `description` y `source`; la fuente va al campo `fuente` del elemento, nunca a la descripción (#636). Las cajas que ya tenían lugar no se mueven: la nueva va a un hueco libre. |
-| `update_view_element` **app** | cambia nombre, tipo, descripción, fuente, contenedor o metadatos (por clave) de un elemento, resuelto por NOMBRE. Dos homónimos ⇒ no elige: lo dice. |
+| `update_view_element` **app** | cambia nombre, tipo, descripción, fuente, contenedor o metadatos (por clave) de un elemento, resuelto por NOMBRE. Dos homónimos ⇒ no elige: lo dice. Con `subview` lo enlaza a una vista existente (la «Vista embebida» de la ficha; `""` desenlaza), resuelta por nombre en la app con `resolverSubvista` (#638). |
+| `add_subview` **app** | el «+» de la ficha: crea la vista de detalle de un elemento y lo enlaza a ella en un paso (`create-subview`). Valida el elemento antes de crear nada y respeta el cupo de vistas (`planCrearSubvista`). |
 | `remove_view_element` **app** | quita un elemento y las relaciones que lo tocan. Destructiva: pasa por confirmación del humano. |
 | `add_view_edge` / `update_view_edge` / `remove_view_edge` **app** | relaciones entre elementos nombrados. `invert: true` da vuelta la flecha; la relación se encuentra aunque se nombre al revés de como está dibujada. |
 | `set_view_graph` **app** | reemplaza el contenido de una vista con un `GraphData` completo. Reconcilia por nombre para conservar la posición de lo que ya estaba, y **rechaza un grafo vacío** (§P8). Si el grafo entrante **quita** elementos o relaciones, se rechaza con la lista salvo `allowRemovals: true` (`loQueSePierde` en `view-edit.ts`, #636); `export_as_view` con `replace` aplica la misma guarda. |

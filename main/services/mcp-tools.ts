@@ -3280,11 +3280,36 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             .describe(
               "Referencias de DÓNDE VIVE (repo, puerto, owner, wiki): se agregan o reemplazan POR CLAVE y las demás se conservan. Es lo que deja un agente de código para que el siguiente encuentre el componente."
             ),
+          subview: z
+            .string()
+            .optional()
+            .describe(
+              "SUBPROCESO: nombre de la vista EXISTENTE a la que entra este elemento (lo que la ficha llama «Vista embebida»). El lienzo le pone la marca ⊞ y al abrirlo entra a esa vista. \"\" lo desenlaza. Si la vista todavía no existe, usá add_subview, que la crea y la enlaza."
+            ),
           ...vista,
         },
       },
-      async ({ name, newName, type, description, source, container, metadata, view }) =>
-        editar({ kind: "update-element", name, newName, type, description, source, container, metadata, view })
+      async ({ name, newName, type, description, source, container, metadata, subview, view }) =>
+        editar({ kind: "update-element", name, newName, type, description, source, container, metadata, subview, view })
+    );
+
+    server.registerTool(
+      "add_subview",
+      {
+        title: "Crear y enlazar un subproceso",
+        description:
+          "Convierte un elemento en SUBPROCESO: crea una vista nueva para su detalle y lo enlaza a ella en un solo paso (el «+» de «Vista embebida (subproceso)» de la ficha). El lienzo le pone la marca ⊞ y al abrirlo entra a esa vista. Es la forma de dar PROFUNDIDAD sin anidar contenedores (ADR 0002): el Subproceso de BPMN, los Componentes de un Contenedor C4, el detalle de un caso de uso. Después llená la vista nueva con add_view_element / add_view_edge (o set_view_graph) pasando `view` con su nombre.",
+        inputSchema: {
+          element: z.string().describe("Nombre del elemento que se vuelve subproceso, como se ve en el lienzo."),
+          name: z.string().optional().describe("Nombre de la vista de detalle (por defecto, el del elemento)."),
+          notation: NOTATION.optional().describe(
+            "Notación de la vista de detalle (por defecto, la de la vista del elemento). Un Contenedor C4 se detalla en c4; un Subproceso BPMN, en bpmn."
+          ),
+          view: z.string().optional().describe("Vista donde está el elemento (por defecto, la abierta)."),
+        },
+      },
+      async ({ element, name, notation, view }) =>
+        editar({ kind: "create-subview", element, name, notation, view })
     );
 
     server.registerTool(

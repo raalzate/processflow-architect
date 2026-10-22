@@ -386,6 +386,28 @@ describe("export_as_view replace no pierde relaciones en silencio (#636)", () =>
   });
 });
 
+describe("subprocesos por MCP (#638)", () => {
+  const pedidos: any[] = [];
+  const t = () =>
+    toolsFor({
+      readApp: async () => ({ ok: false, error: "no hace falta" }),
+      actOnApp: async (req: any) => (pedidos.push(req), { ok: true, message: "hecho" }),
+    });
+
+  it("add_subview pide a la app crear y enlazar la vista de detalle", async () => {
+    pedidos.length = 0;
+    const out = await t().textOf("add_subview", { element: "Validar póliza", notation: "bpmn" });
+    expect(out).toContain("hecho");
+    expect(pedidos[0]).toMatchObject({ kind: "create-subview", element: "Validar póliza", notation: "bpmn" });
+  });
+
+  it("update_view_element con subview enlaza a una vista existente por nombre", async () => {
+    pedidos.length = 0;
+    await t().call("update_view_element", { name: "Validar póliza", subview: "Detalle" });
+    expect(pedidos[0]).toMatchObject({ kind: "update-element", name: "Validar póliza", subview: "Detalle" });
+  });
+});
+
 describe("suggest_views", () => {
   it("propone el paisaje C4 cuando el modelo nombra varios sistemas", async () => {
     const t = toolsFor();
