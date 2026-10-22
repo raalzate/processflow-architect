@@ -555,6 +555,15 @@ frenoDelLint(
   "BOTONMUDO",
 );
 
+// RELOJ: una aserción sobre el reloj de pared pasa en `npm test` y se cae en el
+// gate, bajo cobertura (#376, reincidente con el tope «holgado» de ×3).
+frenoDelLint(
+  "repo-lint: detecta un test que lee el reloj de pared",
+  "src/lib/__tests__/__selftest-reloj.test.ts",
+  'it("rápido", () => { const t0 = Date.now(); f(); expect(Date.now() - t0).toBeLessThan(200); });\n',
+  "RELOJ",
+);
+
 // INCIDENTE: P12 medible en lo que una máquina puede ver — un gotcha sin la línea
 // `Mecanismo:` es prosa que se va a volver a pagar.
 frenoDelLint(
