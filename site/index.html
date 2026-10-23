@@ -87,17 +87,23 @@
     <div>
       <p class="rotulo">Patrocinio</p>
       <p class="seccion-texto texto-patrocinio">
-        Con el apoyo de <strong>Sofka Technologies</strong>, seguimos impulsando este proyecto y
-        motivando a la comunidad a conocerlo, probarlo y aportar a su evolución.
+        Con el apoyo de <strong>Sofka Technologies</strong> y <strong>Velyne</strong>, seguimos
+        impulsando este proyecto y motivando a la comunidad a conocerlo, probarlo y aportar a su
+        evolución.
       </p>
       <p class="seccion-texto">
         Estamos en <strong>Beta</strong>, avanzando paso a paso y aprendiendo con cada nueva
         versión. <span aria-hidden="true">🚀</span>
       </p>
     </div>
-    <a class="chapa-sponsor" href="https://sofka.com.co/" target="_blank" rel="noopener sponsored">
-      <img src="img/sofka.png" width="900" height="257" loading="lazy" alt="Sofka Technologies">
-    </a>
+    <div class="sponsors">
+      <a class="chapa-sponsor" href="https://sofka.com.co/" target="_blank" rel="noopener sponsored">
+        <img src="img/sofka.png" width="900" height="257" loading="lazy" alt="Sofka Technologies">
+      </a>
+      <a class="chapa-sponsor" href="https://www.velyne.app/" target="_blank" rel="noopener sponsored">
+        <img src="img/velyne.png" width="900" height="257" loading="lazy" alt="Velyne">
+      </a>
+    </div>
   </div>
 </section>
 
@@ -113,17 +119,12 @@
       <article class="paso">
         <h3>Instalá el binario</h3>
         <p>
-          <code>.dmg</code> para Apple Silicon, instalador <code>.exe</code> y <code>.AppImage</code>.
-          O cloná el repo si querés el modo desarrollo.
+          Instalador para macOS (Apple Silicon), Windows y Linux, desde la sección de descarga.
         </p>
-        <pre><code>git clone https://github.com/raalzate/processflow-architect
-cd processflow-architect
-npm install
-npm run electron-dev</code></pre>
       </article>
       <article class="paso">
         <h3>Descargá un modelo, una sola vez</h3>
-        <p>En <strong>Ajustes</strong> elegís el <code>.litertlm</code>. A partir de ahí la IA funciona sin conexión, en tu GPU.</p>
+        <p>En <strong>Ajustes</strong> elegís el modelo de IA y se descarga. A partir de ahí la IA funciona sin conexión, en tu GPU.</p>
       </article>
       <article class="paso">
         <h3>Traé el material</h3>
@@ -142,9 +143,9 @@ npm run electron-dev</code></pre>
     <p class="rotulo">Una vista, una gramática</p>
     <h2 class="seccion-titulo">El mismo sistema, cinco lecturas</h2>
     <p class="seccion-texto">
-      Las notaciones salen de un registro único (<code>src/lib/notations.ts</code>): la paleta, la
-      validación y la IA leen de ahí. En una vista BPMN el agente propone tareas y gateways; en una
-      C4, contenedores. Nada de cajas genéricas con texto adentro.
+      Cada vista habla su notación: la paleta, la validación y la IA comparten las mismas reglas.
+      En una vista BPMN el agente propone tareas y gateways; en una C4, contenedores. Nada de
+      cajas genéricas con texto adentro.
     </p>
     <div class="notaciones">
       <div class="notacion" style="--n: var(--ddd)"><b>DDD</b><span>Qué pasa en el negocio: eventos, comandos, agregados, políticas.</span></div>
@@ -259,7 +260,7 @@ npm run electron-dev</code></pre>
       <p class="rotulo">Local-first, no local-a-veces</p>
       <h2 class="seccion-titulo">El modelo del core no sale del equipo</h2>
       <p class="seccion-texto">
-        La inferencia corre en tu GPU con LiteRT-LM sobre WebGPU: cero llamadas a la nube por
+        La IA corre en la GPU de tu equipo: cero llamadas a la nube por
         defecto. Es la diferencia entre poder usar IA sobre el core de un banco o de una EPS,
         y no poder.
       </p>
@@ -267,7 +268,7 @@ npm run electron-dev</code></pre>
         <li><span class="tilde">✓</span><span><b>Proyectos y modelo en tu disco</b>Archivos locales; ni cuenta, ni servidor, ni telemetría.</span></li>
         <li><span class="tilde">✓</span><span><b>Funciona en un avión</b>Descargás el modelo una vez y después no dependés de la red ni de una cuota de tokens.</span></li>
         <li><span class="tilde">✓</span><span><b>Respuestas en voz alta</b>El agente lee sus respuestas en español con Kokoro, una voz que corre en tu equipo: el modelo se baja una vez desde Ajustes.</span></li>
-        <li><span class="tilde">✓</span><span><b>Nube opcional y explícita</b>Modos local, híbrido o remoto con Gemini, OpenAI, Anthropic u OpenRouter; la llave se cifra con <code>safeStorage</code> en el proceso principal y nunca llega al renderer ni a los logs.</span></li>
+        <li><span class="tilde">✓</span><span><b>Nube opcional y explícita</b>Modos local, híbrido o remoto con Gemini, OpenAI, Anthropic u OpenRouter; tu llave se guarda cifrada en tu equipo y nunca se muestra ni se registra.</span></li>
         <li><span class="tilde">✓</span><span><b>Cerrada por defecto</b>Política de contenido que bloquea código y conexiones ajenas, y ningún permiso salvo el portapapeles: ni cámara, ni micrófono, ni ubicación. <a href="https://github.com/raalzate/processflow-architect/blob/main/SECURITY.md">Política de seguridad</a>.</span></li>
       </ul>
     </div>
@@ -290,13 +291,13 @@ npm run electron-dev</code></pre>
       <article class="ventaja">
         <p class="clave">Semántica</p>
         <h3>Cada notación con su gramática, desde un registro único</h3>
-        <p><code>src/lib/notations.ts</code> es la única fuente de verdad de los tipos. La validación y la IA leen de ahí, así que agregar una notación no toca el lienzo.</p>
+        <p>La paleta, la validación y la IA usan las mismas reglas de cada notación: lo que el agente propone es lo que el lienzo acepta, y cada caja lleva el logo de su tecnología.</p>
       </article>
       <article class="ventaja">
         <p class="clave">Trazabilidad</p>
         <h3>Cada caja dice de dónde salió</h3>
         <p>Ficha por elemento: descripción, criterios y el flujo como pasos de entrada y salida con qué hace cada uno. Adjuntás el documento fuente al proyecto y la cita de una caja resuelve al fragmento exacto que la originó. Los artefactos del agente son versionados y guardan su historial.</p>
-        <p>Y cada ficha tiene su propio <strong>agente</strong>: conversás sobre la caja abierta con la IA de la app o con tu Claude Code, que lee la ficha, puede leer una carpeta que le adjuntes, te muestra su propuesta y, cuando la aprobás, escribe la especificación en la caja. Sólo puede leer y escribir esa spec: nada que borre.</p>
+        <p>Y cada ficha tiene su propio <strong>agente</strong>: conversás sobre la caja abierta con la IA de la app o con tu Claude Code, que lee la ficha, puede leer una carpeta que le adjuntes, te muestra su propuesta y, cuando la aprobás, completa la especificación, las tecnologías y las referencias de la caja. Sólo toca esa caja: nada que borre.</p>
       </article>
       <article class="ventaja">
         <p class="clave">Interoperable</p>
@@ -469,8 +470,8 @@ npm run electron-dev</code></pre>
       Los botones llevan a la última versión publicada.
     </p>
     <p class="requisitos">
-      Necesitás una GPU con WebGPU: sin ella la IA local no arranca. El modelo
-      <code>.litertlm</code> se descarga una vez desde Ajustes. Todavía no hay certificado de
+      Para la IA local necesitás una GPU compatible; el modelo se descarga una vez desde
+      Ajustes. Todavía no hay certificado de
       desarrollador, así que la primera apertura pide un permiso extra: en macOS, clic derecho
       sobre la app y «Abrir»; en Windows, «Más información» y «Ejecutar de todas formas»; en
       Linux, <code>chmod +x</code> sobre el AppImage. Es una beta: si algo se rompe, contalo en los
@@ -483,8 +484,8 @@ npm run electron-dev</code></pre>
 
 <footer>
   <div class="envoltura">
-    <span>ProcessFlow Architect · Electron + Next.js · LiteRT-LM sobre WebGPU · Apache-2.0</span>
-    <span class="pie-sponsor">Patrocinado por <a href="https://sofka.com.co/" target="_blank" rel="noopener sponsored">Sofka Technologies</a></span>
+    <span>ProcessFlow Architect · IA local en tu equipo · Apache-2.0</span>
+    <span class="pie-sponsor">Patrocinado por <a href="https://sofka.com.co/" target="_blank" rel="noopener sponsored">Sofka Technologies</a> y <a href="https://www.velyne.app/" target="_blank" rel="noopener sponsored">Velyne</a></span>
     <nav>
       <a href="https://github.com/raalzate/processflow-architect">Código</a>
       <a href="https://github.com/raalzate/processflow-architect/releases">Releases</a>
