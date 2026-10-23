@@ -69,13 +69,16 @@ export function sanearSvg(markup: string, prefijo: string): SvgSaneado | null {
   }
   inner = inner.replace(/\s+/g, " ").replace(/>\s+</g, "><").trim();
   if (!/<(path|circle|ellipse|rect|line|polyline|polygon)\b/i.test(inner)) return null;
+  // La regla de relleno de la RAÍZ se pierde al quedarnos con el interior, y un
+  // logo dibujado con huecos `evenodd` (los de lobe-icons) se vería macizo.
+  if (/\bfill-rule="evenodd"/i.test(raiz[1])) inner = `<g fill-rule="evenodd" clip-rule="evenodd">${inner}</g>`;
   return { viewBox, inner };
 }
 
 /** Lo que una verificación (test, script) no acepta en un icono ya generado. */
 export function fallasDeIcono(i: IconoDeCatalogo): string[] {
   const fallas: string[] = [];
-  if (!/^(si|dv|lu)-[A-Za-z0-9][A-Za-z0-9-]*$/.test(i.id)) fallas.push(`id «${i.id}» fuera de forma`);
+  if (!/^(si|dv|lb|lu)-[A-Za-z0-9][A-Za-z0-9-]*$/.test(i.id)) fallas.push(`id «${i.id}» fuera de forma`);
   if (i.fuente === "lucide") {
     if (!i.lucide) fallas.push(`${i.id}: lucide sin nombre`);
     return fallas;

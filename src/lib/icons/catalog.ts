@@ -2,7 +2,7 @@
  * @fileOverview Catálogo de iconos de tecnología (PURO, spec 025).
  *
  * Una caja puede llevar, además del icono de su TIPO, el logo de su
- * TECNOLOGÍA: PostgreSQL, Slack, Google Cloud, Android. El catálogo es un
+ * TECNOLOGÍA: PostgreSQL, Slack, Google Cloud, Android, OpenAI. El catálogo es un
  * conjunto CURADO y VERSIONADO (`catalog.generated.ts`, que escribe
  * `scripts/build-icon-catalog.ts` a partir de `scripts/icon-catalog.manifest.json`):
  * sin dependencia de ejecución, sin red en la app y con la licencia de cada
@@ -15,10 +15,10 @@ import { ICON_CATALOG, MANIFEST_HASH } from "./catalog.generated";
 
 export { sanearSvg, fallasDeIcono, type SvgSaneado } from "./sanitize";
 
-export type FuenteDeIcono = "simple-icons" | "devicon" | "lucide";
+export type FuenteDeIcono = "simple-icons" | "devicon" | "lobe-icons" | "lucide";
 
 export interface IconoDeCatalogo {
-  /** `si-<slug>`, `dv-<nombre>` o `lu-<NombreLucide>`. Estable: es lo que guarda el proyecto. */
+  /** `si-<slug>`, `dv-<nombre>`, `lb-<nombre>` o `lu-<NombreLucide>`. Estable: es lo que guarda el proyecto. */
   id: string;
   nombre: string;
   categoria: string;
@@ -26,7 +26,7 @@ export interface IconoDeCatalogo {
   alias: string[];
   fuente: FuenteDeIcono;
   licencia: string;
-  /** Color de marca (hex sin `#`), si la fuente lo da. Sólo se usa en la skin canónica. */
+  /** Color de marca (hex sin `#`), si la fuente o el manifiesto lo da. Sólo se usa en la skin canónica. */
   color?: string;
   /** Dibujo: `viewBox` + marcado interno saneado (Simple Icons, Devicon)… */
   viewBox?: string;
@@ -105,4 +105,58 @@ export function buscarIconos(consulta = "", categoria?: string): IconoDeCatalogo
     .filter((x) => x.p >= 0)
     .sort((a, b) => a.p - b.p || a.i.nombre.localeCompare(b.i.nombre))
     .map((x) => x.i);
+}
+
+/** Clave de cotejo: sin acentos, mayúsculas ni signos («Node.js» = «nodejs»). */
+const claveDeCotejo = (s: string): string => normalizarTexto(s).replace(/[^a-z0-9]+/g, "");
+
+/**
+ * Una etiqueta de tecnología sin su versión: «Node 20» → «node», «Python 3.11+»
+ * → «python», «PostgreSQL 16» → «postgresql». La versión es del proyecto, no
+ * de la marca, y con ella ninguna etiqueta real coincidía con el catálogo.
+ */
+const sinVersion = (tag: string): string =>
+  normalizarTexto(tag)
+    .replace(/\s+v?\d[\w.+-]*\+?$/g, "")
+    .replace(/\s*\(.*\)$/, "")
+    .trim();
+
+// Los GENÉRICOS (nube, servidor, reloj) no entran: el icono del tipo ya dice
+// eso mismo, y una etiqueta «cron» no es una tecnología con logo.
+const porNombre = new Map<string, IconoDeCatalogo>();
+const porAlias = new Map<string, IconoDeCatalogo[]>();
+for (const i of ICONOS.filter((x) => x.categoria !== "genericos")) {
+  porNombre.set(claveDeCotejo(i.nombre), i);
+  for (const a of i.alias) {
+    const k = claveDeCotejo(a);
+    porAlias.set(k, [...(porAlias.get(k) ?? []), i]);
+  }
+}
+
+/** El icono de UNA etiqueta, o `undefined` si no hay uno inequívoco. */
+export function iconoDeTecnologia(tag: string): IconoDeCatalogo | undefined {
+  const k = claveDeCotejo(sinVersion(tag));
+  if (!k) return undefined;
+  const exacto = porNombre.get(k);
+  if (exacto) return exacto;
+  const candidatos = porAlias.get(k) ?? [];
+  if (candidatos.length === 1) return candidatos[0];
+  // «postgres» es alias de PostgreSQL y de Supabase: gana aquel cuyo NOMBRE
+  // empieza por la etiqueta. Si sigue habiendo empate («nube»), no se elige.
+  const porPrefijo = candidatos.filter((i) => claveDeCotejo(i.nombre).startsWith(k));
+  return porPrefijo.length === 1 ? porPrefijo[0] : undefined;
+}
+
+/**
+ * El icono que le corresponde a una caja por sus TECNOLOGÍAS: el de la primera
+ * etiqueta que el catálogo reconoce sin ambigüedad. Es lo que el MCP pone solo
+ * cuando el agente no eligió icono (#643) y lo que la ficha ofrece como
+ * sugerencia; nunca pisa uno elegido.
+ */
+export function iconoPorTecnologia(tags: readonly string[] | null | undefined): string | undefined {
+  for (const t of tags ?? []) {
+    const i = iconoDeTecnologia(t);
+    if (i) return i.id;
+  }
+  return undefined;
 }

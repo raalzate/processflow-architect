@@ -30,6 +30,10 @@ interface Entrada {
   si?: string;
   dv?: string;
   variante?: string;
+  /** Nombre en lobe-icons (`@lobehub/icons-static-svg`): logos de IA y nube. */
+  lb?: string;
+  /** Color de marca (hex sin `#`) para las fuentes que no lo traen (lobe-icons). */
+  color?: string;
   lucide?: string;
 }
 
@@ -54,6 +58,7 @@ async function main() {
   const m: Manifiesto = JSON.parse(texto);
   const si = m.fuentes["simple-icons"];
   const dv = m.fuentes["devicon"];
+  const lb = m.fuentes["lobe-icons"];
   const lu = m.fuentes["lucide"];
 
   // Colores de marca de Simple Icons (hex), desde su índice.
@@ -92,8 +97,13 @@ async function main() {
         fuente = "devicon";
         color = colorDv.get(e.dv);
         licencia = dv.licencia;
+      } else if (e.lb) {
+        markup = await bajar(lb.url!.replace("<nombre>", e.lb));
+        fuente = "lobe-icons";
+        color = e.color;
+        licencia = lb.licencia;
       } else {
-        throw new Error("sin fuente (si | dv | lucide)");
+        throw new Error("sin fuente (si | dv | lb | lucide)");
       }
       const saneado = sanearSvg(markup, e.id);
       if (!saneado) throw new Error("el SVG no se pudo sanear (sin viewBox o sin dibujo)");
@@ -126,7 +136,7 @@ async function main() {
     "// GENERADO por scripts/build-icon-catalog.ts a partir de scripts/icon-catalog.manifest.json.",
     "// No editar a mano: corré `npm run icons:build`. El test del gate compara MANIFEST_HASH",
     "// con el hash del manifiesto actual.",
-    "// Fuentes: Simple Icons (CC0-1.0), Devicon (MIT), lucide (ISC). Ver THIRD_PARTY_LICENSES.md.",
+    "// Fuentes: Simple Icons (CC0-1.0), Devicon (MIT), Lobe Icons (MIT), lucide (ISC). Ver THIRD_PARTY_LICENSES.md.",
     "",
     'import type { IconoDeCatalogo } from "./catalog";',
     "",

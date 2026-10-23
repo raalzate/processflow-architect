@@ -53,3 +53,23 @@ export function parseTagList(texto: string): string[] {
   }
   return salida;
 }
+
+/**
+ * Campos que cambiaron AFUERA con la ficha abierta (un agente por MCP, #643) y
+ * que el humano no tocó en el borrador: esos se adoptan; los que sí tocó se
+ * respetan. Sin esto la ficha mostraba lo viejo hasta recargar, y el próximo
+ * autoguardado lo devolvía al lienzo pisando lo que escribió el agente.
+ * Devuelve `null` si no hay nada que adoptar.
+ */
+export function adoptarExternos<T extends object>(
+  original: T,
+  borrador: T,
+  vivo: T
+): { original: T; borrador: T } | null {
+  const tocados = new Set(changedKeys(original, borrador));
+  const externos = changedKeys(original, vivo).filter((k) => !tocados.has(k));
+  if (!externos.length) return null;
+  const parche: Partial<T> = {};
+  for (const k of externos) parche[k] = vivo[k];
+  return { original: { ...original, ...parche }, borrador: { ...borrador, ...parche } };
+}

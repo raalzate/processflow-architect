@@ -104,7 +104,7 @@ import {
   Hash,
   // Genéricos del catálogo de iconos de tecnología (spec 025).
   Globe, Lock, Monitor, Users, Bell, Code, BarChart3, Bot, CreditCard, ShoppingCart,
-  Map, Camera, Radio, Webhook, ListOrdered, BrainCircuit,
+  Map, Camera, Radio, Webhook, ListOrdered, BrainCircuit, Lambda,
 } from "lucide-react";
 import { iconoDeCatalogo } from "@/lib/icons/catalog";
 import {
@@ -237,7 +237,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Hexagon, Cloud, Shapes, ChevronRight, PanelTop, Heading, MessageCircle,
   // Genéricos del catálogo de iconos de tecnología (spec 025).
   Globe, Lock, Monitor, Users, Bell, Code, BarChart3, Bot, CreditCard, ShoppingCart,
-  Map, Camera, Radio, Webhook, ListOrdered, BrainCircuit,
+  Map, Camera, Radio, Webhook, ListOrdered, BrainCircuit, Lambda,
 };
 
 export const iconForType = (type: string): React.ElementType =>
@@ -257,18 +257,32 @@ export const IconoDeElemento: React.FC<{
   className?: string;
   /** Color de marca activado (skin canónica). */
   conColor?: boolean;
-}> = ({ icono, Fallback, className, conColor = true }) => {
+  /**
+   * Pastilla clara detrás del LOGO (#643): sobre el relleno oscuro de la caja un
+   * logo de marca oscuro (.NET, OpenAI) no se distinguía. `className` dimensiona
+   * y posiciona la pastilla; el logo va adentro con un margen.
+   */
+  fondo?: boolean;
+}> = ({ icono, Fallback, className, conColor = true, fondo = false }) => {
   const entrada = iconoDeCatalogo(icono);
   if (!entrada) return <Fallback className={className} />;
   if (entrada.fuente === "lucide") {
     const Generico = ICON_MAP[entrada.lucide ?? ""] ?? Fallback;
     return <Generico className={className} />;
   }
-  return (
+  // Sobre la pastilla clara, un logo sin color propio no puede heredar el color
+  // del texto de la caja (claro): sería blanco sobre blanco.
+  const color =
+    conColor && entrada.color && entrada.fuente !== "devicon"
+      ? `#${entrada.color}`
+      : fondo && entrada.fuente !== "devicon"
+        ? "#18181b"
+        : undefined;
+  const logo = (
     <svg
       viewBox={entrada.viewBox}
-      className={cn("icono-marca", className)}
-      style={conColor && entrada.color && entrada.fuente === "simple-icons" ? { color: `#${entrada.color}` } : undefined}
+      className={cn("icono-marca", fondo ? "h-[78%] w-[78%]" : className)}
+      style={color ? { color } : undefined}
       fill="currentColor"
       aria-hidden="true"
       focusable="false"
@@ -278,6 +292,17 @@ export const IconoDeElemento: React.FC<{
       // No puede llevar hijos React además de `dangerouslySetInnerHTML`.
       dangerouslySetInnerHTML={{ __html: entrada.svg ?? "" }}
     />
+  );
+  if (!fondo) return logo;
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-lg bg-white/90 ring-1 ring-black/10",
+        className
+      )}
+    >
+      {logo}
+    </span>
   );
 };
 
@@ -1102,6 +1127,14 @@ interface NodeComponentProps {
   onResizeMouseDown: (e: React.MouseEvent) => void;
   onClick: () => void;
   onDoubleClick: () => void;
+  /**
+   * Doble clic sobre el TEXTO del nombre o de la descripción (#643): se edita
+   * ahí mismo en vez de abrir la ficha. `editandoTexto` dice qué campo muestra
+   * el editor; `onEditarTexto` recibe el valor nuevo (o `null` si se canceló).
+   */
+  onPedirEdicion?: (campo: CampoEnLienzo) => void;
+  editandoTexto?: CampoEnLienzo | null;
+  onEditarTexto?: (campo: CampoEnLienzo, valor: string | null) => void;
   /** Clic derecho sobre el elemento: abre el menú contextual del lienzo. */
   onContextMenu?: (e: React.MouseEvent) => void;
   /** Una conexión está en curso (origen ya elegido); todos los nodos actúan como posible destino. */
@@ -1258,6 +1291,86 @@ const ContainerShape: React.FC<{
     />
   );
 
+/** Texto de una caja que se edita directamente en el lienzo (#643). */
+export type CampoEnLienzo = "nombre" | "descripcion";
+
+/**
+ * Editor de texto sobre el lienzo (#643): un campo encima de la caja. Enter o
+ * salir del campo guarda; Esc cancela. En la DESCRIPCIÓN, Shift+Enter es salto
+ * de línea y el cuadro crece con el texto (la caja la muestra recortada). Las
+ * teclas no llegan al lienzo —Supr borraría la caja mientras se escribe—.
+ */
+const EditorEnLienzo: React.FC<{
+  campo: CampoEnLienzo;
+  w: number;
+  h: number;
+  valor: string;
+  onTerminar: (valor: string | null) => void;
+}> = ({ campo, w, h, valor, onTerminar }) => {
+  const [texto, setTexto] = React.useState(valor);
+  // Enter guarda y el campo se desmonta, lo que dispara `blur`: sin esta marca
+  // se guardaría dos veces (o se guardaría después de un Esc).
+  const terminado = React.useRef(false);
+  const terminar = (nombre: string | null) => {
+    if (terminado.current) return;
+    terminado.current = true;
+    onTerminar(nombre);
+  };
+  return (
+    <foreignObject
+      x={0}
+      y={0}
+      width={w}
+      height={h}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      {campo === "nombre" ? (
+        <div className="flex h-full w-full items-center justify-center p-1.5">
+          <input
+            autoFocus
+            value={texto}
+            onFocus={(e) => e.currentTarget.select()}
+            onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") terminar(texto);
+              else if (e.key === "Escape") terminar(null);
+            }}
+            onBlur={() => terminar(texto)}
+            aria-label="Nombre del elemento"
+            className="w-full rounded-md border border-primary bg-background px-2 py-1 text-center text-sm font-bold text-foreground shadow-md outline-none"
+          />
+        </div>
+      ) : (
+        <div className="h-full w-full p-1">
+          <textarea
+            autoFocus
+            value={texto}
+            onFocus={(e) => {
+              const t = e.currentTarget;
+              t.setSelectionRange(t.value.length, t.value.length);
+            }}
+            onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                terminar(texto);
+              } else if (e.key === "Escape") terminar(null);
+            }}
+            onBlur={() => terminar(texto)}
+            aria-label="Descripción del elemento"
+            placeholder="Qué es y qué hace…"
+            className="h-full w-full resize-none rounded-md border border-primary bg-background px-2 py-1.5 text-xs leading-snug text-foreground shadow-md outline-none"
+          />
+        </div>
+      )}
+    </foreignObject>
+  );
+};
+
 export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   node,
   notation,
@@ -1267,7 +1380,10 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   onMouseDown,
   onResizeMouseDown,
   onClick,
-  onDoubleClick,
+  onDoubleClick: abrirFicha,
+  onPedirEdicion,
+  editandoTexto = null,
+  onEditarTexto,
   onContextMenu,
   connecting = false,
   onStartConnect,
@@ -1276,6 +1392,53 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   onHover,
   onHoverEnd,
 }) => {
+  // El doble clic sobre el TEXTO del nombre o de la descripción lo edita en el
+  // lienzo (#643); en cualquier otra parte de la caja abre la ficha, como
+  // siempre. El texto no recibe eventos (`pointer-events-none`: la caja entera
+  // se arrastra), así que no sirve mirar `e.target`: se busca la hoja cuyo
+  // texto ES ese campo y se mira si el clic cayó dentro de su rectángulo.
+  const onDoubleClick = (e: React.MouseEvent) => {
+    const raiz = e.currentTarget as Element;
+    const sobre = (valor: string | undefined): boolean => {
+      const buscado = valor?.trim();
+      if (!buscado) return false;
+      const hojas = Array.from(raiz.querySelectorAll("p, span, text, div")).filter(
+        (el) => el.childElementCount === 0 && el.textContent?.trim() === buscado
+      );
+      const M = 6;
+      return hojas.some((el) => {
+        const r = el.getBoundingClientRect();
+        return e.clientX >= r.left - M && e.clientX <= r.right + M && e.clientY >= r.top - M && e.clientY <= r.bottom + M;
+      });
+    };
+    const campo: CampoEnLienzo | null = !onPedirEdicion
+      ? null
+      : sobre(node.nombre)
+        ? "nombre"
+        : sobre(node.descripcion)
+          ? "descripcion"
+          : null;
+    if (campo) {
+      e.stopPropagation();
+      onPedirEdicion!(campo);
+    } else abrirFicha();
+  };
+  /**
+   * El editor del campo en curso. El nombre ocupa la franja `hNombre`; la
+   * descripción, la caja entera y al menos 120 px (la caja la muestra recortada
+   * y para editarla hay que verla completa).
+   */
+  const editorEnLienzo = (w: number, hNombre: number) =>
+    editandoTexto && onEditarTexto ? (
+      <EditorEnLienzo
+        campo={editandoTexto}
+        w={editandoTexto === "nombre" ? w : Math.max(w, 240)}
+        h={editandoTexto === "nombre" ? hNombre : Math.max(hNombre, 120)}
+        valor={(editandoTexto === "nombre" ? node.nombre : node.descripcion) ?? ""}
+        onTerminar={(v) => onEditarTexto(editandoTexto, v)}
+      />
+    ) : null;
+
   const color = useNodeColor(node.tipo_elemento, node.nombre, notation);
   // En editorial no hay sombra (bordes, no sombras) y el contorno propio del
   // tipo (`meta.stroke`) cede ante el del tratamiento.
@@ -1577,6 +1740,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           </>
         )}
         <ChangeStateBadge estado={node.estado_comparativo} x={width - 2} />
+        {editorEnLienzo(width, 34)}
         <g onMouseDown={onResizeMouseDown} className="cursor-nwse-resize">
           <rect
             x={width - 12}
@@ -1622,6 +1786,10 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
   const isTable = isTableType(node.tipo_elemento);
   // Forma de dibujo libre: su tipo ES la silueta (ver `isFreeformType`).
   const libre = isFreeformType(node.tipo_elemento);
+  // La caja lleva un LOGO de tecnología (no el icono del tipo): se dibuja más grande.
+  const conLogo = !!iconoDeCatalogo(node.icono);
+  // En la tarjeta, el logo va al costado salvo en el óvalo (no hay franja recta).
+  const logoAlCostado = conLogo && shape !== "ellipse";
   // Anillo BPMN canónico: Fin = grueso, Intermedio = doble; el resto simple.
   const eventRing: "thick" | "double" | undefined =
     node.tipo_elemento === "Evento de Fin"
@@ -1736,6 +1904,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           </g>
         ))}
         <ChangeStateBadge estado={node.estado_comparativo} x={layout.w - 2} />
+        {editorEnLienzo(layout.w, 34)}
         <ConnectPorts
           w={layout.w}
           h={layout.h}
@@ -1873,21 +2042,36 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
               color.text,
               // En un óvalo el ancho útil se angosta al alejarse del eje: con el
               // padding del rectángulo, el nombre se sale por los costados.
-              shape === "ellipse" ? "px-9" : "px-3",
+              // Con LOGO, el texto deja libre la franja izquierda donde va el logo.
+              shape === "ellipse" ? "px-9" : logoAlCostado ? "pl-14 pr-3" : "px-3",
             )}
             style={estiloHeredado(node.estilo)}
           >
-            {/* En el óvalo el icono se mete hacia adentro para no caer fuera de la curva. */}
-            {!meta?.hideIcon && (
-              <IconoDeElemento
-                icono={node.icono}
-                Fallback={Icon}
-                conColor={!editorial}
-                className={cn(
-                  "w-4 h-4 absolute top-2 opacity-90",
-                  shape === "ellipse" ? "left-8" : "left-2",
-                )}
-              />
+            {/* En el óvalo el icono se mete hacia adentro para no caer fuera de la curva.
+                Un LOGO de tecnología va GRANDE a la izquierda, centrado en la altura,
+                como en los diagramas de arquitectura (#643): arriba y a 16 px un
+                logo de marca no se reconocía. El icono del tipo sigue chico arriba. */}
+            {!meta?.hideIcon && logoAlCostado ? (
+              <>
+                <Icon className="w-3.5 h-3.5 absolute top-2 left-2 opacity-70" />
+                <IconoDeElemento
+                  icono={node.icono}
+                  Fallback={Icon}
+                  conColor={!editorial}
+                  fondo
+                  className="w-10 h-10 absolute left-2.5 top-1/2 -translate-y-1/2"
+                />
+              </>
+            ) : (
+              !meta?.hideIcon && (
+                <IconoDeElemento
+                  icono={node.icono}
+                  Fallback={Icon}
+                  conColor={!editorial}
+                  fondo
+                  className={cn("w-4 h-4 absolute top-2 opacity-90", shape === "ellipse" ? "left-8" : "left-2")}
+                />
+              )
             )}
             <div
               className="h-full flex flex-col items-center justify-center text-center gap-0.5"
@@ -1935,7 +2119,8 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                 icono={node.icono}
                 Fallback={Icon}
                 conColor={!editorial}
-                className={cn("w-6 h-6 shrink-0", !labelOutside && "mb-1")}
+                fondo
+                className={cn(conLogo ? "w-8 h-8" : "w-6 h-6", "shrink-0", !labelOutside && "mb-1")}
               />
             )}
             {!labelOutside && (
@@ -1996,6 +2181,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
           cuantos={node.adjuntos.length}
         />
       )}
+      {editorEnLienzo(nodeW, nodeH)}
       <ChangeStateBadge
         estado={node.estado_comparativo}
         // Esquina superior derecha de la FORMA dibujada (no de la caja lógica).
@@ -2158,6 +2344,31 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
         // Color de línea personalizado (prevalece sobre el gris por defecto).
         style={!isSelected && !isRelated && link.color ? { stroke: link.color } : undefined}
       />
+      {/* FLUJO (#643): en la relación resaltada —seleccionada, o de la caja
+          seleccionada— corren puntos del origen al destino, para leer hacia
+          dónde va sin buscar la punta. Sólo ahí: animar todo el lienzo sería
+          ruido. El trazo va de `fuente` a `destino`, así que el desplazamiento
+          negativo del guion lo hace avanzar en ese sentido. Sin animación si
+          el sistema pide movimiento reducido. */}
+      {(isSelected || isRelated) && arrow !== "none" && (
+        <path
+          d={path}
+          fill="none"
+          pointerEvents="none"
+          className="stroke-white motion-reduce:hidden"
+          strokeWidth={isSelected ? 4 : 3.5}
+          strokeLinecap="round"
+          strokeDasharray="4 12"
+        >
+          <animate
+            attributeName="stroke-dashoffset"
+            from="16"
+            to="0"
+            dur="0.6s"
+            repeatCount="indefinite"
+          />
+        </path>
+      )}
       <g
         onDoubleClick={onDoubleClick}
         // Sin etiqueta no hay nada que separar del trazo: arrastrar movería un

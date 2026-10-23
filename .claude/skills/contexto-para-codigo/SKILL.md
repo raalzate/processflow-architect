@@ -66,8 +66,11 @@ Con aprobación del humano, y sólo sobre las cajas que tocaste:
 1. **Dónde vive** — `update_view_element` con:
    - `source`: el punto de entrada en el código (`pagos/api.ts:12`). Es una
      PROPIEDAD de la caja; nunca la pegues en la descripción.
-   - `metadata` por clave: `repo`, `puerto`, `owner` (las demás claves se
-     conservan).
+   - `metadata` por clave, según el tipo de la caja: un servicio `repo`,
+     `puerto`, `endpoint`; una base de datos `puerto`, `motor`, `esquema` (no
+     tiene `repo`); cualquiera `owner` (las demás claves se conservan).
+   - `tags` con las tecnologías que el código usa de verdad (`Node 20`,
+     `PostgreSQL 16`): el icono de la caja sale de ahí.
 2. **Qué hace, si cambió** — `update_view_element` con una `description` de 1 a
    3 frases: qué es, qué recibe o produce y por qué existe. Si la responsabilidad
    no cambió, no la toques.

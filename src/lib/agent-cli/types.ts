@@ -20,6 +20,27 @@ export const CLI_INFO: Record<CliId, { label: string; command: string; installUr
   codex: { label: "Codex", command: "codex", installUrl: "https://developers.openai.com/codex/cli" },
 };
 
+/**
+ * Modelos que el humano puede elegir para el chat de la ficha (#643). Son los
+ * ALIAS que el CLI resuelve a su versión vigente (`claude --model sonnet`), no
+ * ids fechados: así la lista no envejece con cada lanzamiento. El vacío es «el
+ * que tengas configurado» y no manda `--model`. Es también la allowlist con la
+ * que `validarLaunch` rechaza lo que no sea uno de estos.
+ */
+export const CLI_MODELOS: Record<CliId, readonly { id: string; label: string; hint: string }[]> = {
+  claude: [
+    { id: "", label: "Modelo: el tuyo", hint: "el que tenga configurado Claude Code" },
+    { id: "sonnet", label: "Sonnet", hint: "equilibrado: el indicado para pulir una caja" },
+    { id: "opus", label: "Opus", hint: "el más capaz, para specs largas o ambiguas; más caro" },
+    { id: "haiku", label: "Haiku", hint: "rápido y barato, para cambios chicos" },
+  ],
+  codex: [{ id: "", label: "Modelo: el tuyo", hint: "el que tenga configurado Codex" }],
+};
+
+/** true si `modelo` es uno de los que ofrece la app para ese CLI (vacío = el del usuario). */
+export const esModeloDe = (cli: CliId, modelo: string): boolean =>
+  CLI_MODELOS[cli].some((m) => m.id === modelo);
+
 /** Nombre con el que el CLI ve el servidor MCP de la app (prefijo `mcp__<nombre>__`). */
 export const MCP_SERVER_NAME = "processflow";
 

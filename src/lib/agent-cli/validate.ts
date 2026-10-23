@@ -7,7 +7,7 @@
  * main rechaza el resto con un mensaje legible antes de tocar un proceso.
  */
 
-import { CLI_IDS, type CliId } from "./types";
+import { CLI_IDS, esModeloDe, type CliId } from "./types";
 import type { GenerateInput, LaunchInput } from "./args";
 
 /** El único servidor MCP al que el chat puede apuntar: el de la app, en loopback. */
@@ -54,6 +54,11 @@ export function validarLaunch(
         error: `La carpeta «${ajena}» no se eligió con «Adjuntar carpeta». Quitala y volvé a adjuntarla desde el botón.`,
       };
     }
+  }
+  // #643: el modelo llega del renderer y termina en `--model`: sólo los alias
+  // que ofrece la app, nunca un texto libre que el CLI leería como otro flag.
+  if (i.model !== undefined && (typeof i.model !== "string" || !i.model || !esModeloDe(i.cli, i.model))) {
+    return { ok: false, error: `Modelo no disponible para ${i.cli}: ${String(i.model)}.` };
   }
   if (
     i.maxTurns !== undefined &&

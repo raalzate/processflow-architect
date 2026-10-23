@@ -303,12 +303,16 @@ propiedades del elemento, `{clave, valor, tipo?}` con **dónde vive de verdad** 
 los datos que lo enriquecen. Tipos: `texto` · `numero` · `booleano` · `url` ·
 `fecha`; el valor se valida según su tipo.
 
-**Claves canónicas — usá estas, no sinónimos:** `repo` (url) · `puerto` (numero) ·
-`endpoint` (url) · `owner` (texto) · `wiki` (url).
+**Claves canónicas — usá estas, no sinónimos, y SEGÚN el elemento:**
 
-`repo` y `puerto` son **obligatorias en lo desplegable** (C4: `Sistema`,
-`Contenedor`, `Componente`, `Base de Datos`; UML: `Componente`, `Nodo`,
-`Artefacto de Despliegue`) y `validate_diagram` FALLA mientras falten: son los
+- **servicio** (C4: `Sistema`, `Contenedor`, `Componente`; UML: `Componente`,
+  `Nodo`, `Artefacto de Despliegue`): `repo` (url) y `puerto` (numero),
+  **obligatorias**; `endpoint` (url) opcional.
+- **almacén** (C4: `Base de Datos`): `puerto` (numero) **obligatoria**; `motor`,
+  `esquema`, `respaldo` (texto) opcionales. **No tiene `repo`**: no se lo pidas.
+- **cualquiera**: `owner` (texto) · `wiki` (url).
+
+`validate_diagram` FALLA mientras falten las obligatorias: son los
 datos que quien va a construir busca a mano. Un documento de negocio muchas veces
 no los trae — entonces poné el valor explícito `pendiente` y decílo en el resumen
 al humano; nunca inventes una url. En el big picture DDD y en los BPMN no se

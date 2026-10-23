@@ -64,6 +64,20 @@ repetido, o con «Fuente: …» pegado al final), proponé también una nueva: 1
 frases con su responsabilidad, qué recibe o produce y por qué existe. La cita va
 en la **fuente** de la caja, que es una propiedad aparte.
 
+### Tecnologías, icono y propiedades según el tipo
+
+- **Tecnologías** (`tags`): las que la fuente nombra (`Node 20`, `SQLite`). El
+  **icono** sale solo de ellas; pasá `icon` (de `list_icons`) sólo si hay que
+  forzar otro logo.
+- **Propiedades** (`metadata`): las que corresponden al TIPO de la caja, nunca la
+  misma lista para todas.
+  - servicio (Contenedor, Componente, Nodo): `repo`, `puerto`, `endpoint`;
+  - almacén (Base de Datos): `puerto`, `motor`, `esquema`, `respaldo` — **sin
+    `repo`**: una base de datos no tiene repositorio;
+  - cualquiera: `owner`, `wiki`.
+  Lo que la fuente no dice va con el valor `pendiente`, nunca inventado. No
+  repitas una clave que ya está (con su alias tampoco: `port` ya es `puerto`).
+
 Mostrale la propuesta al humano **antes** de escribir, en una tabla corta
 (qué agregás, qué cambiás, qué marcás por aclarar). Si la caja ya tenía spec,
 decí explícitamente qué conservás: lo que escribió una persona no se pisa.
@@ -73,9 +87,10 @@ decí explícitamente qué conservás: lo que escribió una persona no se pisa.
 - **`set_view_element_spec`** con `name` = el nombre exacto de la caja y
   **`merge: true`** si ya tenía spec (suma; lo que no mandás se conserva). Sin
   spec previa, mandala completa.
-- Si corregís también la descripción, la fuente o los metadatos,
-  `update_view_element` con `description`, `source` y `metadata` (por clave: las
-  demás se conservan) — y nada de renombrar, mover ni borrar sin que lo pidan.
+- Si corregís también la descripción, la fuente, las tecnologías o los metadatos,
+  `update_view_element` con `description`, `source`, `tags` y `metadata` (por
+  clave: las demás se conservan) — y nada de renombrar, mover ni borrar sin que
+  lo pidan.
 - Dos cajas con el mismo nombre ⇒ la herramienta no elige: preguntá cuál.
 
 ## 3 · Cerrar

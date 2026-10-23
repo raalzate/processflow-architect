@@ -16,6 +16,8 @@ import {
   esIconoValido,
   fallasDeIcono,
   iconoDeCatalogo,
+  iconoDeTecnologia,
+  iconoPorTecnologia,
   normalizarTexto,
   sanearSvg,
 } from "../catalog";
@@ -41,7 +43,7 @@ describe("catálogo generado ↔ manifiesto", () => {
 
   it("todo icono declara fuente y licencia, y ninguno trae contenido ejecutable ni externo", () => {
     for (const i of ICONOS) {
-      expect(["simple-icons", "devicon", "lucide"], i.id).toContain(i.fuente);
+      expect(["simple-icons", "devicon", "lobe-icons", "lucide"], i.id).toContain(i.fuente);
       expect(i.licencia, i.id).toMatch(/CC0|MIT|ISC/);
       expect(fallasDeIcono(i), i.id).toEqual([]);
       if (i.fuente !== "lucide") {
@@ -123,9 +125,53 @@ describe("sanearSvg", () => {
     expect(fallasDeIcono({ ...base, svg: "<path style=\"x\" d=\"M0 0\"/>" })).toContainEqual(expect.stringContaining("style"));
   });
 
+  it("conserva el fill-rule evenodd de la raíz: sin él un logo con huecos se ve macizo", () => {
+    const s = sanearSvg('<svg fill-rule="evenodd" viewBox="0 0 24 24"><path d="M0 0h24v24H0zM6 6h12v12H6z"/></svg>', "lb-x")!;
+    expect(s.inner.startsWith('<g fill-rule="evenodd"')).toBe(true);
+    expect(sanearSvg('<svg viewBox="0 0 1 1"><path d="M0 0"/></svg>', "p")!.inner).not.toContain("<g");
+  });
+
   it("rechaza lo que no es un SVG con viewBox o no tiene dibujo", () => {
     expect(sanearSvg("<div>no</div>", "p")).toBeNull();
     expect(sanearSvg('<svg width="10"><path d="M0 0"/></svg>', "p")).toBeNull();
     expect(sanearSvg('<svg viewBox="0 0 1 1"><script>x</script></svg>', "p")).toBeNull();
+  });
+});
+
+describe("icono por tecnología (#643)", () => {
+  it("reconoce la etiqueta aunque traiga versión, signos o mayúsculas", () => {
+    expect(iconoPorTecnologia(["Node 20", "TypeScript"])).toBe("si-nodedotjs");
+    expect(iconoPorTecnologia(["Python 3.11+", "stdlib"])).toBe("si-python");
+    expect(iconoPorTecnologia(["sqlite"])).toBe("si-sqlite");
+    expect(iconoPorTecnologia(["PostgreSQL 16"])).toBe("si-postgresql");
+  });
+
+  it("toma la PRIMERA etiqueta que el catálogo reconoce", () => {
+    expect(iconoPorTecnologia(["stdlib", "Redis"])).toBe("si-redis");
+  });
+
+  it("un alias compartido elige por el nombre, y un empate no elige", () => {
+    // «postgres» es alias de PostgreSQL y de Supabase.
+    expect(iconoDeTecnologia("postgres")?.id).toBe("si-postgresql");
+    // «nube» es alias de AWS, Azure y Google Cloud: no hay uno inequívoco.
+    expect(iconoDeTecnologia("nube")).toBeUndefined();
+  });
+
+  it("sin etiquetas reconocibles no inventa", () => {
+    expect(iconoPorTecnologia(["stdlib", "cron"])).toBeUndefined();
+    expect(iconoPorTecnologia(undefined)).toBeUndefined();
+    expect(iconoPorTecnologia([])).toBeUndefined();
+  });
+
+  it("trae las plataformas y la IA que faltaban", () => {
+    for (const [tag, id] of [
+      ["Railway", "si-railway"],
+      ["OpenAI", "lb-openai"],
+      ["Bedrock", "lb-bedrock"],
+      ["AWS Lambda", "lu-Lambda"],
+      ["Ollama", "si-ollama"],
+    ]) {
+      expect(iconoPorTecnologia([tag]), tag).toBe(id);
+    }
   });
 });

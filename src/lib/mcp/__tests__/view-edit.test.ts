@@ -367,3 +367,46 @@ describe("enlazar un elemento a su subvista (#638)", () => {
     expect(r.ok).toBe(false);
   });
 });
+
+describe("applyViewEdit — tecnologías e icono (#643)", () => {
+  const de = (g: GraphData, nombre: string) => nodos(g).find((n) => n.nombre === nombre) as any;
+
+  it("al agregar con tecnologías, el logo sale de ellas", () => {
+    const r = applyViewEdit(vista(), { kind: "add-element", name: "CLI ops", type: "Contenedor", tags: ["Node 20", "TypeScript"] }, "c4");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(de(r.graph, "CLI ops")).toMatchObject({ tags_tecnologia: ["Node 20", "TypeScript"], icono: "si-nodedotjs" });
+  });
+
+  it("al actualizar las tecnologías de una caja sin icono, se le pone el logo", () => {
+    const r = applyViewEdit(vista(), { kind: "update-element", name: "API", tags: ["Python 3.11+"] }, "c4");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(de(r.graph, "API").icono).toBe("si-python");
+  });
+
+  it("un icono elegido no se pisa por cambiar las tecnologías", () => {
+    const g = vista();
+    (g.big_picture!.nodos[1] as any).icono = "lu-Lambda";
+    const r = applyViewEdit(g, { kind: "update-element", name: "API", tags: ["Python"] }, "c4");
+    if (!r.ok) throw new Error(r.error);
+    expect(de(r.graph, "API").icono).toBe("lu-Lambda");
+  });
+
+  it("icon explícito manda, y vacío lo quita", () => {
+    const r = applyViewEdit(vista(), { kind: "update-element", name: "API", tags: ["Python"], icon: "lb-openai" }, "c4");
+    if (!r.ok) throw new Error(r.error);
+    expect(de(r.graph, "API").icono).toBe("lb-openai");
+    const r2 = applyViewEdit(r.graph, { kind: "update-element", name: "API", icon: "" }, "c4");
+    if (!r2.ok) throw new Error(r2.error);
+    expect(de(r2.graph, "API").icono).toBeUndefined();
+  });
+
+  it("actualizar sin tocar las tecnologías no inventa un icono", () => {
+    const g = vista();
+    (g.big_picture!.nodos[1] as any).tags_tecnologia = ["Python"];
+    const r = applyViewEdit(g, { kind: "update-element", name: "API", description: "Atiende pedidos." }, "c4");
+    if (!r.ok) throw new Error(r.error);
+    expect(de(r.graph, "API").icono).toBeUndefined();
+  });
+});

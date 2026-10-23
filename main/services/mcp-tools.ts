@@ -284,6 +284,11 @@ const DESCRIPCION_DEL_ELEMENTO =
 const FUENTE_DEL_ELEMENTO =
   "De DÓNDE sale (\"docs/prd.md:36\", \"PRD §3.2 (p. 7)\", \"acta 12-mar\", \"src/pagos/service.ts:120\"). Se guarda como PROPIEDAD del elemento —campo `fuente`, separado de la descripción— y alimenta la tabla elemento←fuente de review_diagram: sin ella el humano no puede contrastar el diagrama.";
 
+const TAGS_DEL_ELEMENTO =
+  "Tecnologías de la caja (\"Node 20\", \"PostgreSQL 16\", \"OpenAI\"). Reemplaza la lista. Si la caja no tiene icono elegido, su LOGO sale de acá solo: la primera etiqueta que el catálogo reconoce.";
+const ICONO_DEL_ELEMENTO =
+  "Icono de TECNOLOGÍA del catálogo (id de list_icons: `si-postgresql`, `lb-openai`, `lu-Lambda`). Pasalo sólo para forzar uno distinto del que sale de las tecnologías.";
+
 const estadoSchema = z
   .enum(ESTADOS as unknown as [string, ...string[]])
   .optional()
@@ -1179,7 +1184,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ),
         source: z.string().optional().describe(FUENTE_DEL_ELEMENTO),
         metadata: metadataSchema.describe(
-            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}${p.obligatoria ? ", OBLIGATORIA en lo desplegable" : ""})`).join(" · ") + ". Un elemento desplegable (Contenedor, Componente, Base de Datos, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
+            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}, ${p.obligatoria ? "OBLIGATORIA en " : ""}${p.aplicaA})`).join(" · ") + ". Pedí las propiedades SEGÚN el elemento: un servicio desplegable (Contenedor, Componente, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; un almacén (Base de Datos) sólo debe `puerto` y se describe con `motor`, `esquema`, `respaldo` — no tiene repositorio. Si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
           ),
       },
     },
@@ -1235,7 +1240,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             "Columnas, SÓLO para los tipos que se dibujan como caja de tabla (MER físico: `Tabla Relacional`). De ellas salen los compartimentos que muestra la caja: «column» son las filas, y «FK», «index» y «PK» se DEDUCEN de sus marcas — no se declaran aparte. Ejemplo: [{nombre:\"id\", tipo:\"integer\", pk:true}, {nombre:\"servicio_id\", tipo:\"integer\", fk:true, referencia:\"servicio.id\", indice:true}, {nombre:\"nombre\", tipo:\"varchar(50)\"}]. Una tabla sin `pk` pasa validate_diagram con AVISO; una FK sin `referencia` es error."
           ),
         metadata: metadataSchema.describe(
-            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}${p.obligatoria ? ", OBLIGATORIA en lo desplegable" : ""})`).join(" · ") + ". Un elemento desplegable (Contenedor, Componente, Base de Datos, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
+            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}, ${p.obligatoria ? "OBLIGATORIA en " : ""}${p.aplicaA})`).join(" · ") + ". Pedí las propiedades SEGÚN el elemento: un servicio desplegable (Contenedor, Componente, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; un almacén (Base de Datos) sólo debe `puerto` y se describe con `motor`, `esquema`, `respaldo` — no tiene repositorio. Si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
           ),
       },
     },
@@ -1478,7 +1483,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           .optional()
           .describe("Icono de tecnología del catálogo (id de list_icons). Cadena vacía para quitarlo."),
         metadata: metadataSchema.describe(
-            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}${p.obligatoria ? ", OBLIGATORIA en lo desplegable" : ""})`).join(" · ") + ". Un elemento desplegable (Contenedor, Componente, Base de Datos, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
+            "Referencias y datos externos de la caja: DÓNDE VIVE de verdad. Es lo que conecta el diagrama con los artefactos reales — repositorio del componente, wiki que lo explica, tablero, equipo dueño, SLA— y lo que permite ir del diagrama al código en un clic; sin esto el modelo es una foto. Distinto de `source`: la cita dice de dónde SALIÓ el elemento en la documentación, el metadato dónde VIVE. Una clave repetida reemplaza su valor. Sólo las urls http(s) se vuelven enlace en la app. Ejemplo: [{clave:\"repo\", valor:\"https://github.com/acme/pagos-svc\", tipo:\"url\"}, {clave:\"puerto\", valor:\"8080\", tipo:\"numero\"}, {clave:\"owner\", valor:\"Equipo Pagos\", tipo:\"texto\"}]. CLAVES CANÓNICAS (usá estas, no sinónimos): " + PROPIEDADES_CANONICAS.map((p) => `${p.clave} (${p.tipo}, ${p.obligatoria ? "OBLIGATORIA en " : ""}${p.aplicaA})`).join(" · ") + ". Pedí las propiedades SEGÚN el elemento: un servicio desplegable (Contenedor, Componente, Nodo) NO pasa validate_diagram sin `repo` y `puerto`; un almacén (Base de Datos) sólo debe `puerto` y se describe con `motor`, `esquema`, `respaldo` — no tiene repositorio. Si todavía no se sabe, poné el valor \"" + VALOR_PENDIENTE + "\"."
           ),
         columns: columnsSchema.describe(
             "Columnas nuevas de una caja de tabla. REEMPLAZA la lista completa (a diferencia de `metadata`, que va por clave): el orden de las filas es parte del modelo, así que se manda entero."
@@ -3255,11 +3260,13 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           container: z.string().optional().describe("Nombre del contenedor donde va (vacío = suelto)."),
           description: z.string().optional().describe(DESCRIPCION_DEL_ELEMENTO),
           source: z.string().optional().describe(FUENTE_DEL_ELEMENTO),
+          tags: z.array(z.string()).optional().describe(TAGS_DEL_ELEMENTO),
+          icon: z.string().optional().describe(ICONO_DEL_ELEMENTO),
           ...vista,
         },
       },
-      async ({ name, type, container, description, source, view }) =>
-        editar({ kind: "add-element", name, type, container, description, source, view })
+      async ({ name, type, container, description, source, tags, icon, view }) =>
+        editar({ kind: "add-element", name, type, container, description, source, tags, icon, view })
     );
 
     server.registerTool(
@@ -3267,7 +3274,7 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       {
         title: "Corregir un elemento de una vista",
         description:
-          "Cambia el nombre, el tipo, la descripción o el contenedor de UN elemento de una vista, nombrándolo como se llama en el lienzo. Si hay dos elementos con ese nombre no elige por vos: te lo dice para que preguntes cuál.",
+          "Cambia el nombre, el tipo, la descripción, el contenedor, las TECNOLOGÍAS, el ICONO o las REFERENCIAS de UN elemento de una vista, nombrándolo como se llama en el lienzo. Si hay dos elementos con ese nombre no elige por vos: te lo dice para que preguntes cuál.",
         inputSchema: {
           name: z.string().describe("Nombre actual del elemento."),
           newName: z.string().optional(),
@@ -3275,10 +3282,12 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           description: z.string().optional().describe(DESCRIPCION_DEL_ELEMENTO),
           source: z.string().optional().describe(FUENTE_DEL_ELEMENTO),
           container: z.string().optional(),
+          tags: z.array(z.string()).optional().describe(TAGS_DEL_ELEMENTO),
+          icon: z.string().optional().describe(`${ICONO_DEL_ELEMENTO} "" lo quita.`),
           metadata: metadataSchema
             .optional()
             .describe(
-              "Referencias de DÓNDE VIVE (repo, puerto, owner, wiki): se agregan o reemplazan POR CLAVE y las demás se conservan. Es lo que deja un agente de código para que el siguiente encuentre el componente."
+              "Referencias de DÓNDE VIVE, según el elemento: un servicio → repo, puerto, endpoint; un almacén (base de datos) → puerto, motor, esquema, respaldo (no tiene repo); cualquiera → owner, wiki. Se agregan o reemplazan POR CLAVE y las demás se conservan. Es lo que deja un agente de código para que el siguiente encuentre el componente."
             ),
           subview: z
             .string()
@@ -3289,8 +3298,16 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
           ...vista,
         },
       },
-      async ({ name, newName, type, description, source, container, metadata, subview, view }) =>
-        editar({ kind: "update-element", name, newName, type, description, source, container, metadata, subview, view })
+      async ({ name, newName, type, description, source, container, tags, icon, metadata, subview, view }) => {
+        // #643: el chat de la ficha puede pulir SU caja (tecnologías, icono,
+        // referencias), nunca otra: el mismo alcance que su spec.
+        const fueraDeAlcance = errorDeAlcance(opts.focusScope ?? null, name, view);
+        if (fueraDeAlcance) return fail(fueraDeAlcance);
+        if (icon?.trim() && !esIconoValido(icon.trim())) {
+          return fail(`El icono "${icon.trim()}" no está en el catálogo. Buscá uno con list_icons, o no lo pases: sale solo de las tecnologías.`);
+        }
+        return editar({ kind: "update-element", name, newName, type, description, source, container, tags, icon, metadata, subview, view });
+      }
     );
 
     server.registerTool(
