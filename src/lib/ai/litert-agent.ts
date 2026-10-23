@@ -457,17 +457,44 @@ export function makeFinalStreamer(emit: (chunk: string) => void): (chunk: string
  * demasiado ansioso con las herramientas y produce artefactos aunque el usuario
  * solo pregunte. Este gate determinista decide la ruta: si NO hay intención de
  * generar, se conversa (prosa) sin exponer herramientas → no hay artefactos por
- * accidente y el prefill es menor. Sesga a conversar: exige un SUSTANTIVO de
- * artefacto o un verbo de "dibujar/modelar"; los verbos conversacionales
- * (habla/cuenta/explica/describe/resume/analiza) NO disparan.
+ * accidente y el prefill es menor. Sesga a conversar: exige un VERBO que pida
+ * crear. Antes bastaba con nombrar un artefacto y «¿De qué se trata la
+ * propuesta?» terminaba en un plan para generar una síntesis: nombrar no es pedir.
+ * Una pregunta sólo dispara si es un pedido cortés («¿me generás…?»,
+ * «¿podés armar…?»); el resto se contesta. El pedido sin ambigüedad es el «+».
  */
 const GEN_NOUN =
   /(diagram\w*|document\w*|mermaid|artefact\w*|artifact\w*|roadmap|propuesta|drivers|boceto)|\b(adr|c4|uml|bpmn)\b|mapa de contexto|context map/i;
-const GEN_VERB = /(dibuj\w*|grafic\w*|modela\w*|modelar|esquematiz\w*|exporta\w*|exportar)/i;
+/** Raíces de crear. Cubren imperativo, voseo e infinitivo (generá, genera, generar). */
+// Las raíces son estrechas a propósito: «cre» casaría «creo que…» y «model»,
+// «modelo»; ninguna de esas frases pide nada.
+const CREAR =
+  "gener[aáe]|cr[eé][aáe]|crear|hac[eé]me|hac[eé]|hacer|haz|arm[aáe]|redact|escrib|prepar|elabor|constru|prop[oó]n|dise[ñn][aáe]";
+/** Raíces que ya son un artefacto por sí solas («dibujá el flujo»). */
+const DIBUJAR = "dibuj|grafic|esquematiz|export|model[aá]";
+/** Muletillas que pueden ir antes del verbo: «por favor generá…», «dale, armá…». */
+const ANTES = "^\\s*(?:(?:por favor|porfa|ahora|ok|dale|bueno|listo|y|tambi[eé]n|luego)[,\\s]+)*";
+const VERBO_CREAR = new RegExp(`${ANTES}(?:${CREAR})\\w*`, "i");
+const VERBO_DIBUJAR = new RegExp(`${ANTES}(?:${DIBUJAR})\\w*`, "i");
+/** «necesito un documento», «quiero el roadmap»: el deseo apunta al artefacto. */
+const QUIERO_ARTEFACTO = new RegExp(
+  `\\b(?:quiero|necesito|dame|pasame)\\s+(?:(?:un|una|el|la|los|las|otro|otra|nuevo|nueva)\\s+)*(?:${GEN_NOUN.source})`,
+  "i"
+);
+/** Pedido cortés dentro de una pregunta: «¿me generás…?», «¿podés dibujar…?». */
+const PEDIDO_CORTES = new RegExp(
+  `\\b(?:me|pod[eé]s|puedes|podr[ií]as|pod[eé]is)\\s+(?:${CREAR}|${DIBUJAR})\\w*`,
+  "i"
+);
+const PREGUNTA = /[¿?]|^\s*(?:qu[eé]|c[oó]mo|cu[aá]l\w*|qui[eé]n\w*|d[oó]nde|cu[aá]nt\w*|por qu[eé]|para qu[eé]|de qu[eé])\b/i;
 
 export function hasGenerationIntent(message: string): boolean {
-  const m = message || "";
-  return GEN_NOUN.test(m) || GEN_VERB.test(m);
+  const m = (message || "").trim();
+  const nombraArtefacto = GEN_NOUN.test(m);
+  if (PREGUNTA.test(m)) return PEDIDO_CORTES.test(m);
+  if (VERBO_DIBUJAR.test(m)) return true;
+  if (VERBO_CREAR.test(m)) return nombraArtefacto;
+  return QUIERO_ARTEFACTO.test(m);
 }
 
 /**
@@ -555,7 +582,28 @@ export function buildContext(input: LitertAgentInput): string {
       `\n\n### Documentos adjuntos (fuente principal — léelos y básate en su contenido)\n` +
       docs.map((d) => `#### ${d.name}\n${clamp(d.text, 12000)}`).join("\n\n");
   }
-  return ctx;
+  // Adelante: el bucle explorador recorta el contexto por el final, y unos
+  // documentos largos se comerían la conversación entera.
+  return historyBlock(input.history) + ctx;
+}
+
+/** Turnos previos que entran al prompt: los últimos, que son los que se retoman. */
+const MAX_TURNOS_HISTORIA = 6;
+const MAX_CHARS_POR_TURNO = 500;
+
+/**
+ * La conversación previa, para que una repregunta («¿y eso qué implica?») no
+ * llegue huérfana. El llamador mandaba `history` y nadie lo leía: cada mensaje
+ * se respondía como si fuera el primero. Va recortado porque compite por la
+ * ventana del modelo local con el inventario y los documentos.
+ */
+export function historyBlock(history: LitertAgentInput["history"]): string {
+  const turnos = (history ?? [])
+    .filter((h) => h.content?.trim())
+    .slice(-MAX_TURNOS_HISTORIA)
+    .map((h) => `- ${h.role === "user" ? "Humano" : "Asistente"}: ${clamp(h.content.trim().replace(/\s+/g, " "), MAX_CHARS_POR_TURNO)}`);
+  if (!turnos.length) return "";
+  return `\n\n### Conversación previa (contexto: el mensaje nuevo puede retomarla)\n${turnos.join("\n")}`;
 }
 
 /**
@@ -711,6 +759,16 @@ export async function runLitertAgent(entrada: LitertAgentInput): Promise<LitertA
   // modelo produzca artefactos por su cuenta, reduce el prefill (más rápido) y hace
   // el streaming limpio (no hay que desenvolver `{"final":...}`, es texto crudo).
   if (!pedido && !hasGenerationIntent(input.message)) {
+    // Con catálogo la pregunta puede necesitar una vista que no está abierta: se
+    // contesta leyendo, sin plan ni herramientas de generación (consultaLoop).
+    if (input.catalog) {
+      return consultaLoop(input, input.catalog, {
+        ctx: buildContext({ ...input, graphData: undefined }),
+        persona,
+        vocabRule,
+        steps,
+      });
+    }
     const chatSystem = `${persona}${vocabRule}\n\nResponde de forma directa, clara y en español. NO generes documentos ni diagramas ni ningún artefacto; solo conversa, responde y explica.${ctx}`;
     const convo = await createLitertConversation(input.modelFile, chatSystem);
     let reply: string;
@@ -842,6 +900,105 @@ Si el usuario solo pregunta o conversa, responde directamente con {"final":"..."
 /* Bucle con recuperación por partes y human-in-the-loop (spec 005)            */
 /* -------------------------------------------------------------------------- */
 
+/** Turnos de una consulta: leer en uno o dos lotes y contestar. */
+const MAX_CONSULTA_TURNS = 5;
+
+/**
+ * Responde una PREGUNTA sobre el proyecto leyendo las vistas que hagan falta.
+ * Es el bucle explorador sin su mitad de generación: no hay plan, ni pregunta
+ * al humano, ni artefacto. Antes una pregunta sin intención de generar iba a un
+ * chat que sólo veía el grafo activo y los NOMBRES de las otras vistas, así que
+ * contestaba sin leer la vista donde estaba la respuesta; y la que nombraba un
+ * artefacto caía al bucle de generación y terminaba proponiendo un plan.
+ */
+async function consultaLoop(
+  input: LitertAgentInput,
+  cat: Catalog,
+  deps: Pick<LoopDeps, "ctx" | "persona" | "vocabRule" | "steps">
+): Promise<LitertAgentResult> {
+  const { ctx, persona, vocabRule, steps } = deps;
+  const paso = (step: AgentStepOut) => {
+    steps.push(step);
+    input.onStep?.(step);
+  };
+  const techo = systemBudget(input.maxTokens);
+  let state = startRun({ uid: newRunId }, input.message, input.budget ?? budgetFromWindow(input.maxTokens));
+
+  const system = `${persona}${vocabRule}
+
+El humano te hace una PREGUNTA sobre un proyecto cuyo contenido NO conocés todavía: lo LEÉS con herramientas y contestás.
+En CADA turno respondés con UN ÚNICO objeto JSON, sin texto fuera de él y sin fences:
+- Leer: {"thought":"por qué","action":"<nombre>","args":{...}}
+- Contestar: {"thought":"...","final":"<respuesta en español, directa, citando de qué vista sale>"}
+
+Reglas: esto es una consulta, NO un pedido de artefacto: no propongas planes ni generes documentos o diagramas. Si con lo que ya tenés alcanza (o es un saludo), contestá en el primer turno. Si no, leé en lote las vistas del inventario que contengan la respuesta y contestá; no leas más de lo necesario. Si el humano quiere un documento o un diagrama, decile que lo pida con el botón «+» o con «generá…». El campo thought va en UNA frase corta. No inventes nombres de vistas.
+IMPORTANTE sobre el JSON: dentro de los textos NO uses comillas dobles (usá 'simples').
+
+${exploreToolMenu(cat, Math.round(techo * 0.4), undefined, false)}${clamp(ctx, Math.round(techo * 0.6))}`;
+
+  const convo = await createLitertConversation(input.modelFile, system);
+  const NEXT = `\n\nResponde con el JSON del próximo paso.`;
+  let nextUser = `${input.message}${NEXT}`;
+  let reply = "";
+  let hint: AgentHint | undefined;
+  let malformados = 0;
+  try {
+    for (let turn = 0; turn < MAX_CONSULTA_TURNS && !reply; turn++) {
+      state = { ...state, turn: state.turn + 1 };
+      const onToken = input.onReplyToken ? makeFinalStreamer(input.onReplyToken) : undefined;
+      let raw: string;
+      try {
+        raw = await convo.send(nextUser, onToken);
+      } catch (e) {
+        if (!esDesbordeDeVentana(e)) throw e;
+        hint = "ventana-corta";
+        break;
+      }
+      const parsed = parseJson(raw) ?? repairProtocolJson(raw);
+      if (!parsed || typeof parsed !== "object") {
+        // Prosa: el modelo contestó sin protocolo, y en una consulta eso ES la respuesta.
+        if (!looksLikeProtocol(raw)) {
+          reply = raw.trim();
+          break;
+        }
+        if (++malformados > 2) break;
+        nextUser = `Observación: tu respuesta no era un JSON válido. Repetí el paso con UN objeto JSON válido, sin comillas dobles dentro de los textos.${NEXT}`;
+        continue;
+      }
+      if (parsed.thought) paso({ type: "thought", content: String(parsed.thought) });
+      const action = parsed.action ? String(parsed.action) : "";
+      if (action && esLectura(action)) {
+        const call = readCallFrom(action, parsed.args || {});
+        const r = applyToolCall(state, call, cat);
+        state = r.state;
+        paso(readStep(action, call, r));
+        nextUser = mustConsolidate(state, { maxToolTurns: MAX_CONSULTA_TURNS - 1 })
+          ? `Observación: ${r.observation}\n\nYa no hay margen para leer más: contestá ahora con {"final":"..."} usando lo leído.${NEXT}`
+          : `Observación: ${r.observation}${NEXT}`;
+        continue;
+      }
+      // Un plan, una pregunta o una herramienta de generación no son respuesta: el
+      // modelo chico tira al protocolo que mejor conoce. Se lo encauza una vez.
+      if (parsed.plan || parsed.question || action) {
+        nextUser = `Observación: esto es una consulta: no hay planes ni artefactos. Contestá la pregunta del humano con {"final":"..."} usando lo leído.${NEXT}`;
+        continue;
+      }
+      reply = String(parsed.final ?? "").trim() || extractField(raw, "final") || salvageReply(raw, parsed);
+    }
+  } finally {
+    await convo.close();
+  }
+
+  if (!reply || looksDegenerate(reply)) {
+    const leido = state.read.length ? ` Alcancé a leer ${state.read.join(", ")}.` : "";
+    reply =
+      hint === "ventana-corta"
+        ? `Se llenó la ventana del modelo antes de contestar.${leido} Ampliá «Máx. tokens» en Ajustes → Modelo de IA o preguntá sobre una vista concreta (con @).`
+        : `No llegué a una respuesta clara.${leido} Probá preguntando sobre una vista concreta (con @).`;
+  }
+  return { reply, artifacts: [], steps, ...(hint ? { hint } : {}) };
+}
+
 /** Turnos del bucle explorador: alcanza para explorar, planificar y consolidar. */
 const MAX_EXPLORE_TURNS = 12;
 /** Turnos que puede gastar LEYENDO antes de que se le exija consolidar. */
@@ -968,9 +1125,69 @@ export async function resumeLitertAgent(
   });
 }
 
+const esLectura = (action: string): boolean => (READ_TOOLS as readonly string[]).includes(action);
+
+/** Traduce la acción del modelo a la llamada tipada, tolerando sinónimos en los args. */
+function readCallFrom(action: string, a: any): ToolCall {
+  const rango = {
+    from: Number.isFinite(Number(a.from)) ? Number(a.from) : undefined,
+    to: Number.isFinite(Number(a.to)) ? Number(a.to) : undefined,
+  };
+  switch (action) {
+    case "read_views":
+      return {
+        tool: "read_views",
+        names: (Array.isArray(a.names) ? a.names : String(a.names ?? a.name ?? "").split(","))
+          .map((x: unknown) => String(x).trim())
+          .filter(Boolean),
+      };
+    case "read_view":
+      return { tool: "read_view", name: String(a.name ?? a.view ?? "") };
+    case "search_model":
+      return { tool: "search_model", term: String(a.term ?? a.query ?? "") };
+    case "read_element":
+      return { tool: "read_element", name: String(a.name ?? a.element ?? a.id ?? "") };
+    case "read_element_doc":
+      return {
+        tool: "read_element_doc",
+        element: String(a.element ?? a.node ?? a.id ?? ""),
+        name: String(a.name ?? a.doc ?? a.document ?? ""),
+        ...rango,
+      };
+    case "read_source":
+      return { tool: "read_source", name: String(a.name ?? a.doc ?? a.document ?? ""), ...rango };
+    default:
+      return { tool: "list_views" };
+  }
+}
+
+/** Paso de la traza para una lectura: qué herramienta, sobre qué y qué se anotó. */
+function readStep(
+  action: string,
+  call: ToolCall,
+  r: { observation: string; note?: { facts: string[] } }
+): AgentStepOut {
+  return {
+    type: action === "search_model" ? "search" : "read",
+    tool: action,
+    source:
+      call.tool === "read_view" ||
+      call.tool === "read_element" ||
+      call.tool === "read_source" ||
+      call.tool === "read_element_doc"
+        ? call.name
+        : call.tool === "read_views"
+          ? call.names.join(", ")
+          : call.tool === "search_model"
+            ? call.term
+            : undefined,
+    content: r.note ? r.note.facts.join(" ") : clamp(r.observation, 200),
+  };
+}
+
 /** Menú de herramientas del bucle explorador (lectura + generación). */
-function exploreToolMenu(cat: Catalog, invMax = 1200, requestedKind?: string): string {
-  return `Herramientas de LECTURA (usalas antes de generar; el contexto NO viene dado):
+function exploreToolMenu(cat: Catalog, invMax = 1200, requestedKind?: string, generar = true): string {
+  return `Herramientas de LECTURA (${generar ? "usalas antes de generar; " : ""}el contexto NO viene dado):
 - "read_views" {"names":["<vista>","<vista>","<vista>"]} — lee HASTA 3 VISTAS DE UNA VEZ. Es la que conviene: cada turno tuyo tarda, leer de a una cuesta minutos.
 - "read_view" {"name":"<nombre exacto>"} — una sola vista.
 - "search_model" {"term":"<palabra>"} — dónde aparece un concepto (dice en qué vista vive).
@@ -982,12 +1199,16 @@ function exploreToolMenu(cat: Catalog, invMax = 1200, requestedKind?: string): s
 - "read_element_doc" {"element":"<caja>","name":"<adjunto>","from":<línea>,"to":<línea>} — un trozo del MATERIAL adjunto a una caja (contrato, ejemplo, decisión). Pedilo cuando la caja venga marcada con {docs:N}: el adjunto NO entra solo en el contexto porque no cabe.`
   }
 - "list_views" {} — refrescar el inventario (ya lo tenés abajo: normalmente NO hace falta).
-
+${
+    generar
+      ? `
 Herramientas de GENERACIÓN (sólo con el plan aprobado):
 - "generate_document" {"kind":"<kind>","title":"...","instructions":"qué contener"}
 - "generate_diagram" {"kind":"<kind>","title":"...","instructions":"qué representar"}
 ${toolMenu(requestedKind)}
-
+`
+      : ""
+  }
 Inventario inicial:
 ${clamp(formatInventory(listViews(cat)), invMax)}${
     sourceInventory(cat) ? `\n\nDocumentos fuente del proyecto (leelos con read_source):\n${clamp(sourceInventory(cat), 600)}` : ""
@@ -1285,55 +1506,11 @@ ${exploreToolMenu(cat, invMax, input.requestedKind)}${clamp(ctx, ctxMax)}${memor
     const a = parsed.args || {};
 
     // --- Lecturas ---
-    if ((READ_TOOLS as readonly string[]).includes(action)) {
-      const call =
-        action === "read_views"
-          ? ({
-              tool: "read_views",
-              names: (Array.isArray(a.names) ? a.names : String(a.names ?? a.name ?? "").split(","))
-                .map((x: unknown) => String(x).trim())
-                .filter(Boolean),
-            } as ToolCall)
-          : action === "read_view"
-          ? ({ tool: "read_view", name: String(a.name ?? a.view ?? "") } as ToolCall)
-          : action === "search_model"
-            ? ({ tool: "search_model", term: String(a.term ?? a.query ?? "") } as ToolCall)
-            : action === "read_element"
-              ? ({ tool: "read_element", name: String(a.name ?? a.element ?? a.id ?? "") } as ToolCall)
-              : action === "read_element_doc"
-                ? ({
-                    tool: "read_element_doc",
-                    element: String(a.element ?? a.node ?? a.id ?? ""),
-                    name: String(a.name ?? a.doc ?? a.document ?? ""),
-                    from: Number.isFinite(Number(a.from)) ? Number(a.from) : undefined,
-                    to: Number.isFinite(Number(a.to)) ? Number(a.to) : undefined,
-                  } as ToolCall)
-              : action === "read_source"
-                ? ({
-                    tool: "read_source",
-                    name: String(a.name ?? a.doc ?? a.document ?? ""),
-                    from: Number.isFinite(Number(a.from)) ? Number(a.from) : undefined,
-                    to: Number.isFinite(Number(a.to)) ? Number(a.to) : undefined,
-                  } as ToolCall)
-                : ({ tool: "list_views" } as ToolCall);
+    if (esLectura(action)) {
+      const call = readCallFrom(action, a);
       const r = applyToolCall(state, call, cat);
       state = r.state;
-      paso({
-        type: action === "search_model" ? "search" : "read",
-        tool: action,
-        source:
-          call.tool === "read_view" ||
-          call.tool === "read_element" ||
-          call.tool === "read_source" ||
-          call.tool === "read_element_doc"
-            ? call.name
-            : call.tool === "read_views"
-              ? call.names.join(", ")
-              : call.tool === "search_model"
-                ? call.term
-                : undefined,
-        content: r.note ? r.note.facts.join(" ") : clamp(r.observation, 200),
-      });
+      paso(readStep(action, call, r));
       nextUser = mustConsolidate(state, { maxToolTurns: MAX_TOOL_TURNS })
         ? `Observación: ${r.observation}\n\nYa no hay margen para leer más: proponé el plan (o generá si ya está aprobado) con lo anotado.${NEXT}`
         : `Observación: ${r.observation}${NEXT}`;

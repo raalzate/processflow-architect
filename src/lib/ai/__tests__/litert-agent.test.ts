@@ -14,7 +14,41 @@ import {
   buildContext,
   escapeStrayQuotes,
   esObjetoSinCerrar,
+  historyBlock,
 } from "../litert-agent";
+
+describe("historyBlock", () => {
+  it("sin historia no agrega nada", () => {
+    expect(historyBlock(undefined)).toBe("");
+    expect(historyBlock([{ role: "assistant", content: "  " }])).toBe("");
+  });
+
+  it("lleva los últimos turnos, con quién habló, recortados", () => {
+    const history = Array.from({ length: 9 }, (_, i) => ({
+      role: (i % 2 ? "assistant" : "user") as "user" | "assistant",
+      content: `turno ${i} ` + "x".repeat(i === 8 ? 900 : 1),
+    }));
+    const out = historyBlock(history);
+    expect(out).toContain("Conversación previa");
+    expect(out).not.toContain("turno 2");
+    expect(out).toContain("- Asistente: turno 3");
+    expect(out).toContain("- Humano: turno 8");
+    expect(out.length).toBeLessThan(6 * 520 + 100);
+  });
+
+  it("buildContext la incluye: una repregunta llega con su contexto", () => {
+    const ctx = buildContext({
+      modelFile: "m",
+      message: "¿y eso qué implica?",
+      history: [
+        { role: "user", content: "¿De qué se trata la propuesta?" },
+        { role: "assistant", content: "Es una arquitectura con reintentos y cortocircuito." },
+      ],
+    });
+    expect(ctx).toContain("¿De qué se trata la propuesta?");
+    expect(ctx).toContain("reintentos y cortocircuito");
+  });
+});
 import { budgetFromWindow } from "../agent-run";
 
 describe("resolveNotations", () => {
@@ -132,6 +166,37 @@ describe("hasGenerationIntent", () => {
 
   it("no confunde 'modelo' (sustantivo) con 'modela' (verbo)", () => {
     expect(hasGenerationIntent("hablame del modelo de dominio")).toBe(false);
+  });
+
+  // Caso real: «De que se trata la propuesta?» terminó en un plan para generar una
+  // «Síntesis de la Propuesta». Nombrar un artefacto no es pedirlo.
+  it("una pregunta que NOMBRA un artefacto no es un pedido", () => {
+    for (const m of [
+      "De que se trata la propuesta?",
+      "¿qué dice el documento de drivers?",
+      "explicame el diagrama BPMN",
+      "¿el C4 está completo?",
+      "¿cómo modela el sistema los pagos?",
+      "necesito entender la propuesta",
+      "qué riesgos ves en el roadmap",
+      "resumime el ADR de persistencia",
+    ]) {
+      expect(hasGenerationIntent(m), m).toBe(false);
+    }
+  });
+
+  it("un pedido con verbo de creación dispara, también en voseo o como pregunta cortés", () => {
+    for (const m of [
+      "generá la propuesta técnica",
+      "hacéme un diagrama C4 completo del MVC",
+      "redactá un ADR sobre la cola de eventos",
+      "necesito un documento de drivers",
+      "¿me generas un diagrama de secuencia?",
+      "¿podés armar el roadmap?",
+      "¿puedes dibujar el flujo de pagos?",
+    ]) {
+      expect(hasGenerationIntent(m), m).toBe(true);
+    }
   });
 });
 

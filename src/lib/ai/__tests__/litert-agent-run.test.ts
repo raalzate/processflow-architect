@@ -451,6 +451,97 @@ describe("runLitertAgent — contexto por partes + human-in-the-loop", () => {
   });
 });
 
+/**
+ * Caso real: «De que se trata la propuesta?» con vistas en el proyecto terminó en
+ * un plan para generar una «Síntesis de la Propuesta». Una pregunta se contesta:
+ * puede LEER las vistas, pero no planifica ni genera.
+ */
+describe("runLitertAgent — una pregunta se contesta, no se convierte en artefacto", () => {
+  const grafo = (nombre: string) =>
+    ({
+      nombre_proyecto: "P",
+      version: "1.0.0",
+      fecha_analisis: "2026-08-18",
+      big_picture: {
+        descripcion: "",
+        hotspots: [],
+        nodos: [{ id: "n", nombre, tipo_elemento: "Tarea", descripcion: "", estado_comparativo: "nuevo" as const }],
+        aristas: [],
+      },
+      agregados: [],
+    }) as any;
+  const catalog = {
+    views: [
+      { name: "Barrera (Timeout)", notation: "bpmn", kind: "graph" as const, graph: grafo("Cortar a los 30 s") },
+      { name: "Ingesta (Cortocircuito)", notation: "bpmn", kind: "graph" as const, graph: grafo("Abrir circuito") },
+    ],
+  };
+  const PREGUNTA = "De que se trata la propuesta?";
+
+  it("lee lo que necesita y contesta, sin plan ni artefacto", async () => {
+    const send = scriptConvo([
+      '{"thought":"leo los procesos","action":"read_views","args":{"names":["Barrera (Timeout)","Ingesta (Cortocircuito)"]}}',
+      '{"thought":"ya sé","final":"Propone resiliencia: timeout de 30 s y cortocircuito en la ingesta."}',
+    ]);
+    const res = await runLitertAgent({ modelFile: "m", message: PREGUNTA, catalog });
+    expect(res.reply).toContain("cortocircuito");
+    expect(res.artifacts).toHaveLength(0);
+    expect(res.run?.pause).toBeUndefined();
+    expect(res.steps.some((s) => s.type === "plan")).toBe(false);
+    expect(res.steps.find((s) => s.type === "read")?.source).toContain("Barrera (Timeout)");
+    // El system de la consulta no ofrece herramientas de generación.
+    const system = mockConvo.mock.calls[0][1] as string;
+    expect(system).not.toContain("generate_document");
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("si el modelo igual propone un plan, se lo encauza a contestar", async () => {
+    const send = scriptConvo([
+      JSON.stringify({ thought: "armo", plan: { title: "Síntesis", artifactKind: "propuesta", sections: [] } }),
+      '{"final":"Es una propuesta de resiliencia."}',
+    ]);
+    const res = await runLitertAgent({ modelFile: "m", message: PREGUNTA, catalog });
+    expect(res.reply).toBe("Es una propuesta de resiliencia.");
+    expect(res.run?.pause).toBeUndefined();
+    expect(send.mock.calls[1][0]).toContain("esto es una consulta");
+  });
+
+  it("una respuesta en prosa (sin JSON) es la respuesta", async () => {
+    scriptConvo(["Hola, ¿en qué te ayudo con el proyecto?"]);
+    const res = await runLitertAgent({ modelFile: "m", message: "hola", catalog });
+    expect(res.reply).toBe("Hola, ¿en qué te ayudo con el proyecto?");
+  });
+
+  it("sin respuesta útil, dice qué alcanzó a leer en vez de quedar vacía", async () => {
+    scriptConvo(['{"thought":"leo","action":"read_view","args":{"name":"Barrera (Timeout)"}}']);
+    const res = await runLitertAgent({ modelFile: "m", message: PREGUNTA, catalog });
+    expect(res.reply).toContain("Barrera (Timeout)");
+    expect(res.artifacts).toHaveLength(0);
+  });
+
+  it("la ventana llena se nombra y ofrece ampliarla", async () => {
+    const send = vi.fn(async () => {
+      throw new Error("Too many tokens requested");
+    });
+    mockConvo.mockResolvedValue({ send, close: vi.fn(async () => {}) });
+    const res = await runLitertAgent({ modelFile: "m", message: PREGUNTA, catalog });
+    expect(res.hint).toBe("ventana-corta");
+    expect(res.reply).toContain("Máx. tokens");
+  });
+
+  it("un pedido explícito sigue yendo al plan", async () => {
+    scriptConvo([
+      '{"thought":"leo","action":"read_view","args":{"name":"Barrera (Timeout)"}}',
+      JSON.stringify({
+        thought: "listo",
+        plan: { title: "Propuesta", artifactKind: "propuesta", sections: [{ title: "Timeout", sources: ["Barrera (Timeout)"] }] },
+      }),
+    ]);
+    const res = await runLitertAgent({ modelFile: "m", message: "generá la propuesta técnica", catalog });
+    expect(res.run?.pause?.kind).toBe("plan");
+  });
+});
+
 describe("runLitertAgent — lectura en lote (menos turnos)", () => {
   const nodo2 = (nombre: string) => ({
     id: nombre.toLowerCase().replace(/\s+/g, "-"),
