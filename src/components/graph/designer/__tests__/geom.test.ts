@@ -69,6 +69,15 @@ describe("canvasWorldSize", () => {
 });
 
 describe("canvasPixelSize", () => {
+  it("con la ficha abierta deja scroll extra a la derecha para sacar lo tapado (#643)", () => {
+    const sin = canvasPixelSize({ width: 2000, height: 2000 }, 1, { w: 1400, h: 900 });
+    const con = canvasPixelSize({ width: 2000, height: 2000 }, 1, { w: 1400, h: 900 }, 700);
+    expect(con.w).toBe(sin.w + 700);
+    expect(con.h).toBe(sin.h);
+    // Un valor negativo no achica el lienzo.
+    expect(canvasPixelSize({ width: 2000, height: 2000 }, 1, { w: 1400, h: 900 }, -50).w).toBe(sin.w);
+  });
+
   it("el lienzo nunca es más chico que el viewport (la franja partida en dos tonos)", () => {
     // Mundo 2000 al 25 % = 500 px, pero la ventana mide 1400: manda la ventana.
     const r = canvasPixelSize({ width: 2000, height: 2000 }, 0.25, { w: 1400, h: 900 });

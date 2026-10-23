@@ -22,6 +22,7 @@
 
 import type { GraphData, GraphNode, Agregado, ReadModel } from "../types";
 import { problemasDePropiedades } from "../element-properties";
+import { iconoPorTecnologia } from "../icons/catalog";
 import { sanitizeSpec, type ElementSpec } from "../element-spec";
 import { docsParaGuardar, type ElementDoc } from "../element-docs";
 import { conFuenteSeparada, sanitizeSourceDocs, type SourceDoc } from "../source-docs";
@@ -378,6 +379,15 @@ export const SIN_ANIDAMIENTO =
   "con `subview`. Meterlo como banda hermana en el mismo lienzo dice que son del mismo rango, " +
   "que es justo lo que no son.";
 
+/**
+ * El logo que le toca a una caja por sus tecnologías, si el agente no eligió
+ * uno (#643). Sin esto el agente declaraba `tags: ["Node 20"]` y la caja se
+ * dibujaba con el icono genérico del tipo: casi nunca pasaba `icon`.
+ */
+function iconoInferido(n: Pick<BuilderNode, "icono" | "tags_tecnologia">): Pick<BuilderNode, "icono"> {
+  return { icono: n.icono || iconoPorTecnologia(n.tags_tecnologia) };
+}
+
 /** Añade un CONTENEDOR (Agregado, Pool, Límite, Paquete…). Lanza si el tipo no es contenedor. */
 export function addContainer(
   model: DiagramModel,
@@ -394,8 +404,9 @@ export function addContainer(
   // Por id EXACTO: `findNode` resuelve también el id tal como se dibuja en
   // Mermaid, y con eso un id nuevo chocaba contra otro que sólo se le parece.
   if (model.nodes.some((n) => n.id === id)) throw new Error(`Ya existe un elemento con id "${id}".`);
-  const node: BuilderNode = { ...input, id, container: "", metadata: metadataDeEntrada(input.metadata) };
+  const node: BuilderNode = { ...input, id, container: "", metadata: metadataDeEntrada(input.metadata), ...iconoInferido(input) };
   if (!node.metadata) delete node.metadata;
+  if (!node.icono) delete node.icono;
   return { model: { ...model, nodes: [...model.nodes, node] }, id };
 }
 
@@ -421,8 +432,9 @@ export function addNode(
   // Por id EXACTO: `findNode` resuelve también el id tal como se dibuja en
   // Mermaid, y con eso un id nuevo chocaba contra otro que sólo se le parece.
   if (model.nodes.some((n) => n.id === id)) throw new Error(`Ya existe un elemento con id "${id}".`);
-  const node: BuilderNode = { ...input, id, metadata: metadataDeEntrada(input.metadata) };
+  const node: BuilderNode = { ...input, id, metadata: metadataDeEntrada(input.metadata), ...iconoInferido(input) };
   if (!node.metadata) delete node.metadata;
+  if (!node.icono) delete node.icono;
   return { model: { ...model, nodes: [...model.nodes, node] }, id };
 }
 
@@ -583,6 +595,12 @@ export function updateNode(
   const nodes = model.nodes.map((n) => {
     if (n.id === target.id) {
       const actualizado: BuilderNode = { ...n, ...campos, nombre: nuevoNombre || n.nombre };
+      // Tecnologías nuevas sin icono elegido: el logo sale de ellas (#643). Un
+      // `icono` explícito en el parche —también vacío, que es «quitarlo»— manda.
+      if (campos.tags_tecnologia !== undefined && !("icono" in campos) && !n.icono) {
+        const inferido = iconoPorTecnologia(campos.tags_tecnologia);
+        if (inferido) actualizado.icono = inferido;
+      }
       if (metadata?.length) actualizado.metadata = metadata;
       else delete actualizado.metadata;
       return actualizado;

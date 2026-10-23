@@ -12,6 +12,7 @@ Generado por `scripts/build-icon-catalog.ts` desde `scripts/icon-catalog.manifes
 |---|---|---|
 | [Simple Icons](https://simpleicons.org) | CC0 1.0 | logos de marcas (SVG de un trazo, color de marca) |
 | [Devicon](https://devicon.dev) | MIT | logos que Simple Icons ya no distribuye (AWS, Azure, Slack, Oracle, SQL Server, Java, C#, Salesforce, Twilio, Heroku, gRPC, Cassandra, React Native) |
+| [Lobe Icons](https://github.com/lobehub/lobe-icons) (`@lobehub/icons-static-svg`) | MIT | logos de IA y nube que ni Simple Icons ni Devicon distribuyen (OpenAI, Amazon Bedrock, Groq, Azure AI, Vertex AI, Cohere…) |
 | [lucide](https://lucide.dev) | ISC | iconos genéricos (nube, servidor, base de datos, cola…), ya dependencia de la app |
 
 Los logos son marcas registradas de sus dueños y se usan únicamente para **identificar** la
@@ -38,3 +39,6 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FO
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+Lobe Icons se distribuye bajo la misma licencia MIT (texto de arriba), con
+`Copyright (c) 2023 LobeHub`.

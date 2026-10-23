@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedKeys, draftPatch, hasDraftChanges, parseTagList } from "../inspector-draft";
+import { adoptarExternos, changedKeys, draftPatch, hasDraftChanges, parseTagList } from "../inspector-draft";
 
 describe("inspector-draft", () => {
   const abierto = { id: "a", nombre: "Pago", descripcion: "", x: 100, y: 100, tags: ["java"] };
@@ -89,5 +89,37 @@ describe("metadatos en el parche del borrador", () => {
     const a = { metadata: [{ clave: "repo", valor: "r" }, { clave: "wiki", valor: "w" }] };
     const b = { metadata: [{ clave: "wiki", valor: "w" }, { clave: "repo", valor: "r" }] };
     expect(hasDraftChanges(a, b)).toBe(true);
+  });
+});
+
+describe("adoptarExternos (#643): lo que escribe un agente con la ficha abierta", () => {
+  const abierto = { id: "a", nombre: "CLI", spec: undefined as unknown, tags: ["Node 20"], icono: undefined as string | undefined };
+
+  it("adopta la spec que llegó de afuera si el humano no la tocó", () => {
+    const vivo = { ...abierto, spec: { stories: [1] } };
+    const r = adoptarExternos(abierto, { ...abierto }, vivo)!;
+    expect(r.borrador.spec).toEqual({ stories: [1] });
+    // Adoptado también en el original: el autoguardado no lo cuenta como cambio del humano.
+    expect(hasDraftChanges(r.original, r.borrador)).toBe(false);
+  });
+
+  it("adopta varios campos a la vez (icono y tecnologías del agente)", () => {
+    const vivo = { ...abierto, icono: "si-nodedotjs", tags: ["Node 20", "TypeScript"] };
+    const r = adoptarExternos(abierto, { ...abierto }, vivo)!;
+    expect(r.borrador.icono).toBe("si-nodedotjs");
+    expect(r.borrador.tags).toEqual(["Node 20", "TypeScript"]);
+  });
+
+  it("respeta lo que el humano está editando y adopta el resto", () => {
+    const borrador = { ...abierto, nombre: "CLI ops" };
+    const vivo = { ...abierto, nombre: "CLI del agente", icono: "si-nodedotjs" };
+    const r = adoptarExternos(abierto, borrador, vivo)!;
+    expect(r.borrador.nombre).toBe("CLI ops");
+    expect(r.borrador.icono).toBe("si-nodedotjs");
+    expect(draftPatch(r.original, r.borrador)).toEqual({ nombre: "CLI ops" });
+  });
+
+  it("sin cambios de afuera no hay nada que adoptar", () => {
+    expect(adoptarExternos(abierto, { ...abierto, nombre: "x" }, { ...abierto })).toBeNull();
   });
 });

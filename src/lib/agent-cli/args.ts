@@ -20,6 +20,8 @@ export interface LaunchInput {
   systemPrompt: string;
   /** Sesión previa para continuar la conversación. */
   sessionId?: string;
+  /** Modelo del CLI (alias de `CLI_MODELOS`); sin esto, el que tenga configurado el usuario. */
+  model?: string;
   /** Tope de turnos por mensaje: un agente que se va de tema no corre sin fin. */
   maxTurns?: number;
   /**
@@ -124,7 +126,9 @@ export function buildGenerateLaunch(input: GenerateInput): Launch {
  * (#461). Antes era `mcp__processflow__*`, y en modo `-p` todo lo permitido se
  * aprueba solo: un archivo de una carpeta adjunta podía inducirlo a llamar
  * `delete_view` o `set_view_graph`. Ahora: leer la caja y su contexto, y
- * escribir SÓLO la spec de una caja. Lo demás queda denegado.
+ * escribir SÓLO en la caja abierta —su spec, y desde #643 sus tecnologías,
+ * icono y referencias—; el servidor rechaza cualquier otra (`errorDeAlcance`).
+ * Lo demás queda denegado.
  */
 export const CHAT_MCP_TOOLS = [
   "get_app_state",
@@ -134,7 +138,9 @@ export const CHAT_MCP_TOOLS = [
   "list_element_docs",
   "read_element_doc",
   "search_docs",
+  "list_icons",
   "set_view_element_spec",
+  "update_view_element",
 ] as const;
 
 export const chatMcpAllowlist = (): string[] => CHAT_MCP_TOOLS.map((t) => `mcp__${MCP_SERVER_NAME}__${t}`);
@@ -173,6 +179,7 @@ export function buildLaunch(input: LaunchInput): Launch {
         input.systemPrompt,
         "--max-turns",
         maxTurns,
+        ...(input.model ? ["--model", input.model] : []),
         ...(input.sessionId ? ["--resume", input.sessionId] : []),
         "-p",
       ],
@@ -182,7 +189,12 @@ export function buildLaunch(input: LaunchInput): Launch {
   const mcp = ["-c", `mcp_servers.${MCP_SERVER_NAME}.url="${input.mcpUrl}"`];
   // Codex lee desde su directorio de trabajo (sandbox de sólo lectura por defecto
   // en `exec`): la primera carpeta adjunta es ese directorio. Sin verificar en vivo.
-  const comunes = ["--json", ...mcp, ...(dirs[0] ? ["-C", dirs[0], "--sandbox", "read-only"] : [])];
+  const comunes = [
+    "--json",
+    ...mcp,
+    ...(input.model ? ["-m", input.model] : []),
+    ...(dirs[0] ? ["-C", dirs[0], "--sandbox", "read-only"] : []),
+  ];
   return {
     command: "codex",
     args: input.sessionId

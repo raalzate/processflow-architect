@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   PROPIEDADES_CANONICAS,
+  perfilDeTipo,
+  propiedadesSugeridas,
   VALOR_PENDIENTE,
   claveCanonica,
   problemasDePropiedades,
@@ -25,7 +27,9 @@ describe("registro de claves canónicas", () => {
   it("las obligatorias son repo y puerto, y sólo se le exigen a lo DESPLEGABLE", () => {
     const obligatorias = PROPIEDADES_CANONICAS.filter((p) => p.obligatoria);
     expect(obligatorias.map((p) => p.clave).sort()).toEqual(["puerto", "repo"]);
-    for (const p of obligatorias) expect(p.aplicaA).toBe("desplegables");
+    // #643: el repositorio sólo a los SERVICIOS (lo desplegable que no es almacén).
+    expect(obligatorias.find((p) => p.clave === "repo")?.aplicaA).toBe("servicios");
+    expect(obligatorias.find((p) => p.clave === "puerto")?.aplicaA).toBe("desplegables");
   });
 
   it("cada clave declara su tipo, sus alias y para qué sirve", () => {
@@ -190,5 +194,50 @@ describe("problemasDePropiedades (todo el modelo)", () => {
     const problemas = problemasDePropiedades(conTipo as never);
     expect(problemas).toHaveLength(1);
     expect(problemas[0].motivo).toBe("tipo");
+  });
+});
+
+describe("propiedades según el tipo (#643)", () => {
+  it("una base de datos no debe repositorio: debe el puerto", () => {
+    const perfil = perfilDeTipo("Base de Datos");
+    expect(perfil).toEqual({ desplegable: true, almacen: true });
+    expect(propiedadesFaltantes([], perfil).map((p) => p.clave)).toEqual(["puerto"]);
+  });
+
+  it("un servicio sigue debiendo repo y puerto", () => {
+    expect(propiedadesFaltantes([], perfilDeTipo("Contenedor")).map((p) => p.clave).sort()).toEqual(["puerto", "repo"]);
+  });
+
+  it("a un almacén se le sugiere motor y esquema, nunca repo ni endpoint", () => {
+    const claves = propiedadesSugeridas([], perfilDeTipo("Base de Datos")).map((p) => p.clave);
+    expect(claves[0]).toBe("puerto"); // la obligatoria primero
+    expect(claves).toContain("motor");
+    expect(claves).toContain("esquema");
+    expect(claves).not.toContain("repo");
+    expect(claves).not.toContain("endpoint");
+  });
+
+  it("a un servicio se le sugiere repo y endpoint, no motor", () => {
+    const claves = propiedadesSugeridas([], perfilDeTipo("Contenedor")).map((p) => p.clave);
+    expect(claves.slice(0, 2).sort()).toEqual(["puerto", "repo"]);
+    expect(claves).toContain("endpoint");
+    expect(claves).not.toContain("motor");
+  });
+
+  it("no sugiere lo que ya está, aunque esté con un alias o a medio llenar", () => {
+    const lista = [meta("repositorio", ""), meta("port", "8080", "numero")];
+    const claves = propiedadesSugeridas(lista, perfilDeTipo("Contenedor")).map((p) => p.clave);
+    expect(claves).not.toContain("repo");
+    expect(claves).not.toContain("puerto");
+  });
+
+  it("a lo que no se despliega sólo se le sugiere lo de todos (dueño, wiki)", () => {
+    const claves = propiedadesSugeridas([], perfilDeTipo("Evento")).map((p) => p.clave);
+    expect(claves.sort()).toEqual(["owner", "wiki"]);
+  });
+
+  it("el modelo no le pide repo a la base de datos", () => {
+    const modelo = { nodes: [{ id: "db", nombre: "sre.db", tipo_elemento: "Base de Datos", metadata: [] }] };
+    expect(problemasDePropiedades(modelo as never).map((p) => p.clave)).toEqual(["puerto"]);
   });
 });

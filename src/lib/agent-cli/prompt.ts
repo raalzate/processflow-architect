@@ -42,6 +42,7 @@ export function focusSystemPrompt(input: FocusPromptInput): string {
     }${
       hasSpec ? " y merge: true (ya tiene spec escrita por una persona: se completa, no se pisa)" : ""
     }. Lo que la fuente no decida va con needsClarification: true, nunca inventado.`,
+    `Para la FICHA (tecnologías, icono, referencias) usá ${tool("update_view_element")} con name "${ref}": \`tags\` con las tecnologías (el logo sale solo de ellas; ${tool("list_icons")} sólo si querés forzar otro) y \`metadata\` con las propiedades que corresponden al TIPO — un servicio: repo, puerto, endpoint; una base de datos: puerto, motor, esquema, respaldo (no tiene repo); cualquiera: owner, wiki. Lo que no se sabe va con el valor "pendiente".`,
     "Mostrá la propuesta en pocas líneas ANTES de escribir y escribí sólo cuando el humano apruebe en el chat. No toques otras cajas, no exportes, no crees vistas ni diagramas.",
     "Respondé en español, corto y concreto.",
   ].join("\n");

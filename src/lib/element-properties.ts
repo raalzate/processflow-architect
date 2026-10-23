@@ -26,17 +26,35 @@
  */
 
 import { esEnlaceExterno, validarValorSegunTipo, type ElementMetadata, type MetadataTipo } from "./element-metadata";
-import { isDeployableType } from "./notations";
+import { isDatastoreType, isDeployableType } from "./notations";
 
 /** Valor con el que se declara que el dato todavía no se sabe. */
 export const VALOR_PENDIENTE = "pendiente";
 
 /**
  * A qué elementos se les pide una propiedad. Es una CAPACIDAD, no una lista de
- * tipos: `desplegables` son los que tienen código (`deployable` en
- * `notations.ts`), y quién lo es lo decide ese registro.
+ * tipos: `desplegables` son los que se despliegan (`deployable` en
+ * `notations.ts`); `almacenes`, los que juegan el rol `datastore`; `servicios`,
+ * lo desplegable que NO es almacén. La distinción existe porque a una base de
+ * datos se le preguntaba por su repositorio, que no tiene: lo que quien la opera
+ * busca es el motor y el esquema.
  */
-export type AplicaA = "desplegables" | "todos";
+export type AplicaA = "desplegables" | "servicios" | "almacenes" | "todos";
+
+/** Qué es un elemento a efectos de sus propiedades. Lo decide `notations.ts`. */
+export interface PerfilDePropiedades {
+  desplegable: boolean;
+  almacen: boolean;
+}
+
+/** El perfil de un tipo, leído del registro de notaciones (nunca de un literal). */
+export function perfilDeTipo(tipo: string | undefined): PerfilDePropiedades {
+  return { desplegable: isDeployableType(tipo ?? ""), almacen: isDatastoreType(tipo ?? "") };
+}
+
+/** Compatibilidad: quien sólo sabe si es desplegable pasa un booleano. */
+const comoPerfil = (p: PerfilDePropiedades | boolean): PerfilDePropiedades =>
+  typeof p === "boolean" ? { desplegable: p, almacen: false } : p;
 
 export interface PropiedadCanonica {
   /** Nombre canónico, el que se guarda y el que se busca. */
@@ -53,10 +71,11 @@ export interface PropiedadCanonica {
 }
 
 /**
- * El registro. Obligatorias sólo `repo` y `puerto`, y sólo en lo DESPLEGABLE —el
- * Contenedor y el Componente de C4, el Nodo de UML, el Contexto Delimitado de
- * DDD—. `endpoint` no es obligatoria a propósito: exigirla haría fallar los
- * diagramas de dominio, que no exponen API y no por eso están incompletos.
+ * El registro. Obligatorias sólo `repo` y `puerto`: el puerto en todo lo
+ * DESPLEGABLE, el repositorio sólo en los SERVICIOS —una base de datos no tiene
+ * código propio—. `endpoint` no es obligatoria a propósito: exigirla haría
+ * fallar los diagramas de dominio, que no exponen API y no por eso están
+ * incompletos. El orden es el de las sugerencias de la ficha.
  */
 export const PROPIEDADES_CANONICAS: readonly PropiedadCanonica[] = [
   {
@@ -64,7 +83,7 @@ export const PROPIEDADES_CANONICAS: readonly PropiedadCanonica[] = [
     tipo: "url",
     alias: ["repositorio", "repo_url", "repourl", "git", "codigo", "código"],
     obligatoria: true,
-    aplicaA: "desplegables",
+    aplicaA: "servicios",
     porQue: "sin el repositorio, quien va a construir no sabe dónde está el código de esta caja",
   },
   {
@@ -80,8 +99,32 @@ export const PROPIEDADES_CANONICAS: readonly PropiedadCanonica[] = [
     tipo: "url",
     alias: ["url_base", "urlbase", "base_url", "baseurl", "api"],
     obligatoria: false,
-    aplicaA: "desplegables",
+    aplicaA: "servicios",
     porQue: "es la dirección pública por la que se consume esta caja",
+  },
+  {
+    clave: "motor",
+    tipo: "texto",
+    alias: ["engine", "dbms", "gestor", "motor_bd"],
+    obligatoria: false,
+    aplicaA: "almacenes",
+    porQue: "qué motor y versión corre (PostgreSQL 16, SQLite WAL): decide drivers, backups y límites",
+  },
+  {
+    clave: "esquema",
+    tipo: "texto",
+    alias: ["schema", "base", "database", "base_de_datos", "nombre_bd"],
+    obligatoria: false,
+    aplicaA: "almacenes",
+    porQue: "qué base o esquema concreto usa esta caja dentro del motor",
+  },
+  {
+    clave: "respaldo",
+    tipo: "texto",
+    alias: ["backup", "backups", "retencion", "retención"],
+    obligatoria: false,
+    aplicaA: "almacenes",
+    porQue: "cada cuánto se respalda y cuánto se retiene: sin esto nadie sabe qué se pierde ante una falla",
   },
   {
     clave: "owner",
@@ -134,8 +177,30 @@ const esPendiente = (m: ElementMetadata): boolean =>
   (m.valor ?? "").trim().toLowerCase() === VALOR_PENDIENTE;
 
 /** ¿A este elemento le aplica esta propiedad? */
-const aplica = (p: PropiedadCanonica, esDesplegable: boolean): boolean =>
-  p.aplicaA === "todos" || esDesplegable;
+export function aplicaPropiedad(p: PropiedadCanonica, perfil: PerfilDePropiedades | boolean): boolean {
+  const { desplegable, almacen } = comoPerfil(perfil);
+  switch (p.aplicaA) {
+    case "todos":
+      return true;
+    case "desplegables":
+      return desplegable;
+    case "servicios":
+      return desplegable && !almacen;
+    case "almacenes":
+      return almacen;
+  }
+}
+
+/** Claves canónicas que el elemento ya declara (por su clave o por un alias). */
+function canonicasDeclaradas(metadata: readonly ElementMetadata[] | undefined, conValor: boolean): Set<string> {
+  const declaradas = new Set<string>();
+  for (const m of metadata ?? []) {
+    if (conValor && !declarado(m)) continue;
+    const canonica = claveCanonica(m.clave);
+    if (canonica) declaradas.add(canonica);
+  }
+  return declaradas;
+}
 
 /**
  * Propiedades OBLIGATORIAS que este elemento no declara. Un alias cuenta como
@@ -143,17 +208,27 @@ const aplica = (p: PropiedadCanonica, esDesplegable: boolean): boolean =>
  */
 export function propiedadesFaltantes(
   metadata: readonly ElementMetadata[] | undefined,
-  esDesplegable: boolean
+  perfil: PerfilDePropiedades | boolean
 ): PropiedadCanonica[] {
-  const declaradas = new Set<string>();
-  for (const m of metadata ?? []) {
-    if (!declarado(m)) continue;
-    const canonica = claveCanonica(m.clave);
-    if (canonica) declaradas.add(canonica);
-  }
+  const declaradas = canonicasDeclaradas(metadata, true);
   return PROPIEDADES_CANONICAS.filter(
-    (p) => p.obligatoria && aplica(p, esDesplegable) && !declaradas.has(p.clave)
+    (p) => p.obligatoria && aplicaPropiedad(p, perfil) && !declaradas.has(p.clave)
   );
+}
+
+/**
+ * Lo que la ficha SUGIERE agregar: las canónicas que le aplican al elemento y
+ * todavía no tiene (ni con un alias, ni a medio llenar), obligatorias primero.
+ * Antes la fila de alta proponía siempre `repo`, aunque ya estuviera y aunque la
+ * caja fuera una base de datos.
+ */
+export function propiedadesSugeridas(
+  metadata: readonly ElementMetadata[] | undefined,
+  perfil: PerfilDePropiedades | boolean
+): PropiedadCanonica[] {
+  const declaradas = canonicasDeclaradas(metadata, false);
+  const libres = PROPIEDADES_CANONICAS.filter((p) => aplicaPropiedad(p, perfil) && !declaradas.has(p.clave));
+  return [...libres.filter((p) => p.obligatoria), ...libres.filter((p) => !p.obligatoria)];
 }
 
 /** Un problema de tipo en una propiedad canónica. */
@@ -222,8 +297,7 @@ export function problemasDePropiedades(model: {
   for (const n of model?.nodes ?? []) {
     const nombre = n.nombre || n.id || "(sin nombre)";
     const id = n.id || "";
-    const esDesplegable = isDeployableType(n.tipo_elemento ?? "");
-    for (const p of propiedadesFaltantes(n.metadata, esDesplegable)) {
+    for (const p of propiedadesFaltantes(n.metadata, perfilDeTipo(n.tipo_elemento))) {
       out.push({
         elemento: nombre,
         id,

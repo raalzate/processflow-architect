@@ -1330,3 +1330,13 @@ export function notationRoles(
 ): Partial<Record<ElementRole, string[]>> {
   return ELEMENT_ROLES[getNotation(id).id];
 }
+
+/**
+ * true si el tipo es un ALMACÉN de datos en alguna notación (la Base de Datos de
+ * C4, el Almacén de Datos de BPMN). Se pregunta por el ROL y no por el literal
+ * para que las propiedades que se le piden a un almacén —motor, esquema, no
+ * repositorio— las herede cualquier notación que declare `datastore`.
+ */
+export function isDatastoreType(type: string): boolean {
+  return Object.values(ELEMENT_ROLES).some((t) => t.datastore?.includes(type) ?? false);
+}

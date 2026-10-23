@@ -58,7 +58,7 @@ import {
 import { SKIN_LIST, leerSkin, type SkinId } from "@/lib/skin";
 import { AVISO_TAMANO_BYTES, PRESETS, PRESET_LIST, slugDeProyecto, type PresetId } from "@/lib/export/html-page";
 import { cssVarsDePerfil, perfilVigente } from "@/lib/brand/profile";
-import { CATEGORIAS, buscarIconos, iconoDeCatalogo } from "@/lib/icons/catalog";
+import { CATEGORIAS, buscarIconos, iconoDeCatalogo, iconoPorTecnologia } from "@/lib/icons/catalog";
 import { useBrandProfiles } from "@/hooks/use-brand-profiles";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
@@ -105,6 +105,12 @@ import {
   type ElementMetadata,
   type MetadataTipo,
 } from "@/lib/element-metadata";
+import {
+  VALOR_PENDIENTE,
+  perfilDeTipo,
+  propiedadesSugeridas,
+  type PropiedadCanonica,
+} from "@/lib/element-properties";
 import { hasPlatformModifier, modifierLabel } from "@/lib/platform";
 import {
   INSPECTOR_WIDTHS,
@@ -186,11 +192,7 @@ import { AgentCliChat } from "./AgentCliChat";
 import { buildEmbedMap, wouldCreateCycle } from "@/lib/view-embeds";
 import { ReferenceContextDialog } from "./ReferenceContextDialog";
 import { CanvasContextMenu, type CanvasMenuItem } from "./CanvasContextMenu";
-import { changedKeys, draftPatch, hasDraftChanges, parseTagList } from "./inspector-draft";
-
-/** Igualdad de spec con la misma regla que el borrador (`changedKeys`), para no duplicar la comparación. */
-const igualSpec = (a: ElementSpec | undefined, b: ElementSpec | undefined): boolean =>
-  changedKeys({ spec: a }, { spec: b }).length === 0;
+import { adoptarExternos, draftPatch, hasDraftChanges, parseTagList } from "./inspector-draft";
 import { CANVAS_CHROME } from "@/lib/canvas-chrome";
 import {
   FUENTES,
@@ -220,6 +222,7 @@ import {
   DesignerLinkComponent,
   LinkEndpointHandles,
   CHANGE_STATES,
+  type CampoEnLienzo,
 } from "./DesignerCanvas";
 import { styleLinks, styleLinksSummary, type LinkStylePatch } from "./link-style";
 import { nodeAtPoint, reconnectLink } from "./link-reconnect";
@@ -580,16 +583,34 @@ const MetadataRow: React.FC<{
 
 const MetadataField: React.FC<{
   value?: ElementMetadata[];
+  /** Tipo del elemento: decide qué propiedades se sugieren (#643). */
+  tipoElemento?: string;
   onChange: (lista: ElementMetadata[] | undefined) => void;
-}> = ({ value, onChange }) => {
+}> = ({ value, tipoElemento, onChange }) => {
   const lista = value ?? [];
   const [clave, setClave] = useState("");
   const [valor, setValor] = useState("");
   const [tipo, setTipo] = useState<MetadataTipo>("texto");
   const [error, setError] = useState<string | null>(null);
+  // Lo que le falta a ESTA caja según su tipo (#643): a una base de datos no se
+  // le propone `repo`, y lo que ya está no se vuelve a proponer.
+  const sugeridas = useMemo(
+    () => propiedadesSugeridas(lista, perfilDeTipo(tipoElemento)),
+    [lista, tipoElemento]
+  );
+  const proxima = sugeridas[0];
+  // Con la clave vacía, el tipo de la fila de alta sigue a la sugerencia: así
+  // Enter sobre el placeholder no guarda un puerto como texto.
+  const tipoAlta: MetadataTipo = !clave.trim() && proxima ? proxima.tipo : tipo;
+
+  const elegirSugerida = (p: PropiedadCanonica) => {
+    setClave(p.clave);
+    setTipo(p.tipo);
+    setError(null);
+  };
 
   const agregar = () => {
-    const entrada: ElementMetadata = { clave, valor, tipo };
+    const entrada: ElementMetadata = { clave: clave.trim() || proxima?.clave || "", valor, tipo: tipoAlta };
     const problema = validarMetadata(entrada);
     if (problema) return setError(problema);
     try {
@@ -662,12 +683,12 @@ const MetadataField: React.FC<{
                   value={clave}
                   onChange={(e) => setClave(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && agregar()}
-                  placeholder="repo"
+                  placeholder={proxima?.clave ?? "propiedad"}
                   className="h-8 rounded-none border-0 bg-transparent px-2 text-xs focus-visible:ring-1"
                 />
               </td>
               <td className="w-24 border-l p-0">
-                <Select value={tipo} onValueChange={(v) => setTipo(v as MetadataTipo)}>
+                <Select value={tipoAlta} onValueChange={(v) => setTipo(v as MetadataTipo)}>
                   <SelectTrigger className="h-8 rounded-none border-0 bg-transparent px-2 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -685,8 +706,14 @@ const MetadataField: React.FC<{
                   value={valor}
                   onChange={(e) => setValor(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && agregar()}
-                  type={tipo === "fecha" ? "date" : "text"}
-                  placeholder={tipo === "url" ? "https://github.com/acme/pagos-svc" : "acme/pagos-svc"}
+                  type={tipoAlta === "fecha" ? "date" : "text"}
+                  placeholder={
+                    tipoAlta === "url"
+                      ? "https://github.com/acme/pagos-svc"
+                      : tipoAlta === "numero"
+                        ? "5432"
+                        : `valor o "${VALOR_PENDIENTE}"`
+                  }
                   className="h-8 rounded-none border-0 bg-transparent px-2 text-xs focus-visible:ring-1"
                 />
               </td>
@@ -707,6 +734,25 @@ const MetadataField: React.FC<{
         </table>
       </div>
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+      {sugeridas.length > 0 && lista.length < MAX_METADATA_POR_CAJA && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+          <span className="text-2xs text-muted-foreground">Sugeridas para este tipo:</span>
+          {sugeridas.map((p) => (
+            <button
+              key={p.clave}
+              type="button"
+              title={`${p.tipo}${p.obligatoria ? " · obligatoria" : ""}: ${p.porQue}`}
+              onClick={() => elegirSugerida(p)}
+              className={cn(
+                "rounded-full border px-2 py-0.5 text-2xs hover:bg-muted",
+                p.obligatoria ? "border-primary/50 text-foreground" : "text-muted-foreground"
+              )}
+            >
+              + {p.clave}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -847,12 +893,16 @@ const TamanoInput: React.FC<{
 const IconoField: React.FC<{
   value?: string;
   tipo: string;
+  /** Tecnologías de la caja: de ahí sale el logo que se sugiere (#643). */
+  tags?: string[] | null;
   onChange: (icono: string | undefined) => void;
-}> = ({ value, tipo, onChange }) => {
+}> = ({ value, tipo, tags, onChange }) => {
   const [consulta, setConsulta] = useState("");
   const [categoria, setCategoria] = useState<string | undefined>(undefined);
   const [abierto, setAbierto] = useState(false);
   const actual = iconoDeCatalogo(value);
+  // Sugerencia, nunca automático: un icono puesto a mano no se pisa.
+  const sugerido = useMemo(() => iconoDeCatalogo(iconoPorTecnologia(tags)), [tags]);
   const resultados = useMemo(() => buscarIconos(consulta, categoria).slice(0, 48), [consulta, categoria]);
   const Fallback = iconForType(tipo);
   return (
@@ -872,12 +922,23 @@ const IconoField: React.FC<{
       </div>
       <div className="mt-2 flex items-center gap-2 text-sm">
         <span className="flex h-7 w-7 items-center justify-center rounded border">
-          <IconoDeElemento icono={value} Fallback={Fallback} className="h-5 w-5" />
+          <IconoDeElemento icono={value} Fallback={Fallback} fondo className="h-6 w-6" />
         </span>
         <span className="text-muted-foreground">
           {actual ? `${actual.nombre} · ${actual.categoria}` : value ? `«${value}» no está en el catálogo: se dibuja el icono del tipo` : "El icono del tipo. Elegí el logo de la tecnología si la caja es una."}
         </span>
       </div>
+      {sugerido && sugerido.id !== value && (
+        <button
+          type="button"
+          onClick={() => onChange(sugerido.id)}
+          className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-primary/50 px-2 py-0.5 text-xs hover:bg-primary/10"
+          title="Sale de «Tecnologías / etiquetas»"
+        >
+          <IconoDeElemento icono={sugerido.id} Fallback={Fallback} className="h-4 w-4" />
+          Usar {sugerido.nombre}
+        </button>
+      )}
       {abierto && (
         <div className="mt-3 space-y-2">
           <Input
@@ -1409,15 +1470,16 @@ const EditNodeDialog: React.FC<{
     // tecleando. Sólo se reinicia al cambiar de elemento o al cerrar.
     if (node && nodeRef.current && node.id === nodeRef.current.id) {
       nodeRef.current = node;
-      // Spec escrita desde AFUERA con la ficha abierta (un agente externo por
-      // `set_view_element_spec`, feature 019): se adopta sólo si el humano no
-      // tocó la spec en el borrador. Si no, la ficha seguiría mostrando la
-      // vieja y el próximo autoguardado pisaría lo que escribió el agente.
+      // Cambios hechos desde AFUERA con la ficha abierta (un agente por
+      // `set_view_element_spec` o `update_view_element`, #643): se adopta todo
+      // campo que el humano no tocó en el borrador. Si no, la ficha seguiría
+      // mostrando lo viejo y el próximo autoguardado pisaría lo del agente.
       const original = originalRef.current;
       const borrador = draftRef.current;
-      if (original && !igualSpec(node.spec, original.spec) && borrador && igualSpec(borrador.spec, original.spec)) {
-        originalRef.current = { ...original, spec: node.spec };
-        setDraft((d) => (d ? { ...d, spec: node.spec } : d));
+      const adoptado = original && borrador ? adoptarExternos(original, borrador, node) : null;
+      if (adoptado) {
+        originalRef.current = adoptado.original;
+        setDraft(adoptado.borrador);
       }
       return;
     }
@@ -1820,6 +1882,17 @@ const EditNodeDialog: React.FC<{
             />
             <FuenteCitada cita={fuenteDelElemento(draft)} docs={sourceDocs} />
           </div>
+          {/* El icono va bajo la identidad (#643): en la columna derecha, al
+              ensanchar la ficha, dejaba un hueco debajo de «Fuente». */}
+          <IconoField
+            value={draft.icono}
+            tipo={draft.tipo_elemento}
+            tags={draft.tags_tecnologia}
+            onChange={(icono) => {
+              tocado("icono");
+              setDraft((d) => (d ? { ...d, icono } : d));
+            }}
+          />
             </div>
 
             {/* Columna derecha: clasificación y estilo */}
@@ -2002,14 +2075,6 @@ const EditNodeDialog: React.FC<{
             />
             <SugBtn field="tags" onClick={suggestTags} disabled={!draft.nombre.trim()} />
           </TagsField>
-          <IconoField
-            value={draft.icono}
-            tipo={draft.tipo_elemento}
-            onChange={(icono) => {
-              tocado("icono");
-              setDraft((d) => (d ? { ...d, icono } : d));
-            }}
-          />
           <EstiloField
             value={draft.estilo}
             legado={{ color: draft.color, borderColor: draft.borderColor }}
@@ -2041,6 +2106,7 @@ const EditNodeDialog: React.FC<{
           <div className="mt-4">
             <MetadataField
               value={draft.metadata}
+              tipoElemento={draft.tipo_elemento}
               onChange={(lista) => setDraft((d) => (d ? { ...d, metadata: lista } : d))}
             />
           </div>
@@ -2985,6 +3051,8 @@ export const ComponentDesigner: React.FC<{
   const fichaAbiertaId = editingNode?.id;
   useEffect(() => setFocoCentro(null), [fichaAbiertaId]);
   const [editingLink, setEditingLink] = useState<DesignerLink | null>(null);
+  // Texto que se está editando EN EL LIENZO (#643, doble clic sobre el nombre o la descripción).
+  const [editandoEnLienzo, setEditandoEnLienzo] = useState<{ id: string; campo: CampoEnLienzo } | null>(null);
   const [metaOpen, setMetaOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -3047,8 +3115,16 @@ export const ComponentDesigner: React.FC<{
     () => canvasWorldSize(computeContentBounds(nodes, notationId), CANVAS_SIZE),
     [nodes, notationId]
   );
+  // Con la ficha abierta tapando la derecha, el lienzo deja scroll extra de ese
+  // lado (#643): si no, lo que cae bajo la ficha no se puede traer a la vista.
+  // Se reserva el ancho máximo de la ficha (85 % de la ventana, `panel-size.ts`).
+  const fichaAbierta = !!editingNode || !!editingLink;
+  const reservaDerecha =
+    fichaAbierta && typeof window !== "undefined" ? Math.round(window.innerWidth * 0.85) : 0;
+  const reservaRef = useRef(reservaDerecha);
+  reservaRef.current = reservaDerecha;
   // Lado del lienzo en px: nunca menor que el viewport (ver CANVAS_SIZE).
-  const px = canvasPixelSize(world, zoom, viewport);
+  const px = canvasPixelSize(world, zoom, viewport, reservaDerecha);
   const canvasPxW = px.w;
   const canvasPxH = px.h;
   const syncViewport = useCallback(() => {
@@ -3068,10 +3144,12 @@ export const ComponentDesigner: React.FC<{
     const wrapper = canvasWrapperRef.current;
     const svg = svgRef.current;
     if (!wrapper || !svg) return;
-    const r = canvasPixelSize(worldRef.current, zoomRef.current, {
-      w: wrapper.clientWidth,
-      h: wrapper.clientHeight,
-    });
+    const r = canvasPixelSize(
+      worldRef.current,
+      zoomRef.current,
+      { w: wrapper.clientWidth, h: wrapper.clientHeight },
+      reservaRef.current
+    );
     svg.setAttribute("width", String(r.w));
     svg.setAttribute("height", String(r.h));
     svg.setAttribute("viewBox", r.viewBox);
@@ -3269,6 +3347,30 @@ export const ComponentDesigner: React.FC<{
       pushSnapshot(next, linksRef.current);
     },
     [pushSnapshot]
+  );
+  /**
+   * Cierra el editor de texto del lienzo (#643). Por el mismo camino que la
+   * ficha (`updateNodes` → historial), así ⌘Z lo deshace. Igual no cambia
+   * nada; un NOMBRE vacío tampoco (dejaría una caja sin rótulo), pero una
+   * descripción vacía sí se guarda: borrarla es una edición válida.
+   */
+  const editarEnLienzo = useCallback(
+    (id: string, campo: CampoEnLienzo, valor: string | null) => {
+      setEditandoEnLienzo(null);
+      if (valor === null) return;
+      const limpio = valor.trim();
+      const actual = nodesRef.current.get(id);
+      if (!actual || (campo === "nombre" && !limpio)) return;
+      if (limpio === (campo === "nombre" ? actual.nombre : (actual.descripcion ?? "")).trim()) return;
+      updateNodes((prev) => {
+        const vivo = prev.get(id);
+        if (!vivo) return prev;
+        const map = new Map(prev);
+        map.set(id, campo === "nombre" ? { ...vivo, nombre: limpio } : { ...vivo, descripcion: limpio });
+        return map;
+      });
+    },
+    [updateNodes]
   );
   const updateLinks = useCallback(
     (updater: (prev: Map<string, DesignerLink>) => Map<string, DesignerLink>) => {
@@ -5466,6 +5568,9 @@ export const ComponentDesigner: React.FC<{
                   onResizeMouseDown={(e) => handleNodeMouseDown(e, node.id, "resize")}
                   onClick={handleNodeClick}
                   onDoubleClick={() => setEditingNode(node)}
+                  onPedirEdicion={(campo) => setEditandoEnLienzo({ id: node.id, campo })}
+                  editandoTexto={editandoEnLienzo?.id === node.id ? editandoEnLienzo.campo : null}
+                  onEditarTexto={(campo, valor) => editarEnLienzo(node.id, campo, valor)}
                   onContextMenu={(e) => openContextMenu(e, { kind: "node", id: node.id })}
                   onOpenSubView={subViewExists(node.viewRef) ? () => openSubView(node.viewRef!) : undefined}
                   onHover={(e) => showHoverCard(e, node)}
@@ -5549,6 +5654,9 @@ export const ComponentDesigner: React.FC<{
                   onResizeMouseDown={(e) => handleNodeMouseDown(e, node.id, "resize")}
                   onClick={handleNodeClick}
                   onDoubleClick={() => setEditingNode(node)}
+                  onPedirEdicion={(campo) => setEditandoEnLienzo({ id: node.id, campo })}
+                  editandoTexto={editandoEnLienzo?.id === node.id ? editandoEnLienzo.campo : null}
+                  onEditarTexto={(campo, valor) => editarEnLienzo(node.id, campo, valor)}
                   onContextMenu={(e) => openContextMenu(e, { kind: "node", id: node.id })}
                   onOpenSubView={subViewExists(node.viewRef) ? () => openSubView(node.viewRef!) : undefined}
                   onHover={(e) => showHoverCard(e, node)}
@@ -5732,7 +5840,9 @@ export const ComponentDesigner: React.FC<{
       )}
 
       <EditNodeDialog
-        node={editingNode}
+        // El nodo VIVO, no la foto de cuando se abrió (#643): sin esto lo que
+        // escribía el agente por MCP no llegaba a la ficha hasta recargar.
+        node={editingNode ? nodes.get(editingNode.id) ?? editingNode : null}
         nodes={nodes}
         links={links}
         elementTypes={elementTypes}

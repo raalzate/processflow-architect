@@ -28,7 +28,8 @@ import { AiProvenanceBadge } from "@/components/ai-panel/AiProvenanceBadge";
 import { useAi } from "@/hooks/useAi";
 import { elementChatTask } from "@/lib/ai/tasks";
 import { focusSystemPrompt } from "@/lib/agent-cli/prompt";
-import { CLI_INFO, type ChatEvent, type CliStatus } from "@/lib/agent-cli/types";
+import { CLI_INFO, CLI_MODELOS, esModeloDe, type ChatEvent, type CliStatus } from "@/lib/agent-cli/types";
+import { accionesDeEjemplo } from "@/lib/agent-cli/acciones";
 import {
   CHAT_ENGINES,
   engineHabilitado,
@@ -47,6 +48,8 @@ import { urlConAlcance } from "@/lib/mcp/focus-scope";
 import { hostBridge } from "@/lib/host-bridge";
 
 const CLI_CHOICE_KEY = "agent_cli_choice";
+/** Modelo elegido para el CLI (#643): se recuerda entre fichas y sesiones. */
+const CLI_MODEL_KEY = "agent_cli_model";
 /** Carpetas de contexto adjuntas (#460): se recuerdan entre fichas y sesiones. */
 const CLI_DIRS_KEY = "agent_cli_dirs";
 
@@ -124,6 +127,9 @@ export function AgentCliChat(props: AgentCliChatProps) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [dirs, setDirs] = useState<string[]>([]);
+  // "" = el modelo que el usuario tenga configurado en el CLI (no se manda --model).
+  const [modelo, setModelo] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const runIdRef = useRef<string | null>(null);
   const sessionRef = useRef<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -133,6 +139,7 @@ export function AgentCliChat(props: AgentCliChatProps) {
     try {
       const saved = window.localStorage.getItem(CLI_CHOICE_KEY) as ChatEngine | null;
       if (saved && CHAT_ENGINES.includes(saved)) setElegido(saved);
+      setModelo(window.localStorage.getItem(CLI_MODEL_KEY) ?? "");
     } catch {
       /* sin localStorage: la IA de la app por defecto */
     }
@@ -200,6 +207,15 @@ export function AgentCliChat(props: AgentCliChatProps) {
       window.localStorage.setItem(CLI_CHOICE_KEY, e);
     } catch {
       /* ignore */
+    }
+  };
+
+  const elegirModelo = (m: string) => {
+    setModelo(m);
+    try {
+      window.localStorage.setItem(CLI_MODEL_KEY, m);
+    } catch {
+      /* sin localStorage vale para esta sesión */
     }
   };
 
@@ -276,6 +292,8 @@ export function AgentCliChat(props: AgentCliChatProps) {
         }),
         sessionId: sessionRef.current,
         dirs,
+        // Uno guardado que ya no está en la lista (otro CLI) no viaja: el main lo rechazaría.
+        ...(modelo && esModeloDe(engine, modelo) ? { model: modelo } : {}),
       });
     } finally {
       off();
@@ -359,6 +377,17 @@ export function AgentCliChat(props: AgentCliChatProps) {
 
   const listo = status !== null;
   const motor = engineLabel(engine);
+  const modelos = esCli(engine) ? CLI_MODELOS[engine] : [];
+  const modeloVigente = modelos.some((m) => m.id === modelo) ? modelo : "";
+  const acciones = useMemo(
+    () => accionesDeEjemplo({ tipo: props.elementType, hasSpec, escribe: esCli(engine), conCarpetas: dirs.length > 0 }),
+    [props.elementType, hasSpec, engine, dirs.length]
+  );
+  /** Un ejemplo se escribe en la caja de texto, no se envía: el humano lo retoca. */
+  const usarAccion = (prompt: string) => {
+    setInput(prompt);
+    inputRef.current?.focus();
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -381,6 +410,23 @@ export function AgentCliChat(props: AgentCliChatProps) {
             ))}
           </SelectContent>
         </Select>
+        {/* Modelo del CLI (#643): Radix Select no admite valor vacío, por eso «__def». */}
+        {modelos.length > 1 && (
+          <Select value={modeloVigente || "__def"} onValueChange={(v) => elegirModelo(v === "__def" ? "" : v)} disabled={busy}>
+            <SelectTrigger className="h-8 w-36 text-xs" title="Modelo con el que corre el agente">
+              {/* Sólo el nombre: la pista de cada modelo va en la lista, no en el botón. */}
+              <SelectValue>{modelos.find((m) => m.id === modeloVigente)?.label}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {modelos.map((m) => (
+                <SelectItem key={m.id || "__def"} value={m.id || "__def"} className="text-xs" title={m.hint}>
+                  {m.label}
+                  <span className="ml-1 text-muted-foreground">· {m.hint}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
           {!listo
             ? "Buscando CLI…"
@@ -428,19 +474,27 @@ export function AgentCliChat(props: AgentCliChatProps) {
 
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {messages.length === 0 && listo && (
-          <p className="text-sm text-muted-foreground">
-            {esCli(engine) ? (
-              <>
-                {motor} ya sabe que estás en «{elementName}» ({viewName}). Probá: <em>pulí esta caja</em> o{" "}
-                <em>completá la spec con criterios medibles</em>. Te muestra la propuesta antes de escribir.
-              </>
-            ) : (
-              <>
-                La IA de la app conoce la ficha de «{elementName}». Probá: <em>¿qué le falta a la spec?</em> o{" "}
-                <em>proponé criterios medibles</em>. No escribe en el lienzo: aplicá lo que te sirva desde el tab Spec.
-              </>
-            )}
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {esCli(engine)
+                ? `${motor} ya sabe que estás en «${elementName}» (${viewName}). Te muestra la propuesta antes de escribir.`
+                : `La IA de la app conoce la ficha de «${elementName}». No escribe en el lienzo: aplicá lo que te sirva desde el tab Spec.`}
+            </p>
+            {/* Qué se le puede pedir (#643), según el tipo de la caja y el motor. */}
+            <div className="flex flex-wrap gap-1.5">
+              {acciones.map((a) => (
+                <button
+                  key={a.label}
+                  type="button"
+                  title={a.prompt}
+                  onClick={() => usarAccion(a.prompt)}
+                  className="rounded-full border px-2.5 py-1 text-xs hover:bg-muted"
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {messages.map((m) => (
           <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
@@ -518,6 +572,7 @@ export function AgentCliChat(props: AgentCliChatProps) {
           />
         )}
         <Textarea
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {

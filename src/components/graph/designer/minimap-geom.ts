@@ -61,10 +61,16 @@ export function canvasWorldSize(
 export function canvasPixelSize(
   world: { width: number; height: number },
   zoom: number,
-  viewport: { w: number; h: number }
+  viewport: { w: number; h: number },
+  /**
+   * Px extra de scroll a la DERECHA (#643): con la ficha abierta, lo que está
+   * en el borde derecho del diagrama queda tapado por ella y, sin margen para
+   * seguir desplazando, no hay forma de traerlo a la vista.
+   */
+  reservaDerecha = 0
 ): { w: number; h: number; viewBox: string } {
   const z = zoom > 0 ? zoom : 1;
-  const w = Math.max(world.width * z, viewport.w || 0);
+  const w = Math.max(world.width * z + Math.max(0, reservaDerecha), viewport.w || 0);
   const h = Math.max(world.height * z, viewport.h || 0);
   return { w, h, viewBox: `0 0 ${w / z} ${h / z}` };
 }

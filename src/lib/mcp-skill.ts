@@ -363,12 +363,16 @@ propiedades del elemento, \`{clave, valor, tipo?}\` con **dónde vive de verdad*
 los datos que lo enriquecen. Tipos: \`texto\` · \`numero\` · \`booleano\` · \`url\` ·
 \`fecha\`; el valor se valida según su tipo.
 
-**Claves canónicas — usá estas, no sinónimos:** \`repo\` (url) · \`puerto\` (numero) ·
-\`endpoint\` (url) · \`owner\` (texto) · \`wiki\` (url).
+**Claves canónicas — usá estas, no sinónimos, y SEGÚN el elemento:**
 
-\`repo\` y \`puerto\` son **obligatorias en lo desplegable** (C4: \`Sistema\`,
-\`Contenedor\`, \`Componente\`, \`Base de Datos\`; UML: \`Componente\`, \`Nodo\`,
-\`Artefacto de Despliegue\`) y \`validate_diagram\` FALLA mientras falten: son los
+- **servicio** (C4: \`Sistema\`, \`Contenedor\`, \`Componente\`; UML: \`Componente\`,
+  \`Nodo\`, \`Artefacto de Despliegue\`): \`repo\` (url) y \`puerto\` (numero),
+  **obligatorias**; \`endpoint\` (url) opcional.
+- **almacén** (C4: \`Base de Datos\`): \`puerto\` (numero) **obligatoria**; \`motor\`,
+  \`esquema\`, \`respaldo\` (texto) opcionales. **No tiene \`repo\`**: no se lo pidas.
+- **cualquiera**: \`owner\` (texto) · \`wiki\` (url).
+
+\`validate_diagram\` FALLA mientras falten las obligatorias: son los
 datos que quien va a construir busca a mano. Un documento de negocio muchas veces
 no los trae — entonces poné el valor explícito \`pendiente\` y decílo en el resumen
 al humano; nunca inventes una url. En el big picture DDD y en los BPMN no se
@@ -799,9 +803,11 @@ pedido ya fija notación, vista y contenido con exactitud.
    elementos ahí; un contenedor sin hijos se dibuja como banda vacía y
    \`validate_diagram\` lo reporta (\`CONTENEDOR-VACIO\`).
 3. \`add_node\` con \`container\` y \`source\`; sin \`container\` va al Big Picture.
-   Si la caja ES una tecnología reconocible (PostgreSQL, Kafka, Slack, GCP…),
-   ponele su logo con \`icon\` (el id sale de \`list_icons\`, p. ej. \`si-postgresql\`);
-   un sistema propio sin marca no lo necesita.
+   Declará sus tecnologías en \`tags\` (\`["Node 20", "PostgreSQL 16"]\`): si la caja
+   no trae \`icon\`, su LOGO sale solo de la primera etiqueta que el catálogo
+   reconoce (Node.js, PostgreSQL, OpenAI, Railway…). Pasá \`icon\` (id de
+   \`list_icons\`, p. ej. \`lb-openai\`, \`lu-Lambda\`) sólo para forzar otro; un
+   sistema propio sin marca no lo necesita.
 4. \`add_edge\` para TODAS las relaciones — regla dura: **ningún nodo sin aristas**
    (el lienzo descarta los aislados). Etiqueta las aristas: condición de la rama
    en BPMN, verbo + tecnología en C4, «dispara»/«consulta» en DDD.
@@ -915,22 +921,28 @@ tipo:"numero"}\` se rechaza.
 
 **Claves canónicas — usá estas, no sinónimos:**
 
-| Clave | Tipo | ¿Obligatoria? | Para qué |
-|---|---|---|---|
-| \`repo\` | url | **sí**, en lo desplegable | dónde está el código |
-| \`puerto\` | numero | **sí**, en lo desplegable | por dónde se le habla |
-| \`endpoint\` | url | no | la dirección pública por la que se consume |
-| \`owner\` | texto | no | a quién se le pregunta |
-| \`wiki\` | url | no | dónde está explicado con más detalle |
+**Pedí las propiedades SEGÚN el elemento** — no todas las cajas tienen las mismas:
 
-**Desplegable** = tiene código y se despliega: en C4 \`Sistema\`, \`Contenedor\`,
-\`Componente\`, \`Base de Datos\`; en UML \`Componente\`, \`Nodo\`, \`Artefacto de
-Despliegue\`. Un \`Sistema Externo\` no lo es (no es nuestro código), y un mapa de
-dominio (DDD), un proceso (BPMN) o un modelo de datos (MER) tampoco: ahí no se
-exige nada.
+| Clave | Tipo | A quién | ¿Obligatoria? | Para qué |
+|---|---|---|---|---|
+| \`repo\` | url | servicio | **sí** | dónde está el código |
+| \`puerto\` | numero | servicio y almacén | **sí** | por dónde se le habla |
+| \`endpoint\` | url | servicio | no | la dirección pública por la que se consume |
+| \`motor\` | texto | almacén | no | motor y versión (\`PostgreSQL 16\`, \`SQLite WAL\`) |
+| \`esquema\` | texto | almacén | no | qué base o esquema usa dentro del motor |
+| \`respaldo\` | texto | almacén | no | cada cuánto se respalda y cuánto se retiene |
+| \`owner\` | texto | todos | no | a quién se le pregunta |
+| \`wiki\` | url | todos | no | dónde está explicado con más detalle |
 
-\`validate_diagram\` **falla** mientras un elemento desplegable no declare \`repo\` y
-\`puerto\`: son los datos que quien va a construir busca a mano cuando faltan. Si
+**Servicio** = tiene código y se despliega: en C4 \`Sistema\`, \`Contenedor\`,
+\`Componente\`; en UML \`Componente\`, \`Nodo\`, \`Artefacto de Despliegue\`.
+**Almacén** = una base de datos (\`Base de Datos\` de C4): se despliega pero **no
+tiene repositorio** — no le pidas \`repo\`; describila con \`motor\`, \`esquema\` y
+\`respaldo\`. Un \`Sistema Externo\` no es nuestro código, y un mapa de dominio
+(DDD), un proceso (BPMN) o un modelo de datos (MER) tampoco: ahí no se exige nada.
+
+\`validate_diagram\` **falla** mientras un servicio no declare \`repo\` y \`puerto\`, o
+un almacén su \`puerto\`: son los datos que quien va a construir busca a mano cuando faltan. Si
 todavía no se saben, el valor explícito \`pendiente\` cuenta como declaración
 consciente — lo que no se acepta es el silencio.
 
@@ -940,6 +952,11 @@ add_node { id: "c4-api-pagos", name: "API de Pagos", type: "Contenedor", contain
               { clave: "puerto",   valor: "8080", tipo: "numero" },
               { clave: "endpoint", valor: "https://api.acme.com/pagos", tipo: "url" },
               { clave: "owner",    valor: "Equipo Pagos", tipo: "texto" } ] }
+add_node { id: "c4-db-pagos", name: "BD de Pagos", type: "Base de Datos", container: "Pagos",
+  tags: ["PostgreSQL 16"],   // el logo de PostgreSQL sale solo
+  metadata: [ { clave: "puerto",  valor: "5432", tipo: "numero" },
+              { clave: "motor",   valor: "PostgreSQL 16", tipo: "texto" },
+              { clave: "esquema", valor: "pagos", tipo: "texto" } ] }
 \`\`\`
 
 ## Cuándo NO usar una notación semántica
@@ -1235,6 +1252,20 @@ repetido, o con «Fuente: …» pegado al final), proponé también una nueva: 1
 frases con su responsabilidad, qué recibe o produce y por qué existe. La cita va
 en la **fuente** de la caja, que es una propiedad aparte.
 
+### Tecnologías, icono y propiedades según el tipo
+
+- **Tecnologías** (\`tags\`): las que la fuente nombra (\`Node 20\`, \`SQLite\`). El
+  **icono** sale solo de ellas; pasá \`icon\` (de \`list_icons\`) sólo si hay que
+  forzar otro logo.
+- **Propiedades** (\`metadata\`): las que corresponden al TIPO de la caja, nunca la
+  misma lista para todas.
+  - servicio (Contenedor, Componente, Nodo): \`repo\`, \`puerto\`, \`endpoint\`;
+  - almacén (Base de Datos): \`puerto\`, \`motor\`, \`esquema\`, \`respaldo\` — **sin
+    \`repo\`**: una base de datos no tiene repositorio;
+  - cualquiera: \`owner\`, \`wiki\`.
+  Lo que la fuente no dice va con el valor \`pendiente\`, nunca inventado. No
+  repitas una clave que ya está (con su alias tampoco: \`port\` ya es \`puerto\`).
+
 Mostrale la propuesta al humano **antes** de escribir, en una tabla corta
 (qué agregás, qué cambiás, qué marcás por aclarar). Si la caja ya tenía spec,
 decí explícitamente qué conservás: lo que escribió una persona no se pisa.
@@ -1244,9 +1275,10 @@ decí explícitamente qué conservás: lo que escribió una persona no se pisa.
 - **\`set_view_element_spec\`** con \`name\` = el nombre exacto de la caja y
   **\`merge: true\`** si ya tenía spec (suma; lo que no mandás se conserva). Sin
   spec previa, mandala completa.
-- Si corregís también la descripción, la fuente o los metadatos,
-  \`update_view_element\` con \`description\`, \`source\` y \`metadata\` (por clave: las
-  demás se conservan) — y nada de renombrar, mover ni borrar sin que lo pidan.
+- Si corregís también la descripción, la fuente, las tecnologías o los metadatos,
+  \`update_view_element\` con \`description\`, \`source\`, \`tags\` y \`metadata\` (por
+  clave: las demás se conservan) — y nada de renombrar, mover ni borrar sin que
+  lo pidan.
 - Dos cajas con el mismo nombre ⇒ la herramienta no elige: preguntá cuál.
 
 ## 3 · Cerrar
@@ -1431,8 +1463,11 @@ Con aprobación del humano, y sólo sobre las cajas que tocaste:
 1. **Dónde vive** — \`update_view_element\` con:
    - \`source\`: el punto de entrada en el código (\`pagos/api.ts:12\`). Es una
      PROPIEDAD de la caja; nunca la pegues en la descripción.
-   - \`metadata\` por clave: \`repo\`, \`puerto\`, \`owner\` (las demás claves se
-     conservan).
+   - \`metadata\` por clave, según el tipo de la caja: un servicio \`repo\`,
+     \`puerto\`, \`endpoint\`; una base de datos \`puerto\`, \`motor\`, \`esquema\` (no
+     tiene \`repo\`); cualquiera \`owner\` (las demás claves se conservan).
+   - \`tags\` con las tecnologías que el código usa de verdad (\`Node 20\`,
+     \`PostgreSQL 16\`): el icono de la caja sale de ahí.
 2. **Qué hace, si cambió** — \`update_view_element\` con una \`description\` de 1 a
    3 frases: qué es, qué recibe o produce y por qué existe. Si la responsabilidad
    no cambió, no la toques.

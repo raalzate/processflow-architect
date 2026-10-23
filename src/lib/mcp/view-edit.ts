@@ -45,6 +45,10 @@ export type ViewEdit =
       description?: string;
       /** De dónde sale: va al campo `fuente`, nunca a la descripción (#636). */
       source?: string;
+      /** Tecnologías; sin `icon`, el logo sale de ellas (#643). */
+      tags?: string[];
+      /** Icono de TECNOLOGÍA del catálogo (`list_icons`). */
+      icon?: string;
     }
   | {
       kind: "update-element";
@@ -56,6 +60,10 @@ export type ViewEdit =
       container?: string;
       /** Referencias por CLAVE (repo, puerto, owner): agrega o reemplaza, no borra las otras. */
       metadata?: ElementMetadata[];
+      /** Tecnologías (reemplaza la lista). Sin icono elegido, el logo sale de ellas (#643). */
+      tags?: string[];
+      /** Icono de TECNOLOGÍA del catálogo; "" lo quita (vuelve el del tipo). */
+      icon?: string;
       /**
        * Subvista pedida por NOMBRE (lo que manda el agente, #638). La app la
        * resuelve a `subviewId` con `resolverSubvista` antes de aplicar: este
@@ -395,6 +403,8 @@ export function applyViewEdit(
           tipo_elemento: t.tipo,
           descripcion: edit.description,
           ...(edit.source?.trim() ? { source: edit.source.trim() } : {}),
+          ...(edit.tags?.length ? { tags_tecnologia: edit.tags } : {}),
+          ...(edit.icon?.trim() ? { icono: edit.icon.trim() } : {}),
         };
         if (!base.nombre) return { ok: false, error: "Falta el nombre del elemento." };
         nuevo = isNotationContainer(t.tipo)
@@ -418,6 +428,8 @@ export function applyViewEdit(
           ...(edit.source !== undefined ? { source: edit.source } : {}),
           ...(edit.metadata?.length ? { metadata: edit.metadata } : {}),
           ...(tipo ? { tipo_elemento: tipo } : {}),
+          ...(edit.tags !== undefined ? { tags_tecnologia: edit.tags } : {}),
+          ...(edit.icon !== undefined ? { icono: edit.icon.trim() || undefined } : {}),
         });
         if (edit.subview !== undefined && edit.subviewId === undefined) {
           return { ok: false, error: "La subvista no se resolvió contra las vistas del proyecto." };

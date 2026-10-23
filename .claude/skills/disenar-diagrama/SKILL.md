@@ -148,9 +148,11 @@ pedido ya fija notación, vista y contenido con exactitud.
    elementos ahí; un contenedor sin hijos se dibuja como banda vacía y
    `validate_diagram` lo reporta (`CONTENEDOR-VACIO`).
 3. `add_node` con `container` y `source`; sin `container` va al Big Picture.
-   Si la caja ES una tecnología reconocible (PostgreSQL, Kafka, Slack, GCP…),
-   ponele su logo con `icon` (el id sale de `list_icons`, p. ej. `si-postgresql`);
-   un sistema propio sin marca no lo necesita.
+   Declará sus tecnologías en `tags` (`["Node 20", "PostgreSQL 16"]`): si la caja
+   no trae `icon`, su LOGO sale solo de la primera etiqueta que el catálogo
+   reconoce (Node.js, PostgreSQL, OpenAI, Railway…). Pasá `icon` (id de
+   `list_icons`, p. ej. `lb-openai`, `lu-Lambda`) sólo para forzar otro; un
+   sistema propio sin marca no lo necesita.
 4. `add_edge` para TODAS las relaciones — regla dura: **ningún nodo sin aristas**
    (el lienzo descarta los aislados). Etiqueta las aristas: condición de la rama
    en BPMN, verbo + tecnología en C4, «dispara»/«consulta» en DDD.
@@ -264,22 +266,28 @@ tipo:"numero"}` se rechaza.
 
 **Claves canónicas — usá estas, no sinónimos:**
 
-| Clave | Tipo | ¿Obligatoria? | Para qué |
-|---|---|---|---|
-| `repo` | url | **sí**, en lo desplegable | dónde está el código |
-| `puerto` | numero | **sí**, en lo desplegable | por dónde se le habla |
-| `endpoint` | url | no | la dirección pública por la que se consume |
-| `owner` | texto | no | a quién se le pregunta |
-| `wiki` | url | no | dónde está explicado con más detalle |
+**Pedí las propiedades SEGÚN el elemento** — no todas las cajas tienen las mismas:
 
-**Desplegable** = tiene código y se despliega: en C4 `Sistema`, `Contenedor`,
-`Componente`, `Base de Datos`; en UML `Componente`, `Nodo`, `Artefacto de
-Despliegue`. Un `Sistema Externo` no lo es (no es nuestro código), y un mapa de
-dominio (DDD), un proceso (BPMN) o un modelo de datos (MER) tampoco: ahí no se
-exige nada.
+| Clave | Tipo | A quién | ¿Obligatoria? | Para qué |
+|---|---|---|---|---|
+| `repo` | url | servicio | **sí** | dónde está el código |
+| `puerto` | numero | servicio y almacén | **sí** | por dónde se le habla |
+| `endpoint` | url | servicio | no | la dirección pública por la que se consume |
+| `motor` | texto | almacén | no | motor y versión (`PostgreSQL 16`, `SQLite WAL`) |
+| `esquema` | texto | almacén | no | qué base o esquema usa dentro del motor |
+| `respaldo` | texto | almacén | no | cada cuánto se respalda y cuánto se retiene |
+| `owner` | texto | todos | no | a quién se le pregunta |
+| `wiki` | url | todos | no | dónde está explicado con más detalle |
 
-`validate_diagram` **falla** mientras un elemento desplegable no declare `repo` y
-`puerto`: son los datos que quien va a construir busca a mano cuando faltan. Si
+**Servicio** = tiene código y se despliega: en C4 `Sistema`, `Contenedor`,
+`Componente`; en UML `Componente`, `Nodo`, `Artefacto de Despliegue`.
+**Almacén** = una base de datos (`Base de Datos` de C4): se despliega pero **no
+tiene repositorio** — no le pidas `repo`; describila con `motor`, `esquema` y
+`respaldo`. Un `Sistema Externo` no es nuestro código, y un mapa de dominio
+(DDD), un proceso (BPMN) o un modelo de datos (MER) tampoco: ahí no se exige nada.
+
+`validate_diagram` **falla** mientras un servicio no declare `repo` y `puerto`, o
+un almacén su `puerto`: son los datos que quien va a construir busca a mano cuando faltan. Si
 todavía no se saben, el valor explícito `pendiente` cuenta como declaración
 consciente — lo que no se acepta es el silencio.
 
@@ -289,6 +297,11 @@ add_node { id: "c4-api-pagos", name: "API de Pagos", type: "Contenedor", contain
               { clave: "puerto",   valor: "8080", tipo: "numero" },
               { clave: "endpoint", valor: "https://api.acme.com/pagos", tipo: "url" },
               { clave: "owner",    valor: "Equipo Pagos", tipo: "texto" } ] }
+add_node { id: "c4-db-pagos", name: "BD de Pagos", type: "Base de Datos", container: "Pagos",
+  tags: ["PostgreSQL 16"],   // el logo de PostgreSQL sale solo
+  metadata: [ { clave: "puerto",  valor: "5432", tipo: "numero" },
+              { clave: "motor",   valor: "PostgreSQL 16", tipo: "texto" },
+              { clave: "esquema", valor: "pagos", tipo: "texto" } ] }
 ```
 
 ## Cuándo NO usar una notación semántica
