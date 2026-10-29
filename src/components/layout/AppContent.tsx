@@ -59,7 +59,7 @@ import {
   razonarEstadoLocal,
 } from "@/lib/ai/local-capability";
 import { publicarEstadoCli } from "@/lib/agent-cli/capability";
-import { loadAiSettings } from "@/lib/ai/remote-settings";
+import { harnessOf, loadAiSettings } from "@/lib/ai/remote-settings";
 import { CommandPalette } from "@/components/CommandPalette";
 import { capacidadesHost, hostBridge } from "@/lib/host-bridge";
 
@@ -809,6 +809,7 @@ export function AppContent() {
       const aviso = mensajeIaLocal(estado, {
         modo: ajustes.mode,
         conLlave: !!llaves?.[ajustes.provider],
+        arnes: harnessOf(ajustes),
       });
       // Persiste sólo cuando el equipo se queda sin ninguna IA: ahí es una
       // limitación, no un evento. Si la nube cubre el hueco, se va solo.
