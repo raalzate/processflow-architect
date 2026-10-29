@@ -94,7 +94,7 @@
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.12",
     "concurrently": "^10.0.6",
-    "electron": "^41.10.7",
+    "electron": "^42.11.9",
     "electron-builder": "^26.0.12",
     "postcss": "^8",
     "tailwindcss": "^4.3.3",
