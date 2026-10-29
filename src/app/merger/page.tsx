@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useEffect, useMemo } from "react";
-import { ArrowLeft, Info, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Info, AlertTriangle, Building2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
@@ -18,6 +18,8 @@ import {
   type NamedGraph,
 } from "@/lib/graph-merge";
 import { STORAGE_SAVED_FILES, STORAGE_LAST_FILE_ID } from "@/lib/graph-constants";
+import { projectContext } from "@/lib/project-orgs";
+import { hostBridge } from "@/lib/host-bridge";
 import type { SavedFile, GraphData, GraphNode } from "@/lib/types";
 import type { DesignView } from "@/lib/views-types";
 
@@ -69,7 +71,7 @@ export default function MergerPage() {
               if (rawViews) {
                 const views = JSON.parse(rawViews) as PersistedViews;
                 for (const v of views.customViews || []) {
-                  if (v.graph) graphs.push({ key: v.id, label: v.name, graph: v.graph });
+                  if (v.graph) graphs.push({ key: v.id, label: v.name, graph: v.graph, notation: v.notation });
                 }
               }
             } catch {
@@ -86,7 +88,7 @@ export default function MergerPage() {
         toast({
           variant: "destructive",
           title: "Ningún archivo seleccionado",
-          description: "Por favor, carga y selecciona un archivo en la página del analizador primero.",
+          description: "Abre un proyecto en el lienzo y vuelve aquí.",
         });
       }
     } catch (error) {
@@ -94,6 +96,22 @@ export default function MergerPage() {
       toast({ variant: "destructive", title: "Error al cargar datos locales" });
     }
   }, [toast]);
+
+  // Nombres legibles de las organizaciones: viven en el workspace del MCP y llegan
+  // por el host; en la web no hay y el contexto muestra el slug.
+  const [orgNames, setOrgNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let vivo = true;
+    hostBridge()
+      ?.mcpOrgsStatus?.()
+      .then((s) => vivo && setOrgNames(Object.fromEntries(s.orgs.map((o) => [o.slug, o.nombre]))))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, []);
+  // La fusión no tiene deshacer: la pantalla dice sobre qué proyecto opera (#662).
+  const contexto = useMemo(() => (currentFile ? projectContext(currentFile, orgNames) : null), [currentFile, orgNames]);
 
   // Nodos del Modelo + todas las vistas (los sueltos del diseñador/MCP van al big_picture).
   const allNodesMap = useMemo(() => {
@@ -274,15 +292,23 @@ export default function MergerPage() {
         <div className="flex items-center gap-4">
           <div>
             <h1 className="text-xl font-bold text-foreground font-headline">Agrupador de Nodos</h1>
-            <p className="text-sm text-muted-foreground">
-              Depura duplicados del proyecto activo: fusiona nodos que representan lo mismo con nombres distintos.
-            </p>
+            {contexto ? (
+              <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+                <Building2 className="h-4 w-4" />
+                <span>{contexto.org}</span>
+                <ChevronRight className="h-3.5 w-3.5" />
+                <span className="font-medium text-foreground">{contexto.proyecto}</span>
+                <span className="rounded border px-1.5 py-0.5 text-xs">{contexto.notacion}</span>
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">Fusiona elementos repetidos de un proyecto en uno solo.</p>
+            )}
           </div>
         </div>
         <div className="flex gap-2">
           <Button asChild variant="outline">
             <a href="/">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Volver al Analizador
+              <ArrowLeft className="mr-2 h-4 w-4" /> Volver al lienzo
             </a>
           </Button>
         </div>
@@ -292,12 +318,12 @@ export default function MergerPage() {
         {!currentFile ? (
           <Card className="max-w-3xl mx-auto">
             <CardHeader>
-              <CardTitle>No hay ningún archivo cargado</CardTitle>
-              <CardDescription>Carga un archivo JSON en la página del analizador para usar esta herramienta.</CardDescription>
+              <CardTitle>No hay ningún proyecto abierto</CardTitle>
+              <CardDescription>Abre un proyecto en el lienzo para usar esta herramienta.</CardDescription>
             </CardHeader>
             <CardContent>
               <Button asChild className="w-full">
-                <a href="/">Ir al Analizador</a>
+                <a href="/">Ir al lienzo</a>
               </Button>
             </CardContent>
           </Card>
@@ -310,23 +336,23 @@ export default function MergerPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-3 text-info-foreground"><Info /> ¿Cómo funciona la fusión?</CardTitle>
               </CardHeader>
-              <CardContent className="text-sm text-info-foreground space-y-2">
+              <CardContent className="text-sm text-info-foreground space-y-3">
                 <p>
-                  Los modelos generados desde documentos (por la IA local o importados desde Claude Code
-                  vía MCP) suelen traer el mismo concepto con nombres distintos — p. ej. “Cliente”,
-                  “Usuario Cliente”. Aquí los unificas sin perder información.
+                  Junta en uno solo los elementos que son <b>lo mismo con distinto nombre</b> — p. ej.
+                  «Cliente» y «Usuario Cliente». Pasa mucho con diagramas generados por IA. Revisa el
+                  Modelo y todas las vistas del proyecto.
                 </p>
-                <p>
-                  Primero, selecciona el tipo de nodo que deseas agrupar (de cualquier notación: DDD, BPMN,
-                  C4, UML). Luego, elige el <b>Nodo Principal</b> — el que permanece; puedes renombrarlo.
-                  Finalmente, marca los <b>Nodos a Fusionar</b>: sus descripciones y tecnologías se combinan
-                  en el principal, sus conexiones se re-apuntan (incluidas las del Big Picture y las
-                  políticas entre agregados) y luego se eliminan.
-                </p>
+                <ol className="list-decimal space-y-1 pl-5">
+                  <li><b>Tipo:</b> qué clase de elemento quieres limpiar (los de la notación de cada vista).</li>
+                  <li><b>El que se queda:</b> el elemento que sobrevive. Puedes renombrarlo.</li>
+                  <li>
+                    <b>Los duplicados:</b> se borran, pero nada se pierde — su descripción y tecnologías
+                    pasan al que se queda, y sus relaciones ahora apuntan a él.
+                  </li>
+                </ol>
                 <p className="font-bold flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-destructive" />
-                  Esta acción modifica el proyecto guardado y no tiene deshacer. Si quieres respaldo,
-                  descarga antes el JSON con el botón de descarga del Analizador.
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-destructive" />
+                  No se puede deshacer. Si quieres respaldo, en el lienzo usa Proyecto → Descargar JSON antes.
                 </p>
               </CardContent>
             </Card>
@@ -338,13 +364,13 @@ export default function MergerPage() {
                   <CardDescription>
                     Se revisó el Modelo y las {Math.max(namedGraphs.length - 1, 0)} vista(s) del proyecto
                     «{currentFile.content?.nombre_proyecto || currentFile.name}» y no se encontraron nodos.
-                    Dibuja elementos en la pestaña Modelo (o en una vista) del Analizador, o importa un
-                    diagrama JSON, y vuelve aquí.
+                    Dibuja elementos en el lienzo (en el Modelo o en una vista), o importa un diagrama
+                    JSON, y vuelve aquí.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button asChild className="w-full">
-                    <a href="/">Ir al Analizador</a>
+                    <a href="/">Ir al lienzo</a>
                   </Button>
                 </CardContent>
               </Card>

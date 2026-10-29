@@ -18,11 +18,21 @@ import { mergeSpec } from "./element-spec";
 import { mergeElementDocs } from "./element-docs";
 import type { GraphData, GraphNode, GraphLink } from "./types";
 import { claveNormalizada, type ElementMetadata } from "./element-metadata";
+import { looseGroupLabel, notationContainerLabel, type NotationId } from "./notations";
 
 type Edge = Omit<GraphLink, "source" | "target" | "tipo">;
 
-/** Etiqueta del grupo para nodos sueltos (sin agregado) en la UI del merger. */
-export const BIG_PICTURE_GROUP = "Big Picture";
+/**
+ * Rótulo del contenedor de un nodo para la UI del merger: «Tipo: nombre». El tipo
+ * sale del propio contenedor o, si no lo trae, del registro de notaciones (#662):
+ * un pool BPMN no es un «agregado», y el humano que no hace DDD no sabe qué es eso.
+ */
+export function containerGroupLabel(
+  agg: { nombre_agregado: string; tipo_contenedor?: string },
+  notation?: NotationId | string
+): string {
+  return `${agg.tipo_contenedor || notationContainerLabel(notation)}: ${agg.nombre_agregado}`;
+}
 
 // =============================================================================
 // Aristas (antes en app/merger/components/helpers.ts)
@@ -59,18 +69,23 @@ export const cleanupDuplicateEdges = (edges: Edge[] | undefined): Edge[] => {
 
 /**
  * Todos los nodos del grafo (agregados + big_picture) con su `agregado`
- * resuelto para agrupar en la UI. Los sueltos van al grupo "Big Picture".
+ * resuelto como rótulo para agrupar en la UI (`containerGroupLabel`). Los sueltos
+ * van al grupo «Sin <contenedor de la notación>».
  */
-export function collectMergeNodes(graph: GraphData): Map<string, GraphNode> {
+export function collectMergeNodes(
+  graph: GraphData,
+  notation: NotationId | string | undefined = graph.notation
+): Map<string, GraphNode> {
   const map = new Map<string, GraphNode>();
   (graph.agregados || []).forEach((agg) => {
     (agg.nodos || []).forEach((n) => {
-      map.set(n.id, { ...(n as GraphNode), agregado: agg.nombre_agregado });
+      map.set(n.id, { ...(n as GraphNode), agregado: containerGroupLabel(agg, notation) });
     });
   });
+  const sueltos = looseGroupLabel(notation);
   (graph.big_picture?.nodos || []).forEach((n) => {
     if (!map.has(n.id)) {
-      map.set(n.id, { ...(n as GraphNode), agregado: BIG_PICTURE_GROUP });
+      map.set(n.id, { ...(n as GraphNode), agregado: sueltos });
     }
   });
   return map;
@@ -270,6 +285,11 @@ export interface NamedGraph {
   /** Nombre visible ("Modelo", "Vista Pagos", …). */
   label: string;
   graph: GraphData;
+  /**
+   * Notación de la vista. Las vistas custom la guardan en la vista, no en su
+   * grafo; sin esto un pool BPMN de una vista se rotularía con el contenedor DDD.
+   */
+  notation?: NotationId;
 }
 
 /**
@@ -280,7 +300,7 @@ export interface NamedGraph {
 export function collectMergeNodesMulti(graphs: NamedGraph[]): Map<string, GraphNode> {
   const map = new Map<string, GraphNode>();
   for (const g of graphs) {
-    for (const [id, node] of collectMergeNodes(g.graph)) {
+    for (const [id, node] of collectMergeNodes(g.graph, g.notation ?? g.graph.notation)) {
       if (!map.has(id)) {
         map.set(id, { ...node, agregado: `${g.label} · ${node.agregado}` });
       }

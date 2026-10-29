@@ -10,7 +10,6 @@ import {
   updateNodeAcrossGraphs,
   cleanupDuplicateEdges,
   updateEdgesForMerge,
-  BIG_PICTURE_GROUP,
   type NamedGraph,
 } from "@/lib/graph-merge";
 
@@ -70,8 +69,8 @@ describe("collectMergeNodes — fallbacks", () => {
     });
     const m = collectMergeNodes(g as any);
     expect(m.size).toBe(2);
-    expect(m.get("n1")!.agregado).toBe("A"); // gana el del agregado
-    expect(m.get("n2")!.agregado).toBe(BIG_PICTURE_GROUP);
+    expect(m.get("n1")!.agregado).toBe("Agregado: A"); // gana el del agregado
+    expect(m.get("n2")!.agregado).toBe("Sin agregado");
   });
 });
 
@@ -148,9 +147,9 @@ describe("operaciones multi-grafo", () => {
 
   it("collectMergeNodesMulti prefija por grafo y respeta prioridad", () => {
     const m = collectMergeNodesMulti(graphs());
-    expect(m.get("p")!.agregado).toBe("Modelo · A");
-    expect(m.get("s")!.agregado).toBe("Modelo · A"); // primera aparición gana
-    expect(m.get("z")!.agregado).toBe("Vista · Big Picture");
+    expect(m.get("p")!.agregado).toBe("Modelo · Agregado: A");
+    expect(m.get("s")!.agregado).toBe("Modelo · Agregado: A"); // primera aparición gana
+    expect(m.get("z")!.agregado).toBe("Vista · Sin agregado");
   });
 
   it("mergeNodesAcrossGraphs fusiona donde está el principal y borra el resto", () => {
