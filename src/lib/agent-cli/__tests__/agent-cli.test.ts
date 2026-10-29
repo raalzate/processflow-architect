@@ -132,9 +132,53 @@ describe("buildGenerateLaunch", () => {
     expect(l.args[l.args.length - 1]).toContain("S");
     expect(l.args[l.args.length - 1]).toContain("P");
   });
+
+  it("Antigravity: el turno por stdin como NDJSON `event: user`, con el sistema dentro y `-p=` al final", () => {
+    const l = buildGenerateLaunch({ cli: "agy", prompt: "-P", system: "S" });
+    expect(l.command).toBe("agy");
+    // `-p` suelto se traga el flag siguiente como prompt (verificado en vivo).
+    expect(l.args[l.args.length - 1]).toBe("-p=");
+    expect(l.args[l.args.indexOf("--input-format") + 1]).toBe("stream-json");
+    expect(l.args[l.args.indexOf("--output-format") + 1]).toBe("stream-json");
+    const msg = JSON.parse(l.stdin!);
+    expect(msg.event).toBe("user");
+    expect(msg.message.content).toContain("S");
+    expect(msg.message.content).toContain("-P");
+    // El prompt nunca viaja por argv: sin tope de E2BIG ni riesgo de flag.
+    expect(l.args.join(" ")).not.toContain("-P");
+  });
+});
+
+describe("Antigravity fuera del chat de la ficha", () => {
+  it("no tiene lanzamiento de chat ni pasa la validación: sólo es motor", () => {
+    expect(() => buildLaunch({ cli: "agy", ...base })).toThrow(/sólo/);
+    expect(validarLaunch({ cli: "agy", ...base })).toMatchObject({ ok: false });
+    expect(CHAT_ENGINES).not.toContain("agy");
+  });
 });
 
 describe("resultText", () => {
+  it("Antigravity: toma `response` del `result` y el `error` cuando no fue SUCCESS", () => {
+    const ok = [
+      JSON.stringify({ event: "init", conversation_id: "c" }),
+      JSON.stringify({ event: "step_update", step_update: { step_type: "agent_response", text_delta: "O" } }),
+      JSON.stringify({ event: "result", result: { conversation_id: "c", status: "SUCCESS", response: "OK\n", num_turns: 1 } }),
+    ].join("\n");
+    expect(resultText("agy", ok)).toEqual({ text: "OK" });
+    const mal = JSON.stringify({ event: "result", result: { status: "ERROR", response: "", error: "Error: empty prompt." } });
+    expect(resultText("agy", mal)).toEqual({ error: "Error: empty prompt." });
+    expect(resultText("agy", "")).toEqual({ error: "Antigravity no devolvió una respuesta." });
+  });
+
+  it("Antigravity: los deltas del agente son texto y el init trae la sesión", () => {
+    const ev = (o: unknown) => parseLine("agy", JSON.stringify(o));
+    expect(ev({ event: "init", conversation_id: "c" })).toEqual([{ type: "session", sessionId: "c" }]);
+    expect(ev({ event: "step_update", step_update: { step_type: "agent_response", text_delta: "Ho" } })).toEqual([
+      { type: "text", delta: "Ho" },
+    ]);
+    expect(ev({ event: "step_update", step_update: { step_type: "user_input", state: "DONE" } })).toEqual([]);
+  });
+
   it("Claude: toma `result` del JSON (aunque venga en varias líneas) y el error cuando no fue éxito", () => {
     expect(resultText("claude", '{\n  "type": "result",\n  "subtype": "success",\n  "result": " OK "\n}\n')).toEqual({ text: "OK" });
     expect(resultText("claude", JSON.stringify({ type: "result", subtype: "error_max_turns", is_error: true, result: "" }))).toEqual({

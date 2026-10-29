@@ -82,8 +82,12 @@ export function useSavedFiles(initial: SavedFile[] = []) {
     }
   }, [savedFiles, saveFilesToStorage, currentFileId]);
 
+  // Galería de la organización elegida en el header: abrir un proyecto la cierra.
+  const [orgOverview, setOrgOverview] = useState(false);
+
   const selectFile = useCallback((id: string | null) => {
     setCurrentFileId(id);
+    setOrgOverview(false);
     try {
       if (id) localStorage.setItem(STORAGE_LAST_FILE_ID, id);
       else localStorage.removeItem(STORAGE_LAST_FILE_ID);
@@ -106,6 +110,9 @@ export function useSavedFiles(initial: SavedFile[] = []) {
 
   const setOrgFilter = useCallback((filtro: OrgFilter) => {
     setOrgFilterState(filtro);
+    // Elegir organización es querer ver qué hay en ella: el lienzo pasa a la galería
+    // en vez de quedarse con un proyecto que el filtro pudo dejar afuera.
+    setOrgOverview(true);
     try {
       localStorage.setItem(STORAGE_ORG_FILTER, filtro === null ? "" : filtro);
     } catch (e) {
@@ -144,6 +151,8 @@ export function useSavedFiles(initial: SavedFile[] = []) {
     deleteFile,
     orgFilter,
     setOrgFilter,
+    orgOverview,
+    setOrgOverview,
     setFileOrg,
     clearOrgFromProjects,
   };

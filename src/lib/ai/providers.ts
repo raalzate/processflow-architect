@@ -24,6 +24,7 @@ import { estadoIaLocal, puedeUsarIaLocal } from "./local-capability";
 import { cliInstalado } from "@/lib/agent-cli/capability";
 import { dentroDelTope, gastoSesion, leerTope, mensajeTope, sumarGasto } from "@/lib/agent-cli/cost";
 import type { CliId } from "@/lib/agent-cli/types";
+import { harnessOf, loadAiSettings } from "./remote-settings";
 import { hostBridge } from "@/lib/host-bridge";
 
 const api = () => hostBridge() as any;
@@ -40,21 +41,24 @@ export const localAvailable = (): boolean => !!api() && puedeUsarIaLocal(estadoI
 /** IA remota disponible: el main expone generación por proveedor (Gemini/OpenAI/Anthropic). */
 export const remoteAvailable = (): boolean => !!api()?.remoteGenerate;
 
-/** CLI por defecto del motor `cli`. Codex queda declarado sin verificar en vivo. */
-export const DEFAULT_CLI: CliId = "claude";
+/**
+ * Arnés del motor `cli`: el que eligió el humano en Ajustes (Claude Code, Codex o
+ * Antigravity). Se lee en cada llamada: cambiarlo no exige reiniciar la app.
+ */
+export const cliActivo = (): CliId => harnessOf(loadAiSettings());
 
 /**
  * Motor CLI disponible: el main expone la generación Y el CLI está instalado
  * según lo que el renderer publicó al arrancar (`agent-cli/capability.ts`).
  * Afirmarlo sin eso mandaba la tarea a un binario que no existe.
  */
-export const cliAvailable = (cli: CliId = DEFAULT_CLI): boolean => !!api()?.agentCliGenerate && cliInstalado(cli);
+export const cliAvailable = (cli: CliId = cliActivo()): boolean => !!api()?.agentCliGenerate && cliInstalado(cli);
 
 /**
  * Genera texto con el CLI del usuario (feature 021). El error del CLI (sin
  * sesión, timeout) se lanza tal cual: el humano lo ve, no se degrada en silencio.
  */
-export async function runCli(prompt: string, system?: string, cli: CliId = DEFAULT_CLI): Promise<string> {
+export async function runCli(prompt: string, system?: string, cli: CliId = cliActivo()): Promise<string> {
   const a = api();
   if (!a?.agentCliGenerate) throw new Error("El motor por CLI sólo está disponible en la app de escritorio.");
   // #462: tope de gasto por sesión. Se mira ANTES de llamar: una vez lanzada,

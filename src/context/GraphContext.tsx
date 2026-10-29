@@ -64,6 +64,9 @@ export interface GraphContextType {
   /** Organización por la que el header filtra («*» = todas, null = sin organización). */
   orgFilter: OrgFilter;
   setOrgFilter: (filtro: OrgFilter) => void;
+  /** El lienzo muestra la galería de proyectos de la organización elegida. */
+  orgOverview: boolean;
+  setOrgOverview: (abierta: boolean) => void;
   /** Mueve un proyecto a otra organización; `null` lo saca de todas. */
   setFileOrg: (id: string, orgId: string | null) => void;
   /** Saca una organización de todos los proyectos (al eliminarla). */
