@@ -15,6 +15,14 @@ describe("describeEngine — modo cli", () => {
     expect(d.detail).toMatch(/app/);
   });
 
+  it("nombra el arnés elegido en Ajustes (Codex, Antigravity), no siempre Claude Code", () => {
+    const agy = describeEngine({ ...cli, cli: "agy" }, {}, { estadoLocal: "disponible", cliDisponible: true });
+    expect(agy.label).toBe("Antigravity");
+    expect(agy.detail).toMatch(/Antigravity/);
+    const codex = describeEngine({ ...cli, cli: "codex" }, {}, { estadoLocal: "disponible", cliDisponible: false });
+    expect(codex.detail).toMatch(/Codex no está instalado/);
+  });
+
   it("sin CLI cae a local como respaldo, y sin local tampoco hay IA", () => {
     expect(describeEngine(cli, {}, { estadoLocal: "disponible", cliDisponible: false })).toMatchObject({
       isLocal: true,

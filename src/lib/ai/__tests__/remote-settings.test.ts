@@ -6,6 +6,7 @@ import {
   modelFor,
   isRemoteActive,
   normalizeSettings,
+  harnessOf,
   type AiRemoteSettings,
 } from "@/lib/ai/remote-settings";
 
@@ -51,6 +52,13 @@ describe("normalizeSettings", () => {
       provider: "gemini",
       models: {},
     });
+  });
+  it("conserva el arnés elegido y descarta uno desconocido (vuelve a Claude Code)", () => {
+    expect(normalizeSettings({ mode: "cli", cli: "agy" }).cli).toBe("agy");
+    expect(harnessOf(normalizeSettings({ mode: "cli", cli: "codex" }))).toBe("codex");
+    const raro = normalizeSettings({ mode: "cli", cli: "rm -rf" });
+    expect(raro.cli).toBeUndefined();
+    expect(harnessOf(raro)).toBe("claude");
   });
   it("keeps openrouter and its vendor-prefixed model id", () => {
     // OpenRouter nombra el modelo con el proveedor delante («google/…»): la barra

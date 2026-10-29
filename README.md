@@ -93,7 +93,7 @@ Y en la app, la primera vez:
 
 | Bienvenida | Ajustes · IA local |
 |---|---|
-| ![Pantalla de bienvenida](docs/screenshots/01-home.png) | ![Ajustes: modelo, motor y servidor MCP](docs/screenshots/03-settings.png) |
+| ![Galería de proyectos de una organización](docs/screenshots/01-home.png) | ![Ajustes: motor de IA en modo Arnés](docs/screenshots/03-settings.png) |
 | **Guía MCP** | **Documentación in-app** |
 | ![Guía MCP para diseñar con Claude Code](docs/screenshots/04-mcp.png) | ![Documentación del diseñador](docs/screenshots/05-docs.png) |
 

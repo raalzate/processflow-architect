@@ -1,7 +1,7 @@
 /**
  * @fileOverview Chat con un agente externo por CLI (feature 020, #444) — tipos.
  *
- * Claude Code y Codex tienen modo headless: un proceso que recibe el mensaje,
+ * Claude Code, Codex y Antigravity (`agy`) tienen modo headless: un proceso que recibe el mensaje,
  * trabaja con las herramientas MCP de la app y escribe eventos JSON por línea.
  * En el chat de la ficha el CLI es un agente ajeno (no pasa por el router). El
  * mismo CLI es además el motor `cli` del router (feature 021), como generador
@@ -10,14 +10,22 @@
  * tiene en su máquina (§P4: sin SDKs de nube, sin llaves).
  */
 
-export type CliId = "claude" | "codex";
+export type CliId = "claude" | "codex" | "agy";
 
-export const CLI_IDS: readonly CliId[] = ["claude", "codex"] as const;
+export const CLI_IDS: readonly CliId[] = ["claude", "codex", "agy"] as const;
+
+/**
+ * CLIs que sólo sirven de MOTOR de la app (generación de texto, feature 021) y no
+ * entran al chat de la ficha: ahí el agente escribe por MCP, y sin una allowlist
+ * de tools verificada no hay barrera contra una tool destructiva (#461).
+ */
+export const CLIS_SOLO_MOTOR: readonly CliId[] = ["agy"] as const;
 
 /** Cómo se ve cada CLI en la UI y cómo se instala si falta. */
 export const CLI_INFO: Record<CliId, { label: string; command: string; installUrl: string }> = {
   claude: { label: "Claude Code", command: "claude", installUrl: "https://code.claude.com/docs/en/setup" },
   codex: { label: "Codex", command: "codex", installUrl: "https://developers.openai.com/codex/cli" },
+  agy: { label: "Antigravity", command: "agy", installUrl: "https://antigravity.google/download" },
 };
 
 /**
@@ -35,6 +43,7 @@ export const CLI_MODELOS: Record<CliId, readonly { id: string; label: string; hi
     { id: "haiku", label: "Haiku", hint: "rápido y barato, para cambios chicos" },
   ],
   codex: [{ id: "", label: "Modelo: el tuyo", hint: "el que tenga configurado Codex" }],
+  agy: [{ id: "", label: "Modelo: el tuyo", hint: "el que tenga configurado Antigravity" }],
 };
 
 /** true si `modelo` es uno de los que ofrece la app para ese CLI (vacío = el del usuario). */

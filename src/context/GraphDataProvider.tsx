@@ -65,6 +65,8 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     deleteFile,
     orgFilter,
     setOrgFilter,
+    orgOverview,
+    setOrgOverview,
     setFileOrg,
     clearOrgFromProjects,
   } = useSavedFiles();
@@ -393,6 +395,8 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     // Organizaciones: agrupan los proyectos; el filtro es de VISTA (no mueve nada).
     orgFilter,
     setOrgFilter,
+    orgOverview,
+    setOrgOverview,
     setFileOrg,
     clearOrgFromProjects,
 

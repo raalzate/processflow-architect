@@ -88,6 +88,34 @@ function parseCodex(j: any): ChatEvent[] {
   }
 }
 
+/** Antigravity (`agy` 1.4.10, verificado en vivo): `init` → `step_update`… → `result`. */
+function parseAgy(j: any): ChatEvent[] {
+  switch (j.event) {
+    case "init":
+      return j.conversation_id ? [{ type: "session", sessionId: str(j.conversation_id) }] : [];
+    case "step_update": {
+      const s = j.step_update ?? {};
+      return s.step_type === "agent_response" && s.text_delta ? [{ type: "text", delta: str(s.text_delta) }] : [];
+    }
+    case "result": {
+      const r = j.result ?? {};
+      const ok = r.status === "SUCCESS";
+      return [
+        {
+          type: "result",
+          ok,
+          // Si falla, `response` viene vacío y el motivo está en `error`.
+          text: ok ? str(r.response) : str(r.error) || str(r.response),
+          ...(typeof r.num_turns === "number" ? { turns: r.num_turns } : {}),
+          ...(r.conversation_id ? { sessionId: str(r.conversation_id) } : {}),
+        },
+      ];
+    }
+    default:
+      return [];
+  }
+}
+
 /** Una línea del stdout del CLI → cero o más eventos. Nunca lanza. */
 export function parseLine(cli: CliId, line: string): ChatEvent[] {
   const l = line.trim();
@@ -99,6 +127,7 @@ export function parseLine(cli: CliId, line: string): ChatEvent[] {
     return [];
   }
   if (!j || typeof j !== "object") return [];
+  if (cli === "agy") return parseAgy(j);
   return cli === "claude" ? parseClaude(j) : parseCodex(j);
 }
 
@@ -141,6 +170,15 @@ export function resultText(
       return { error: str(j.result) || `Claude Code terminó con ${str(j.subtype) || "error"}.`, ...costo };
     }
     return { text: str(j.result).trim(), ...costo };
+  }
+  if (cli === "agy") {
+    // El texto completo llega en `result.response`; los deltas son sólo para el chat.
+    let fin: Extract<ChatEvent, { type: "result" }> | undefined;
+    for (const line of stdout.split("\n")) {
+      for (const e of parseLine("agy", line)) if (e.type === "result") fin = e;
+    }
+    if (!fin) return { error: "Antigravity no devolvió una respuesta." };
+    return fin.ok ? { text: fin.text.trim() } : { error: fin.text || "Antigravity terminó con error." };
   }
   const partes: string[] = [];
   let error = "";

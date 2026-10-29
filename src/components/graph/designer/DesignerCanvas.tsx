@@ -729,7 +729,9 @@ const PaletteItem: React.FC<{
       draggable
       onDragStart={(e) => onDragStart(e, item)}
       className={cn(
-        "flex items-center space-x-2 p-2 border rounded-md shadow-xs cursor-grab active:cursor-grabbing transition-all",
+        // Tile vertical: en la rejilla de dos columnas el nombre necesita el ancho
+        // entero de la celda; el «?» va en la esquina para no robárselo.
+        "relative flex min-w-0 flex-col items-center gap-1 px-1.5 pb-1.5 pt-2.5 border rounded-md shadow-xs cursor-grab active:cursor-grabbing transition-all",
         // `bg` es `fill-*` (SVG del lienzo); en el chip HTML lo traducimos a `bg-*`
         // para que el chip se vea como se verá el nodo: mismo relleno, mismo texto.
         bgDeFill(color.bg),
@@ -745,10 +747,9 @@ const PaletteItem: React.FC<{
       )}
     >
       <Icon className="w-4 h-4 shrink-0" />
-      {/* flex-1 min-w-0 → el nombre ocupa el espacio y trunca; title = tooltip
-          con el nombre completo (los largos como "Servicio de Host Abierto (OHS)"
-          se cortan visualmente). */}
-      <span className="min-w-0 flex-1 truncate text-xs font-semibold" title={type}>
+      {/* Hasta dos líneas y luego se corta; title = tooltip con el nombre
+          completo (los largos como "Servicio de Host Abierto (OHS)"). */}
+      <span className="line-clamp-2 w-full break-words text-center text-2xs font-semibold leading-tight" title={type}>
         {type}
       </span>
       {hasHelp && (
@@ -763,9 +764,9 @@ const PaletteItem: React.FC<{
             onHelp(type);
           }}
           title={`¿Qué es "${type}"?`}
-          className="shrink-0 rounded-full p-0.5 opacity-50 hover:opacity-100 hover:bg-black/10"
+          className="absolute right-0.5 top-0.5 rounded-full p-0.5 opacity-50 hover:opacity-100 hover:bg-black/10"
         >
-          <HelpCircle className="w-3.5 h-3.5" />
+          <HelpCircle className="w-3 h-3" />
         </button>
       )}
     </div>
@@ -1050,7 +1051,9 @@ export const Toolbox: React.FC<{
                   </span>
                 </button>
                 {isOpen && (
-                  <div className="space-y-2 mt-1.5">
+                  // Dos columnas: con una sola, las notaciones con muchos tipos
+                  // (UML, BPMN) obligaban a desplazarse para ver el grupo entero.
+                  <div className="mt-1.5 grid grid-cols-2 gap-2">
                     {group.types.map((type) => (
                       <PaletteItem
                         key={type}

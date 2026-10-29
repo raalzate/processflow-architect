@@ -4,8 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Cloud, KeyRound, Check, Loader2, Trash2, ExternalLink, Cpu, Shuffle, PlugZap, Terminal } from "lucide-react";
 import { publicarEstadoCli } from "@/lib/agent-cli/capability";
 import { DEFAULT_COST_CAP_USD, formatoUsd, gastoSesion, guardarTope, leerTope, sumarGasto } from "@/lib/agent-cli/cost";
-import { CLI_INFO, type CliStatus } from "@/lib/agent-cli/types";
-import { DEFAULT_CLI } from "@/lib/ai/providers";
+import { CLI_IDS, CLI_INFO, type CliId, type CliStatus } from "@/lib/agent-cli/types";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { accion } from "@/lib/action-labels";
@@ -34,6 +33,7 @@ import {
   modelFor,
   loadAiSettings,
   saveAiSettings,
+  harnessOf,
   type AiRemoteSettings,
   type RemoteProvider,
   type KeyStatus,
@@ -77,9 +77,13 @@ export function RemoteAiConfig() {
     refreshStatus();
   }, [refreshStatus]);
 
-  // Estado del CLI para el modo «Claude Code» (feature 021). Se pregunta al
+  // Estado de los arneses para el modo «Arnés» (feature 021). Se pregunta al
   // main en cada apertura: el usuario pudo instalarlo con la app abierta.
-  const [cli, setCli] = useState<CliStatus | null | undefined>(undefined);
+  const [estados, setEstados] = useState<CliStatus[] | undefined>(undefined);
+  const arnes: CliId = harnessOf(settings);
+  const arnesLabel = CLI_INFO[arnes].label;
+  // null = no está instalado; undefined = todavía no se sabe.
+  const cli = estados === undefined ? undefined : (estados.find((x) => x.cli === arnes && x.installed) ?? null);
   const [probandoCli, setProbandoCli] = useState(false);
   // Tope de gasto del CLI (#462): se lee al montar y se guarda al cambiarlo.
   const [topeCli, setTopeCli] = useState<number | null>(() =>
@@ -96,9 +100,9 @@ export function RemoteAiConfig() {
       ?.agentCliStatus?.()
       .then((s) => {
         publicarEstadoCli(s);
-        setCli(s.find((x) => x.cli === DEFAULT_CLI) ?? null);
+        setEstados(s);
       })
-      .catch(() => setCli(null));
+      .catch(() => setEstados([]));
   }, []);
 
   // Probar = una generación mínima por el CLI: descubre «sin sesión» antes de
@@ -106,10 +110,10 @@ export function RemoteAiConfig() {
   const probarCli = async () => {
     setProbandoCli(true);
     try {
-      const r = await api()?.agentCliGenerate?.({ cli: DEFAULT_CLI, prompt: "Respondé exactamente: OK" });
+      const r = await api()?.agentCliGenerate?.({ cli: arnes, prompt: "Respondé exactamente: OK" });
       sumarGasto(r?.costUsd); // la prueba también se cobra (#462)
-      if (r?.ok) toast({ title: "Claude Code responde", description: `Contestó «${r.text.slice(0, 40)}».` });
-      else toast({ variant: "destructive", title: "Claude Code no respondió", description: r?.error ?? "Sin respuesta." });
+      if (r?.ok) toast({ title: `${arnesLabel} responde`, description: `Contestó «${r.text.slice(0, 40)}».` });
+      else toast({ variant: "destructive", title: `${arnesLabel} no respondió`, description: r?.error ?? "Sin respuesta." });
     } finally {
       setProbandoCli(false);
     }
@@ -185,7 +189,7 @@ export function RemoteAiConfig() {
               ["local", "Local", Cpu, "En tu equipo · privado · sin internet"],
               ["hybrid", "Híbrido", Shuffle, "Ligero local · lo pesado a la nube"],
               ["remote", "Remoto", Cloud, "Todo a la nube · más potente"],
-              ["cli", "Claude Code", Terminal, "Razona tu CLI · actúa la app · sin llave"],
+              ["cli", "Arnés", Terminal, "Claude Code · Codex · Antigravity · sin llave"],
             ] as const).map(([val, lbl, Icon, sub]) => (
               <button
                 key={val}
@@ -211,13 +215,37 @@ export function RemoteAiConfig() {
           )}
         </div>
 
-        {/* Modo «Claude Code» (feature 021): estado del CLI y prueba. Sin llave:
-            el CLI usa la sesión que el usuario ya tiene en su máquina. */}
+        {/* Modo «Arnés» (feature 021): qué CLI razona, su estado y prueba. Sin
+            llave: el CLI usa la sesión que el usuario ya tiene en su máquina. */}
         {settings.mode === "cli" && (
           <div className="space-y-3 rounded-lg border bg-muted/20 p-4 text-sm">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Arnés">
+              {CLI_IDS.map((id) => {
+                const estado = estados?.find((x) => x.cli === id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={arnes === id}
+                    onClick={() => update({ cli: id })}
+                    className={cn(
+                      "flex flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
+                      arnes === id ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+                    )}
+                  >
+                    <span className="text-sm font-medium">{CLI_INFO[id].label}</span>
+                    <span className="text-2xs text-muted-foreground">
+                      <code>{CLI_INFO[id].command}</code>
+                      {estados === undefined ? "" : estado?.installed ? ` · ${estado.version ?? "instalado"}` : " · no instalado"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
             <div className="flex items-center gap-2">
               <Terminal className="h-4 w-4 text-primary" />
-              <span className="font-semibold">Claude Code como motor</span>
+              <span className="font-semibold">{arnesLabel} como motor</span>
               {cli?.installed ? (
                 <Badge variant="secondary">{cli.version ?? "instalado"}</Badge>
               ) : cli === undefined ? null : (
@@ -225,9 +253,9 @@ export function RemoteAiConfig() {
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Las sugerencias, las tareas de IA y el Constructor razonan con tu Claude Code; lo que se
+              Las sugerencias, las tareas de IA y el Constructor razonan con tu {arnesLabel}; lo que se
               escribe en el lienzo lo hace la app con sus propias herramientas y confirmaciones. Sin llave
-              en la app: usa tu sesión. Cada llamada tarda unos segundos y la factura tu cuenta de Claude.
+              en la app: usa tu sesión. Cada llamada tarda unos segundos y la factura tu cuenta del arnés.
               El Analista del panel sigue en el motor local.
             </p>
             {!isDesktop && (
@@ -237,9 +265,9 @@ export function RemoteAiConfig() {
             )}
             {cli === null && (
               <p className="text-xs text-destructive">
-                No encontré <code>claude</code>. Instalalo desde{" "}
-                <a className="underline" href={CLI_INFO.claude.installUrl} target="_blank" rel="noreferrer">
-                  {CLI_INFO.claude.installUrl}
+                No encontré <code>{CLI_INFO[arnes].command}</code>. Instalalo desde{" "}
+                <a className="underline" href={CLI_INFO[arnes].installUrl} target="_blank" rel="noreferrer">
+                  {CLI_INFO[arnes].installUrl}
                 </a>
                 ; mientras tanto se usa la IA local como respaldo.
               </p>
@@ -254,7 +282,7 @@ export function RemoteAiConfig() {
             {cli?.installed && (
               <Button type="button" variant="outline" size="sm" onClick={() => void probarCli()} disabled={probandoCli}>
                 {probandoCli ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlugZap className="mr-2 h-4 w-4" />}
-                Probar Claude Code
+                Probar {arnesLabel}
               </Button>
             )}
             {/* #462: tope de gasto por sesión, para el router y el chat de la ficha. */}
@@ -289,8 +317,10 @@ export function RemoteAiConfig() {
               </div>
               <p className="text-xs text-muted-foreground">
                 Gastado en esta sesión: {formatoUsd(gastoCli)}
-                {topeCli !== null ? ` de ${formatoUsd(topeCli)}` : ""}. Al llegar al tope, la app deja de llamar a
-                Claude Code hasta que lo subas o reinicies la app.
+                {topeCli !== null ? ` de ${formatoUsd(topeCli)}` : ""}. Al llegar al tope, la app deja de llamar al
+                arnés hasta que lo subas o reinicies la app.
+                {/* Sólo Claude Code informa el costo de cada llamada; los otros no suman al gasto. */}
+                {arnes !== "claude" && ` ${arnesLabel} no informa el costo de cada llamada: lo gastado con él no se cuenta acá.`}
               </p>
             </div>
           </div>

@@ -10,8 +10,10 @@
 import {
   type AiRemoteSettings,
   type KeyStatus,
+  harnessOf,
   providerInfo,
 } from "./remote-settings";
+import { CLI_INFO } from "@/lib/agent-cli/types";
 import { puedeUsarIaLocal, type EstadoIaLocal } from "./local-capability";
 
 export interface EngineDescription {
@@ -81,25 +83,27 @@ export function describeEngine(
     return hayLocal ? LOCAL : sinIa(`${motivoSinLocal} Activá un proveedor de nube en Ajustes si querés sugerencias.`);
   }
 
-  // Modo CLI (feature 021): razona el CLI del usuario (Claude Code), actúa la app.
+  // Modo CLI (feature 021): razona el arnés del usuario (Claude Code, Codex o
+  // Antigravity), actúa la app.
   // No es "local" (el texto sale de Anthropic por la sesión del CLI) ni "nube
   // con llave de la app": es su propia procedencia, y el badge la nombra.
   if (settings.mode === "cli") {
+    const arnes = CLI_INFO[harnessOf(settings)].label;
     const hayCli = ctx?.cliDisponible ?? true;
     if (hayCli) {
       return {
         available: true,
         isLocal: false,
-        label: "Claude Code",
-        detail: "Razona tu Claude Code (con tu sesión, sin llave en la app); las acciones las hace la app",
+        label: arnes,
+        detail: `Razona tu ${arnes} (con tu sesión, sin llave en la app); las acciones las hace la app`,
       };
     }
-    if (!hayLocal) return sinIa(`Claude Code no está instalado y no hay motor local. ${motivoSinLocal}`);
+    if (!hayLocal) return sinIa(`${arnes} no está instalado y no hay motor local. ${motivoSinLocal}`);
     return {
       available: true,
       isLocal: true,
       label: "IA local (respaldo)",
-      detail: "Claude Code no está instalado en este equipo: se usa la IA local",
+      detail: `${arnes} no está instalado en este equipo: se usa la IA local`,
     };
   }
 

@@ -7,7 +7,7 @@ import { loadAiSettings, type KeyStatus } from "@/lib/ai/remote-settings";
 import { describeEngine, describeAgentEngine } from "@/lib/ai/provenance";
 import { estadoIaLocal } from "@/lib/ai/local-capability";
 import { cliInstalado, estadoCli } from "@/lib/agent-cli/capability";
-import { DEFAULT_CLI } from "@/lib/ai/providers";
+import { cliActivo } from "@/lib/ai/providers";
 import { hostBridge } from "@/lib/host-bridge";
 
 /**
@@ -52,11 +52,12 @@ export function AiProvenanceBadge({
   const describir = agente ? describeAgentEngine : describeEngine;
   // Sin estado publicado del CLI no se afirma que falte (feature 021).
   const clis = estadoCli();
-  const engine = describir(loadAiSettings(), keys, {
+  const ajustes = loadAiSettings();
+  const engine = describir(ajustes, keys, {
     estadoLocal: estadoIaLocal(),
-    cliDisponible: clis ? cliInstalado(DEFAULT_CLI, clis) : undefined,
+    cliDisponible: clis ? cliInstalado(cliActivo(), clis) : undefined,
   });
-  const Icon = !engine.available ? CircleSlash : engine.isLocal ? Cpu : engine.label === "Claude Code" ? Terminal : Cloud;
+  const Icon = !engine.available ? CircleSlash : engine.isLocal ? Cpu : ajustes.mode === "cli" ? Terminal : Cloud;
 
   return (
     <span
