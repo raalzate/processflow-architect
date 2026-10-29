@@ -48,6 +48,13 @@ describe("mensajeIaLocal", () => {
     expect(m.persistente).toBe(false);
   });
 
+  // #658: con otro arnés elegido, el aviso decía igual «modo Claude Code».
+  it("en modo CLI nombra el arnés elegido, no siempre Claude Code", () => {
+    const m = mensajeIaLocal("sin-webgpu", { modo: "cli", conLlave: false, arnes: "agy" })!;
+    expect(m.detalle).toMatch(/Antigravity/);
+    expect(m.detalle).not.toMatch(/Claude Code/);
+  });
+
   it("sin WebGPU explica qué se pierde y qué se puede hacer", () => {
     const m = mensajeIaLocal("sin-webgpu", soloLocal)!;
     expect(m.titulo).toMatch(/IA local/i);

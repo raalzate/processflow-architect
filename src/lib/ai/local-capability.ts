@@ -15,7 +15,8 @@
  * pregunte por el adaptador WebGPU, nadie puede afirmar que la IA local sirve.
  */
 
-import type { AiMode } from "@/lib/ai/remote-settings";
+import { DEFAULT_HARNESS, type AiMode } from "@/lib/ai/remote-settings";
+import { CLI_INFO, type CliId } from "@/lib/agent-cli/types";
 
 export type EstadoIaLocal = "desconocido" | "disponible" | "sin-webgpu" | "sin-electron";
 
@@ -59,6 +60,8 @@ export interface CoberturaNube {
   modo: AiMode;
   /** ¿Hay llave guardada para el proveedor elegido? */
   conLlave: boolean;
+  /** Arnés elegido para el modo `cli` (#658); ausente = el de por defecto. */
+  arnes?: CliId;
 }
 
 /**
@@ -71,7 +74,7 @@ export interface CoberturaNube {
  */
 export function mensajeIaLocal(
   estado: EstadoIaLocal,
-  { modo, conLlave }: CoberturaNube
+  { modo, conLlave, arnes = DEFAULT_HARNESS }: CoberturaNube
 ): AvisoIaLocal | undefined {
   if (estado === "disponible" || estado === "desconocido") return undefined;
   // La nube atiende TODO: no hay hueco que avisar.
@@ -82,7 +85,7 @@ export function mensajeIaLocal(
   const cli = modo === "cli";
   const nubeLista = (modo === "hybrid" || modo === "remote") && conLlave;
   const salida = cli
-    ? "Estás en modo Claude Code: las sugerencias razonan en tu CLI, y sin él no habrá respaldo local."
+    ? `Estás en modo ${CLI_INFO[arnes].label}: las sugerencias razonan en tu CLI, y sin él no habrá respaldo local.`
     : nubeLista
       ? "Estás en modo híbrido: las sugerencias ligeras también irán a tu proveedor de nube."
       : modo !== "local"
