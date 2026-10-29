@@ -11,6 +11,7 @@
  */
 
 import type { SavedFile } from "./types";
+import { getNotation } from "./notations";
 
 /** Valor del filtro: un slug · `null` (sin organización) · `"*"` (todas). */
 export type OrgFilter = string | null | typeof ORG_TODAS;
@@ -114,4 +115,28 @@ export function orgOptions(files: SavedFile[], desdeMcp: string[] = []): (string
   // es una trampa.
   if (hayHuerfanos) ordenados.push(null);
   return ordenados;
+}
+
+/** Dónde está parado el humano: organización › proyecto, y en qué notación. */
+export interface ProjectContext {
+  org: string;
+  proyecto: string;
+  notacion: string;
+}
+
+/**
+ * Contexto del proyecto activo para pantallas fuera del lienzo (el Agrupador, #662).
+ * Una acción sin deshacer tiene que decir sobre QUÉ proyecto opera; «el proyecto
+ * activo» no lo dice. El proyecto sin organización lo declara, no lo calla.
+ */
+export function projectContext(
+  file: Pick<SavedFile, "orgId" | "name"> & { content?: { nombre_proyecto?: string; notation?: string } },
+  names: Record<string, string> = {}
+): ProjectContext {
+  const slug = orgOf(file);
+  return {
+    org: slug === null ? SIN_ORG_LABEL : orgChipLabel(slug, names),
+    proyecto: file.content?.nombre_proyecto?.trim() || file.name,
+    notacion: getNotation(file.content?.notation).label,
+  };
 }
