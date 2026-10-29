@@ -8,11 +8,11 @@
  * ficha que le pasa la app y contesta; no escribe en el lienzo.
  */
 
-import { CLI_IDS, CLI_INFO, type CliId, type CliStatus } from "./types";
+import { CLI_IDS, CLI_INFO, CLIS_SOLO_MOTOR, type CliId, type CliStatus } from "./types";
 
 export type ChatEngine = CliId | "app";
 
-export const CHAT_ENGINES: readonly ChatEngine[] = [...CLI_IDS, "app"] as const;
+export const CHAT_ENGINES: readonly ChatEngine[] = [...CLI_IDS.filter((c) => !CLIS_SOLO_MOTOR.includes(c)), "app"];
 
 export const engineLabel = (e: ChatEngine): string => (e === "app" ? "IA de la app" : CLI_INFO[e].label);
 

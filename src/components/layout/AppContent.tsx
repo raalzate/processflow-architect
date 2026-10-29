@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/layout/AppHeader";
+import { OrgProjectsOverview } from "@/components/layout/OrgProjectsOverview";
 import { ORG_TODAS, orgOf } from "@/lib/project-orgs";
 import NodeModal from "@/components/modals/NodeModal";
 import { Toaster } from "@/components/ui/toaster";
@@ -690,8 +691,13 @@ const WelcomeScreen = () => {
 // Este componente SÍ se volverá a renderizar en las búsquedas,
 // porque depende de `filteredNodes`. Esto es correcto y deseado.
 const GraphArea = React.memo(() => {
-  const { currentFileId, graphData, handleDesignUpdate, savedFiles } = useGraphContext();
+  const { currentFileId, graphData, handleDesignUpdate, savedFiles, orgOverview } = useGraphContext();
   const { activeView } = useViews();
+
+  // Elegir organización en el header muestra sus proyectos en tarjetas.
+  if (orgOverview) {
+    return <OrgProjectsOverview />;
+  }
 
   // Sin proyecto activo: pantalla de bienvenida. Con un proyecto activo
   // (aunque esté vacío) se muestran las pestañas para poder diseñar en "Design".

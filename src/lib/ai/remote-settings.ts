@@ -7,11 +7,14 @@
 // Este módulo sólo maneja la preferencia (modo, proveedor, modelo) — no secretos.
 // =============================================================================
 
+import { CLI_IDS, type CliId } from "@/lib/agent-cli/types";
+
 // local  → todo en el modelo local.
 // remote → todo en el proveedor de nube elegido.
 // hybrid → local para sugerencias ligeras; nube para lo complejo o entradas grandes.
-// cli    → todo lo razona el CLI del usuario (Claude Code / Codex, con SU sesión,
-//          sin llave en la app); las acciones siguen siendo de la app (feature 021).
+// cli    → «Arnés»: todo lo razona el CLI del usuario (Claude Code / Codex /
+//          Antigravity, con SU sesión, sin llave en la app); las acciones siguen
+//          siendo de la app (feature 021).
 export type AiMode = "local" | "remote" | "hybrid" | "cli";
 export const AI_MODES: readonly AiMode[] = ["local", "hybrid", "remote", "cli"] as const;
 export type RemoteProvider = "gemini" | "openai" | "anthropic" | "openrouter";
@@ -69,7 +72,13 @@ export interface AiRemoteSettings {
   provider: RemoteProvider;
   /** Modelo elegido por proveedor (si falta, se usa el defaultModel). */
   models: Partial<Record<RemoteProvider, string>>;
+  /** Arnés del modo `cli`. Ausente = Claude Code, el que había antes de poder elegir. */
+  cli?: CliId;
 }
+
+/** Arnés que razona en el modo `cli`. */
+export const DEFAULT_HARNESS: CliId = "claude";
+export const harnessOf = (settings: Pick<AiRemoteSettings, "cli">): CliId => settings.cli ?? DEFAULT_HARNESS;
 
 export const DEFAULT_AI_SETTINGS: AiRemoteSettings = {
   mode: "local",
@@ -109,7 +118,9 @@ export function normalizeSettings(raw: unknown): AiRemoteSettings {
       if (typeof v === "string" && v.trim()) models[p.id] = v.trim();
     }
   }
-  return { mode, provider, models };
+  // Un arnés desconocido (o de una versión futura) no se arrastra: vuelve al de por defecto.
+  const cli = CLI_IDS.includes(r.cli as CliId) ? (r.cli as CliId) : undefined;
+  return { mode, provider, models, ...(cli ? { cli } : {}) };
 }
 
 const STORAGE_KEY = "ai_remote_settings";

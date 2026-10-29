@@ -7,7 +7,7 @@
  * main rechaza el resto con un mensaje legible antes de tocar un proceso.
  */
 
-import { CLI_IDS, esModeloDe, type CliId } from "./types";
+import { CLI_IDS, CLIS_SOLO_MOTOR, esModeloDe, type CliId } from "./types";
 import type { GenerateInput, LaunchInput } from "./args";
 
 /** El único servidor MCP al que el chat puede apuntar: el de la app, en loopback. */
@@ -33,6 +33,7 @@ export function validarLaunch(
 ): { ok: true; input: LaunchInput } | { ok: false; error: string } {
   const i = (x ?? {}) as Record<string, unknown>;
   if (!esCliId(i.cli)) return { ok: false, error: `Agente desconocido: ${String(i.cli)}.` };
+  if (CLIS_SOLO_MOTOR.includes(i.cli)) return { ok: false, error: `${i.cli} sólo está disponible como motor de la app.` };
   if (typeof i.prompt !== "string" || !i.prompt.trim()) return { ok: false, error: "El mensaje está vacío." };
   if (typeof i.mcpUrl !== "string" || !MCP_URL.test(i.mcpUrl)) {
     return { ok: false, error: "La URL del servidor MCP no es la de la app (http://127.0.0.1:<puerto>/mcp)." };

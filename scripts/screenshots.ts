@@ -134,6 +134,63 @@ function seedGraph(): GraphData {
   return toGraphData(layout(m, { strategy: "capas", density: "compacto" }));
 }
 
+/** Organización de ejemplo: la portada muestra su galería de proyectos. */
+const ORG = "aseguradora-andina";
+
+/**
+ * Proyectos hermanos del de ejemplo, para que la galería tenga qué comparar. Se
+ * arman con el mismo constructor; la geometría no importa (la tarjeta no la dibuja).
+ */
+function proyectosHermanos(): GraphData[] {
+  const armar = (
+    nombre_proyecto: string,
+    notation: "c4" | "bpmn",
+    descripcion: string,
+    fecha_analisis: string,
+    nodos: [string, string][],
+    contenedor?: string
+  ) => {
+    let m = emptyDiagram({ nombre_proyecto, notation, descripcion, fecha_analisis });
+    if (contenedor) m = addContainer(m, { nombre: contenedor.split("|")[0], tipo_elemento: contenedor.split("|")[1] }).model;
+    const ids = nodos.map(([nombre, tipo_elemento], i) => {
+      const r = addNode(m, { nombre, tipo_elemento, container: contenedor && i > 1 ? contenedor.split("|")[0] : undefined });
+      m = r.model;
+      return r.id;
+    });
+    for (let i = 1; i < ids.length; i++) m = addEdge(m, { fuente: ids[i - 1], destino: ids[i] });
+    return toGraphData(layout(m, { strategy: "capas", density: "compacto" }));
+  };
+  return [
+    armar(
+      "Paisaje de sistemas de pólizas",
+      "c4",
+      "Portal de clientes, core de pólizas y las integraciones con el buró de riesgo y la pasarela de pagos.",
+      "2026-08-12",
+      [
+        ["Asegurado", "Persona"],
+        ["Portal de clientes", "Sistema"],
+        ["API de pólizas", "Contenedor"],
+        ["Base de pólizas", "Base de Datos"],
+        ["Pasarela de pagos", "Sistema Externo"],
+      ],
+      "Core de pólizas|Límite de Sistema"
+    ),
+    armar(
+      "Atención de siniestros",
+      "bpmn",
+      "Desde el aviso del siniestro hasta el pago de la indemnización, con la inspección del perito.",
+      "2026-07-29",
+      [
+        ["Aviso de siniestro", "Evento de Inicio"],
+        ["Registrar reclamo", "Tarea"],
+        ["Inspección del perito", "Tarea"],
+        ["Liquidar indemnización", "Tarea"],
+        ["Indemnización pagada", "Evento de Fin"],
+      ]
+    ),
+  ];
+}
+
 // =============================================================================
 // 2 · Doble de `preload.ts` (lo que leen las pantallas que se capturan)
 // =============================================================================
@@ -209,6 +266,14 @@ const electronStubSource = () => `
       deleteAiKey: async () => ({ ok: true }),
       getAiKeyStatus: async () => ({}),
       remoteGenerate: async () => ({ ok: false, error: "sin llave" }),
+      // Los tres arneses instalados: Ajustes muestra su versión al elegir uno.
+      agentCliStatus: async () => [
+        { cli: "claude", installed: true, version: "2.1.293 (Claude Code)", loggedIn: true },
+        { cli: "codex", installed: true, version: "codex-cli 0.46.0" },
+        { cli: "agy", installed: true, version: "1.4.10" },
+      ],
+      agentCliGenerate: async () => ({ ok: true, text: "OK" }),
+      mcpOrgsStatus: async () => ({ pinned: null, orgs: [{ slug: "${ORG}", nombre: "Aseguradora Andina" }] }),
     };
     Object.defineProperty(window, "electronAPI", { value: api, configurable: true });
   })();
@@ -220,6 +285,8 @@ const seedStorageSource = (files: unknown) => `
     localStorage.setItem("saved_json_files", ${JSON.stringify(JSON.stringify(files))});
     localStorage.setItem("last_opened_file_id", "demo");
     localStorage.setItem("litert_model", "gemma-e4b");
+    // Motor en modo «Arnés» con Claude Code: es lo que muestra la captura de Ajustes.
+    localStorage.setItem("ai_remote_settings", JSON.stringify({ mode: "cli", provider: "gemini", models: {}, cli: "claude" }));
   })();
 `;
 
@@ -244,14 +311,18 @@ interface Shot {
   hero?: boolean;
   /** Agrupador: elige tipo y nodo principal para que se vea el paso 3. */
   merger?: boolean;
+  /** Portada: elige la organización en el chip para que el lienzo muestre su galería. */
+  galeria?: boolean;
+  /** Ajustes: lleva a la vista la tarjeta «Motor de IA». */
+  motor?: boolean;
 }
 
 const SHOTS: Shot[] = [
-  { file: "01-home.png", path: "/", seed: false, wait: 2500, listo: "Bienvenido a ProcessFlow Architect" },
+  { file: "01-home.png", path: "/", seed: true, wait: 2500, galeria: true, listo: "Leyenda" },
   { file: "02-canvas.png", path: "/", seed: true, wait: 4000, hero: true, listo: "Leyenda" },
   // «Descargado» sólo aparece con el stub del host funcionando: es la prueba
   // de que Ajustes ve los modelos y no cayó a «sólo en la app de escritorio».
-  { file: "03-settings.png", path: "/settings", seed: true, wait: 2500, listo: "Descargado" },
+  { file: "03-settings.png", path: "/settings", seed: true, wait: 2500, motor: true, listo: "Descargado" },
   { file: "04-mcp.png", path: "/mcp", seed: true, wait: 2500, listo: "MCP" },
   { file: "05-docs.png", path: "/docs", seed: true, wait: 2500, listo: "Documentación" },
   { file: "06-merger.png", path: "/merger", seed: true, wait: 2500, merger: true, listo: "Agrupador de Nodos" },
@@ -297,7 +368,10 @@ async function startDevServer(): Promise<ChildProcess> {
 async function main() {
   mkdirSync(OUT_DIR, { recursive: true });
   const content = seedGraph();
-  const savedFiles = [{ id: "demo", name: content.nombre_proyecto, content }];
+  const savedFiles = [
+    { id: "demo", name: content.nombre_proyecto, orgId: ORG, content },
+    ...proyectosHermanos().map((c, i) => ({ id: `demo-${i + 1}`, name: c.nombre_proyecto, orgId: ORG, content: c })),
+  ];
 
   const server = OWN_SERVER ? await startDevServer() : null;
   const browser = await puppeteer.launch({
@@ -322,6 +396,8 @@ async function main() {
 
       if (shot.merger) await prepararMerger(page);
       if (shot.hero) await prepararHero(page);
+      if (shot.galeria) await prepararGaleria(page);
+      if (shot.motor) await prepararMotor(page);
 
       await page.screenshot({ path: path.join(OUT_DIR, shot.file) as `${string}.png` });  // el tipo de puppeteer exige el literal .png
       console.log(`✔ ${shot.file}`);
@@ -334,16 +410,44 @@ async function main() {
   console.log(`\nCapturas en docs/screenshots/. Revisá el diff: el gate no juzga píxeles.`);
 }
 
-/** Hero = sólo el lienzo con el proyecto encuadrado. */
+/**
+ * Hero = el lienzo con el proyecto encuadrado y la paleta de la notación a la
+ * vista (en dos columnas: entra el grupo entero sin desplazarse).
+ */
 async function prepararHero(page: Page) {
-  await page.evaluate(() => {
-    document.querySelector("svg.lucide-panel-left-close")?.closest("button")?.click();
-  });
-  await esperar(800);
   await page.evaluate(() => {
     (document.querySelector('button[title="Ajustar a contenido"]') as HTMLElement | null)?.click();
   });
   await esperar(1200);
+}
+
+/**
+ * Portada = la galería de la organización. Se llega como el humano: abriendo el
+ * chip del header y eligiendo la organización (Radix necesita eventos reales).
+ */
+async function prepararGaleria(page: Page) {
+  await page.click('button[title^="Filtro de organización"]');
+  await esperar(500);
+  const items = await page.$$('[role="menuitem"]');
+  for (const it of items) {
+    const t = await it.evaluate((el) => el.textContent ?? "");
+    if (t.includes("Aseguradora Andina")) {
+      await it.click();
+      break;
+    }
+  }
+  await esperar(1500);
+  const hay = await page.evaluate(() => document.body.innerText.includes("elegí uno para abrirlo"));
+  if (!hay) throw new Error("01-home.png: la galería de la organización no apareció.");
+}
+
+/** Ajustes = la tarjeta «Motor de IA» arriba, con el selector del arnés entero. */
+async function prepararMotor(page: Page) {
+  await page.evaluate(() => {
+    const h = [...document.querySelectorAll("h3, div")].find((el) => el.textContent?.trim() === "Motor de IA");
+    h?.closest(".rounded-lg, [class*='card']")?.scrollIntoView({ block: "start" });
+  });
+  await esperar(800);
 }
 
 /**

@@ -96,6 +96,8 @@ describe("cliStatus", () => {
     expect(s).toEqual([
       { cli: "claude", installed: true, version: "2.1.293 (Claude Code)", loggedIn: false },
       { cli: "codex", installed: false },
+      // Antigravity también se reporta: Ajustes dice si está instalado al elegirlo como arnés.
+      { cli: "agy", installed: false },
     ]);
   });
 

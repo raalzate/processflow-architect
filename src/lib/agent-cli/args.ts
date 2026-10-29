@@ -5,7 +5,9 @@
  * app: `-p` + `stream-json` + `--mcp-config` (http) + `--allowedTools` conecta
  * el servidor y restringe al agente a las tools de la app. Codex sigue el
  * contrato documentado de `codex exec --json`; no se verificó en vivo (no está
- * instalado en la máquina de desarrollo), y queda declarado.
+ * instalado en la máquina de desarrollo), y queda declarado. Antigravity
+ * (`agy` 1.4.10) se verificó en vivo el 2026-10-29 sólo como generador de texto:
+ * prompt por stdin en `stream-json` y eventos `step_update`/`result`.
  */
 
 import { MCP_SERVER_NAME, type CliId } from "./types";
@@ -90,7 +92,26 @@ export interface GenerateInput {
  */
 const finDeFlags = (prompt: string): string[] => ["--", prompt];
 
+/**
+ * Mensaje de entrada de `agy --input-format stream-json`: un objeto por línea con
+ * `event: "user"`. Verificado en vivo con agy 1.4.10 (con otro `event` lo ignora).
+ * Por stdin, igual que Claude (#462): sin tope de argv y sin leerse como flag.
+ */
+export const agyStdin = (prompt: string): string =>
+  `${JSON.stringify({ event: "user", message: { role: "user", content: prompt } })}\n`;
+
 export function buildGenerateLaunch(input: GenerateInput): Launch {
+  if (input.cli === "agy") {
+    // Sin flag de prompt de sistema: va dentro del mensaje, como en Codex.
+    const prompt = input.system ? `${input.system}\n\n---\n\n${input.prompt}` : input.prompt;
+    return {
+      command: "agy",
+      stdin: agyStdin(prompt),
+      // `-p=` vacío: el turno sale de stdin. `-p` suelto se tragaba el flag que
+      // lo seguía como prompt (verificado), por eso va pegado y al final.
+      args: ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "-p="],
+    };
+  }
   if (input.cli === "claude") {
     return {
       command: "claude",
@@ -151,6 +172,9 @@ export function claudeMcpConfig(mcpUrl: string): string {
 }
 
 export function buildLaunch(input: LaunchInput): Launch {
+  // Antigravity no tiene config MCP en línea ni allowlist de tools verificada:
+  // sin esa barrera no entra al chat de la ficha (ver `CLIS_SOLO_MOTOR`).
+  if (input.cli === "agy") throw new Error("Antigravity sólo está disponible como motor de la app, no en el chat de la ficha.");
   const maxTurns = String(input.maxTurns ?? DEFAULT_MAX_TURNS);
   const dirs = carpetasValidas(input.dirs);
   if (input.cli === "claude") {
