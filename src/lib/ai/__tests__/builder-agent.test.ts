@@ -20,6 +20,7 @@ import {
   askUser,
   preguntaDeDeshacer,
   startRun,
+  type BuilderRunState,
 } from "@/lib/ai/builder-run";
 import type { ToolSpec } from "@/lib/ai/builder-tools";
 
@@ -518,7 +519,7 @@ describe("deshacer lo publicado", () => {
     graph: { big_picture: { nodos: [{ id: "a", nombre: "A", tipo: "Comando" }] }, agregados: [] } as any,
   };
   const publicada = () => {
-    let s = { ...startRun(), respaldo };
+    let s: BuilderRunState = { ...startRun(), respaldo };
     s = applyObservation(s, { tool: "set_view_graph", args: { view: "Pagos" } }, { ok: true, texto: "hecho" });
     s = applyObservation(s, { tool: "export_as_view", args: { viewName: "Extra" } }, { ok: true, texto: "hecho" });
     return askUser(s, preguntaDeDeshacer());
