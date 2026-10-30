@@ -28,7 +28,11 @@ import {
   relecturaEsteril,
   pistaDeHerramienta,
   ultimoErrorReal,
+  planDeshacer,
+  fueraDelDeshacer,
+  preguntaDeDeshacer,
 } from "@/lib/ai/builder-run";
+import type { GraphData } from "@/lib/types";
 
 const call = (tool: string, args: Record<string, unknown> = {}) => ({ tool, args });
 const ok = (texto: string) => ({ ok: true, texto });
@@ -742,5 +746,80 @@ describe("notación de use_diagram con comas en el nombre (#331)", () => {
     );
     expect(s.diagrama?.nombre).toBe("Ventas, Cobros y Postventa");
     expect(s.diagrama?.notacion).toBe("c4");
+  });
+});
+
+/**
+ * Deshacer (#666). Lo que el constructor publica pisa el lienzo del humano; el
+ * respaldo de la vista abierta es lo que permite volver atrás sin depender del
+ * modelo. El plan es puro: dice QUÉ llamadas reponen el lienzo.
+ */
+describe("plan de deshacer", () => {
+  const grafo = (nodos: string[]) =>
+    ({
+      nombre_proyecto: "p",
+      version: "1",
+      fecha_analisis: "",
+      big_picture: { nodos: nodos.map((n) => ({ id: n, nombre: n, tipo: "Comando" })) },
+      agregados: [],
+      read_models: [],
+      responsables: [],
+      notas: "",
+      transcript: "",
+    }) as unknown as GraphData;
+  const conRespaldo = (graph: GraphData | null) => ({
+    ...startRun(),
+    respaldo: { vista: "Pagos", graph, vistas: ["Pagos", "Vieja", "Checkout"] },
+  });
+
+  it("sin cambios en el lienzo no hay nada que deshacer", () => {
+    expect(planDeshacer(conRespaldo(grafo(["A"])))).toEqual([]);
+  });
+
+  it("editar la vista abierta se deshace reponiendo su grafo, quitando lo agregado", () => {
+    const s = applyObservation(conRespaldo(grafo(["A"])), call("set_view_graph", { view: "Pagos" }), ok("hecho"));
+    const [restaurar] = planDeshacer(s);
+    expect(restaurar.tool).toBe("set_view_graph");
+    expect(restaurar.args.view).toBe("Pagos");
+    expect(restaurar.args.allowRemovals).toBe(true);
+    expect(JSON.parse(String(restaurar.args.graph)).big_picture.nodos[0].nombre).toBe("A");
+  });
+
+  it("una edición que el MCP rechazó no cuenta", () => {
+    const s = applyObservation(conRespaldo(grafo(["A"])), call("add_view_element", {}), { ok: false, texto: "no" });
+    expect(planDeshacer(s)).toEqual([]);
+  });
+
+  it("una pestaña creada en la corrida se quita; una reemplazada no, era del humano", () => {
+    let s = applyObservation(conRespaldo(grafo(["A"])), call("export_as_view", { viewName: "Nueva" }), ok("hecho"));
+    s = applyObservation(s, call("export_as_view", { viewName: "Vieja", replace: true }), ok("hecho"));
+    expect(planDeshacer(s)).toEqual([{ tool: "delete_view", args: { name: "Nueva" } }]);
+  });
+
+  it("una vista que estaba vacía no se puede reponer: el MCP no deja el lienzo en blanco, y se dice", () => {
+    const s = applyObservation(conRespaldo(grafo([])), call("set_view_graph", { view: "Pagos" }), ok("hecho"));
+    expect(planDeshacer(s)).toEqual([]);
+    expect(fueraDelDeshacer(s).join(" ")).toMatch(/vacía/);
+  });
+
+  it("una pestaña exportada con el nombre de una que ya existía no se borra: sería la del humano", () => {
+    const s = applyObservation(conRespaldo(grafo(["A"])), call("export_as_view", { viewName: "checkout" }), ok("hecho"));
+    expect(planDeshacer(s)).toEqual([]);
+    expect(fueraDelDeshacer(s).join(" ")).toMatch(/ya existía/);
+  });
+
+  it("editar OTRA vista no restaura la abierta, y se avisa que no se revierte", () => {
+    const s = applyObservation(conRespaldo(grafo(["A"])), call("update_view_element", { view: "Checkout" }), ok("hecho"));
+    expect(planDeshacer(s)).toEqual([]);
+    expect(fueraDelDeshacer(s).join(" ")).toMatch(/Checkout/);
+  });
+
+  it("un borrado de vista confirmado no se revierte, y se dice", () => {
+    const s = applyObservation(conRespaldo(grafo(["A"])), call("delete_view", { name: "Vieja" }), ok("hecho"));
+    expect(fueraDelDeshacer(s)).toHaveLength(1);
+  });
+
+  it("se ofrece como pregunta de dos opciones", () => {
+    expect(preguntaDeDeshacer().opciones.map((o) => o.id)).toEqual(["deshacer", "conservar"]);
   });
 });
