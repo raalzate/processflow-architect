@@ -18,7 +18,7 @@
 
 import type { AgentStep } from "../agent-types";
 import type { AiMode, RemoteProvider } from "./remote-settings";
-import { route } from "./router";
+import { chooseProvider, route, type AiTask } from "./router";
 import { builderTurnTask } from "./tasks";
 import { motorDelConstructor } from "./agent-engine";
 import { cliAvailable } from "./providers";
@@ -42,6 +42,7 @@ import {
   runFinished,
   startRun,
   pistaDeHerramienta,
+  fueraDelDeshacer,
   planDeshacer,
   preguntaDeDeshacer,
   relecturaEsteril,
@@ -108,6 +109,17 @@ export interface BuilderAgentResult {
 
 const electron = (): any => hostBridge();
 
+/**
+ * Cinturón por turno: `motorDelConstructor` decide al arrancar, pero en modo
+ * `cli` el router cae al motor local si el CLI deja de responder. Esa caída, en
+ * el constructor, se corta acá en vez de ejecutarse (#666).
+ */
+function sinMotorLocal(task: AiTask, prompt: string, mode: AiMode): void {
+  if (chooseProvider(task, prompt.length, { mode }).provider === "local") {
+    throw new Error("el constructor no corre con la IA local y el CLI no está disponible");
+  }
+}
+
 /** Herramientas y ejecución REALES: el transporte en memoria del proceso main. */
 export const defaultBuilderDeps: BuilderDeps = {
   listTools: async () => {
@@ -121,10 +133,12 @@ export const defaultBuilderDeps: BuilderDeps = {
     return { ok: Boolean(r?.ok) && !r?.isError, texto: (r?.blocks ?? []).join("\n") };
   },
   generate: async (prompt, system, mode, provider, model) => {
+    sinMotorLocal(builderTurnTask, prompt, mode);
     const r = await route(builderTurnTask, { prompt, system }, { mode, provider, model });
     return r.output;
   },
   generarDiagrama: async (input, ctx) => {
+    sinMotorLocal(creativeDiagramTask, creativeDiagramTask.buildPrompt!(input).prompt, ctx.mode);
     const r = await route(creativeDiagramTask, input, ctx);
     return r.output;
   },
@@ -271,9 +285,13 @@ function conMotor(
   return { input: { ...input, mode: motor.mode } };
 }
 
-/** La vista abierta antes de tocarla: lo que restaura «Deshacer» (#666). */
-function respaldoDe(input: BuilderAgentInput): BuilderRunState["respaldo"] {
-  return input.vista ? { vista: input.vista.nombre, graph: input.vista.graph ?? null } : undefined;
+/** El lienzo antes de tocarlo: lo que usa «Deshacer» (#666). */
+function respaldoDe(input: BuilderAgentInput): NonNullable<BuilderRunState["respaldo"]> {
+  return {
+    vista: input.vista?.nombre,
+    graph: input.vista?.graph ?? null,
+    vistas: input.vistas.map((v) => v.name),
+  };
 }
 
 /**
@@ -750,9 +768,10 @@ export async function answerBuilderAgent(
   paso({ type: "decision", content: eleccion.label });
   if (state.cancelada) return { reply: summarizeRun(state), steps, state };
 
-  // Deshacer no piensa: repone lo guardado, sin modelo de por medio (#666).
-  if (eleccion.id === "deshacer") return deshacer(estado, deps, steps, paso);
-  if (eleccion.id === "conservar") {
+  // Deshacer no piensa: repone lo guardado, sin modelo de por medio (#666). Se
+  // reconoce por `accion`, que sólo pone el arnés: un id lo puede inventar el modelo.
+  if (eleccion.accion === "deshacer") return deshacer(estado, deps, steps, paso);
+  if (eleccion.accion === "conservar") {
     return { reply: "Listo: el lienzo queda como lo dejó la corrida.", steps, state: { ...state, respaldo: undefined } };
   }
 
@@ -788,16 +807,19 @@ async function deshacer(
   steps: AgentStep[],
   paso: (s: AgentStep) => void
 ): Promise<BuilderAgentResult> {
-  let state: BuilderRunState = { ...estado, pregunta: undefined, pasos: [], cambios: [] };
-  for (const call of planDeshacer(estado)) state = await ejecutar(call, deps, state, paso);
-  const fallidas = state.pasos.filter((p) => !p.ok);
-  const reply = fallidas.length
-    ? `No pude deshacer todo:\n${fallidas.map((p) => `- ${p.tool}: ${p.texto.slice(0, 200)}`).join("\n")}`
-    : "Listo: el lienzo quedó como estaba antes de la corrida.";
+  let state: BuilderRunState = { ...estado, pregunta: undefined };
+  const plan = planDeshacer(estado);
+  for (const call of plan) state = await ejecutar(call, deps, state, paso);
+  const fallidas = state.pasos.slice(estado.pasos.length).filter((p) => !p.ok);
+  const fuera = fueraDelDeshacer(estado);
+  const pendiente = fuera.length ? `\n\nNo lo puedo revertir: ${fuera.join("; ")}.` : "";
+  if (fallidas.length) {
+    // Falló a medias: el respaldo sigue a bordo y la opción vuelve a estar.
+    const reply = `No pude deshacer todo:\n${fallidas.map((p) => `- ${p.tool}: ${p.texto.slice(0, 200)}`).join("\n")}${pendiente}`;
+    return { reply, steps, state: askUser({ ...estado, pregunta: undefined }, preguntaDeDeshacer()) };
+  }
+  const reply = plan.length
+    ? `Listo: deshice lo que publicó la corrida.${pendiente}`
+    : `No había nada que pudiera reponer.${pendiente}`;
   return { reply, steps, state: { ...state, respaldo: undefined } };
-}
-
-/** Cancelación explícita desde el chat. */
-export function abortBuilderRun(state: BuilderRunState): BuilderRunState {
-  return cancelRun(state);
 }

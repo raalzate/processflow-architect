@@ -22,9 +22,9 @@ export const BUILDER_LOCAL_MAX_CHARS = 6_000;
  * en eso —con un error que no tiene vuelta atrás—. Corre con el arnés (el CLI del
  * usuario) o con la API remota.
  *
- * En `local` y `cli` el humano no encendió la nube, así que sin CLI no se la
- * enciende por él (§P4): se bloquea y se le dice cómo destrabarlo. En `hybrid` y
- * `remote` la nube ya es opt-in.
+ * En `local` se bloquea SIEMPRE: los CLI (Claude Code, Codex) también mandan el
+ * prompt a la nube de su proveedor, y el modo local promete que nada sale de la
+ * máquina (§P4). `cli` corre con el CLI si está; `hybrid` y `remote`, con la API.
  */
 export type MotorDelConstructor =
   | { kind: "ok"; mode: "cli" | "remote"; motivo: string }
@@ -37,8 +37,8 @@ export function motorDelConstructor(
   if (mode === "remote" || mode === "hybrid") {
     return { kind: "ok", mode: "remote", motivo: "el constructor corre con la IA remota" };
   }
-  if (disponible.cli) {
-    return { kind: "ok", mode: "cli", motivo: "el constructor corre con el CLI del usuario, no con la IA local" };
+  if (mode === "cli" && disponible.cli) {
+    return { kind: "ok", mode: "cli", motivo: "el constructor corre con el CLI del usuario" };
   }
   return { kind: "bloqueado", texto: avisoSinMotor() };
 }
@@ -47,6 +47,6 @@ export function motorDelConstructor(
 export function avisoSinMotor(): string {
   return (
     "El agente constructor no corre con la IA local: cambia tu modelo y un error del modelo chico no tiene vuelta atrás. " +
-    "Instalá Claude Code o Codex (modo CLI) o activá la IA remota (modo híbrido o remoto) en Ajustes."
+    "En Ajustes, elegí el modo CLI (con Claude Code o Codex instalado) o el híbrido o remoto (IA remota, por API)."
   );
 }
