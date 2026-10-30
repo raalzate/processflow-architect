@@ -525,7 +525,6 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         mode: ajustes.mode,
         provider: ajustes.provider,
         model: modelFor(ajustes, ajustes.provider),
-        maxTokens: getGenerationConfig().maxTokens,
         onStep: (step: any) =>
           setMessages((prev) =>
             prev.map((m) =>
