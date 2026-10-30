@@ -161,7 +161,8 @@ const base = {
   message: "creá una vista C4 del ejemplo MVC con Spring Boot",
   vistas: [{ id: "v1", name: "Modelo", builtin: true }],
   allow: ALLOW,
-  mode: "local" as const,
+  // El constructor ya no corre con la IA local (#666): el guion hace de nube.
+  mode: "remote" as const,
   maxTokens: 4096,
 };
 
@@ -188,7 +189,8 @@ describe("humo: del pedido al lienzo", () => {
     expect(r.state.cambios.length).toBe(4);
     // Publicado ⇒ el cierre NO puede seguir diciendo que quedó en el workspace.
     expect(r.reply).not.toMatch(/no est[áa] en el lienzo/i);
-    expect(r.state.pregunta).toBeUndefined();
+    // Lo publicado se puede revertir: la única pregunta es si se deshace (#666).
+    expect(r.state.pregunta?.opciones.map((o) => o.id)).toEqual(["deshacer", "conservar"]);
   });
 
   it("se recupera del error de tipo que mataba la corrida real (#328)", async () => {
@@ -698,7 +700,7 @@ describe("humo: constructor en dos modos (015)", () => {
   const baseVista = {
     vistas: [{ id: "design", name: "Modelo", builtin: true }],
     allow: TOOLS_VISTA.map((t) => t.name),
-    mode: "local" as const,
+    mode: "remote" as const,
     maxTokens: 4096,
   };
 
