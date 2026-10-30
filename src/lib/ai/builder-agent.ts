@@ -20,8 +20,8 @@ import type { AgentStep } from "../agent-types";
 import type { AiMode, RemoteProvider } from "./remote-settings";
 import { route } from "./router";
 import { builderTurnTask } from "./tasks";
-import { avisoPedidoGrande } from "./agent-engine";
-import { budgetFromWindow } from "./agent-run";
+import { motorDelConstructor } from "./agent-engine";
+import { cliAvailable } from "./providers";
 import {
   buildToolMenu,
   judgeCall,
@@ -42,6 +42,8 @@ import {
   runFinished,
   startRun,
   pistaDeHerramienta,
+  planDeshacer,
+  preguntaDeDeshacer,
   relecturaEsteril,
   ultimoErrorReal,
   summarizeRun,
@@ -76,6 +78,8 @@ export interface BuilderDeps {
     input: { pedido: string; existente?: string; notation?: string; hallazgos?: string[] },
     ctx: { mode: AiMode; provider?: RemoteProvider; model?: string }
   ) => Promise<string>;
+  /** ¿Hay un CLI (Claude Code / Codex) que razone por el constructor? (#666) */
+  cliDisponible: () => boolean;
 }
 
 export interface BuilderAgentInput {
@@ -89,7 +93,6 @@ export interface BuilderAgentInput {
   model?: string;
   /** La vista abierta y su contenido (015): sin esto no hay modo creativo ni editor. */
   vista?: VistaActiva;
-  maxTokens?: number;
   history?: { role: string; content: string }[];
   onStep?: (step: AgentStep) => void;
   deps?: Partial<BuilderDeps>;
@@ -125,6 +128,7 @@ export const defaultBuilderDeps: BuilderDeps = {
     const r = await route(creativeDiagramTask, input, ctx);
     return r.output;
   },
+  cliDisponible: () => cliAvailable(),
 };
 
 const SYSTEM = [
@@ -193,34 +197,6 @@ export function buildBuilderPrompt(
 }
 
 /**
- * El prompt más completo que ENTRA en la ventana del motor. Antes se armaba uno
- * solo y, si no entraba, la corrida se abortaba con un aviso —en la app eso pasó
- * al décimo paso, tirando todo lo hecho (#308). Un presupuesto ajustado recorta
- * el contexto; recién cuando ni la versión mínima entra, no hay nada que hacer.
- */
-export function promptQueEntra(
-  input: Pick<BuilderAgentInput, "message" | "notation" | "allow">,
-  tools: ToolSpec[],
-  state: BuilderRunState,
-  presupuesto: number
-): string | null {
-  const completo = buildToolMenu(tools, input.allow);
-  const compacto = buildToolMenu(tools, input.allow, { compacto: true });
-  const intentos: [string, { observaciones: number; porObservacion: number }][] = [
-    [completo, { observaciones: 6, porObservacion: 400 }],
-    [completo, { observaciones: 3, porObservacion: 200 }],
-    [compacto, { observaciones: 3, porObservacion: 200 }],
-    [compacto, { observaciones: 1, porObservacion: 120 }],
-    [compacto, { observaciones: 0, porObservacion: 0 }],
-  ];
-  for (const [menu, recorte] of intentos) {
-    const p = buildBuilderPrompt(input, menu, state, recorte);
-    if (p.length <= presupuesto) return p;
-  }
-  return null;
-}
-
-/**
  * ¿El turno es una PREGUNTA al humano? El modelo la escribe con opciones; acá se
  * normalizan a `BuilderOption` (id estable, label legible). Una pregunta sin
  * opciones no es una pausa útil —deja al humano escribiendo prosa otra vez—, así
@@ -250,18 +226,65 @@ export function preguntaDelTurno(raw: string): { texto: string; opciones: Builde
   return opciones.length >= 2 ? { texto: texto.trim(), opciones } : null;
 }
 
-/** Las salidas que se le ofrecen al humano cuando el motor local no da para más. */
-export function opcionesDePresupuesto(): BuilderOption[] {
+/** Las salidas cuando no hay con qué correr el constructor sin la IA local (#666). */
+export function opcionesSinMotor(): BuilderOption[] {
   return [
-    { id: "partir", label: "Partirlo en pasos", detalle: "Trabajo una vista por vez, con lo que ya sé." },
     {
       id: "ajustes",
       label: "Abrir Ajustes de IA",
       accion: "abrir-ajustes-ia",
-      detalle: "Configurar un proveedor remoto para pedidos grandes.",
+      detalle: "Elegir el modo CLI o configurar la IA remota.",
     },
     { id: "cancelar", label: "Cancelar", accion: "cancelar" },
   ];
+}
+
+/**
+ * El modo con el que corre ESTA corrida: el de Ajustes, salvo que sea el motor
+ * local, que no se usa nunca para construir (#666). Devuelve el resultado de
+ * bloqueo cuando no hay arnés ni nube a mano: la corrida no arranca.
+ */
+function conMotor(
+  input: BuilderAgentInput,
+  deps: BuilderDeps,
+  steps: AgentStep[],
+  estado: BuilderRunState
+): { input: BuilderAgentInput } | { bloqueo: BuilderAgentResult } {
+  const motor = motorDelConstructor(input.mode, { cli: deps.cliDisponible() });
+  if (motor.kind === "bloqueado") {
+    const paso: AgentStep = { type: "question", content: motor.texto };
+    steps.push(paso);
+    input.onStep?.(paso);
+    return {
+      bloqueo: {
+        reply: motor.texto,
+        steps,
+        state: askUser(estado, { texto: motor.texto, opciones: opcionesSinMotor() }),
+      },
+    };
+  }
+  if (motor.mode !== input.mode) {
+    const paso: AgentStep = { type: "decision", content: `Motor: ${motor.motivo}.` };
+    steps.push(paso);
+    input.onStep?.(paso);
+  }
+  return { input: { ...input, mode: motor.mode } };
+}
+
+/** La vista abierta antes de tocarla: lo que restaura «Deshacer» (#666). */
+function respaldoDe(input: BuilderAgentInput): BuilderRunState["respaldo"] {
+  return input.vista ? { vista: input.vista.nombre, graph: input.vista.graph ?? null } : undefined;
+}
+
+/**
+ * Cierra la corrida con el respaldo a bordo y, si dejó cambios en el lienzo que
+ * se pueden revertir, con la opción de deshacerlos. Una corrida detenida en una
+ * pregunta no la ofrece todavía: no terminó.
+ */
+function conDeshacer(r: BuilderAgentResult, respaldo: BuilderRunState["respaldo"]): BuilderAgentResult {
+  const state = { ...r.state, respaldo: r.state.respaldo ?? respaldo };
+  if (state.pregunta || state.cancelada || !planDeshacer(state).length) return { ...r, state };
+  return { ...r, state: askUser(state, preguntaDeDeshacer()) };
 }
 
 /** ¿El modelo dio por terminada la tarea? */
@@ -277,9 +300,9 @@ async function bucle(
   estadoInicial: BuilderRunState,
   steps: AgentStep[]
 ): Promise<BuilderAgentResult> {
-  // Sólo el motor local tiene una ventana chica que respetar; la nube se maneja
-  // con su propio límite y no hace falta mutilarle el contexto.
-  const presupuesto = input.mode === "local" ? budgetFromWindow(input.maxTokens) : Infinity;
+  // El constructor nunca corre con el motor local (#666): el menú va completo,
+  // sin la poda que exigía su ventana chica.
+  const menu = buildToolMenu(tools, input.allow);
   let state = estadoInicial;
   const paso = (s: AgentStep) => {
     steps.push(s);
@@ -287,19 +310,7 @@ async function bucle(
   };
 
   while (!runFinished(state)) {
-    const prompt = promptQueEntra(input, tools, state, presupuesto);
-    if (prompt === null) {
-      // Ni el menú compacto sin observaciones entra. Antes esto era un párrafo
-      // sin salida; ahora es una pregunta: las dos cosas que el aviso sugería
-      // son botones, y el humano decide sin reescribir el pedido (#321).
-      const conPregunta = askUser(state, { texto: avisoPedidoGrande(), opciones: opcionesDePresupuesto() });
-      paso({ type: "question", content: avisoPedidoGrande() });
-      return {
-        reply: [avisoPedidoGrande(), summarizeRun(state)].join("\n\n"),
-        steps,
-        state: conPregunta,
-      };
-    }
+    const prompt = buildBuilderPrompt(input, menu, state);
 
     let raw: string;
     try {
@@ -655,9 +666,12 @@ async function creativo(
   return { reply: r.reply, steps, state };
 }
 
-export async function runBuilderAgent(input: BuilderAgentInput): Promise<BuilderAgentResult> {
-  const deps: BuilderDeps = { ...defaultBuilderDeps, ...input.deps };
+export async function runBuilderAgent(pedido: BuilderAgentInput): Promise<BuilderAgentResult> {
+  const deps: BuilderDeps = { ...defaultBuilderDeps, ...pedido.deps };
   const steps: AgentStep[] = [];
+  const motor = conMotor(pedido, deps, steps, startRun());
+  if ("bloqueo" in motor) return motor.bloqueo;
+  const input = motor.input;
   let tools: ToolSpec[];
   try {
     tools = await deps.listTools();
@@ -673,19 +687,23 @@ export async function runBuilderAgent(input: BuilderAgentInput): Promise<Builder
     input.onStep?.(s);
   };
   const atajo = await despachar(input, deps, tools, steps, paso);
-  if (atajo) return atajo;
+  if (atajo) return conDeshacer(atajo, respaldoDe(input));
 
-  return bucle(input, deps, tools, startRun(), steps);
+  return conDeshacer(await bucle(input, deps, tools, startRun(), steps), respaldoDe(input));
 }
 
 /** Retoma una corrida detenida en una confirmación, con la respuesta del humano. */
 export async function resumeBuilderAgent(
-  input: BuilderAgentInput,
+  pedido: BuilderAgentInput,
   estado: BuilderRunState,
   aceptada: boolean
 ): Promise<BuilderAgentResult> {
-  const deps: BuilderDeps = { ...defaultBuilderDeps, ...input.deps };
+  const deps: BuilderDeps = { ...defaultBuilderDeps, ...pedido.deps };
   const steps: AgentStep[] = [];
+  const motor = conMotor(pedido, deps, steps, estado);
+  if ("bloqueo" in motor) return motor.bloqueo;
+  const input = motor.input;
+  const respaldo = estado.respaldo ?? respaldoDe(input);
   const tools = await deps.listTools();
   const { state, ejecutar: pedida } = resolveConfirmation(estado, aceptada);
 
@@ -698,12 +716,12 @@ export async function resumeBuilderAgent(
     // Publicar el diagrama del modo creativo TERMINA la tarea: seguir el bucle
     // sería pedirle al modelo un turno para decir que ya está (015).
     if (pedida.tool === "set_view_graph") {
-      return { reply: await cierre(siguiente, deps, input.allow), steps, state: siguiente };
+      return conDeshacer({ reply: await cierre(siguiente, deps, input.allow), steps, state: siguiente }, respaldo);
     }
   }
   // Un "no" no cancela la corrida: el agente puede seguir por otro camino. Lo que
   // no puede es volver a intentar lo mismo, y eso lo ve en la traza.
-  return bucle(input, deps, tools, siguiente, steps);
+  return conDeshacer(await bucle(input, deps, tools, siguiente, steps), respaldo);
 }
 
 /**
@@ -712,14 +730,14 @@ export async function resumeBuilderAgent(
  * pregunta cualquiera, la elección entra como contexto del próximo turno.
  */
 export async function answerBuilderAgent(
-  input: BuilderAgentInput,
+  pedido: BuilderAgentInput,
   estado: BuilderRunState,
   opcionId: string
 ): Promise<BuilderAgentResult> {
   const pregunta = estado.pregunta;
-  if (pregunta?.call) return resumeBuilderAgent(input, estado, opcionId === "si");
+  if (pregunta?.call) return resumeBuilderAgent(pedido, estado, opcionId === "si");
 
-  const deps: BuilderDeps = { ...defaultBuilderDeps, ...input.deps };
+  const deps: BuilderDeps = { ...defaultBuilderDeps, ...pedido.deps };
   const steps: AgentStep[] = [];
   const { state, eleccion } = answerUser(estado, opcionId);
   // Opción inventada o pregunta ya respondida: no se sigue a ciegas.
@@ -727,29 +745,56 @@ export async function answerBuilderAgent(
 
   const paso = (s: AgentStep) => {
     steps.push(s);
-    input.onStep?.(s);
+    pedido.onStep?.(s);
   };
   paso({ type: "decision", content: eleccion.label });
   if (state.cancelada) return { reply: summarizeRun(state), steps, state };
+
+  // Deshacer no piensa: repone lo guardado, sin modelo de por medio (#666).
+  if (eleccion.id === "deshacer") return deshacer(estado, deps, steps, paso);
+  if (eleccion.id === "conservar") {
+    return { reply: "Listo: el lienzo queda como lo dejó la corrida.", steps, state: { ...state, respaldo: undefined } };
+  }
+
+  const motor = conMotor(pedido, deps, steps, state);
+  if ("bloqueo" in motor) return motor.bloqueo;
+  const input = motor.input;
+  const respaldo = estado.respaldo ?? respaldoDe(input);
 
   const tools = await deps.listTools();
 
   // «Seguir»: la misma corrida con el presupuesto renovado. No se le reinyecta la
   // pregunta al modelo —no le aporta nada saber que el humano le dio más cuerda—.
   if (eleccion.id === "seguir") {
-    return bucle(input, deps, tools, extendRun(state), steps);
+    return conDeshacer(await bucle(input, deps, tools, extendRun(state), steps), respaldo);
   }
   // El humano eligió el modo: se despacha con ese, sin volver a preguntarlo (015).
   if (eleccion.id === "creativo" || eleccion.id === "editor") {
     const atajo = await despachar(input, deps, tools, steps, paso, eleccion.id);
-    if (atajo) return atajo;
+    if (atajo) return conDeshacer(atajo, respaldo);
   }
   // La elección viaja en el pedido: es la respuesta a lo que el agente preguntó.
   const conRespuesta = {
     ...input,
     message: `${input.message}\n\n[Respuesta del humano a «${pregunta?.texto ?? ""}»: ${eleccion.label}]`,
   };
-  return bucle(conRespuesta, deps, tools, state, steps);
+  return conDeshacer(await bucle(conRespuesta, deps, tools, state, steps), respaldo);
+}
+
+/** Repone la vista abierta y quita las pestañas creadas, según el respaldo. */
+async function deshacer(
+  estado: BuilderRunState,
+  deps: BuilderDeps,
+  steps: AgentStep[],
+  paso: (s: AgentStep) => void
+): Promise<BuilderAgentResult> {
+  let state: BuilderRunState = { ...estado, pregunta: undefined, pasos: [], cambios: [] };
+  for (const call of planDeshacer(estado)) state = await ejecutar(call, deps, state, paso);
+  const fallidas = state.pasos.filter((p) => !p.ok);
+  const reply = fallidas.length
+    ? `No pude deshacer todo:\n${fallidas.map((p) => `- ${p.tool}: ${p.texto.slice(0, 200)}`).join("\n")}`
+    : "Listo: el lienzo quedó como estaba antes de la corrida.";
+  return { reply, steps, state: { ...state, respaldo: undefined } };
 }
 
 /** Cancelación explícita desde el chat. */
