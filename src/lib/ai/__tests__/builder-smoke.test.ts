@@ -163,7 +163,6 @@ const base = {
   allow: ALLOW,
   // El constructor ya no corre con la IA local (#666): el guion hace de nube.
   mode: "remote" as const,
-  maxTokens: 4096,
 };
 
 describe("humo: del pedido al lienzo", () => {
@@ -701,7 +700,6 @@ describe("humo: constructor en dos modos (015)", () => {
     vistas: [{ id: "design", name: "Modelo", builtin: true }],
     allow: TOOLS_VISTA.map((t) => t.name),
     mode: "remote" as const,
-    maxTokens: 4096,
   };
 
   it("SC-001 · «crear un MVC de Spring Boot en C4» termina en el lienzo con UNA inferencia", async () => {

@@ -160,13 +160,13 @@ describe("bucle del constructor", () => {
     expect(r.state.pasos).toEqual([]);
   });
 
-  it("en modo local sin CLI no arranca: ni modelo ni MCP, y ofrece Ajustes (#666)", async () => {
+  it("en modo local no arranca, aun con CLI: ni modelo ni MCP, y ofrece Ajustes (#666)", async () => {
     const { deps, llamadas } = guion(['{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}']);
     const generate = vi.fn(deps.generate);
     const r = await runBuilderAgent({
       ...base,
       mode: "local",
-      deps: { ...deps, generate, cliDisponible: () => false },
+      deps: { ...deps, generate, cliDisponible: () => true },
     });
     expect(generate).not.toHaveBeenCalled();
     expect(llamadas).toEqual([]);
@@ -176,12 +176,12 @@ describe("bucle del constructor", () => {
     expect(r.state.pregunta?.opciones[0].accion).toBe("abrir-ajustes-ia");
   });
 
-  it("en modo local con CLI, el turno lo razona el CLI y nunca el motor local (#666)", async () => {
+  it("en modo CLI, el turno lo razona el CLI (#666)", async () => {
     const { deps } = guion(['{"final":"listo"}']);
     const modos: string[] = [];
     await runBuilderAgent({
       ...base,
-      mode: "local",
+      mode: "cli",
       deps: {
         ...deps,
         cliDisponible: () => true,
@@ -516,6 +516,7 @@ describe("el agente sabe qué está construyendo (#327)", () => {
 describe("deshacer lo publicado", () => {
   const respaldo = {
     vista: "Pagos",
+    vistas: ["Pagos"],
     graph: { big_picture: { nodos: [{ id: "a", nombre: "A", tipo: "Comando" }] }, agregados: [] } as any,
   };
   const publicada = () => {
@@ -536,8 +537,30 @@ describe("deshacer lo publicado", () => {
     expect(generate).not.toHaveBeenCalled();
     expect(llamadas.map((l) => l.split(":")[0])).toEqual(["set_view_graph", "delete_view"]);
     expect(llamadas[1]).toContain('"Extra"');
-    expect(r.reply).toMatch(/como estaba/i);
+    expect(r.reply).toMatch(/deshice/i);
     expect(r.state.pregunta).toBeUndefined();
+  });
+
+  it("si deshacer falla a medias, lo dice y vuelve a ofrecerlo", async () => {
+    const llamadas: string[] = [];
+    const deps = {
+      listTools: async () => TOOLS,
+      callTool: async (name: string) => {
+        llamadas.push(name);
+        return name === "delete_view" ? { ok: false, texto: "no existe" } : { ok: true, texto: "hecho" };
+      },
+    };
+    const r = await answerBuilderAgent({ ...base, deps }, publicada(), "deshacer");
+    expect(r.reply).toMatch(/No pude deshacer todo/);
+    expect(r.state.respaldo).toBeDefined();
+    expect(r.state.pregunta?.opciones.map((o) => o.id)).toEqual(["deshacer", "conservar"]);
+  });
+
+  it("una opción que el modelo llamó «deshacer» no deshace: sólo la del arnés", async () => {
+    const { deps, llamadas } = guion(['{"final":"sigo"}']);
+    const s = askUser(publicada(), { texto: "¿Cuál?", opciones: [{ id: "deshacer", label: "Deshacer" }, { id: "b", label: "B" }] });
+    await answerBuilderAgent({ ...base, deps }, s, "deshacer");
+    expect(llamadas).not.toContain(expect.stringMatching(/^delete_view/));
   });
 
   it("«Conservar» no toca nada", async () => {

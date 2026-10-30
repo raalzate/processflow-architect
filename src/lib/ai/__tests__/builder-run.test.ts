@@ -29,6 +29,7 @@ import {
   pistaDeHerramienta,
   ultimoErrorReal,
   planDeshacer,
+  fueraDelDeshacer,
   preguntaDeDeshacer,
 } from "@/lib/ai/builder-run";
 import type { GraphData } from "@/lib/types";
@@ -766,7 +767,10 @@ describe("plan de deshacer", () => {
       notas: "",
       transcript: "",
     }) as unknown as GraphData;
-  const conRespaldo = (graph: GraphData | null) => ({ ...startRun(), respaldo: { vista: "Pagos", graph } });
+  const conRespaldo = (graph: GraphData | null) => ({
+    ...startRun(),
+    respaldo: { vista: "Pagos", graph, vistas: ["Pagos", "Vieja", "Checkout"] },
+  });
 
   it("sin cambios en el lienzo no hay nada que deshacer", () => {
     expect(planDeshacer(conRespaldo(grafo(["A"])))).toEqual([]);
@@ -792,9 +796,27 @@ describe("plan de deshacer", () => {
     expect(planDeshacer(s)).toEqual([{ tool: "delete_view", args: { name: "Nueva" } }]);
   });
 
-  it("una vista que estaba vacía no se puede reponer: el MCP no deja el lienzo en blanco", () => {
+  it("una vista que estaba vacía no se puede reponer: el MCP no deja el lienzo en blanco, y se dice", () => {
     const s = applyObservation(conRespaldo(grafo([])), call("set_view_graph", { view: "Pagos" }), ok("hecho"));
     expect(planDeshacer(s)).toEqual([]);
+    expect(fueraDelDeshacer(s).join(" ")).toMatch(/vacía/);
+  });
+
+  it("una pestaña exportada con el nombre de una que ya existía no se borra: sería la del humano", () => {
+    const s = applyObservation(conRespaldo(grafo(["A"])), call("export_as_view", { viewName: "checkout" }), ok("hecho"));
+    expect(planDeshacer(s)).toEqual([]);
+    expect(fueraDelDeshacer(s).join(" ")).toMatch(/ya existía/);
+  });
+
+  it("editar OTRA vista no restaura la abierta, y se avisa que no se revierte", () => {
+    const s = applyObservation(conRespaldo(grafo(["A"])), call("update_view_element", { view: "Checkout" }), ok("hecho"));
+    expect(planDeshacer(s)).toEqual([]);
+    expect(fueraDelDeshacer(s).join(" ")).toMatch(/Checkout/);
+  });
+
+  it("un borrado de vista confirmado no se revierte, y se dice", () => {
+    const s = applyObservation(conRespaldo(grafo(["A"])), call("delete_view", { name: "Vieja" }), ok("hecho"));
+    expect(fueraDelDeshacer(s)).toHaveLength(1);
   });
 
   it("se ofrece como pregunta de dos opciones", () => {

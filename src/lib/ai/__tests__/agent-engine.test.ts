@@ -3,8 +3,9 @@
  *
  * El constructor escribe sobre el modelo del humano y lo que publica no se
  * deshace solo: el motor local chico no lo hace (#666). Corre con el arnés (el
- * CLI del usuario) o con la API remota. Sin ninguno de los dos, en modo `local`
- * no se enciende la nube por el humano (§P4): la corrida no arranca y lo dice.
+ * CLI del usuario, modo `cli`) o con la API remota. En modo `local` no corre:
+ * los CLI también mandan el prompt a la nube de su proveedor, y el modo local
+ * promete que nada sale de la máquina (§P4).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { chooseProvider } from "@/lib/ai/router";
@@ -54,12 +55,13 @@ describe("motor del constructor (#666)", () => {
     }
   });
 
-  it("modo local con CLI instalado: razona el arnés", () => {
-    expect(motorDelConstructor("local", { cli: true })).toMatchObject({ kind: "ok", mode: "cli" });
+  it("modo local: no arranca, ni siquiera con un CLI instalado (también sale a la nube)", () => {
+    expect(motorDelConstructor("local", { cli: true }).kind).toBe("bloqueado");
+    expect(motorDelConstructor("local", { cli: false }).kind).toBe("bloqueado");
   });
 
-  it("modo local sin CLI: no arranca y no enciende la nube por el humano", () => {
-    expect(motorDelConstructor("local", { cli: false }).kind).toBe("bloqueado");
+  it("modo CLI con CLI instalado: razona el arnés", () => {
+    expect(motorDelConstructor("cli", { cli: true })).toMatchObject({ kind: "ok", mode: "cli" });
   });
 
   it("modo CLI sin CLI instalado: no cae al local en silencio", () => {
