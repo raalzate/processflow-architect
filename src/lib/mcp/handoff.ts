@@ -9,6 +9,8 @@
  * sólo lo copia.
  */
 
+import { lineaRutaBase } from "../source-base";
+
 export interface HandoffInput {
   elementName: string;
   viewName: string;
@@ -16,6 +18,8 @@ export interface HandoffInput {
   url: string;
   /** true si la caja ya tiene spec: el agente debe completar, no reescribir. */
   hasSpec: boolean;
+  /** Ruta base de las fuentes del proyecto en esta máquina (#670). */
+  rutaBase?: string;
 }
 
 /**
@@ -24,9 +28,10 @@ export interface HandoffInput {
  * que es la regla de todo el arnés (nada toca el lienzo sin revisión humana).
  */
 export function handoffPrompt(input: HandoffInput): string {
-  const { elementName, viewName, url, hasSpec } = input;
+  const { elementName, viewName, url, hasSpec, rutaBase } = input;
   return [
     `Pulí el elemento "${elementName}" de la vista "${viewName}" de Processflow Architect con el MCP processflow-architect (${url}).`,
+    ...(rutaBase ? [lineaRutaBase(rutaBase)] : []),
     "Ciclo: 1) get_app_state y get_focused_element para leer la ficha entera (descripción, spec, metadatos, adjuntos, vecinos).",
     "2) Proponeme la especificación (pasos con escenarios Given/When/Then, requisitos, criterios medibles); lo que la fuente no decida, marcalo como needsClarification en vez de inventarlo.",
     `3) Cuando yo apruebe, escribila con set_view_element_spec (name: "${elementName}"${hasSpec ? ", merge: true para conservar lo que ya escribí" : ""}).`,

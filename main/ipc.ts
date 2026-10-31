@@ -35,6 +35,7 @@ import {
 } from './services/updater';
 import { initAppReadBridge } from './services/mcp-app-read';
 import { initAppActionBridge } from './services/mcp-app-action';
+import { initAppCaptureBridge } from './services/mcp-app-capture';
 import type { AppState } from '../src/lib/mcp/app-state';
 import { getSystemInfo } from './services/system-info';
 import { getAppUsage } from './services/app-usage';
@@ -184,6 +185,7 @@ export function registerIpcHandlers() {
   // Canal de respuesta del renderer para la lectura bajo demanda (artefactos, vistas).
   initAppReadBridge();
   initAppActionBridge();
+  initAppCaptureBridge();
 
   // --- Playground MCP (guía /mcp): ejecutar herramientas por transporte en memoria ---
   ipcMain.handle('mcp-playground-list-tools', async () => playgroundListTools());
