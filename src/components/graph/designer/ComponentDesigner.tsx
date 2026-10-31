@@ -4920,19 +4920,17 @@ export const ComponentDesigner: React.FC<{
 
   // Exporta un PNG rasterizando la página en el proceso main (capturePage): así
   // sí sale el foreignObject de los nodos. Encuadra todo y oculta overlays antes.
-  const handleExportPng = useCallback(async () => {
+  /**
+   * PNG del lienzo encuadrado a todo el contenido, como data URL. Lo usan el
+   * export y `get_view_image` del MCP (#670). Lanza con un motivo legible.
+   */
+  const capturarLienzo = useCallback(async (): Promise<string> => {
     const api = hostBridge();
     const wrapper = canvasWrapperRef.current;
-    if (!api?.captureCanvas || !wrapper) {
-      toast({ variant: "destructive", title: "PNG no disponible", description: "Sólo en la app de escritorio." });
-      return;
-    }
+    if (!api?.captureCanvas || !wrapper) throw new Error("Sólo en la app de escritorio.");
     const bounds = computeContentBounds(nodesRef.current, notationId);
-    if (!bounds) {
-      toast({ variant: "destructive", title: "Nada que exportar", description: "El lienzo está vacío." });
-      return;
-    }
-    // Vista actual: se restaura al terminar. Exportar no debería dejar al
+    if (!bounds) throw new Error("El lienzo está vacío.");
+    // Vista actual: se restaura al terminar. Capturar no debería dejar al
     // usuario en otro zoom/scroll del que tenía.
     const vista = { zoom, left: wrapper.scrollLeft, top: wrapper.scrollTop };
     setCapturing(true);
@@ -4950,12 +4948,7 @@ export const ComponentDesigner: React.FC<{
         { left: wrapper.scrollLeft, top: wrapper.scrollTop },
         { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
       );
-      const dataUrl = await api.captureCanvas(region);
-      const base = (meta?.nombre_proyecto || "diagrama").replace(/[^\w.-]+/g, "_");
-      downloadDataUrl(dataUrl, `${base}.png`);
-      toast({ title: "Diagrama exportado", description: "Se descargó un PNG del lienzo." });
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "No se pudo exportar el PNG", description: e?.message });
+      return await api.captureCanvas(region);
     } finally {
       setCapturing(false);
       setZoom(vista.zoom);
@@ -4965,7 +4958,37 @@ export const ComponentDesigner: React.FC<{
         syncViewport();
       });
     }
-  }, [fitToContent, meta, toast, notationId, zoom, syncViewport]);
+  }, [fitToContent, notationId, zoom, syncViewport]);
+
+  const handleExportPng = useCallback(async () => {
+    try {
+      const dataUrl = await capturarLienzo();
+      const base = (meta?.nombre_proyecto || "diagrama").replace(/[^\w.-]+/g, "_");
+      downloadDataUrl(dataUrl, `${base}.png`);
+      toast({ title: "Diagrama exportado", description: "Se descargó un PNG del lienzo." });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "No se pudo exportar el PNG", description: e?.message });
+    }
+  }, [capturarLienzo, meta, toast]);
+
+  // `get_view_image` del MCP (#670): el main pide, este lienzo encuadra, captura
+  // y contesta. Se lee por ref para no re-suscribirse en cada cambio de zoom.
+  const capturarRef = useRef(capturarLienzo);
+  capturarRef.current = capturarLienzo;
+  const nombreVistaRef = useRef("");
+  nombreVistaRef.current = views.find((v) => v.id === activeViewId)?.name ?? "Modelo";
+  useEffect(() => {
+    const api = hostBridge();
+    if (!api?.onMcpAppCapture) return;
+    return api.onMcpAppCapture(async ({ id }) => {
+      try {
+        const dataUrl = await capturarRef.current();
+        api.mcpAppCaptureReply(id, { ok: true, view: nombreVistaRef.current, dataUrl });
+      } catch (e: any) {
+        api.mcpAppCaptureReply(id, { ok: false, error: `No se pudo capturar la vista: ${e?.message ?? e}` });
+      }
+    });
+  }, []);
 
   /**
    * Manejador de CADA acción del catálogo (`src/lib/designer-actions.ts`). El tipo

@@ -1162,7 +1162,11 @@ conoce la fuente y notaría la ausencia.
      usuario importa con «Importar diagrama»).
    - \`export_as_view(diagramId, viewName)\`: pestaña del proyecto ACTIVO con su
      propia notación. Sólo existe en modo app y requiere proyecto abierto.
-3. Cierra diciendo qué cubre el diagrama y qué quedó pendiente en la fuente.
+3. **Mirá cómo quedó** (modo app): \`get_view_image\` devuelve la vista tal como
+   la ve el humano. Buscá líneas que se cruzan o atraviesan cajas, cajas encimadas
+   y etiquetas ilegibles; reacomodá (\`relayout_diagram\` + \`export_as_view\` con
+   \`replace: true\`, o \`set_view_graph\`) y volvé a pedir la imagen hasta que se lea.
+4. Cierra diciendo qué cubre el diagrama y qué quedó pendiente en la fuente.
 
 ## Conexión
 
@@ -1571,6 +1575,7 @@ export function skillConfigBlock(config: SkillConfig): string {
       "get_artifact",
       "list_views",
       "get_view",
+      "get_view_image",
     ].filter(
       (t) => !config.tools!.includes(t)
     );
