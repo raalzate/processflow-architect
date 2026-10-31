@@ -150,6 +150,7 @@ import { SEQUENCE_MESSAGES, SEQUENCE_MESSAGE_KINDS, type SequenceMessageKind } f
 import { FRAGMENT_OPS, FRAGMENT_OPS_LIST, type FragmentOp } from "../../src/lib/sequence/fragments";
 import { MAX_CUSTOM_VIEWS } from "../../src/lib/views-types";
 import type { GraphData } from "../../src/lib/types";
+import { imagenDeDataUrl, textoDeCaptura, type CapturaVista } from "../../src/lib/mcp/view-image";
 
 // El enum sale del registro (P6): con la lista cableada, una notación nueva
 // existía en la app pero el MCP la rechazaba.
@@ -208,6 +209,11 @@ export interface McpToolsOptions {
    * escritor. Nunca rechaza: el fallo viaja como `{ ok: false, error }`.
    */
   readApp?: (request: AppReadRequest) => Promise<AppReadResult>;
+  /**
+   * Presente sólo en el modo app: imagen de la vista abierta tal como la ve el
+   * humano (#670). Nunca rechaza: el fallo viaja como `{ ok: false, error }`.
+   */
+  captureApp?: () => Promise<CapturaVista>;
   /**
    * Presente sólo en el modo app: pide al renderer una ACCIÓN sobre el proyecto
    * (borrar o renombrar una vista). Nunca rechaza: el fallo viaja en el
@@ -2488,6 +2494,27 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
     // La org del MCP va junto a la de la app: eran dos y nadie las veía juntas (#534).
     async () => text(formatAppState(opts.getAppState?.() ?? null, { mcpOrg: await activeOrg() }))
   );
+
+  // #670: la vista como la ve el humano. Sólo existe con la app abierta: se
+  // registra si el transporte trae captura (el modo stdio no la tiene).
+  if (opts.captureApp) {
+    server.registerTool(
+      "get_view_image",
+      {
+        title: "Imagen de la vista abierta",
+        description:
+          "Una imagen (PNG) de la vista que el humano tiene abierta en el lienzo, encuadrada a todo el contenido. Usala mientras diseñás para ver lo que el grafo no dice —líneas que se cruzan o atraviesan cajas, cajas encimadas, etiquetas ilegibles— y para comprobar el resultado después de reacomodar. Sólo vistas de lienzo (no Mermaid). Mueve el zoom del humano un instante y lo restaura.",
+        inputSchema: {},
+      },
+      async () => {
+        const r = await opts.captureApp!();
+        if (!r.ok) return fail(r.error);
+        const imagen = imagenDeDataUrl(r.dataUrl);
+        if (!imagen) return fail("La app devolvió algo que no es una imagen: volvé a pedirla.");
+        return { content: [{ type: "text" as const, text: textoDeCaptura(r.view) }, imagen] };
+      }
+    );
+  }
 
   // -- 4c-bis. Lectura del trabajo del humano (sólo modo app) --------------------
   // Sin esto el agente externo sólo escribe: no puede leer los artefactos que

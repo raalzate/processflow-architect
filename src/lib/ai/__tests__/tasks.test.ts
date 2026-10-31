@@ -408,6 +408,15 @@ describe("elementChatTask", () => {
     expect(system).toMatch(/Markdown/);
   });
 
+  it("la fuente viaja resuelta contra la ruta base cuando la hay (#670)", () => {
+    const { prompt } = elementChatTask.buildPrompt!({ ...base, fuente: "src/a.ts:3", rutaBase: "/repo" });
+    expect(prompt).toContain("FUENTE: /repo/src/a.ts:3");
+    expect(prompt).toContain('"/repo"');
+    const sinBase = elementChatTask.buildPrompt!({ ...base, fuente: "src/a.ts" }).prompt;
+    expect(sinBase).toContain("FUENTE: src/a.ts");
+    expect(sinBase).not.toMatch(/ruta base/);
+  });
+
   it("sin ficha dice que falta en vez de dejar huecos", () => {
     const { prompt } = elementChatTask.buildPrompt!(base);
     expect(prompt).toContain("(sin descripción)");

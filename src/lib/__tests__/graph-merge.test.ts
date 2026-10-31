@@ -8,7 +8,7 @@ import {
   mergeNodesAcrossGraphs,
   deleteNodeAcrossGraphs,
   updateNodeAcrossGraphs,
-  BIG_PICTURE_GROUP,
+  containerGroupLabel,
   mergeMetadata,
   metadataConflictos,
   type NamedGraph,
@@ -61,8 +61,29 @@ describe("collectMergeNodes", () => {
   it("incluye nodos de agregados Y del big_picture", () => {
     const map = collectMergeNodes(makeGraph());
     expect(map.size).toBe(4); // a1, a2, c1, bp-actor
-    expect(map.get("a1")?.agregado).toBe("Ventas");
-    expect(map.get("bp-actor")?.agregado).toBe(BIG_PICTURE_GROUP);
+    expect(map.get("a1")?.agregado).toBe("Agregado: Ventas");
+    expect(map.get("bp-actor")?.agregado).toBe("Sin agregado");
+  });
+
+  // #662: «agregado» sólo significa algo en DDD. El rótulo sale de la notación.
+  it("rotula contenedores y sueltos con el vocabulario de la notación", () => {
+    const map = collectMergeNodes(makeGraph(), "bpmn");
+    expect(map.get("a1")?.agregado).toBe("Pool: Ventas");
+    expect(map.get("bp-actor")?.agregado).toBe("Sin pool");
+  });
+
+  it("toma la notación del propio grafo si no se pasa", () => {
+    const map = collectMergeNodes({ ...makeGraph(), notation: "c4" });
+    expect(map.get("bp-actor")?.agregado).toBe("Sin límite de sistema");
+  });
+});
+
+describe("containerGroupLabel", () => {
+  it("el tipo guardado en el contenedor manda sobre el de la notación", () => {
+    expect(containerGroupLabel({ nombre_agregado: "Atención", tipo_contenedor: "Carril" }, "bpmn")).toBe("Carril: Atención");
+  });
+  it("sin tipo guardado usa el contenedor típico de la notación", () => {
+    expect(containerGroupLabel({ nombre_agregado: "Core" }, "c4")).toBe("Límite de Sistema: Core");
   });
 });
 
@@ -166,8 +187,15 @@ describe("multi-grafo (Modelo + vistas custom)", () => {
     const map = collectMergeNodesMulti(makeNamed());
     // a1,a2,c1,bp-actor del Modelo + v1 de la vista (a2 repetido gana el del Modelo).
     expect(map.size).toBe(5);
-    expect(map.get("a1")?.agregado).toBe("Modelo · Ventas");
-    expect(map.get("v1")?.agregado).toBe(`Vista Pagos · ${BIG_PICTURE_GROUP}`);
+    expect(map.get("a1")?.agregado).toBe("Modelo · Agregado: Ventas");
+    expect(map.get("v1")?.agregado).toBe("Vista Pagos · Sin agregado");
+  });
+
+  it("la notación de la vista rotula sus nodos (las vistas no la guardan en el grafo)", () => {
+    const [modelo, vista] = makeNamed();
+    const map = collectMergeNodesMulti([modelo, { ...vista, notation: "bpmn" }]);
+    expect(map.get("a1")?.agregado).toBe("Modelo · Agregado: Ventas");
+    expect(map.get("v1")?.agregado).toBe("Vista Pagos · Sin pool");
   });
 
   it("mergeNodesAcrossGraphs fusiona donde está el principal y elimina el duplicado en las demás vistas", () => {

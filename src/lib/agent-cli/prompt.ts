@@ -7,6 +7,7 @@
  */
 
 import { MCP_SERVER_NAME } from "./types";
+import { lineaRutaBase } from "../source-base";
 
 export interface FocusPromptInput {
   elementName: string;
@@ -20,10 +21,16 @@ export interface FocusPromptInput {
   hasSpec: boolean;
   /** Carpetas que el humano adjuntó como contexto, sólo lectura (#460). */
   dirs?: string[];
+  /**
+   * Ruta base de las fuentes del proyecto (#670). El llamador la suma también a
+   * `dirs` para que el CLI pueda leerla; acá se dice qué significa.
+   */
+  rutaBase?: string;
 }
 
 export function focusSystemPrompt(input: FocusPromptInput): string {
-  const { elementName, elementId, viewName, projectName, hasSpec, dirs = [] } = input;
+  const { elementName, elementId, viewName, projectName, hasSpec, rutaBase } = input;
+  const dirs = rutaBase && !(input.dirs ?? []).includes(rutaBase) ? [...(input.dirs ?? []), rutaBase] : input.dirs ?? [];
   const ref = elementId || elementName;
   const tool = (t: string) => `mcp__${MCP_SERVER_NAME}__${t}`;
   return [
@@ -31,6 +38,7 @@ export function focusSystemPrompt(input: FocusPromptInput): string {
       projectName ? ` del proyecto "${projectName}"` : ""
     }. El humano te habla de ESA caja («esta caja», «este elemento»).`,
     `Herramientas: las del MCP "${MCP_SERVER_NAME}"${dirs.length ? " y Read, Glob y Grep sobre las carpetas adjuntas" : ""}. Empezá SIEMPRE por ${tool("get_focused_element")} para leer la ficha entera (descripción, spec actual, metadatos, adjuntos, vecinos); si hay adjuntos, leé los relevantes con ${tool("read_element_doc")}.`,
+    ...(rutaBase ? [lineaRutaBase(rutaBase)] : []),
     // Carpetas adjuntas (#460): contexto citable, nunca un lugar donde escribir.
     ...(dirs.length
       ? [

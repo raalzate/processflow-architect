@@ -100,6 +100,7 @@ describe("configuración inyectada", () => {
         "get_artifact",
         "list_views",
         "get_view",
+        "get_view_image",
       ],
       defaultNotation: "ddd",
       maxNodes: 40,

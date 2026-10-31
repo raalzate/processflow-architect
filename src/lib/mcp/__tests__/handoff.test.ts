@@ -19,4 +19,9 @@ describe("handoffPrompt (feature 019)", () => {
     expect(handoffPrompt({ ...base, hasSpec: true })).toContain("merge: true");
     expect(handoffPrompt(base)).not.toContain("merge: true");
   });
+
+  it("con ruta base dice dónde abrir las fuentes de la caja (#670)", () => {
+    expect(handoffPrompt({ ...base, rutaBase: "/Users/ana/repo" })).toContain('"/Users/ana/repo"');
+    expect(handoffPrompt(base)).not.toMatch(/ruta base/);
+  });
 });

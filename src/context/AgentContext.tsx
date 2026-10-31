@@ -41,6 +41,7 @@ import {
 import { runBuilderAgent, answerBuilderAgent } from "@/lib/ai/builder-agent";
 import type { BuilderRunState } from "@/lib/ai/builder-run";
 import { loadAiSettings, modelFor } from "@/lib/ai/remote-settings";
+import { leerRutaBase } from "@/lib/source-base";
 import { safeGraphToToon } from "@/lib/ai/graph-toon";
 import { extractDocumentText } from "@/lib/ai/document-extract";
 import { getSelectedLitertModelFile } from "@/lib/litert-models";
@@ -525,7 +526,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         mode: ajustes.mode,
         provider: ajustes.provider,
         model: modelFor(ajustes, ajustes.provider),
-        maxTokens: getGenerationConfig().maxTokens,
+        // Dónde abrir las fuentes que citan las cajas (#670).
+        sourceBase: leerRutaBase(window.localStorage, currentFileId),
         onStep: (step: any) =>
           setMessages((prev) =>
             prev.map((m) =>

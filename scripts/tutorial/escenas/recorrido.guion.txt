@@ -1,0 +1,39 @@
+¿Tu equipo entiende de verdad cómo funciona el negocio? Con Processflow Architect lo dibujan juntos, en minutos.
+
+Todo empieza en tu organización. Aquí ves cada proyecto de un vistazo: qué notación usa, cuántos elementos tiene y si quedan dudas abiertas.
+
+En la misma organización conviven un Event Storming, una arquitectura C4 y un proceso BPMN. Entremos al Event Storming del marketplace de seguros.
+
+Este es el gran cuadro del negocio: cotizar, emitir la póliza y cobrar. Cada óvalo punteado agrupa lo que pertenece a una misma parte del dominio.
+
+Se lee como una historia: alguien da una orden, ocurre un evento y una política reacciona. Cobrar la prima. Prima cobrada. Activar la póliza.
+
+Para modelar, a la izquierda tienes la paleta. Sus piezas cambian según la notación que estés usando.
+
+Falta un caso: la renovación. Arrastras un evento, haces doble clic en el texto y lo nombras: póliza renovada.
+
+Ahora conéctalo. Al pasar el ratón aparecen cuatro puertos: arrastras desde uno hasta el otro elemento, y listo.
+
+Cada elemento tiene su ficha: descripción, de dónde salió, ícono y tipo. No hay botón de guardar: todo se guarda solo. Y en Spec dejas los criterios que un agente de código va a implementar.
+
+¿Se desordenó el lienzo? Organizar lo acomoda por flujo, por tiempo, por capas o por grupos. Si no te gusta, lo deshaces con un clic.
+
+En Opciones encuentras el estilo de las relaciones, la exportación, el contexto y los metadatos.
+
+Un proyecto puede tener muchas vistas, cada una con su propia notación. Creamos una de BPMN y la paleta cambia sola. Con un clic regresamos al modelo.
+
+¿Buscas algo? Escríbelo arriba y salta directo al elemento.
+
+Y aquí está tu asistente de inteligencia artificial. Corre en tu propio equipo, sin internet. Pídele riesgos, decisiones de arquitectura o diagramas nuevos; y con arroba le compartes tus vistas.
+
+Desde Proyecto creas uno nuevo, importas diagramas o Mermaid, y descargas tu respaldo.
+
+En Ajustes decides dónde piensa la inteligencia artificial: en tu equipo por defecto, o en la nube si tú lo activas. Tus llaves quedan cifradas en tu máquina.
+
+¿Usas Claude Code o Codex? Conéctalos por M C P y deja que diseñen los diagramas por ti, directo en el lienzo.
+
+Cuando la inteligencia artificial repite un concepto con nombres distintos, el agrupador los fusiona: eliges el tipo, el que se queda, y marcas los duplicados.
+
+Y si te pierdes, la documentación explica cada notación y cada pieza.
+
+Processflow Architect. Entiende tu negocio y dibújalo con tu equipo.

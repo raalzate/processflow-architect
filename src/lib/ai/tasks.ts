@@ -25,6 +25,7 @@ import {
 import { getNotation, notationTypes } from "@/lib/notations";
 import { specFromLines, type ElementSpec } from "@/lib/element-spec";
 import { BUILDER_LOCAL_MAX_CHARS } from "./agent-engine";
+import { citaConRutaBase, lineaRutaBase } from "@/lib/source-base";
 
 /**
  * Tipos que puede devolver la IA para una vista: los de SU notación. Sin
@@ -247,14 +248,14 @@ export const suggestSpecTask: AiTask<
  * herramientas + estado de la corrida) y la salida es la acción en texto, que
  * `builder-tools.parseBuilderAction` interpreta.
  *
- * Es `light` con techo de entrada a propósito: en modo local corre local, y en
- * híbrido el propio router lo manda a la nube cuando el pedido crece. Así el
- * constructor respeta el modo vigente sin una segunda política de ruteo.
+ * Es `heavy`: el constructor escribe sobre el modelo del humano y lo que publica
+ * no se deshace solo, así que en híbrido nunca cae al motor local (#666). Los
+ * modos `local`/`cli` no llegan acá con el local: `motorDelConstructor` los pasa
+ * al CLI o bloquea la corrida.
  */
 export const builderTurnTask: AiTask<{ prompt: string; system?: string }, string> = {
   id: "builder-turn",
-  tier: "light",
-  maxLocalChars: BUILDER_LOCAL_MAX_CHARS,
+  tier: "heavy",
   buildPrompt: (i) => ({ prompt: i.prompt, system: i.system }),
   parse: (raw) => raw.trim(),
 };
@@ -282,6 +283,13 @@ export const elementChatTask: AiTask<
     spec?: string;
     entrantes?: string[];
     salientes?: string[];
+    /** Campo «Fuente» de la caja (#636). */
+    fuente?: string;
+    /**
+     * Ruta base de las fuentes (#670). El llamador la pasa sólo fuera del modo
+     * local: al motor chico no le sirve una ruta que no puede abrir.
+     */
+    rutaBase?: string;
     historial?: { role: "user" | "assistant"; text: string }[];
     mensaje: string;
   },
@@ -304,6 +312,8 @@ export const elementChatTask: AiTask<
         `DESCRIPCIÓN: ${i.descripcion?.trim() || "(sin descripción)"}`,
         `LA LLAMAN: ${lista(i.entrantes)}`,
         `LLAMA A: ${lista(i.salientes)}`,
+        ...(i.fuente?.trim() ? [`FUENTE: ${citaConRutaBase(i.fuente.trim(), i.rutaBase)}`] : []),
+        ...(i.rutaBase ? [lineaRutaBase(i.rutaBase)] : []),
         `SPEC ACTUAL:\n${i.spec?.trim() || "(sin spec)"}`,
         ...(previos.length
           ? ["", "CONVERSACIÓN PREVIA:", ...previos.map((t) => `${t.role === "user" ? "HUMANO" : "VOS"}: ${t.text}`)]
@@ -328,8 +338,10 @@ export const elementChatTask: AiTask<
  * silueta no identifica el tipo (doce tipos DDD son elipses), así que sin el
  * `<i>Tipo</i>` la vuelta tendría que adivinar, que es justo lo que §P6 prohíbe.
  *
- * `structured`: la propuesta tiene que respetar una convención exacta. En modo
- * local corre local igual (§P4); en híbrido el router la manda a la nube.
+ * `heavy` y `structured`: la propuesta respeta una convención exacta y pisa la
+ * vista del humano, así que nunca la resuelve el motor local (#666): en híbrido
+ * va a la nube y en `local`/`cli` la corrida usa el CLI o no arranca
+ * (`motorDelConstructor`).
  *
  * (La tarea de marca, `brandFromSiteTask`, va al final del archivo.)
  */
@@ -345,9 +357,8 @@ export const creativeDiagramTask: AiTask<
   string
 > = {
   id: "creative-diagram",
-  tier: "light",
+  tier: "heavy",
   structured: true,
-  maxLocalChars: BUILDER_LOCAL_MAX_CHARS,
   buildPrompt: (i) => {
     const tipos = notationTypes(i.notation, { includeContainers: true });
     const contenedores = notationTypes(i.notation, { includeContainers: true }).filter(

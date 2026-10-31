@@ -12,6 +12,8 @@
  */
 
 import { nombreDeVista, type BuilderCall } from "./builder-tools";
+import type { GraphData } from "../types";
+import { cuantosElementos } from "./builder-creative";
 
 /** Resultado de haber llamado a una herramienta (lo trae el adaptador). */
 export interface ToolObservation {
@@ -34,7 +36,7 @@ export interface BuilderOption {
   id: string;
   label: string;
   /** Pista para la UI. Sin esto, elegir sólo devuelve el id al agente. */
-  accion?: "abrir-ajustes-ia" | "cancelar";
+  accion?: "abrir-ajustes-ia" | "cancelar" | "deshacer" | "conservar";
   /** Texto de apoyo bajo la opción (por qué elegirla). */
   detalle?: string;
 }
@@ -88,6 +90,13 @@ export interface BuilderRunState {
    * concluía que su trabajo se había perdido y lo creaba de nuevo (#327).
    */
   diagrama?: { id: string; nombre: string; notacion?: string };
+  /**
+   * El lienzo TAL COMO ESTABA antes de la corrida: la vista abierta y los nombres
+   * de las que ya existían. Lo que el constructor publica pisa el lienzo del
+   * humano; sin esto, un error no tenía vuelta (#666). Se toma al arrancar y no
+   * después: un respaldo tardío ya trae los cambios.
+   */
+  respaldo?: { vista?: string; graph?: GraphData | null; vistas: string[] };
 }
 
 /**
@@ -622,4 +631,98 @@ export function summarizeRun(state: BuilderRunState): string {
   }
 
   return [...motivo, ...partes].join("\n\n");
+}
+
+/** Herramientas que escriben EN la vista abierta: deshacerlas es restaurarla. */
+const EDITAN_LA_VISTA = new Set([
+  "add_view_element",
+  "update_view_element",
+  "remove_view_element",
+  "add_view_edge",
+  "update_view_edge",
+  "remove_view_edge",
+  "set_view_graph",
+]);
+
+const mismo = (a?: string, b?: string) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+/** ¿La edición cayó en la vista abierta? Sin `view`, el MCP edita la abierta. */
+function enLaVistaAbierta(p: BuilderStep, vista?: string): boolean {
+  const destino = typeof p.args.view === "string" ? p.args.view : undefined;
+  return !destino || mismo(destino, vista);
+}
+
+/** Pestañas que la corrida CREÓ: nombres que antes no existían. */
+function pestanasCreadas(state: BuilderRunState): string[] {
+  const previas = state.respaldo?.vistas ?? [];
+  const creadas: string[] = [];
+  for (const p of state.pasos) {
+    if (!p.ok || p.tool !== "export_as_view" || p.args.replace === true) continue;
+    const nombre = nombreDeVista({ tool: p.tool, args: p.args }, state.diagrama?.nombre);
+    // Un nombre que ya existía no se borra nunca: `delete_view` resuelve por
+    // nombre y se llevaría la pestaña del humano, no la copia de la corrida.
+    if (!nombre || previas.some((v) => mismo(v, nombre)) || creadas.some((v) => mismo(v, nombre))) continue;
+    creadas.push(nombre);
+  }
+  return creadas;
+}
+
+/**
+ * Las llamadas que dejan el lienzo como estaba antes de la corrida (#666):
+ * restaurar la vista abierta desde el respaldo y quitar las pestañas que la
+ * corrida CREÓ. Lo que no se puede revertir así lo dice `fueraDelDeshacer`.
+ */
+export function planDeshacer(state: BuilderRunState): BuilderCall[] {
+  const r = state.respaldo;
+  if (!r) return [];
+  const plan: BuilderCall[] = [];
+  const editoLaAbierta = state.pasos.some(
+    (p) => p.ok && EDITAN_LA_VISTA.has(p.tool) && enLaVistaAbierta(p, r.vista)
+  );
+  if (r.vista && cuantosElementos(r.graph) > 0 && editoLaAbierta) {
+    plan.push({
+      tool: "set_view_graph",
+      args: { graph: JSON.stringify(r.graph), view: r.vista, allowRemovals: true },
+    });
+  }
+  for (const name of pestanasCreadas(state)) plan.push({ tool: "delete_view", args: { name } });
+  return plan;
+}
+
+/**
+ * Lo que la corrida cambió y deshacer NO repone: decirlo es la diferencia entre
+ * «quedó como estaba» y una promesa falsa.
+ */
+export function fueraDelDeshacer(state: BuilderRunState): string[] {
+  const r = state.respaldo;
+  const fuera: string[] = [];
+  for (const p of state.pasos) {
+    if (!p.ok || !TOCAN_EL_LIENZO.has(p.tool)) continue;
+    if (EDITAN_LA_VISTA.has(p.tool)) {
+      if (!enLaVistaAbierta(p, r?.vista)) fuera.push(`cambios en la vista "${String(p.args.view)}"`);
+      else if (!cuantosElementos(r?.graph)) fuera.push("el contenido nuevo de la vista abierta (estaba vacía)");
+    } else if (p.tool === "export_as_view") {
+      const nombre = nombreDeVista({ tool: p.tool, args: p.args }, state.diagrama?.nombre);
+      if (!pestanasCreadas(state).some((v) => mismo(v, nombre))) fuera.push(`la pestaña "${nombre}" (ya existía)`);
+    } else {
+      fuera.push(frase({ tool: p.tool, args: p.args }, state.diagrama?.nombre));
+    }
+  }
+  return [...new Set(fuera)];
+}
+
+/** Ofrece deshacer lo publicado. Es una pregunta más: el humano decide, sin escribir. */
+export function preguntaDeDeshacer(): BuilderQuestion {
+  return {
+    texto: "Si el resultado no te sirve, dejo el lienzo como estaba antes de esta corrida.",
+    opciones: [
+      {
+        id: "deshacer",
+        label: "Deshacer",
+        accion: "deshacer",
+        detalle: "Restaura la vista y quita las pestañas que creé.",
+      },
+      { id: "conservar", label: "Conservar", accion: "conservar" },
+    ],
+  };
 }

@@ -304,6 +304,16 @@ describe("resolveAppRead", () => {
       expect(out).toContain("read_element_doc");
     });
 
+    it("con ruta base del proyecto, la ficha dice dónde abrir la fuente (#670)", () => {
+      const r = resolveAppRead({ kind: "focused" }, { ...conFoco(foco), sourceBaseOf: () => "/repo" });
+      if (!r.ok || r.kind !== "focused") throw new Error("debía leer la ficha");
+      expect(r.element.sourceBase).toBe("/repo");
+      expect(formatFocusedElement(r.project, r.element)).toContain('"/repo"');
+      const sin = resolveAppRead({ kind: "focused" }, conFoco(foco));
+      if (!sin.ok || sin.kind !== "focused") throw new Error("debía leer la ficha");
+      expect(sin.element.sourceBase).toBeUndefined();
+    });
+
     it("un contenedor en foco también se lee (id agg-<nombre>, como en el lienzo)", () => {
       const r = resolveAppRead(
         { kind: "focused" },
