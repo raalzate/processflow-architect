@@ -45,7 +45,7 @@
     "panel:sync": "node scripts/panel/sincronizar.mjs"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.9.1",
+    "@hookform/resolvers": "^6.0.2",
     "@litert-lm/core": "^0.18.0",
     "@mermaid-js/mermaid-cli": "^12.0.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
