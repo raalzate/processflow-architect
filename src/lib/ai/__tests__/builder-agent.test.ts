@@ -11,6 +11,7 @@ import {
   runBuilderAgent,
   resumeBuilderAgent,
   answerBuilderAgent,
+  buildBuilderPrompt,
   type BuilderDeps,
 } from "@/lib/ai/builder-agent";
 import {
@@ -568,5 +569,13 @@ describe("deshacer lo publicado", () => {
     const r = await answerBuilderAgent({ ...base, deps }, publicada(), "conservar");
     expect(llamadas).toEqual([]);
     expect(r.state.respaldo).toBeUndefined();
+  });
+});
+
+describe("ruta base de las fuentes en el prompt del constructor (#670)", () => {
+  it("la nombra cuando el proyecto la tiene", () => {
+    const p = buildBuilderPrompt({ message: "x", sourceBase: "/repo" }, "menu", startRun());
+    expect(p).toContain('"/repo"');
+    expect(buildBuilderPrompt({ message: "x" }, "menu", startRun())).not.toMatch(/ruta base/);
   });
 });
