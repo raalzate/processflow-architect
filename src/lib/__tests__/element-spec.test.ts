@@ -4,6 +4,7 @@ import {
   MAX_ITEMS_LISTA,
   emptySpec,
   isSpecEmpty,
+  specDelBorrador,
   specWithSeededDate,
   etiqueta,
   moveItem,
@@ -65,6 +66,32 @@ describe("emptySpec / isSpecEmpty", () => {
   it("un caso límite escrito cuenta; uno en blanco no", () => {
     expect(isSpecEmpty({ ...emptySpec(), edgeCases: ["   "] })).toBe(true);
     expect(isSpecEmpty({ ...emptySpec(), edgeCases: ["¿y si no hay saldo?"] })).toBe(false);
+  });
+});
+
+describe("specDelBorrador · el «+» de una spec vacía (#668)", () => {
+  it("un paso recién agregado sobrevive aunque no tenga texto", () => {
+    const conPaso = { ...emptySpec(), stories: [nuevoPaso()] };
+    expect(specDelBorrador(conPaso)).toBe(conPaso);
+  });
+
+  it("vale para cualquier lista: caso límite, requisito, entidad, criterio", () => {
+    for (const parche of [
+      { edgeCases: [""] },
+      { requirements: [nuevoRequisito()] },
+      { entities: [nuevaEntidad()] },
+      { criteria: [nuevoCriterio()] },
+    ]) {
+      expect(specDelBorrador({ ...emptySpec(), ...parche })).toBeDefined();
+    }
+  });
+
+  it("sin texto ni ítems se colapsa: abrir la ficha no agrega una spec al archivo", () => {
+    expect(specDelBorrador(emptySpec())).toBeUndefined();
+  });
+
+  it("al guardar, el paso en blanco no viaja", () => {
+    expect(sanitizeSpec({ ...emptySpec(), stories: [nuevoPaso()] })).toBeUndefined();
   });
 });
 

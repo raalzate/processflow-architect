@@ -11,6 +11,7 @@ export interface LitertModelStatus {
 
 import type { AppState } from "@/lib/mcp/app-state";
 import type { EstadoUpdate } from "@/lib/update-check";
+import type { CapturaVista } from "@/lib/mcp/view-image";
 import type { AppReadRequest, AppReadResult } from "@/lib/mcp/app-read";
 import type { AppActionRequest, AppActionResult } from "@/lib/mcp/app-actions";
 import type { ChatEvent, CliStatus } from "@/lib/agent-cli/types";
@@ -126,6 +127,9 @@ export interface ElectronAPI {
     handler: (payload: { id: number; request: AppReadRequest }) => void
   ) => () => void;
   mcpAppReadReply: (id: number, result: AppReadResult) => void;
+  /** El main pide una imagen de la vista abierta (`get_view_image`, #670). */
+  onMcpAppCapture: (handler: (payload: { id: number }) => void) => () => void;
+  mcpAppCaptureReply: (id: number, result: CapturaVista) => void;
   /**
    * El main pide una ACCIÓN sobre el proyecto (borrar o renombrar una vista).
    * A diferencia de la lectura, esto cambia el trabajo del humano: el renderer

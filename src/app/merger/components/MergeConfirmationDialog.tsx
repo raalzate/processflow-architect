@@ -58,7 +58,7 @@ const MergeConfirmationDialog: React.FC<Props> = ({
       <AlertDialogTrigger asChild>
         <Button size="lg" className="w-full">
           <GitMerge className="mr-2 h-5 w-5" />
-          Fusionar {secondaryNodes.length + 1} Nodos de tipo '{type}'
+          Fusionar {secondaryNodes.length + 1} elementos de tipo «{type}»
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
@@ -67,17 +67,16 @@ const MergeConfirmationDialog: React.FC<Props> = ({
             <AlertTriangle className="text-destructive" /> ¿Confirmar Fusión?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Esta acción es <strong>destructiva</strong>. Los nodos secundarios se eliminarán
-            y todas sus conexiones apuntarán al nodo principal. Esta acción no
-            se puede deshacer.
+            Los duplicados se <strong>borran</strong>: su descripción y tecnologías pasan al que se
+            queda, y sus relaciones ahora apuntan a él. <strong>No se puede deshacer.</strong>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="text-sm space-y-4 my-4">
           <p>
-            Nodo Principal (permanecerá): <strong className="text-primary">{primaryNode.nombre}</strong>
+            Se queda: <strong className="text-primary">{primaryNode.nombre}</strong>
           </p>
           <p>
-            Los siguientes {secondaryNodes.length} nodo(s) serán <strong>eliminados</strong>:
+            Se borran {secondaryNodes.length} duplicado(s):
           </p>
           <ul className="list-disc list-inside bg-muted/50 p-3 rounded-md max-h-32 overflow-y-auto">
             {secondaryNodes.map((node) => (
@@ -87,7 +86,7 @@ const MergeConfirmationDialog: React.FC<Props> = ({
           <div className="space-y-2 mt-4 text-left">
             <Label htmlFor="new-name" className="font-semibold">Nuevo nombre (opcional)</Label>
             <Input id="new-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={primaryNode.nombre} className="bg-background" />
-            <p className="text-xs text-muted-foreground">El nodo principal se renombrará a este valor.</p>
+            <p className="text-xs text-muted-foreground">El que se queda tomará este nombre.</p>
           </div>
         </div>
         <AlertDialogFooter>

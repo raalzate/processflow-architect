@@ -17,6 +17,7 @@ import {
   emptyOrgHint,
   orgOptions,
   visibleSelection,
+  projectContext,
 } from "../project-orgs";
 
 const file = (id: string, orgId?: string): SavedFile =>
@@ -129,5 +130,27 @@ describe("visibleSelection · el selector no queda mudo", () => {
 
   it("sin proyecto activo no hay selección", () => {
     expect(visibleSelection(null, visibles)).toBe("");
+  });
+});
+
+// #662: una pantalla fuera del lienzo dice sobre qué proyecto opera.
+describe("projectContext", () => {
+  const conContenido = (orgId: string | undefined, content: Record<string, unknown>) =>
+    ({ id: "p", name: "archivo.json", orgId, content }) as unknown as SavedFile;
+
+  it("nombra organización (legible), proyecto y notación", () => {
+    const ctx = projectContext(conContenido("acme", { nombre_proyecto: "Marketplace", notation: "bpmn" }), { acme: "Acme S.A." });
+    expect(ctx).toEqual({ org: "Acme S.A.", proyecto: "Marketplace", notacion: "BPMN (Procesos)" });
+  });
+
+  it("sin nombre legible muestra el slug; sin organización lo declara", () => {
+    expect(projectContext(conContenido("acme", {})).org).toBe("acme");
+    expect(projectContext(conContenido(undefined, {})).org).toBe(SIN_ORG_LABEL);
+  });
+
+  it("sin nombre de proyecto cae al nombre del archivo; sin notación, la por defecto", () => {
+    const ctx = projectContext(conContenido(undefined, { nombre_proyecto: "  " }));
+    expect(ctx.proyecto).toBe("archivo.json");
+    expect(ctx.notacion).toBe("DDD / Event Storming");
   });
 });

@@ -21,6 +21,8 @@
 
 # misc
 .DS_Store
+# videos tutoriales (scripts/tutorial, #664): voz, grabación y render
+/tutorial-out/
 *.pem
 
 # python (legacy studio, removed)

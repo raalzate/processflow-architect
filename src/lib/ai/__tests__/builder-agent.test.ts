@@ -11,9 +11,18 @@ import {
   runBuilderAgent,
   resumeBuilderAgent,
   answerBuilderAgent,
+  buildBuilderPrompt,
   type BuilderDeps,
 } from "@/lib/ai/builder-agent";
-import { MAX_BUILDER_STEPS, MAX_SIN_PROGRESO } from "@/lib/ai/builder-run";
+import {
+  MAX_BUILDER_STEPS,
+  MAX_SIN_PROGRESO,
+  applyObservation,
+  askUser,
+  preguntaDeDeshacer,
+  startRun,
+  type BuilderRunState,
+} from "@/lib/ai/builder-run";
 import type { ToolSpec } from "@/lib/ai/builder-tools";
 
 const TOOLS: ToolSpec[] = [
@@ -49,7 +58,8 @@ function guion(turnos: string[]): { deps: Partial<BuilderDeps>; llamadas: string
   };
 }
 
-const base = { message: "construí algo", vistas: VISTAS, allow: ALLOW, mode: "local" as const };
+// El constructor ya no corre con la IA local (#666): el guion hace de nube.
+const base = { message: "construí algo", vistas: VISTAS, allow: ALLOW, mode: "remote" as const };
 
 /**
  * Modelo que construye SIN repetirse: un elemento nuevo por turno. Hace falta
@@ -151,16 +161,51 @@ describe("bucle del constructor", () => {
     expect(r.state.pasos).toEqual([]);
   });
 
-  it("en modo local, un pedido que desborda la ventana avisa antes de arrancar", async () => {
-    const { deps, llamadas } = guion(['{"final":"nunca llega"}']);
+  it("en modo local no arranca, aun con CLI: ni modelo ni MCP, y ofrece Ajustes (#666)", async () => {
+    const { deps, llamadas } = guion(['{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}']);
+    const generate = vi.fn(deps.generate);
     const r = await runBuilderAgent({
       ...base,
-      message: "x".repeat(50_000),
-      maxTokens: 1024,
-      deps,
+      mode: "local",
+      deps: { ...deps, generate, cliDisponible: () => true },
     });
+    expect(generate).not.toHaveBeenCalled();
     expect(llamadas).toEqual([]);
-    expect(r.reply).toMatch(/nube|parti/i);
+    expect(r.reply).toMatch(/no corre con la IA local/i);
+    const ids = r.state.pregunta?.opciones.map((o) => o.id) ?? [];
+    expect(ids).toEqual(["ajustes", "cancelar"]);
+    expect(r.state.pregunta?.opciones[0].accion).toBe("abrir-ajustes-ia");
+  });
+
+  it("en modo CLI, el turno lo razona el CLI (#666)", async () => {
+    const { deps } = guion(['{"final":"listo"}']);
+    const modos: string[] = [];
+    await runBuilderAgent({
+      ...base,
+      mode: "cli",
+      deps: {
+        ...deps,
+        cliDisponible: () => true,
+        generate: async (_p, _s, mode) => {
+          modos.push(mode);
+          return '{"final":"listo"}';
+        },
+      },
+    });
+    expect(modos).toEqual(["cli"]);
+  });
+
+  it("retomar una corrida tampoco la cuela al motor local", async () => {
+    const { deps } = guion(['{"pregunta":"¿Cuál?","opciones":["Pagos","Checkout"]}']);
+    const primera = await runBuilderAgent({ ...base, deps });
+    const generate = vi.fn(async () => '{"final":"x"}');
+    const r = await answerBuilderAgent(
+      { ...base, mode: "local", deps: { ...deps, generate, cliDisponible: () => false } },
+      primera.state,
+      primera.state.pregunta!.opciones[0].id
+    );
+    expect(generate).not.toHaveBeenCalled();
+    expect(r.state.pregunta?.opciones.map((o) => o.id)).toEqual(["ajustes", "cancelar"]);
   });
 
   it("cada paso se emite en vivo para la traza del chat", async () => {
@@ -172,65 +217,6 @@ describe("bucle del constructor", () => {
     await runBuilderAgent({ ...base, deps, onStep: (s) => vistos.push(s.type) });
     expect(vistos).toContain("action");
     expect(vistos).toContain("observation");
-  });
-});
-
-/**
- * El aviso de «no entra en la IA local» estaba MAL PUESTO: se evaluaba en cada
- * turno contra el prompt completo, que crece con el menú y las observaciones. En
- * la app el agente hizo diez pasos y cerró con el aviso, tirando el trabajo. Un
- * presupuesto ajustado tiene que RECORTAR el contexto, no matar la corrida; y si
- * de verdad no entra, el aviso llega antes de empezar y con lo hecho a la vista.
- */
-describe("presupuesto del motor local durante la corrida", () => {
-  it("con la ventana por defecto, una corrida normal termina sin avisos de tamaño", async () => {
-    const { deps, llamadas } = guion([
-      '{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}',
-      '{"tool":"add_node","args":{"name":"Pago","type":"Comando"}}',
-      '{"final":"Listo."}',
-    ]);
-    const r = await runBuilderAgent({ ...base, maxTokens: 4096, deps });
-    expect(llamadas).toHaveLength(2);
-    expect(r.reply).not.toMatch(/más grande de lo que sostiene/i);
-  });
-
-  it("las observaciones se recortan en vez de reventar el presupuesto", async () => {
-    let n = 0;
-    const gordo = {
-      listTools: async () => TOOLS,
-      callTool: async () => ({ ok: true, texto: "x".repeat(20_000) }),
-      generate: async (prompt: string) => {
-        // El prompt NUNCA puede pasarse del presupuesto del motor local.
-        expect(prompt.length).toBeLessThan(5018);
-        return `{"tool":"add_node","args":{"name":"N${++n}","type":"Comando"}}`;
-      },
-    };
-    const r = await runBuilderAgent({ ...base, maxTokens: 4096, deps: gordo });
-    expect(r.state.restantes).toBe(0);
-    expect(r.reply).toMatch(/tope de pasos/i);
-  });
-
-  it("si aborta por tamaño, el resumen dice lo que sí quedó hecho", async () => {
-    let turno = 0;
-    const deps = {
-      listTools: async () => TOOLS,
-      callTool: async () => ({ ok: true, texto: "hecho" }),
-      generate: async () => {
-        turno++;
-        return turno === 1
-          ? '{"tool":"add_node","args":{"name":"Orden","type":"Comando"}}'
-          : '{"tool":"add_node","args":{"name":"Pago","type":"Comando"}}';
-      },
-    };
-    // Pedido enorme y ventana chica: ni el menú compacto con cero observaciones entra.
-    const r = await runBuilderAgent({
-      ...base,
-      message: "construí ".repeat(400),
-      maxTokens: 512,
-      deps,
-    });
-    expect(r.reply).toMatch(/nube|parti/i);
-    expect(r.reply).toMatch(/Sin cambios|Cambios aplicados/);
   });
 });
 
@@ -265,23 +251,6 @@ describe("preguntas con opciones", () => {
     );
     expect(seguir.llamadas).toHaveLength(1);
     expect(r.reply).toMatch(/Pagos/);
-  });
-
-  it("cuando el pedido no entra en la ventana local, ofrece opciones en vez de un párrafo", async () => {
-    const { deps, llamadas } = guion(['{"final":"nunca llega"}']);
-    const r = await runBuilderAgent({
-      ...base,
-      message: "construí ".repeat(400),
-      maxTokens: 512,
-      deps,
-    });
-    expect(llamadas).toEqual([]);
-    const ids = r.state.pregunta?.opciones.map((o) => o.id) ?? [];
-    expect(ids).toContain("partir");
-    expect(ids).toContain("ajustes");
-    expect(ids).toContain("cancelar");
-    // Y la opción de la nube lleva su acción: el botón hace algo, no describe algo.
-    expect(r.state.pregunta?.opciones.find((o) => o.id === "ajustes")?.accion).toBe("abrir-ajustes-ia");
   });
 
   it("la confirmación destructiva sigue siendo una pregunta de dos opciones", async () => {
@@ -538,5 +507,75 @@ describe("el agente sabe qué está construyendo (#327)", () => {
     expect(prompts[1]).toMatch(/finops-1/);
     // Y la advertencia que evita el bucle: la app no muestra el workspace.
     expect(prompts[1]).toMatch(/export_as_view/);
+  });
+});
+
+/**
+ * Deshacer (#666): elegirlo repone el lienzo con llamadas al MCP, sin pasar por
+ * el modelo —ni siquiera hace falta un motor disponible—.
+ */
+describe("deshacer lo publicado", () => {
+  const respaldo = {
+    vista: "Pagos",
+    vistas: ["Pagos"],
+    graph: { big_picture: { nodos: [{ id: "a", nombre: "A", tipo: "Comando" }] }, agregados: [] } as any,
+  };
+  const publicada = () => {
+    let s: BuilderRunState = { ...startRun(), respaldo };
+    s = applyObservation(s, { tool: "set_view_graph", args: { view: "Pagos" } }, { ok: true, texto: "hecho" });
+    s = applyObservation(s, { tool: "export_as_view", args: { viewName: "Extra" } }, { ok: true, texto: "hecho" });
+    return askUser(s, preguntaDeDeshacer());
+  };
+
+  it("«Deshacer» repone la vista y quita la pestaña creada, sin llamar al modelo", async () => {
+    const { deps, llamadas } = guion(['{"final":"no debería pensar"}']);
+    const generate = vi.fn(deps.generate);
+    const r = await answerBuilderAgent(
+      { ...base, mode: "local", deps: { ...deps, generate, cliDisponible: () => false } },
+      publicada(),
+      "deshacer"
+    );
+    expect(generate).not.toHaveBeenCalled();
+    expect(llamadas.map((l) => l.split(":")[0])).toEqual(["set_view_graph", "delete_view"]);
+    expect(llamadas[1]).toContain('"Extra"');
+    expect(r.reply).toMatch(/deshice/i);
+    expect(r.state.pregunta).toBeUndefined();
+  });
+
+  it("si deshacer falla a medias, lo dice y vuelve a ofrecerlo", async () => {
+    const llamadas: string[] = [];
+    const deps = {
+      listTools: async () => TOOLS,
+      callTool: async (name: string) => {
+        llamadas.push(name);
+        return name === "delete_view" ? { ok: false, texto: "no existe" } : { ok: true, texto: "hecho" };
+      },
+    };
+    const r = await answerBuilderAgent({ ...base, deps }, publicada(), "deshacer");
+    expect(r.reply).toMatch(/No pude deshacer todo/);
+    expect(r.state.respaldo).toBeDefined();
+    expect(r.state.pregunta?.opciones.map((o) => o.id)).toEqual(["deshacer", "conservar"]);
+  });
+
+  it("una opción que el modelo llamó «deshacer» no deshace: sólo la del arnés", async () => {
+    const { deps, llamadas } = guion(['{"final":"sigo"}']);
+    const s = askUser(publicada(), { texto: "¿Cuál?", opciones: [{ id: "deshacer", label: "Deshacer" }, { id: "b", label: "B" }] });
+    await answerBuilderAgent({ ...base, deps }, s, "deshacer");
+    expect(llamadas).not.toContain(expect.stringMatching(/^delete_view/));
+  });
+
+  it("«Conservar» no toca nada", async () => {
+    const { deps, llamadas } = guion(['{"final":"x"}']);
+    const r = await answerBuilderAgent({ ...base, deps }, publicada(), "conservar");
+    expect(llamadas).toEqual([]);
+    expect(r.state.respaldo).toBeUndefined();
+  });
+});
+
+describe("ruta base de las fuentes en el prompt del constructor (#670)", () => {
+  it("la nombra cuando el proyecto la tiene", () => {
+    const p = buildBuilderPrompt({ message: "x", sourceBase: "/repo" }, "menu", startRun());
+    expect(p).toContain('"/repo"');
+    expect(buildBuilderPrompt({ message: "x" }, "menu", startRun())).not.toMatch(/ruta base/);
   });
 });

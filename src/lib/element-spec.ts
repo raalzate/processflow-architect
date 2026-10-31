@@ -185,6 +185,22 @@ export function isSpecEmpty(spec?: ElementSpec | null): boolean {
 }
 
 /**
+ * Lo que la ficha devuelve tras un cambio del usuario: `undefined` sólo cuando no
+ * hay texto NI ítems. `isSpecEmpty` solo no alcanza: un paso recién agregado con
+ * «+» está en blanco, y colapsarlo lo borraba antes de que se viera (#668). Los
+ * ítems en blanco no llegan al archivo: `sanitizeSpec` los descarta al guardar.
+ */
+export function specDelBorrador(spec: ElementSpec): ElementSpec | undefined {
+  const hayItems =
+    spec.stories.length > 0 ||
+    spec.edgeCases.length > 0 ||
+    spec.requirements.length > 0 ||
+    spec.entities.length > 0 ||
+    spec.criteria.length > 0;
+  return hayItems || !isSpecEmpty(spec) ? spec : undefined;
+}
+
+/**
  * Siembra `createdAt` la primera vez que la spec tiene datos. No pisa una fecha
  * ya puesta (el usuario la puede corregir) y no siembra sobre una spec vacía
  * (sembrar ahí sería justamente lo que `isSpecEmpty` evita).

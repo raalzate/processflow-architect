@@ -66,6 +66,7 @@ import {
   nuevoEscenario,
   nuevoPaso,
   nuevoRequisito,
+  specDelBorrador,
   specFileName,
   specToMarkdown,
   specWithSeededDate,
@@ -445,12 +446,11 @@ export const SpecTab: React.FC<SpecTabProps> = ({
 
   /**
    * Un cambio del usuario: siembra la fecha si es el primer dato y devuelve
-   * `undefined` cuando la spec quedó vacía (así no se persiste un objeto por
-   * haber tecleado y borrado).
+   * `undefined` cuando la spec quedó sin texto ni ítems (así no se persiste un
+   * objeto por haber tecleado y borrado, pero el «+» sí agrega, #668).
    */
   const set = (parche: Partial<ElementSpec>) => {
-    const siguiente = specWithSeededDate({ ...spec, ...parche }, hoyISO());
-    onChange(isSpecEmpty(siguiente) ? undefined : siguiente);
+    onChange(specDelBorrador(specWithSeededDate({ ...spec, ...parche }, hoyISO())));
   };
 
   const markdown = useMemo(

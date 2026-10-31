@@ -19,6 +19,7 @@ import type { NotationId } from "../notations";
 import type { GraphData } from "../types";
 import type { ElementSpec } from "../element-spec";
 import { formatDocsIndex } from "../element-docs";
+import { citaConRutaBase, lineaRutaBase } from "../source-base";
 import { countGraph, type AppFocus } from "./app-state";
 import { fromGraphData } from "./diagram-builder";
 import { textoConteo } from "./conteo";
@@ -62,6 +63,8 @@ export interface FocusedElement {
   description?: string;
   /** De dónde sale (campo `fuente` del elemento, #636). */
   source?: string;
+  /** Ruta base de las fuentes del proyecto en esta máquina (#670). */
+  sourceBase?: string;
   /** Vista a la que entra el elemento si es un subproceso (#638), por nombre. */
   subview?: string;
   estado?: string;
@@ -370,6 +373,8 @@ export interface AppReadContext {
   artifactsOf: (projectId: string) => ArtifactInput[];
   /** Ficha abierta en la app (feature 019); null o ausente = ninguna. */
   focus?: AppFocus | null;
+  /** Ruta base de las fuentes de un proyecto (#670); ausente = ninguna. */
+  sourceBaseOf?: (projectId: string) => string | undefined;
 }
 
 /**
@@ -425,8 +430,9 @@ export function formatFocusedElement(project: string, el: FocusedElement): strin
     `# ${el.name} (${el.type}) · id "${el.id}"`,
     `Proyecto "${project}" · vista "${el.view}"${el.container ? ` · dentro de "${el.container}"` : ""}${el.estado ? ` · estado ${el.estado}` : ""}`,
     `Descripción: ${el.description?.trim() || "(sin descripción)"}`,
-    `Fuente: ${el.source?.trim() || "(sin fuente)"}`,
+    `Fuente: ${el.source?.trim() ? citaConRutaBase(el.source.trim(), el.sourceBase) : "(sin fuente)"}`,
   ];
+  if (el.sourceBase) lines.push(lineaRutaBase(el.sourceBase));
   if (el.subview) lines.push(`Subproceso: entra a la vista "${el.subview}" (leela con get_view).`);
   if (el.tags?.length) lines.push(`Tags: ${el.tags.join(", ")}`);
   if (el.metadata?.length) lines.push(`Metadatos: ${el.metadata.map((m) => `${m.clave} = ${m.valor}`).join(" · ")}`);
@@ -519,7 +525,8 @@ export function resolveAppRead(req: AppReadRequest, ctx: AppReadContext): AppRea
         options: nombres(vistas, (v) => v.name),
       };
     }
-    return { ok: true, project: proyecto.name, kind: "focused", element };
+    const base = ctx.sourceBaseOf?.(proyecto.id);
+    return { ok: true, project: proyecto.name, kind: "focused", element: base ? { ...element, sourceBase: base } : element };
   }
 
   if (req.kind === "element") {
@@ -547,7 +554,8 @@ export function resolveAppRead(req: AppReadRequest, ctx: AppReadContext): AppRea
         { viewId: "", viewName: v.name, elementId: n.id, elementName: n.nombre },
         nombrePorId(ctx.viewsOf(proyecto.id))
       );
-      if (element) return { ok: true, project: proyecto.name, kind: "element", element };
+      const base = ctx.sourceBaseOf?.(proyecto.id);
+      if (element) return { ok: true, project: proyecto.name, kind: "element", element: base ? { ...element, sourceBase: base } : element };
     }
     if (hallados.length > 1) {
       // Elegir entre homónimos de vistas distintas es adivinar qué caja tocar.

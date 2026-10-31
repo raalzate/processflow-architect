@@ -25,6 +25,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { registerProcessflowTools } from "./mcp-tools";
 import { getAppState } from "./mcp-app-state";
 import { readFromApp } from "./mcp-app-read";
+import { captureFromApp } from "./mcp-app-capture";
 import { actOnApp } from "./mcp-app-action";
 import {
   isValidOrgSlug,
@@ -108,6 +109,7 @@ function buildMcpServer(focusScope: string | null = null): McpServer {
     exportMermaidToApp,
     getAppState,
     readApp: readFromApp,
+    captureApp: captureFromApp,
     actOnApp,
     // El skill que instale el agente debe describir ESTE transporte, no el del repo.
     transport: "http",

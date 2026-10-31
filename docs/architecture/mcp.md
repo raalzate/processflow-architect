@@ -192,6 +192,7 @@ soporta (electron #40380); el equivalente de escritorio es este servidor MCP.
 | Pieza | Qué hace |
 |---|---|
 | `AppState.focus` | la ficha abierta (vista, elemento, tab). La publica la ficha vía `ViewsContext.setFocus` y `get_app_state` la imprime como «Ficha abierta». |
+| `get_view_image` **app** | imagen PNG de la vista abierta, encuadrada a todo el contenido (#670): la captura el lienzo (`capturarLienzo`) por el puente `main/services/mcp-app-capture.ts`, un intento con timeout largo. Sirve para ver cruces y solapes que el grafo no dice. |
 | `get_focused_element` **app** | la ficha ENTERA en una lectura (`{ kind: "focused" }` en `app-read.ts`): tipo, descripción, fuente, estado, metadatos, spec, índice de adjuntos y vecinos. Sin foco, lo dice y ofrece las vistas. |
 | `get_view_element` **app** | la misma ficha, de CUALQUIER caja nombrándola (`{ kind: "element" }`): es el contexto que lee un agente de código antes de tocar el componente. Sin `view` busca en todas; con homónimos en varias vistas no elige y dice dónde están (#636). |
 | `set_view_element_spec` **app** | escribe la spec de una caja de la vista abierta (`ViewEdit set-spec`, con `setElementSpec`): `merge: true` parchea, vacío sin merge borra, homónimos ⇒ opciones. |

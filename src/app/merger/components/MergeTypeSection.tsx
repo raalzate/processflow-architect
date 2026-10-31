@@ -76,7 +76,8 @@ const MergeTypeSection: React.FC<Props> = ({
   }, [secondaryOptions, selectedAgregado]);
 
   const groupedNodes = allNodesForType.reduce((acc: Record<string, GraphNode[]>, node: GraphNode) => {
-    const agregadoKey = node.agregado || "Sin Agregado";
+    // `agregado` ya llega rotulado con la notación («Modelo · Pool: Atención»).
+    const agregadoKey = node.agregado || "Sin contenedor";
     return { ...acc, [agregadoKey]: [...(acc[agregadoKey] || []), node] };
   }, {});
 
@@ -85,8 +86,8 @@ const MergeTypeSection: React.FC<Props> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="shrink-0">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5" />1. Selecciona un Tipo de Nodo</CardTitle>
-            <CardDescription>Elige qué tipo de nodo deseas agrupar.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5" />1. Tipo de elemento</CardTitle>
+            <CardDescription>Qué clase de elemento quieres limpiar.</CardDescription>
           </CardHeader>
           <CardContent>
             <Label htmlFor={`node-type-select-${type}`} className="sr-only">Tipo de Nodo</Label>
@@ -107,8 +108,8 @@ const MergeTypeSection: React.FC<Props> = ({
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Box className="text-primary" />2. Seleccione el Nodo Principal</CardTitle>
-            <CardDescription>Este es el nodo que <strong>permanecerá</strong> y el único que puedes editar.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Box className="text-primary" />2. El que se queda</CardTitle>
+            <CardDescription>Este elemento <strong>sobrevive</strong> a la fusión; puedes editarlo con el lápiz.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
@@ -142,21 +143,21 @@ const MergeTypeSection: React.FC<Props> = ({
       {currentSelection.primary && (
         <Card className="flex-1 flex flex-col min-h-0">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Boxes />3. Seleccione Nodos</CardTitle>
-            <CardDescription>Marca nodos para fusionar, o usa los iconos para ver (👁️) o eliminar (🗑️).</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Boxes />3. Los duplicados</CardTitle>
+            <CardDescription>Marca los que son lo mismo; se funden en el que se queda. El ojo (👁️) muestra su ficha y la papelera (🗑️) lo borra sin fusionar.</CardDescription>
           </CardHeader>
 
           <CardContent className="flex-1 min-h-0 p-4 flex flex-col gap-4">
             <div className="shrink-0">
-              <Label htmlFor={`agregado-filter-${type}`} className="text-sm font-medium">Filtrar por Agregado</Label>
+              <Label htmlFor={`agregado-filter-${type}`} className="text-sm font-medium">Filtrar por vista y contenedor</Label>
               <Select value={selectedAgregado} onValueChange={setSelectedAgregado}>
                 <SelectTrigger id={`agregado-filter-${type}`} className="w-full md:w-[350px] mt-1">
-                  <SelectValue placeholder="Filtrar por agregado..." />
+                  <SelectValue placeholder="Filtrar por vista y contenedor..." />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
                     {agregadosOptions.map((agregado) => (
-                      <SelectItem key={agregado} value={agregado}>{agregado === "all" ? "Todos los Agregados" : agregado}</SelectItem>
+                      <SelectItem key={agregado} value={agregado}>{agregado === "all" ? "Todos" : agregado}</SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>

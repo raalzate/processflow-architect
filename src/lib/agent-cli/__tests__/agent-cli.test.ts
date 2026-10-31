@@ -223,6 +223,13 @@ describe("splitLines", () => {
 });
 
 describe("focusSystemPrompt", () => {
+  it("con ruta base la nombra y habilita leer ahí (#670)", () => {
+    const p = focusSystemPrompt({ elementName: "X", viewName: "Modelo", hasSpec: false, rutaBase: "/repo" });
+    expect(p).toContain('"/repo"');
+    expect(p).toMatch(/Read, Glob y Grep/);
+    expect(focusSystemPrompt({ elementName: "X", viewName: "Modelo", hasSpec: false })).not.toMatch(/ruta base/);
+  });
+
   it("nombra la caja, la vista, las tools del MCP y exige proponer antes de escribir", () => {
     const p = focusSystemPrompt({ elementName: "RabbitMQ", viewName: "Modelo", projectName: "Demo", hasSpec: true });
     expect(p).toContain('"RabbitMQ"');
