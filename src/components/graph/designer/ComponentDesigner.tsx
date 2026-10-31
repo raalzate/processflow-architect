@@ -176,6 +176,7 @@ import {
 import { useGraphContext } from "@/context/GraphContext";
 import { fuenteDelElemento, resolveCita, type SourceDoc } from "@/lib/source-docs";
 import { guardarRutaBase, leerRutaBase } from "@/lib/source-base";
+import { cajaBajoPunto, sustituirTipo } from "@/lib/replace-on-drop";
 import {
   attachElementDoc,
   removeElementDoc,
@@ -3111,6 +3112,13 @@ export const ComponentDesigner: React.FC<{
   // Confirmación de "Limpiar" controlada: así también la paleta (⌘K) puede
   // ABRIR la confirmación en vez de borrar sin preguntar (acción destructiva).
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  // Soltar un elemento de la paleta ENCIMA de una caja (#670): se pregunta antes
+  // de sustituir; mientras, nada se crea.
+  const [sustitucion, setSustitucion] = useState<{
+    targetId: string;
+    dropped: { tipo_elemento: DesignerNode["tipo_elemento"]; nombre: string };
+    p: { x: number; y: number };
+  } | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   // Conexión por arrastre: nodo origen + posición actual del cursor (línea guía).
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
@@ -4037,14 +4045,9 @@ export const ComponentDesigner: React.FC<{
     return pt.matrixTransform(svg.getScreenCTM()!.inverse());
   };
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      const data = e.dataTransfer.getData("application/json");
-      if (!data || !svgRef.current) return;
-      const dropped: { tipo_elemento: DesignerNode["tipo_elemento"]; nombre: string } =
-        JSON.parse(data);
-      const p = toSvgPoint(e.clientX, e.clientY);
+  /** Crea el elemento soltado desde la paleta en `p` (dentro del contenedor bajo el punto). */
+  const soltarNuevo = useCallback(
+    (dropped: { tipo_elemento: DesignerNode["tipo_elemento"]; nombre: string }, p: { x: number; y: number }) => {
       const isContainer = isContainerType(dropped.tipo_elemento);
 
       // Contenedor bajo el punto donde se suelta, con la MISMA regla que el
@@ -4101,6 +4104,48 @@ export const ComponentDesigner: React.FC<{
     },
     [updateNodes, notationId]
   );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const data = e.dataTransfer.getData("application/json");
+      if (!data || !svgRef.current) return;
+      const dropped: { tipo_elemento: DesignerNode["tipo_elemento"]; nombre: string } =
+        JSON.parse(data);
+      const p = toSvgPoint(e.clientX, e.clientY);
+      // Encima de una caja de OTRO tipo: se pregunta si sustituirla (#670). Un
+      // contenedor soltado, o soltar sobre un contenedor, sigue el camino de siempre.
+      if (!isContainerType(dropped.tipo_elemento)) {
+        const cajas = Array.from(nodesRef.current.values(), (n) => {
+          const { w, h } = nodeBox(n, notationId);
+          return { id: n.id, x: n.x, y: n.y, w, h, contenedor: isContainerType(n.tipo_elemento) };
+        });
+        const targetId = cajaBajoPunto(p, cajas);
+        const target = targetId ? nodesRef.current.get(targetId) : undefined;
+        if (target && target.tipo_elemento !== dropped.tipo_elemento) {
+          setSustitucion({ targetId: target.id, dropped, p });
+          return;
+        }
+      }
+      soltarNuevo(dropped, p);
+    },
+    [soltarNuevo, notationId]
+  );
+
+  /** Aplica la sustitución confirmada: mismo id, tipo y forma nuevos. */
+  const confirmarSustitucion = useCallback(() => {
+    if (!sustitucion) return;
+    const { targetId, dropped } = sustitucion;
+    setSustitucion(null);
+    updateNodes((prev) => {
+      const vivo = prev.get(targetId);
+      if (!vivo) return prev; // se borró mientras se preguntaba: no se resucita
+      const nuevo = nodeBox({ ...vivo, tipo_elemento: dropped.tipo_elemento, width: undefined, height: undefined }, notationId);
+      const map = new Map(prev);
+      map.set(targetId, sustituirTipo(vivo, dropped.tipo_elemento, nuevo, nodeBox(vivo, notationId)));
+      return map;
+    });
+  }, [sustitucion, updateNodes, notationId]);
 
   // --- Mover / redimensionar / seleccionar ---
   const handleNodeMouseDown = useCallback(
@@ -5390,6 +5435,35 @@ export const ComponentDesigner: React.FC<{
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
                 <AlertDialogAction onClick={handleClear}>Sí, reiniciar</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog open={!!sustitucion} onOpenChange={(o) => !o && setSustitucion(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  ¿Sustituir «{sustitucion ? nodesRef.current.get(sustitucion.targetId)?.nombre ?? "" : ""}»?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Pasa de {sustitucion ? nodesRef.current.get(sustitucion.targetId)?.tipo_elemento ?? "" : ""} a{" "}
+                  {sustitucion?.dropped.tipo_elemento}: cambia la forma y el tipo, y conserva el nombre,
+                  las relaciones, la spec y los metadatos. El color y el icono vuelven a los del tipo nuevo.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const s = sustitucion;
+                    setSustitucion(null);
+                    if (s) soltarNuevo(s.dropped, s.p);
+                  }}
+                >
+                  Agregar como nuevo
+                </Button>
+                <AlertDialogAction onClick={confirmarSustitucion}>Sustituir</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
