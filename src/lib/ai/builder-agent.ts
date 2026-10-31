@@ -53,6 +53,7 @@ import {
   type BuilderOption,
   type BuilderRunState,
 } from "./builder-run";
+import { lineaRutaBase } from "../source-base";
 import type { VistaConocida } from "../mcp/app-actions";
 import type { GraphData } from "../types";
 import type { NotationId } from "../notations";
@@ -95,6 +96,11 @@ export interface BuilderAgentInput {
   /** La vista abierta y su contenido (015): sin esto no hay modo creativo ni editor. */
   vista?: VistaActiva;
   history?: { role: string; content: string }[];
+  /**
+   * Ruta base de las fuentes del proyecto (#670). El constructor nunca corre con
+   * el motor local (#666), así que la ruta siempre llega a un motor que la usa.
+   */
+  sourceBase?: string;
   onStep?: (step: AgentStep) => void;
   deps?: Partial<BuilderDeps>;
 }
@@ -161,7 +167,7 @@ const SYSTEM = [
 
 /** Prompt del turno: menú, pedido, y lo observado hasta ahora. */
 export function buildBuilderPrompt(
-  input: Pick<BuilderAgentInput, "message" | "notation">,
+  input: Pick<BuilderAgentInput, "message" | "notation" | "sourceBase">,
   menu: string,
   state: BuilderRunState,
   /** Cuántas observaciones se re-inyectan y cuánto de cada una. */
@@ -201,6 +207,7 @@ export function buildBuilderPrompt(
     enCurso,
     hecho,
     input.notation ? `NOTACIÓN DE LA VISTA EN CURSO: ${input.notation}` : "",
+    lineaRutaBase(input.sourceBase),
     `HERRAMIENTAS DISPONIBLES:\n${menu}`,
     observado ? `LO QUE YA HICISTE:\n${observado}` : "Todavía no hiciste nada.",
     `Pasos restantes: ${state.restantes}.`,

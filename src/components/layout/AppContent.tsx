@@ -1,5 +1,6 @@
 "use client";
 
+import { leerRutaBase } from "@/lib/source-base";
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/layout/AppHeader";
@@ -174,6 +175,14 @@ const McpImportBridge = () => {
       active: activo,
       projects: proyectos,
       focus,
+      // Ruta base de las fuentes (#670): local a esta máquina, por proyecto.
+      sourceBaseOf: (projectId) => {
+        try {
+          return leerRutaBase(window.localStorage, projectId);
+        } catch {
+          return undefined;
+        }
+      },
       viewsOf: (projectId) => {
         // El proyecto activo ya tiene sus vistas resueltas en el contexto (con el
         // grafo vivo del lienzo, que puede diferir de lo persistido).

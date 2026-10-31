@@ -175,6 +175,7 @@ import {
 } from "@/components/ui/select";
 import { useGraphContext } from "@/context/GraphContext";
 import { fuenteDelElemento, resolveCita, type SourceDoc } from "@/lib/source-docs";
+import { guardarRutaBase, leerRutaBase } from "@/lib/source-base";
 import {
   attachElementDoc,
   removeElementDoc,
@@ -1376,7 +1377,9 @@ const EditNodeDialog: React.FC<{
   onEnfocar?: (id: string) => void;
   /** ¿Hay foco activo? Lo consulta Escape para no cerrar la ficha con él. */
   focoActivo?: () => boolean;
-}> = ({ node, nodes, links, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext, projectName, onEnfocar, focoActivo }) => {
+  /** Ruta base de las fuentes del proyecto en esta máquina (#670). */
+  rutaBase?: string;
+}> = ({ node, nodes, links, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext, projectName, onEnfocar, focoActivo, rutaBase }) => {
   // El chat con un agente externo y el botón de entrega dependen de capacidades
   // distintas del host: el CLI y el servidor MCP corren hoy en el proceso main, y
   // una edición web puede tener uno sin el otro.
@@ -1551,6 +1554,7 @@ const EditNodeDialog: React.FC<{
         viewName: vistaActivaNombre,
         url: estado.url,
         hasSpec: !isSpecEmpty(actual.spec),
+        rutaBase,
       });
       await navigator.clipboard.writeText(prompt);
       toast({
@@ -1827,6 +1831,8 @@ const EditNodeDialog: React.FC<{
                   incoming={flujoVecinos.entrantes.map((v) => v.nombre)}
                   outgoing={flujoVecinos.salientes.map((v) => v.nombre)}
                   notation={notation}
+                  fuente={fuenteDelElemento(draft)}
+                  rutaBase={rutaBase}
                 />
               </TabsContent>
             )}
@@ -2606,16 +2612,24 @@ const MetadataDialog: React.FC<{
   /** Notación de la vista: dirige el resumen que sugiere la IA. */
   notation: NotationId;
   onSave: (m: DesignerMeta) => void;
-}> = ({ open, onOpenChange, meta, summary, notation, onSave }) => {
+  /**
+   * Ruta base de las fuentes (#670). No es un metadato del documento: es de esta
+   * máquina y se guarda aparte (ver `source-base.ts`). Ausente → sin campo.
+   */
+  rutaBase?: { valor?: string; guardar: (v: string) => void };
+}> = ({ open, onOpenChange, meta, summary, notation, onSave, rutaBase }) => {
   const [draft, setDraft] = useState<DesignerMeta>(meta);
+  const [rutaDraft, setRutaDraft] = useState(rutaBase?.valor ?? "");
   const { run, busy } = useAi();
   // Vuelta atrás de la sugerencia del Big Picture (#352).
   const [previos, setPrevios] = useState<PreviosIA>(SIN_PREVIOS);
   useEffect(() => {
     if (open) {
       setDraft(meta);
+      setRutaDraft(rutaBase?.valor ?? "");
       setPrevios(SIN_PREVIOS);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, meta]);
 
   const suggestBigPicture = async () => {
@@ -2727,6 +2741,22 @@ const MetadataDialog: React.FC<{
             />
           </div>
 
+          {rutaBase && (
+            <div>
+              <Label htmlFor="meta-ruta-base">Ruta base de las fuentes</Label>
+              <Input
+                id="meta-ruta-base"
+                value={rutaDraft}
+                placeholder="/Users/vos/repos/mi-proyecto"
+                onChange={(e) => setRutaDraft(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Carpeta contra la que se resuelve el campo «Fuente» de cada caja. Se la pasa a los
+                agentes con CLI o API (no al modelo local) y es de esta máquina: no viaja con el proyecto.
+              </p>
+            </div>
+          )}
+
           <div className="border-t pt-3">
             <div className="flex items-center justify-between mb-2">
               <Label className="text-sm font-semibold">Read Models</Label>
@@ -2804,6 +2834,7 @@ const MetadataDialog: React.FC<{
           <Button
             onClick={() => {
               onSave(draft);
+              rutaBase?.guardar(rutaDraft);
               onOpenChange(false);
             }}
           >
@@ -2834,6 +2865,27 @@ export const ComponentDesigner: React.FC<{
   orgId?: string | null;
 }> = ({ value, onChange, sourceId, notation, onNotationChange, orgId = null }) => {
   const { currentFileId, savedFiles, handleDesignUpdate, graphData } = useGraphContext();
+  // Ruta base de las fuentes (#670): por proyecto y de esta máquina (localStorage).
+  const [rutaBase, setRutaBase] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    try {
+      setRutaBase(leerRutaBase(window.localStorage, currentFileId));
+    } catch {
+      setRutaBase(undefined);
+    }
+  }, [currentFileId]);
+  const guardarRuta = useCallback(
+    (v: string) => {
+      if (!currentFileId) return;
+      try {
+        guardarRutaBase(window.localStorage, currentFileId, v);
+        setRutaBase(leerRutaBase(window.localStorage, currentFileId));
+      } catch {
+        /* sin almacenamiento: la ruta no se recuerda, nada más */
+      }
+    },
+    [currentFileId]
+  );
   const { views, activeViewId, drillStack, enterView, goToDrill, createView, filters, filtersActive, clearFilters } =
     useViews();
   const { referenceText } = useReference();
@@ -5868,6 +5920,7 @@ export const ComponentDesigner: React.FC<{
         projectName={graphData?.nombre_proyecto}
         onEnfocar={enfocarCaja}
         focoActivo={() => !!focoRef.current}
+        rutaBase={rutaBase}
       />
       <EditLinkDialog
         link={editingLink}
@@ -5895,6 +5948,7 @@ export const ComponentDesigner: React.FC<{
           setMeta(m);
           bump();
         }}
+        rutaBase={currentFileId ? { valor: rutaBase, guardar: guardarRuta } : undefined}
       />
 
       {/* Contexto de referencia: documentos que alimentan las sugerencias de IA */}

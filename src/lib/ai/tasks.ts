@@ -25,6 +25,7 @@ import {
 import { getNotation, notationTypes } from "@/lib/notations";
 import { specFromLines, type ElementSpec } from "@/lib/element-spec";
 import { BUILDER_LOCAL_MAX_CHARS } from "./agent-engine";
+import { citaConRutaBase, lineaRutaBase } from "@/lib/source-base";
 
 /**
  * Tipos que puede devolver la IA para una vista: los de SU notación. Sin
@@ -282,6 +283,13 @@ export const elementChatTask: AiTask<
     spec?: string;
     entrantes?: string[];
     salientes?: string[];
+    /** Campo «Fuente» de la caja (#636). */
+    fuente?: string;
+    /**
+     * Ruta base de las fuentes (#670). El llamador la pasa sólo fuera del modo
+     * local: al motor chico no le sirve una ruta que no puede abrir.
+     */
+    rutaBase?: string;
     historial?: { role: "user" | "assistant"; text: string }[];
     mensaje: string;
   },
@@ -304,6 +312,8 @@ export const elementChatTask: AiTask<
         `DESCRIPCIÓN: ${i.descripcion?.trim() || "(sin descripción)"}`,
         `LA LLAMAN: ${lista(i.entrantes)}`,
         `LLAMA A: ${lista(i.salientes)}`,
+        ...(i.fuente?.trim() ? [`FUENTE: ${citaConRutaBase(i.fuente.trim(), i.rutaBase)}`] : []),
+        ...(i.rutaBase ? [lineaRutaBase(i.rutaBase)] : []),
         `SPEC ACTUAL:\n${i.spec?.trim() || "(sin spec)"}`,
         ...(previos.length
           ? ["", "CONVERSACIÓN PREVIA:", ...previos.map((t) => `${t.role === "user" ? "HUMANO" : "VOS"}: ${t.text}`)]
