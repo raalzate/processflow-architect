@@ -175,6 +175,8 @@ import {
 } from "@/components/ui/select";
 import { useGraphContext } from "@/context/GraphContext";
 import { fuenteDelElemento, resolveCita, type SourceDoc } from "@/lib/source-docs";
+import { guardarRutaBase, leerRutaBase } from "@/lib/source-base";
+import { cajaBajoPunto, sustituirTipo } from "@/lib/replace-on-drop";
 import {
   attachElementDoc,
   removeElementDoc,
@@ -1376,7 +1378,9 @@ const EditNodeDialog: React.FC<{
   onEnfocar?: (id: string) => void;
   /** ¿Hay foco activo? Lo consulta Escape para no cerrar la ficha con él. */
   focoActivo?: () => boolean;
-}> = ({ node, nodes, links, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext, projectName, onEnfocar, focoActivo }) => {
+  /** Ruta base de las fuentes del proyecto en esta máquina (#670). */
+  rutaBase?: string;
+}> = ({ node, nodes, links, elementTypes, notation, subViews, onOpenSubView, onCreateSubView, referencia, sourceDocs, onClose, onSave, onCreateNext, projectName, onEnfocar, focoActivo, rutaBase }) => {
   // El chat con un agente externo y el botón de entrega dependen de capacidades
   // distintas del host: el CLI y el servidor MCP corren hoy en el proceso main, y
   // una edición web puede tener uno sin el otro.
@@ -1551,6 +1555,7 @@ const EditNodeDialog: React.FC<{
         viewName: vistaActivaNombre,
         url: estado.url,
         hasSpec: !isSpecEmpty(actual.spec),
+        rutaBase,
       });
       await navigator.clipboard.writeText(prompt);
       toast({
@@ -1827,6 +1832,8 @@ const EditNodeDialog: React.FC<{
                   incoming={flujoVecinos.entrantes.map((v) => v.nombre)}
                   outgoing={flujoVecinos.salientes.map((v) => v.nombre)}
                   notation={notation}
+                  fuente={fuenteDelElemento(draft)}
+                  rutaBase={rutaBase}
                 />
               </TabsContent>
             )}
@@ -2606,16 +2613,24 @@ const MetadataDialog: React.FC<{
   /** Notación de la vista: dirige el resumen que sugiere la IA. */
   notation: NotationId;
   onSave: (m: DesignerMeta) => void;
-}> = ({ open, onOpenChange, meta, summary, notation, onSave }) => {
+  /**
+   * Ruta base de las fuentes (#670). No es un metadato del documento: es de esta
+   * máquina y se guarda aparte (ver `source-base.ts`). Ausente → sin campo.
+   */
+  rutaBase?: { valor?: string; guardar: (v: string) => void };
+}> = ({ open, onOpenChange, meta, summary, notation, onSave, rutaBase }) => {
   const [draft, setDraft] = useState<DesignerMeta>(meta);
+  const [rutaDraft, setRutaDraft] = useState(rutaBase?.valor ?? "");
   const { run, busy } = useAi();
   // Vuelta atrás de la sugerencia del Big Picture (#352).
   const [previos, setPrevios] = useState<PreviosIA>(SIN_PREVIOS);
   useEffect(() => {
     if (open) {
       setDraft(meta);
+      setRutaDraft(rutaBase?.valor ?? "");
       setPrevios(SIN_PREVIOS);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, meta]);
 
   const suggestBigPicture = async () => {
@@ -2727,6 +2742,22 @@ const MetadataDialog: React.FC<{
             />
           </div>
 
+          {rutaBase && (
+            <div>
+              <Label htmlFor="meta-ruta-base">Ruta base de las fuentes</Label>
+              <Input
+                id="meta-ruta-base"
+                value={rutaDraft}
+                placeholder="/Users/vos/repos/mi-proyecto"
+                onChange={(e) => setRutaDraft(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Carpeta contra la que se resuelve el campo «Fuente» de cada caja. Se la pasa a los
+                agentes con CLI o API (no al modelo local) y es de esta máquina: no viaja con el proyecto.
+              </p>
+            </div>
+          )}
+
           <div className="border-t pt-3">
             <div className="flex items-center justify-between mb-2">
               <Label className="text-sm font-semibold">Read Models</Label>
@@ -2804,6 +2835,7 @@ const MetadataDialog: React.FC<{
           <Button
             onClick={() => {
               onSave(draft);
+              rutaBase?.guardar(rutaDraft);
               onOpenChange(false);
             }}
           >
@@ -2834,6 +2866,27 @@ export const ComponentDesigner: React.FC<{
   orgId?: string | null;
 }> = ({ value, onChange, sourceId, notation, onNotationChange, orgId = null }) => {
   const { currentFileId, savedFiles, handleDesignUpdate, graphData } = useGraphContext();
+  // Ruta base de las fuentes (#670): por proyecto y de esta máquina (localStorage).
+  const [rutaBase, setRutaBase] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    try {
+      setRutaBase(leerRutaBase(window.localStorage, currentFileId));
+    } catch {
+      setRutaBase(undefined);
+    }
+  }, [currentFileId]);
+  const guardarRuta = useCallback(
+    (v: string) => {
+      if (!currentFileId) return;
+      try {
+        guardarRutaBase(window.localStorage, currentFileId, v);
+        setRutaBase(leerRutaBase(window.localStorage, currentFileId));
+      } catch {
+        /* sin almacenamiento: la ruta no se recuerda, nada más */
+      }
+    },
+    [currentFileId]
+  );
   const { views, activeViewId, drillStack, enterView, goToDrill, createView, filters, filtersActive, clearFilters } =
     useViews();
   const { referenceText } = useReference();
@@ -3059,6 +3112,13 @@ export const ComponentDesigner: React.FC<{
   // Confirmación de "Limpiar" controlada: así también la paleta (⌘K) puede
   // ABRIR la confirmación en vez de borrar sin preguntar (acción destructiva).
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  // Soltar un elemento de la paleta ENCIMA de una caja (#670): se pregunta antes
+  // de sustituir; mientras, nada se crea.
+  const [sustitucion, setSustitucion] = useState<{
+    targetId: string;
+    dropped: { tipo_elemento: DesignerNode["tipo_elemento"]; nombre: string };
+    p: { x: number; y: number };
+  } | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   // Conexión por arrastre: nodo origen + posición actual del cursor (línea guía).
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
@@ -3985,14 +4045,9 @@ export const ComponentDesigner: React.FC<{
     return pt.matrixTransform(svg.getScreenCTM()!.inverse());
   };
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      const data = e.dataTransfer.getData("application/json");
-      if (!data || !svgRef.current) return;
-      const dropped: { tipo_elemento: DesignerNode["tipo_elemento"]; nombre: string } =
-        JSON.parse(data);
-      const p = toSvgPoint(e.clientX, e.clientY);
+  /** Crea el elemento soltado desde la paleta en `p` (dentro del contenedor bajo el punto). */
+  const soltarNuevo = useCallback(
+    (dropped: { tipo_elemento: DesignerNode["tipo_elemento"]; nombre: string }, p: { x: number; y: number }) => {
       const isContainer = isContainerType(dropped.tipo_elemento);
 
       // Contenedor bajo el punto donde se suelta, con la MISMA regla que el
@@ -4049,6 +4104,48 @@ export const ComponentDesigner: React.FC<{
     },
     [updateNodes, notationId]
   );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const data = e.dataTransfer.getData("application/json");
+      if (!data || !svgRef.current) return;
+      const dropped: { tipo_elemento: DesignerNode["tipo_elemento"]; nombre: string } =
+        JSON.parse(data);
+      const p = toSvgPoint(e.clientX, e.clientY);
+      // Encima de una caja de OTRO tipo: se pregunta si sustituirla (#670). Un
+      // contenedor soltado, o soltar sobre un contenedor, sigue el camino de siempre.
+      if (!isContainerType(dropped.tipo_elemento)) {
+        const cajas = Array.from(nodesRef.current.values(), (n) => {
+          const { w, h } = nodeBox(n, notationId);
+          return { id: n.id, x: n.x, y: n.y, w, h, contenedor: isContainerType(n.tipo_elemento) };
+        });
+        const targetId = cajaBajoPunto(p, cajas);
+        const target = targetId ? nodesRef.current.get(targetId) : undefined;
+        if (target && target.tipo_elemento !== dropped.tipo_elemento) {
+          setSustitucion({ targetId: target.id, dropped, p });
+          return;
+        }
+      }
+      soltarNuevo(dropped, p);
+    },
+    [soltarNuevo, notationId]
+  );
+
+  /** Aplica la sustitución confirmada: mismo id, tipo y forma nuevos. */
+  const confirmarSustitucion = useCallback(() => {
+    if (!sustitucion) return;
+    const { targetId, dropped } = sustitucion;
+    setSustitucion(null);
+    updateNodes((prev) => {
+      const vivo = prev.get(targetId);
+      if (!vivo) return prev; // se borró mientras se preguntaba: no se resucita
+      const nuevo = nodeBox({ ...vivo, tipo_elemento: dropped.tipo_elemento, width: undefined, height: undefined }, notationId);
+      const map = new Map(prev);
+      map.set(targetId, sustituirTipo(vivo, dropped.tipo_elemento, nuevo, nodeBox(vivo, notationId)));
+      return map;
+    });
+  }, [sustitucion, updateNodes, notationId]);
 
   // --- Mover / redimensionar / seleccionar ---
   const handleNodeMouseDown = useCallback(
@@ -4823,19 +4920,17 @@ export const ComponentDesigner: React.FC<{
 
   // Exporta un PNG rasterizando la página en el proceso main (capturePage): así
   // sí sale el foreignObject de los nodos. Encuadra todo y oculta overlays antes.
-  const handleExportPng = useCallback(async () => {
+  /**
+   * PNG del lienzo encuadrado a todo el contenido, como data URL. Lo usan el
+   * export y `get_view_image` del MCP (#670). Lanza con un motivo legible.
+   */
+  const capturarLienzo = useCallback(async (): Promise<string> => {
     const api = hostBridge();
     const wrapper = canvasWrapperRef.current;
-    if (!api?.captureCanvas || !wrapper) {
-      toast({ variant: "destructive", title: "PNG no disponible", description: "Sólo en la app de escritorio." });
-      return;
-    }
+    if (!api?.captureCanvas || !wrapper) throw new Error("Sólo en la app de escritorio.");
     const bounds = computeContentBounds(nodesRef.current, notationId);
-    if (!bounds) {
-      toast({ variant: "destructive", title: "Nada que exportar", description: "El lienzo está vacío." });
-      return;
-    }
-    // Vista actual: se restaura al terminar. Exportar no debería dejar al
+    if (!bounds) throw new Error("El lienzo está vacío.");
+    // Vista actual: se restaura al terminar. Capturar no debería dejar al
     // usuario en otro zoom/scroll del que tenía.
     const vista = { zoom, left: wrapper.scrollLeft, top: wrapper.scrollTop };
     setCapturing(true);
@@ -4853,12 +4948,7 @@ export const ComponentDesigner: React.FC<{
         { left: wrapper.scrollLeft, top: wrapper.scrollTop },
         { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
       );
-      const dataUrl = await api.captureCanvas(region);
-      const base = (meta?.nombre_proyecto || "diagrama").replace(/[^\w.-]+/g, "_");
-      downloadDataUrl(dataUrl, `${base}.png`);
-      toast({ title: "Diagrama exportado", description: "Se descargó un PNG del lienzo." });
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "No se pudo exportar el PNG", description: e?.message });
+      return await api.captureCanvas(region);
     } finally {
       setCapturing(false);
       setZoom(vista.zoom);
@@ -4868,7 +4958,37 @@ export const ComponentDesigner: React.FC<{
         syncViewport();
       });
     }
-  }, [fitToContent, meta, toast, notationId, zoom, syncViewport]);
+  }, [fitToContent, notationId, zoom, syncViewport]);
+
+  const handleExportPng = useCallback(async () => {
+    try {
+      const dataUrl = await capturarLienzo();
+      const base = (meta?.nombre_proyecto || "diagrama").replace(/[^\w.-]+/g, "_");
+      downloadDataUrl(dataUrl, `${base}.png`);
+      toast({ title: "Diagrama exportado", description: "Se descargó un PNG del lienzo." });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "No se pudo exportar el PNG", description: e?.message });
+    }
+  }, [capturarLienzo, meta, toast]);
+
+  // `get_view_image` del MCP (#670): el main pide, este lienzo encuadra, captura
+  // y contesta. Se lee por ref para no re-suscribirse en cada cambio de zoom.
+  const capturarRef = useRef(capturarLienzo);
+  capturarRef.current = capturarLienzo;
+  const nombreVistaRef = useRef("");
+  nombreVistaRef.current = views.find((v) => v.id === activeViewId)?.name ?? "Modelo";
+  useEffect(() => {
+    const api = hostBridge();
+    if (!api?.onMcpAppCapture) return;
+    return api.onMcpAppCapture(async ({ id }) => {
+      try {
+        const dataUrl = await capturarRef.current();
+        api.mcpAppCaptureReply(id, { ok: true, view: nombreVistaRef.current, dataUrl });
+      } catch (e: any) {
+        api.mcpAppCaptureReply(id, { ok: false, error: `No se pudo capturar la vista: ${e?.message ?? e}` });
+      }
+    });
+  }, []);
 
   /**
    * Manejador de CADA acción del catálogo (`src/lib/designer-actions.ts`). El tipo
@@ -5338,6 +5458,35 @@ export const ComponentDesigner: React.FC<{
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
                 <AlertDialogAction onClick={handleClear}>Sí, reiniciar</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog open={!!sustitucion} onOpenChange={(o) => !o && setSustitucion(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  ¿Sustituir «{sustitucion ? nodesRef.current.get(sustitucion.targetId)?.nombre ?? "" : ""}»?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Pasa de {sustitucion ? nodesRef.current.get(sustitucion.targetId)?.tipo_elemento ?? "" : ""} a{" "}
+                  {sustitucion?.dropped.tipo_elemento}: cambia la forma y el tipo, y conserva el nombre,
+                  las relaciones, la spec y los metadatos. El color y el icono vuelven a los del tipo nuevo.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const s = sustitucion;
+                    setSustitucion(null);
+                    if (s) soltarNuevo(s.dropped, s.p);
+                  }}
+                >
+                  Agregar como nuevo
+                </Button>
+                <AlertDialogAction onClick={confirmarSustitucion}>Sustituir</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -5868,6 +6017,7 @@ export const ComponentDesigner: React.FC<{
         projectName={graphData?.nombre_proyecto}
         onEnfocar={enfocarCaja}
         focoActivo={() => !!focoRef.current}
+        rutaBase={rutaBase}
       />
       <EditLinkDialog
         link={editingLink}
@@ -5895,6 +6045,7 @@ export const ComponentDesigner: React.FC<{
           setMeta(m);
           bump();
         }}
+        rutaBase={currentFileId ? { valor: rutaBase, guardar: guardarRuta } : undefined}
       />
 
       {/* Contexto de referencia: documentos que alimentan las sugerencias de IA */}

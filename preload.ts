@@ -102,6 +102,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('mcp-app-read-reply', { id, result });
   },
 
+  // Captura de la vista para `get_view_image` (#670): el main pide, el lienzo
+  // abierto encuadra, captura y contesta con la data URL.
+  onMcpAppCapture: (handler: (payload: { id: number }) => void) => {
+    const listener = (_e: any, payload: any) => handler(payload);
+    ipcRenderer.on('mcp-app-capture', listener);
+    return () => ipcRenderer.removeListener('mcp-app-capture', listener);
+  },
+  mcpAppCaptureReply: (id: number, result: unknown): void => {
+    ipcRenderer.send('mcp-app-capture-reply', { id, result });
+  },
+
   // Publica el estado del lienzo (proyecto activo, notación, vistas) para que las
   // herramientas MCP lo lean. Fire-and-forget: nunca debe frenar el render.
   mcpPublishAppState: (state: unknown): void => {

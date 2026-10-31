@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/ai-panel/Markdown";
 import { AiProvenanceBadge } from "@/components/ai-panel/AiProvenanceBadge";
 import { useAi } from "@/hooks/useAi";
+import { loadAiSettings } from "@/lib/ai/remote-settings";
 import { elementChatTask } from "@/lib/ai/tasks";
 import { focusSystemPrompt } from "@/lib/agent-cli/prompt";
 import { CLI_INFO, CLI_MODELOS, esModeloDe, type ChatEvent, type CliStatus } from "@/lib/agent-cli/types";
@@ -84,6 +85,10 @@ export interface AgentCliChatProps {
   incoming?: string[];
   outgoing?: string[];
   notation?: string;
+  /** Campo «Fuente» de la caja (#636). */
+  fuente?: string;
+  /** Ruta base de las fuentes del proyecto en esta máquina (#670). */
+  rutaBase?: string;
 }
 
 const api = hostBridge;
@@ -289,9 +294,12 @@ export function AgentCliChat(props: AgentCliChatProps) {
           projectName,
           hasSpec,
           dirs,
+          rutaBase: props.rutaBase,
         }),
         sessionId: sessionRef.current,
-        dirs,
+        // La ruta base entra como carpeta de sólo lectura: sin esto el CLI sabría
+        // dónde están las fuentes pero no podría abrirlas (#670).
+        dirs: props.rutaBase && !dirs.includes(props.rutaBase) ? [...dirs, props.rutaBase] : dirs,
         // Uno guardado que ya no está en la lista (otro CLI) no viaja: el main lo rechazaría.
         ...(modelo && esModeloDe(engine, modelo) ? { model: modelo } : {}),
       });
@@ -311,6 +319,10 @@ export function AgentCliChat(props: AgentCliChatProps) {
       spec: props.specMarkdown,
       entrantes: props.incoming,
       salientes: props.outgoing,
+      fuente: props.fuente,
+      // Sólo fuera del modo local: el modelo chico no abre archivos y la ventana
+      // no le alcanza (#670).
+      rutaBase: loadAiSettings().mode === "local" ? undefined : props.rutaBase,
       historial: previos.filter((m) => m.text).map((m) => ({ role: m.role, text: m.text })),
       mensaje: texto,
     });
