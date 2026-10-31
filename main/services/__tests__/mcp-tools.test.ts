@@ -2689,3 +2689,45 @@ describe("registerProcessflowTools · secuencia UML (#616)", () => {
     expect(alt.fragmentOp).toBe("alt");
   });
 });
+
+// #670: la vista como la ve el humano, en imagen, para el agente que diseña.
+describe("registerProcessflowTools · get_view_image", () => {
+  it("sin captureApp (modo stdio) no se registra", () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, { workspace: "/tmp/x" });
+    expect(tools.has("get_view_image")).toBe(false);
+  });
+
+  it("devuelve la imagen como contenido image, con el nombre de la vista", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: "/tmp/x",
+      captureApp: async () => ({ ok: true, view: "Modelo", dataUrl: "data:image/png;base64,iVBORw0KGgo=" }),
+    });
+    const res = await tools.get("get_view_image")!.handler({});
+    expect(res.isError).toBeFalsy();
+    expect(res.content).toContainEqual({ type: "image", mimeType: "image/png", data: "iVBORw0KGgo=" });
+    expect(res.content.find((c: any) => c.type === "text").text).toContain('"Modelo"');
+  });
+
+  it("si la app no puede capturar, lo dice como error", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: "/tmp/x",
+      captureApp: async () => ({ ok: false, error: "No hay ninguna vista de lienzo abierta." }),
+    });
+    const res = await tools.get("get_view_image")!.handler({});
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("No hay ninguna vista");
+  });
+
+  it("una respuesta que no es imagen no se pasa como tal", async () => {
+    const { server, tools } = fakeServer();
+    registerProcessflowTools(server, {
+      workspace: "/tmp/x",
+      captureApp: async () => ({ ok: true, view: "Modelo", dataUrl: "basura" }),
+    });
+    const res = await tools.get("get_view_image")!.handler({});
+    expect(res.isError).toBe(true);
+  });
+});
