@@ -105,13 +105,7 @@ El software no exige una suscripción ni establece una cuota comercial de usuari
 Los [relays públicos](https://www.iroh.computer/services/hosting) no requieren cuenta
 ni pago, pero tienen tráfico variable, no garantizan disponibilidad y se recomiendan
 para desarrollo y pruebas. No son un servicio ilimitado ni alojan los documentos.
-El equipo anfitrión y su conexión los aportan los participantes. Para operar sin
-depender de servicios de terceros, en **Colaborar → Red e intermediario propio (sin terceros)**
-se puede activar **Solo infraestructura propia** —que desactiva los relays y el
-descubrimiento públicos de Iroh/n0— e indicar opcionalmente un [relay propio](../deploy/collaboration/README.md)
-o una dirección pública directa (`IP:puerto`). Si el anfitrión cambia de relay o de
-dirección, los participantes pueden pegar un enlace renovado en **Actualizar dirección del anfitrión**
-conservando su copia y permisos.
+El equipo anfitrión y su conexión los aportan los participantes.
 
 ## Capacidad y permisos
 
@@ -124,14 +118,17 @@ una reconexión de la misma identidad no ocupa dos plazas. Las membresías se
 recuerdan, mientras que los cupos corresponden a conexiones activas.
 
 La capacidad se vuelve a evaluar durante la sesión y antes de admitir una nueva
-identidad. Una bajada detiene nuevas admisiones, sin expulsar a quienes ya trabajan.
-Se observa la ventana de envío y RTT de las rutas seleccionadas, junto con los bytes
-de ediciones y presencia de los últimos cinco segundos. Una LAN rápida no oculta
-una ruta lenta. La ventana inicial de QUIC no se usa como límite de subida: mientras
-las rutas no acumulen tráfico suficiente se muestra una estimación en calibración.
-Tras calibrar, se reserva margen de red y se aplica el menor presupuesto de memoria,
-procesamiento y transporte. El anfitrión cuenta una sola vez, fuera de las plazas
-que consumen subida. No se ejecuta un test de velocidad ni se garantiza un máximo
+identidad. Una bajada detiene nuevas admisiones en la ruta saturada, sin expulsar a
+quienes ya trabajan. Se observa la ventana de envío y RTT de las rutas seleccionadas,
+junto con los bytes de ediciones y presencia de los últimos cinco segundos, separando
+los presupuestos de red local (LAN), P2P directo e intermediario (relay): un límite en
+relay nunca bloquea ni reduce el cupo disponible para quienes entran por LAN o por P2P
+directo, y cuando una conexión por relay mejora a P2P directo en segundo plano libera
+automáticamente su plaza de relay. La ventana inicial de QUIC no se usa como límite de
+subida: mientras las rutas no acumulen tráfico suficiente se muestra una estimación en
+calibración. Tras calibrar, se reserva margen de red por ruta y se respeta el tope de
+memoria y procesamiento del anfitrión. El anfitrión cuenta una sola vez, fuera de las
+plazas que consumen subida. No se ejecuta un test de velocidad ni se garantiza un máximo
 exacto, y no hay una prueba de carga con cientos de participantes reales.
 
 Las invitaciones son credenciales privadas. El anfitrión puede revocar equipos.

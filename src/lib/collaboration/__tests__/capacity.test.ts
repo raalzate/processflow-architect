@@ -89,4 +89,62 @@ describe("room capacity", () => {
       ),
     ).toEqual({});
   });
+  it("admits 4 LAN + 11 P2P + 5 Relay guests simultaneously even when relay is capped at 5", () => {
+    const load = new NetworkLoad();
+    const budgets = load.routeBudgets(
+      [
+        { route: "lan", cwnd: 1024 ** 2, rttMs: 2, calibrated: true },
+        { route: "direct", cwnd: 65536, rttMs: 120, calibrated: true },
+        { route: "relay", cwnd: 32768, rttMs: 190, calibrated: true },
+      ],
+      1000,
+    );
+    const capacity = estimateCapacity({
+      freeMemoryBytes: 8 * 1024 ** 3,
+      projectBytes: 4096,
+      mergeMs: 1,
+      routeAware: true,
+      ...budgets,
+    });
+    expect(capacity.limit).toBeGreaterThanOrEqual(21);
+    expect(capacity.relayGuestLimit).toBe(5);
+    expect(capacity.directGuestLimit).toBeGreaterThanOrEqual(11);
+
+    const seats = new Seats(capacity.limit, {
+      directGuestLimit: capacity.directGuestLimit,
+      relayGuestLimit: capacity.relayGuestLimit,
+    });
+    for (let i = 1; i <= 5; i++) expect(seats.enter(`relay-${i}`, "relay")).toBe(true);
+    // El sexto que solo puede por relay espera, pero LAN y P2P siguen abiertos:
+    expect(seats.enter("relay-6", "relay")).toBe(false);
+    for (let i = 1; i <= 11; i++) expect(seats.enter(`p2p-${i}`, "direct")).toBe(true);
+    for (let i = 1; i <= 4; i++) expect(seats.enter(`lan-${i}`, "lan")).toBe(true);
+    expect(seats.countsByRoute()).toEqual({ lan: 4, direct: 11, relay: 5 });
+    expect(seats.count).toBe(21);
+
+    // Si uno de los de relay logra perforación directa P2P en segundo plano, libera su asiento de relay:
+    seats.updateRoute("relay-1", "direct");
+    expect(seats.countsByRoute()).toEqual({ lan: 4, direct: 12, relay: 4 });
+    expect(seats.enter("relay-6", "relay")).toBe(true);
+    expect(seats.countsByRoute()).toEqual({ lan: 4, direct: 12, relay: 5 });
+  });
+  it("handles uncalibrated and LAN-only route measurements without blocking total host capacity", () => {
+    const load = new NetworkLoad();
+    expect(load.routeBudgets([{ route: "lan", cwnd: 1024 ** 2, rttMs: 1 }], 1000)).toEqual({});
+    const uncalibrated = load.routeBudgets(
+      [{ route: "relay", cwnd: 16384, rttMs: 250, calibrated: false }],
+      1000,
+    );
+    expect(uncalibrated).toEqual({ calibrating: true });
+    const capacity = estimateCapacity({
+      freeMemoryBytes: 8 * 1024 ** 3,
+      projectBytes: 2048,
+      mergeMs: 1,
+      routeAware: true,
+      ...uncalibrated,
+    });
+    expect(capacity.networkMeasured).toBe(false);
+    expect(capacity.relayGuestLimit).toBeUndefined();
+    expect(capacity.reason).toContain("calibración");
+  });
 });

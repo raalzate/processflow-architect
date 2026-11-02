@@ -26,8 +26,11 @@ export interface SharedProject {
 }
 
 export type Role = "editor" | "viewer";
+export type PeerRoute = "lan" | "direct" | "relay";
 export interface Capacity {
   limit: number;
+  directGuestLimit?: number;
+  relayGuestLimit?: number;
   projectBytes: number;
   mergeMs: number;
   freeMemoryBytes: number;
@@ -41,8 +44,9 @@ export interface CollaborationStatus {
   role: Role;
   connected: boolean;
   state: "local" | "connecting" | "online" | "offline" | "error";
-  route: "lan" | "direct" | "relay" | "none";
+  route: PeerRoute | "none";
   peers: number;
+  routeCounts?: Record<PeerRoute, number>;
   capacity: Capacity;
   pendingEdges: number;
   saved: boolean;
@@ -50,15 +54,11 @@ export interface CollaborationStatus {
   lastSynced?: string;
   error?: string;
   members?: { id: string; name?: string; role: Role; connected: boolean; revoked: boolean }[];
-  selfHostedOnly?: boolean;
-  relayUrls?: string[];
-  externalAddresses?: string[];
   discardedEdits?: DiscardedFieldEdit[];
 }
 export interface RoomOptions {
   relayUrls?: string[];
   externalAddresses?: string[];
-  selfHostedOnly?: boolean;
 }
 export type CollaborationCommand =
   | { type: "open"; fileId: string; initial: SharedProject; name?: string }
@@ -72,7 +72,6 @@ export type CollaborationCommand =
       keep: "current" | "discarded";
       branchId?: string;
     }
-  | { type: "configure-network"; fileId: string; options: RoomOptions }
   | { type: "history"; fileId: string; action: HistoryAction; name: string; expectedVector?: string }
   | {
       type: "history-preview";

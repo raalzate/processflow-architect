@@ -62,7 +62,6 @@ interface CollaborationContextValue {
   recover: () => Promise<string>;
   revoke: (memberId: string) => Promise<void>;
   refreshLink: (invitation: string) => Promise<void>;
-  configureNetwork: (options: RoomOptions) => Promise<void>;
   resolveFieldConflict: (editId: string, keep: "current" | "discarded") => Promise<void>;
 }
 const CollaborationContext = createContext<CollaborationContextValue | undefined>(undefined);
@@ -483,9 +482,6 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
     },
     refreshLink: async invitation => {
       await run({ type: "refresh-link", fileId: current.current.graph.currentFileId!, invitation });
-    },
-    configureNetwork: async options => {
-      await run({ type: "configure-network", fileId: current.current.graph.currentFileId!, options });
     },
     resolveFieldConflict: async (editId, keep) => {
       await run({

@@ -21,6 +21,7 @@ import type {
   CollaborationEvent,
   CollaborationResult,
   CollaborationStatus,
+  PeerRoute,
   Role,
   RoomOptions,
   SharedProject,
@@ -49,7 +50,6 @@ interface Invitation {
   token: string;
   role: Role;
   relays: string[];
-  privateOnly?: boolean;
 }
 interface InviteGrant {
   hash: string;
@@ -122,7 +122,6 @@ export class CollaborationEngine {
   private rooms = new Map<string, Room>();
   private failedRooms = new Map<string, { stored: StoredRoom; status: CollaborationStatus }>();
   private endpoint?: Endpoint;
-  private endpointPublic?: boolean;
   private starting?: Promise<Endpoint>;
   private closed = false;
   private incoming = new Set<Connection>();
@@ -190,48 +189,26 @@ export class CollaborationEngine {
     }, 1_000);
     this.presenceMonitor.unref();
   }
-  private shouldUsePublicNetwork(): boolean {
-    if (this.dependencies.publicNetwork === false) return false;
-    if (!this.config.rooms.length) return true;
-    return !this.config.rooms.every(r => r.options.selfHostedOnly);
-  }
-  private async applyNetworkMode(): Promise<void> {
-    const wanted = this.shouldUsePublicNetwork();
-    if (!this.endpoint || this.endpointPublic === wanted) return;
-    this.discovery?.close();
-    this.discovery = undefined;
-    for (const room of this.rooms.values()) {
-      await room.pathWatch?.stop();
-      room.pathWatch = undefined;
-      room.connection?.close(BigInt(0), []);
-      room.connection = undefined;
-      for (const client of room.clients.values()) client.close(BigInt(0), []);
-    }
-    for (const connection of this.incoming) connection.close(BigInt(0), []);
-    const previous = this.endpoint;
-    this.endpoint = undefined;
-    this.endpointPublic = undefined;
-    await previous.close();
-  }
   private async endpointReady(): Promise<Endpoint> {
     if (this.endpoint) return this.endpoint;
     if (this.starting) return this.starting;
     this.starting = (async () => {
-      const usePublic = this.shouldUsePublicNetwork();
       const builder = Endpoint.builder();
-      if (!usePublic) builder.applyMinimal();
+      if (this.dependencies.publicNetwork === false) builder.applyMinimal();
       else builder.applyN0();
       builder.secretKey(this.config.key);
       builder.alpns([ALPN]);
       const relays = [...new Set(this.config.rooms.flatMap(r => r.options.relayUrls ?? []))];
       const urls = [
-        ...new Set([...(!usePublic ? [] : RelayMode.defaultMode().relayMap().urls()), ...relays]),
+        ...new Set([
+          ...(this.dependencies.publicNetwork === false ? [] : RelayMode.defaultMode().relayMap().urls()),
+          ...relays,
+        ]),
       ];
       builder.relayMode(urls.length ? RelayMode.customFromUrls(urls) : RelayMode.disabled());
       builder.bindAddr(`0.0.0.0:${this.config.port ?? 0}`);
       const endpoint = await builder.bind();
       this.endpoint = endpoint;
-      this.endpointPublic = usePublic;
       this.discovery = new LanDiscovery(endpoint);
       this.config.port = Number(
         endpoint
@@ -252,6 +229,12 @@ export class CollaborationEngine {
       this.starting = undefined;
     }
   }
+  private classifyPaths(paths: PathSnapshot[]): PeerRoute {
+    const selected = paths.find(path => path.isSelected) ?? paths[0];
+    if (!selected || selected.isRelay) return "relay";
+    const interfaces = Object.values(networkInterfaces()).flatMap(list => list ?? []);
+    return isLanPath(selected.remoteAddr, interfaces) ? "lan" : "direct";
+  }
   private measure(
     document: SharedDocument,
     load?: NetworkLoad,
@@ -271,26 +254,37 @@ export class CollaborationEngine {
     } finally {
       probe.destroy();
     }
-    const paths = connections.flatMap(connection =>
-      connection
-        .paths()
-        .filter(path => path.isSelected)
-        .map(path => path.stats),
-    );
+    const routePaths = connections.flatMap(connection => {
+      const allPaths = connection.paths();
+      const selected = allPaths.find(path => path.isSelected);
+      if (!selected) return [];
+      const route = this.classifyPaths(allPaths);
+      return [
+        {
+          route,
+          cwnd: selected.stats.cwnd,
+          rttMs: selected.stats.rttMs,
+          // La ventana inicial de QUIC y su RTT frío no miden la capacidad de subida;
+          // solo limitar cada ruta (P2P o relay) tras observar tráfico real.
+          calibrated: selected.stats.udpTxBytes >= 128 * 1024,
+        },
+      ];
+    });
     const resources = { freeMemoryBytes: freemem(), projectBytes, mergeMs: Math.max(mergeMs, serviceMs) };
-    const capacity = estimateCapacity({ ...resources, ...load?.budget(paths, Date.now()) });
-    // La ventana inicial de QUIC y su RTT frío no miden la capacidad de subida.
-    // Observarla sirve como diagnóstico; sólo limitar por ella tras tráfico real.
-    if (capacity.networkMeasured && paths.some(path => path.udpTxBytes < 128 * 1024))
-      return {
-        ...capacity,
-        limit: estimateCapacity(resources).limit,
-        reason:
-          "Estimación de memoria y sincronización; transporte observado todavía en calibración con tráfico real.",
-      };
-    return capacity;
+    return estimateCapacity({
+      ...resources,
+      routeAware: true,
+      ...load?.routeBudgets(routePaths, Date.now()),
+    });
+  }
+  private refreshConnectionRoutes(room: Room) {
+    for (const [id, client] of room.clients) {
+      room.seats.updateRoute(id, this.classifyPaths(client.paths()));
+    }
+    if (room.stored.owner) room.status.routeCounts = room.seats.countsByRoute();
   }
   private refreshCapacity(room: Room) {
+    this.refreshConnectionRoutes(room);
     room.status.capacity = this.measure(
       room.document,
       room.networkLoad,
@@ -305,7 +299,10 @@ export class CollaborationEngine {
         Math.min(room.status.capacity.limit, Math.floor((freemem() * 0.2) / Math.max(1, extraBytes * 6))),
       );
     }
-    room.seats.resize(room.status.capacity.limit);
+    room.seats.resize(room.status.capacity.limit, {
+      directGuestLimit: room.status.capacity.directGuestLimit,
+      relayGuestLimit: room.status.capacity.relayGuestLimit,
+    });
   }
   private load(stored: StoredRoom, initial?: SharedProject): Room {
     const found = this.rooms.get(stored.fileId);
@@ -535,12 +532,11 @@ export class CollaborationEngine {
         this.saveConfig();
         room = this.load(stored, initial);
         room.name = command.name?.slice(0, 40);
-        await this.applyNetworkMode();
         const endpoint = await this.endpointReady();
         for (const url of options.relayUrls ?? []) await endpoint.insertRelay({ url });
         for (const addr of options.externalAddresses ?? []) await endpoint.addExternalAddr(addr);
         // La falta de Internet no debe impedir crear/usar una sala por LAN.
-        if ((!options.selfHostedOnly && this.shouldUsePublicNetwork()) || options.relayUrls?.length)
+        if (this.dependencies.publicNetwork !== false || options.relayUrls?.length)
           await deadline(endpoint.online(), 8000).catch(() => {});
         room.status.state = "online";
         this.emit(room, true);
@@ -557,14 +553,13 @@ export class CollaborationEngine {
           owner: false,
           role: invitation.role,
           invitation,
-          options: { relayUrls: invitation.relays, selfHostedOnly: !!invitation.privateOnly },
+          options: { relayUrls: invitation.relays },
           grants: {},
         };
         this.config.rooms.push(stored);
         this.saveConfig();
         room = this.load(stored);
         room.name = command.name?.slice(0, 40);
-        await this.applyNetworkMode();
         const endpoint = await this.endpointReady();
         for (const url of invitation.relays) await endpoint.insertRelay({ url });
         await this.sync(room);
@@ -649,55 +644,22 @@ export class CollaborationEngine {
           room.needsSync = true;
           this.schedule(room, 0);
         }
-      } else if (command.type === "configure-network") {
-        if (!room.stored.owner) throw new Error("Solo el anfitrión configura la red de la sala.");
-        const previousRelays = room.stored.options.relayUrls ?? [];
-        const nextOptions = this.validateOptions(command.options);
-        room.stored.options = nextOptions;
-        this.saveConfig();
-        await this.applyNetworkMode();
-        const endpoint = await this.endpointReady();
-        const activeRelays = new Set(this.config.rooms.flatMap(r => r.options.relayUrls ?? []));
-        const defaultRelays = new Set(
-          this.shouldUsePublicNetwork() ? RelayMode.defaultMode().relayMap().urls() : [],
-        );
-        for (const oldUrl of previousRelays)
-          if (!activeRelays.has(oldUrl) && !defaultRelays.has(oldUrl))
-            await endpoint.removeRelay(oldUrl).catch(() => {});
-        for (const url of nextOptions.relayUrls ?? []) await endpoint.insertRelay({ url });
-        for (const addr of nextOptions.externalAddresses ?? []) await endpoint.addExternalAddr(addr);
-        if ((!nextOptions.selfHostedOnly && this.shouldUsePublicNetwork()) || nextOptions.relayUrls?.length)
-          await deadline(endpoint.online(), 5000).catch(() => {});
-        this.emit(room);
       } else if (command.type === "invite") {
         if (!room.stored.owner) throw new Error("Solo el anfitrión puede crear invitaciones.");
         if (command.role !== "editor" && command.role !== "viewer") throw new Error("Rol inválido.");
-        await this.applyNetworkMode();
         const endpoint = await this.endpointReady();
-        if (
-          (!room.stored.options.selfHostedOnly && this.shouldUsePublicNetwork()) ||
-          room.stored.options.relayUrls?.length
-        )
+        if (this.dependencies.publicNetwork !== false || room.stored.options.relayUrls?.length)
           await deadline(endpoint.online(), 8000).catch(() => {});
         const token = randomBytes(32).toString("base64url");
         room.stored.grants[hash(token)] = { hash: hash(token), role: command.role };
         this.saveConfig();
-        const currentAddr = endpoint.addr();
-        const hostAddr = room.stored.options.selfHostedOnly
-          ? new EndpointAddr(
-              endpoint.id(),
-              room.stored.options.relayUrls?.[0] ?? null,
-              currentAddr.directAddresses(),
-            )
-          : currentAddr;
         const invitation: Invitation = {
           format: "pf-room/1",
           projectId: room.stored.projectId,
           token,
           role: command.role,
-          host: EndpointTicket.fromAddr(hostAddr).toString(),
+          host: EndpointTicket.fromAddr(endpoint.addr()).toString(),
           relays: room.stored.options.relayUrls ?? [],
-          ...(room.stored.options.selfHostedOnly ? { privateOnly: true } : {}),
         };
         return {
           ...this.result(room),
@@ -722,9 +684,7 @@ export class CollaborationEngine {
           throw new Error("La nueva dirección no pertenece al mismo proyecto y anfitrión.");
         room.stored.invitation = { ...refreshed, token: previous.token, role: previous.role };
         room.stored.options.relayUrls = refreshed.relays;
-        room.stored.options.selfHostedOnly = !!refreshed.privateOnly;
         this.saveConfig();
-        await this.applyNetworkMode();
         const endpoint = await this.endpointReady();
         for (const url of refreshed.relays) await endpoint.insertRelay({ url });
         room.connection?.close(BigInt(0), []);
@@ -837,9 +797,7 @@ export class CollaborationEngine {
     return { status: { ...room.status }, snapshot, workspace: room.branches?.view(this.actor(room)) };
   }
   private refreshStatusDetails(room: Room) {
-    room.status.selfHostedOnly = !!room.stored.options.selfHostedOnly;
-    room.status.relayUrls = room.stored.options.relayUrls ?? [];
-    room.status.externalAddresses = room.stored.options.externalAddresses ?? [];
+    if (room.stored.owner) room.status.routeCounts = room.seats.countsByRoute();
     room.status.discardedEdits =
       !room.quarantined && !room.branches?.enabled && room.document.isInitialized()
         ? room.document.discardedEdits()
@@ -889,11 +847,7 @@ export class CollaborationEngine {
     }
     for (const value of externalAddresses)
       if (!/^[\w.:[\]-]+:\d{1,5}$/.test(value)) throw new Error("Dirección pública inválida; usa IP:puerto.");
-    return {
-      relayUrls,
-      externalAddresses,
-      ...(options.selfHostedOnly !== undefined ? { selfHostedOnly: !!options.selfHostedOnly } : {}),
-    };
+    return { relayUrls, externalAddresses };
   }
   private parseInvitation(text: string): Invitation {
     if (typeof text !== "string" || text.length > 16_384 || !text.startsWith("processflow://"))
@@ -903,12 +857,11 @@ export class CollaborationEngine {
       invitation.format !== "pf-room/1" ||
       !validId(invitation.projectId) ||
       !/^[\w-]{43}$/.test(invitation.token) ||
-      !["editor", "viewer"].includes(invitation.role) ||
-      (invitation.privateOnly !== undefined && typeof invitation.privateOnly !== "boolean")
+      !["editor", "viewer"].includes(invitation.role)
     )
       throw new Error("Invitación inválida o incompatible.");
     EndpointTicket.fromString(invitation.host);
-    this.validateOptions({ relayUrls: invitation.relays, selfHostedOnly: invitation.privateOnly });
+    this.validateOptions({ relayUrls: invitation.relays });
     return invitation;
   }
   private async accept(endpoint: Endpoint) {
@@ -950,6 +903,7 @@ export class CollaborationEngine {
   private async serve(connection: Connection, authenticated: () => void) {
     const member = connection.remoteId().toString();
     let active: Room | undefined;
+    let clientPathWatch: WatchHandle | undefined;
     try {
       while (!this.closed) {
         const stream = await deadline(connection.acceptBi(), active ? 60_000 : 10_000);
@@ -977,10 +931,35 @@ export class CollaborationEngine {
           )
             throw new Error("Invitación inválida, revocada o ya utilizada.");
           if (!active) this.refreshCapacity(room);
-          if (!room.seats.enter(member))
+          let route = this.classifyPaths(connection.paths());
+          // En Iroh el primer paquete suele llegar por relay mientras perfora NAT (P2P).
+          // Si solo el cupo de relay está lleno pero hay cupo por P2P o LAN, damos margen
+          // a que complete la ruta directa antes de rechazar.
+          if (
+            !active &&
+            !room.seats.canEnter(member, route) &&
+            route === "relay" &&
+            (room.seats.canEnter(member, "direct") || room.seats.canEnter(member, "lan"))
+          ) {
+            for (let attempt = 0; attempt < 25 && !this.closed && !room.disposed; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+              this.refreshConnectionRoutes(room);
+              route = this.classifyPaths(connection.paths());
+              if (room.seats.canEnter(member, route)) break;
+            }
+          }
+          if (!room.seats.enter(member, route)) {
+            if (
+              route === "relay" &&
+              (room.seats.canEnter(member, "direct") || room.seats.canEnter(member, "lan"))
+            )
+              throw new Error(
+                "Cupo por intermediario (relay) lleno; las conexiones por red local (LAN) o P2P directo siguen disponibles. Tu copia local se conserva y reintentará automáticamente.",
+              );
             throw new Error(
               "Sala llena según la capacidad del anfitrión y la conexión. Tu copia local se conserva; se reintentará automáticamente.",
             );
+          }
           if (!grant.member) {
             grant.member = member;
             this.saveConfig();
@@ -998,6 +977,14 @@ export class CollaborationEngine {
           room.clients.set(member, connection);
           authenticated();
           if (!active) {
+            clientPathWatch = connection.watchPaths((...args: unknown[]) => {
+              const paths = args.find(Array.isArray) as PathSnapshot[] | undefined;
+              if (paths && !room.disposed && room.clients.get(member) === connection) {
+                room.seats.updateRoute(member, this.classifyPaths(paths));
+                room.status.routeCounts = room.seats.countsByRoute();
+                this.emit(room);
+              }
+            });
             void this.receivePresence(connection, room, member, true);
             for (const presence of room.presence.values()) this.sendPresence(connection, presence);
           }
@@ -1053,9 +1040,11 @@ export class CollaborationEngine {
         }
       }
     } finally {
+      await clientPathWatch?.stop().catch(() => {});
       if (active && active.clients.get(member) === connection) {
         active.clients.delete(member);
         active.seats.leave(member);
+        active.status.routeCounts = active.seats.countsByRoute();
         for (const id of active.presence.keys())
           if (id === member || id.startsWith(`${member}:`)) active.presence.delete(id);
         this.emitPresence(active);
