@@ -21,6 +21,7 @@
     "electron-build:win": "npm run build && electron-builder --win",
     "test": "vitest run",
     "test:collaboration": "tsx scripts/collaboration-smoke.ts",
+    "collaboration:schema": "tsx scripts/collaboration-schema.ts --write",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "node scripts/repo-lint.mjs",

@@ -1,4 +1,4 @@
-# Colaboración entre equipos
+# Colaboración en un proyecto compartido
 
 Esta rama conserva el monolito de escritorio por capas. Agrega colaboración al
 proyecto completo: modelo, vistas, documentación de referencia, adjuntos incluidos
@@ -19,8 +19,21 @@ parte del documento compartido.
    pendientes en ambos sentidos. El anfitrión debe tener su aplicación abierta.
 
 Los punteros muestran nombre, color e identidad abreviada. También se muestran las
-selecciones y una vista previa del arrastre. Esta presencia es temporal: no se
+selecciones, una vista previa del arrastre y la flecha que otra persona está
+trazando para conectar componentes. El movimiento se interpola entre paquetes.
+La flecha parte del puerto seleccionado, con la misma geometría que el componente
+real, y se convierte en una sola arista persistente al completar la conexión.
+Su guía temporal se oculta al recibir el enlace definitivo. Esta presencia es temporal: no se
 escribe en el historial, se limita su frecuencia y caduca al desconectarse.
+
+## Varias vistas y ventanas
+
+Todas las personas se unen al mismo proyecto; no se crean grupos separados.
+Cada una puede elegir una vista diferente sin mover la navegación de las demás.
+**Abrir proyecto en otra ventana** permite trabajar en otra vista del mismo
+proyecto desde otra ventana nativa. Las ventanas comparten documento y permisos,
+conservan su navegación y tienen presencia temporal separada. Una ventana extra
+de la misma instalación no reserva otra plaza de la sala.
 
 ## Continuar días después
 
@@ -67,6 +80,13 @@ Orden de conexión:
 2. Direcciones directas conocidas y los mecanismos de conexión de Iroh.
 3. Los relays propios que configure el usuario, con cifrado QUIC de extremo a
    extremo entre los equipos. Iroh puede mejorar la ruta a directa cuando exista.
+
+Una sala admite simultáneamente personas por LAN, conexión directa de Internet
+y relay: la ruta se decide por conexión, no para toda la sala. Iroh intenta
+mejorar las conexiones retransmitidas a directas en segundo plano. El servicio
+observa sus cambios de ruta; no cierra una conexión útil para buscar otra ni
+hace un sondeo intensivo desde la interfaz. La ruta LAN se reconoce con la
+máscara real de la interfaz. Véase la [explicación de Iroh sobre las rutas](https://www.iroh.computer/blog/iroh-on-QUIC-multipath).
 
 El descubrimiento LAN es opcional: algunas redes bloquean multicast o aíslan los
 clientes Wi-Fi. Si cambia la dirección de Internet y no hay relay disponible, una
@@ -140,6 +160,10 @@ Tras un fallo de escritura no se confirma más trabajo ni se vuelve a marcar com
 guardado una réplica que contiene cambios sin persistir. La aplicación ofrece la
 recuperación y conserva las copias de los demás participantes.
 
+La validación del grafo deriva de sus tipos persistentes, incluidos campos
+opcionales y datos ocultos por borrados. Si esos tipos cambian, ejecutar
+`npm run collaboration:schema`; una prueba detecta un esquema desactualizado.
+
 ## Implementación y validación
 
 - `src/lib/collaboration`: identidad, proyección del grafo, combinación CRDT,
@@ -164,14 +188,20 @@ npx tsx scripts/collaboration-relay-smoke.ts http://[::1]:3340
 ```
 
 `scripts/collaboration-ui-smoke.ts` prueba dos perfiles Electron a través de sus
-puertos de depuración locales 9227/9228. Usa eventos DOM para evitar diferencias
+puertos de depuración locales 9227/9228 (configurables con
+`PROCESSFLOW_TEST_HOST_PORT` y `PROCESSFLOW_TEST_GUEST_PORT`). Usa perfiles
+aislados y eventos DOM para evitar diferencias
 de foco/oclusión de Windows; el preload, IPC, guardado y conexión son reales.
 Esos puertos se habilitan solo al lanzar las instancias de prueba, no en la app
 normal. `PROCESSFLOW_COLLAB_DATA` permite aislar los perfiles de prueba. La preview
 tiene además nombre, appId, carpeta de datos y destino de actualizaciones propios.
 
-Límites verificados: pruebas locales de Windows, procesos separados, relay propio
-local y dos ventanas del editor. La conectividad entre proveedores de Internet
-distintos y las salas grandes necesitan validación adicional en esos entornos.
+Límites verificados: pruebas locales de Windows, procesos separados y relay propio
+local. La prueba del relay también comprueba rutas simultáneas distintas y mejora
+a directa conservando la conexión. La prueba del editor utiliza ventanas nativas
+y mide posiciones intermedias del puntero, arrastre y flecha en construcción.
+Comprueba el puerto de origen con componentes sin dimensiones persistidas y que
+un doble evento de soltar produzca una sola conexión. La conectividad entre
+proveedores de Internet distintos y las salas grandes necesitan validación adicional en esos entornos.
 Hay límites técnicos de 32 MiB por actualización del registro y 48 MiB por frame de
 transporte; un exceso se informa como error, sin confirmación de guardado.

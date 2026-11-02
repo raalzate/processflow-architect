@@ -1,4 +1,4 @@
-import { Endpoint, EndpointAddr, EndpointTicket, RelayMode, type Connection } from "@number0/iroh";
+import { Endpoint, EndpointAddr, EndpointTicket, RelayMode, type Connection, type WatchHandle, type PathSnapshot } from "@number0/iroh";
 import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes, randomUUID, createHash, timingSafeEqual } from "node:crypto";
@@ -38,6 +38,7 @@ interface Room {
   revision: number;
   disposed?: boolean;
   syncTask?: Promise<void>;
+  pathWatch?: WatchHandle;
   presence: Map<string, Presence>;
   quarantined?: boolean;
 }
@@ -149,8 +150,7 @@ export class CollaborationEngine {
   }
   private emitPresence(room: Room) {
     if (room.disposed) return;
-    const ownId = this.endpoint?.id().toString();
-    this.event({ fileId: room.stored.fileId, presence: livePresence([...room.presence.values()], Date.now()).filter(p => p.id !== ownId) });
+    this.event({ fileId: room.stored.fileId, presence: livePresence([...room.presence.values()], Date.now()) });
   }
   private sendPresence(connection: Connection, presence: Presence) {
     const bytes = Buffer.from(JSON.stringify(presence));
@@ -162,9 +162,10 @@ export class CollaborationEngine {
     const room = this.rooms.get(fileId), ownId = this.endpoint?.id().toString();
     if (!room || room.disposed || !ownId) return;
     const presence = sanitizePresence(raw, ownId, Date.now()); if (!presence) return;
+    if (presence.sessionId) presence.id = `${ownId}:${presence.sessionId}`;
     // Keep datagrams small even with a large selection or multibyte names.
     presence.selectedIds = presence.selectedIds.slice(0, 5); presence.moving = presence.moving?.slice(0, 2);
-    room.presence.set(ownId, presence);
+    room.presence.set(presence.id, presence); this.emitPresence(room);
     if (room.stored.owner) for (const connection of room.clients.values()) this.sendPresence(connection, presence);
     else if (room.connection) this.sendPresence(room.connection, presence);
   }
@@ -175,7 +176,9 @@ export class CollaborationEngine {
         if (serving && room.clients.get(member) !== connection) break;
         const raw = JSON.parse(Buffer.from(bytes).toString("utf8")) as Presence;
         const presence = sanitizePresence(raw, serving ? member : raw.id, Date.now());
-        if (!presence || typeof presence.id !== "string" || presence.id.length > 100) continue;
+        if (!presence || typeof presence.id !== "string" || presence.id.length > 140) continue;
+        if (serving && presence.sessionId) presence.id = `${member}:${presence.sessionId}`;
+        if (!room.presence.has(presence.id) && [...room.presence.keys()].filter(id => id === member || id.startsWith(`${member}:`)).length >= 64) continue;
         room.presence.set(presence.id, presence); this.emitPresence(room);
         if (serving) for (const [id, client] of room.clients) if (id !== member) this.sendPresence(client, presence);
       }
@@ -220,7 +223,7 @@ export class CollaborationEngine {
         if (room.stored.role !== "editor") throw new Error("Este vínculo permite lectura. Crea una copia para editar.");
         if (!room.status.saved) throw new Error("El guardado está detenido. Exporta la recuperación antes de continuar.");
         room.document.patch(command.before, this.migrate(command.after));
-        this.emit(room); if (!room.stored.owner) this.schedule(room, 0);
+        this.emit(room, true); if (!room.stored.owner) this.schedule(room, 0);
       } else if (command.type === "invite") {
         if (!room.stored.owner) throw new Error("Solo el anfitrión puede crear invitaciones.");
         if (command.role !== "editor" && command.role !== "viewer") throw new Error("Rol inválido.");
@@ -256,9 +259,10 @@ export class CollaborationEngine {
       else if (command.type === "revoke") {
         if (!room.stored.owner) throw new Error("Solo el anfitrión administra los accesos.");
         for (const grant of Object.values(room.stored.grants)) if (grant.member === command.memberId) grant.revoked = true;
-        this.saveConfig(); room.clients.get(command.memberId)?.close(BigInt(1), []); room.seats.leave(command.memberId);
+        this.saveConfig(); room.clients.get(command.memberId)?.close(BigInt(1), [...Buffer.from("Invitación revocada.")]); room.seats.leave(command.memberId);
       } else if (command.type === "leave") {
         room.disposed = true;
+        await room.pathWatch?.stop(); room.pathWatch = undefined;
         if (room.timer) clearTimeout(room.timer); room.connection?.close(BigInt(0), []);
         for (const connection of room.clients.values()) connection.close(BigInt(0), []);
         await room.syncTask;
@@ -348,11 +352,12 @@ export class CollaborationEngine {
           await sendFrame(stream, { ok: true, update: encode(room.document.update(decode(request.vector))), vector: encode(room.document.vector()), capacity: room.status.capacity, peers: room.seats.count } satisfies Response);
           this.emit(room, before !== room.revision);
         } catch (error) {
-          await sendFrame(stream, { ok: false, error: error instanceof Error ? error.message : String(error) } satisfies Response); break;
+          await sendFrame(stream, { ok: false, error: error instanceof Error ? error.message : String(error) } satisfies Response);
+          await deadline(stream.send.stopped(), 2000).catch(() => {}); break;
         }
       }
     } finally {
-      if (active && active.clients.get(member) === connection) { active.clients.delete(member); active.seats.leave(member); active.presence.delete(member); this.emitPresence(active); this.emit(active); }
+      if (active && active.clients.get(member) === connection) { active.clients.delete(member); active.seats.leave(member); for (const id of active.presence.keys()) if (id === member || id.startsWith(`${member}:`)) active.presence.delete(id); this.emitPresence(active); this.emit(active); }
     }
   }
   private schedule(room: Room, delay?: number) {
@@ -366,8 +371,8 @@ export class CollaborationEngine {
     const discovered = await this.discovery?.find(storedAddr.id().toString());
     const addr = discovered ? new EndpointAddr(storedAddr.id(), discovered.relayUrl() ?? storedAddr.relayUrl(), [...new Set([...discovered.directAddresses(), ...storedAddr.directAddresses()])]) : storedAddr;
     // Try local routes first. Internet/relay attempts follow automatically.
-    const own = Object.values(networkInterfaces()).flatMap(list => list ?? []).filter(a => a.family === "IPv4").map(a => a.address.split('.').slice(0, 3).join('.'));
-    const lan = addr.directAddresses().filter(a => a.startsWith('127.') || own.some(prefix => a.startsWith(`${prefix}.`)));
+    const interfaces = Object.values(networkInterfaces()).flatMap(list => list ?? []);
+    const lan = addr.directAddresses().filter(a => isLanPath(a, interfaces));
     if (lan.length) {
       try { return await deadline(endpoint.connect(new EndpointAddr(addr.id(), null, lan), ALPN), 1200); } catch { /* Continue through NAT traversal/relay. */ }
     }
@@ -379,13 +384,28 @@ export class CollaborationEngine {
     room.syncTask = this.performSync(room).finally(() => { room.syncTask = undefined; });
     return room.syncTask;
   }
+  private updateRoute(room: Room, paths: PathSnapshot[]) {
+    const selected = paths.find(path => path.isSelected); if (!selected) return;
+    const route = selected.isRelay ? "relay" : isLanPath(selected.remoteAddr, Object.values(networkInterfaces()).flatMap(l => l ?? [])) ? "lan" : "direct";
+    if (room.status.route !== route) { room.status.route = route; this.emit(room); }
+  }
   private async performSync(room: Room) {
     room.syncing = true;
     try {
       if (!room.status.saved) throw new Error("El guardado está detenido. Exporta la recuperación antes de reconectar.");
       if (!room.connection || room.connection.closeReason() !== null) {
         room.status.state = "connecting"; this.emit(room);
+        await room.pathWatch?.stop(); room.pathWatch = undefined;
         room.connection = await this.connect(room); room.remoteVector = undefined;
+        const connection = room.connection;
+        // Iroh comprueba rutas dentro de la misma conexión QUIC. Observar sus
+        // cambios no abre conexiones paralelas ni interrumpe el canal que funciona.
+        room.pathWatch = connection.watchPaths((...args: unknown[]) => {
+          // N-API entrega (error, valor); admitir también la firma de un valor
+          // declarada por el binding evita depender de esa discrepancia de tipos.
+          const paths = args.find(Array.isArray) as PathSnapshot[] | undefined;
+          if (paths && !room.disposed && room.connection === connection) this.updateRoute(room, paths);
+        });
         void this.receivePresence(room.connection, room, room.connection.remoteId().toString(), false);
       }
       if (room.disposed || this.closed) { room.connection.close(BigInt(0), []); return; }
@@ -399,12 +419,10 @@ export class CollaborationEngine {
       const before = room.revision; room.document.receiveRemote(decode(response.update!)); room.remoteVector = decode(response.vector!);
       room.failures = 0; room.status.connected = true; room.status.state = "online"; room.status.error = undefined;
       room.status.lastSynced = new Date().toISOString(); room.status.capacity = response.capacity!; room.status.peers = response.peers!;
-      const paths = room.connection.paths();
-      room.status.route = paths.some(p => p.isSelected && p.isRelay) ? "relay" : "direct";
-      const selected = paths.find(p => p.isSelected && p.isIp)?.remoteAddr ?? "";
-      if (room.status.route === "direct" && isLanPath(selected, Object.values(networkInterfaces()).flatMap(l => l ?? []))) room.status.route = "lan";
+      this.updateRoute(room, room.connection.paths());
       this.emit(room, before !== room.revision);
     } catch (error) {
+      await room.pathWatch?.stop(); room.pathWatch = undefined;
       room.failures++; room.connection?.close(BigInt(1), []); room.connection = undefined;
       room.status.connected = false; room.status.state = "offline"; room.status.route = "none";
       room.status.error = error instanceof Error ? error.message : String(error); this.emit(room);
@@ -414,7 +432,7 @@ export class CollaborationEngine {
     this.closed = true; if (this.monitor) clearInterval(this.monitor);
     if (this.presenceMonitor) clearInterval(this.presenceMonitor);
     this.discovery?.close();
-    for (const room of this.rooms.values()) { room.disposed = true; if (room.timer) clearTimeout(room.timer); room.connection?.close(BigInt(0), []); }
+    for (const room of this.rooms.values()) { room.disposed = true; if (room.timer) clearTimeout(room.timer); await room.pathWatch?.stop(); room.connection?.close(BigInt(0), []); }
     for (const connection of this.incoming) connection.close(BigInt(0), []);
     if (this.endpoint) await this.endpoint.close();
     await Promise.allSettled([...this.rooms.values()].map(room => room.syncTask));

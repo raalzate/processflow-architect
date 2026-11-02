@@ -116,6 +116,14 @@ describe("durable project document", () => {
     ["invalid tombstone", (doc: Y.Doc): void => { doc.getMap("deleted-v1").set('["content","nodes","@a"]', "yes"); }],
     ["invalid cell", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["name"]', { kind: "unknown" }); }],
     ["deep path", (doc: Y.Doc): void => { doc.getMap("fields-v1").set(JSON.stringify(["content", ...Array(70).fill("nested")]), { kind: "object" }); }],
+    ["non-string source", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["content","nodes","@a","value","fuente"]', { kind: "value", value: 42 }); }],
+    ["non-string description", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["content","nodes","@a","value","descripcion"]', { kind: "value", value: {} }); }],
+    ["numeric technology tag", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["content","nodes","@a","value","tags_tecnologia"]', { kind: "value", value: [42] }); }],
+    ["string geometry", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["content","nodes","@a","value","width"]', { kind: "value", value: "wide" }); }],
+    ["invalid metadata", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["content","nodes","@a","value","metadata"]', { kind: "value", value: [42] }); }],
+    ["invalid spec", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["content","nodes","@a","value","spec"]', { kind: "value", value: "bad" }); }],
+    ["invalid attached document", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["content","nodes","@a","value","adjuntos"]', { kind: "value", value: [42] }); }],
+    ["invalid fragment parts", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["content","nodes","@a","value","fragmentParts"]', { kind: "value", value: [42] }); }],
   ] as const)("rejects %s and retains the valid replica", (_label, corrupt) => {
     const { a } = pair(), expected = a.snapshot(), attacker = new Y.Doc(); Y.applyUpdate(attacker, a.update()); corrupt(attacker);
     expect(() => a.receiveRemote(Y.encodeStateAsUpdate(attacker, a.vector()))).toThrow(/inválid/); expect(a.snapshot()).toEqual(expected);
@@ -125,6 +133,7 @@ describe("durable project document", () => {
   });
   it("accepts full projects with views, references, artifact revisions and analyses", () => {
     const project = seed(); const now = "2026-11-01T00:00:00Z";
+    project.content.agregados[0].aristas.push({ id: "ab", fuente: "a", destino: "b", descripcion: "enlace anterior" });
     project.customViews.push({ id: "view", name: "Otra vista", kind: "graph", createdAt: now, graph: graph() });
     project.references.push({ id: "ref", name: "Contrato", kind: "text", text: "Referencia compartida", chars: 20, addedAt: now });
     project.agent.versions.push({ id: "v1", label: "v1", createdAt: now });

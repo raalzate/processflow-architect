@@ -1,4 +1,6 @@
 import { ArchitectureDriversOutputSchema, ConstraintsRisksOutputSchema, RoadmapOutputSchema, TechnicalElementsOutputSchema } from "../types";
+import { decodeGraph } from "./graph-codec";
+import { validGraphCell, validPersistentGraph } from "./graph-validation";
 
 function invalid(): never { throw new Error("Documento compartido inválido o incompatible."); }
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -30,6 +32,7 @@ function graph(value: unknown): void {
     if (!(node.parent === null || id(node.parent)) || !object(node.value) || node.value.id !== node.id || !text(node.value.nombre) || !text(node.value.tipo_elemento)) invalid();
   }
   for (const edge of edges) if (!id(edge.fuente) || !id(edge.destino)) invalid();
+  if (!validPersistentGraph(decodeGraph(record as unknown as Parameters<typeof decodeGraph>[0]).graph)) invalid();
 }
 export function assertEncodedProject(value: unknown): void {
   if (!object(value) || !text(value.name) || !object(value.agent) || !object(value.analysis)) invalid();
@@ -70,4 +73,5 @@ export function assertCell(pathKey: string, value: unknown): void {
   if (!path.length && cell.kind !== "object") invalid();
   if (Object.keys(cell).some(key => key !== "kind" && !(cell.kind === "value" && key === "value"))) invalid();
   if (cell.kind === "value") assertJson(cell.value);
+  if (!validGraphCell(path, cell)) invalid();
 }

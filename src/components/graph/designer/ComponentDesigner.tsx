@@ -3130,6 +3130,7 @@ export const ComponentDesigner: React.FC<{
   // Conexión por arrastre: nodo origen + posición actual del cursor (línea guía).
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const [connectCursor, setConnectCursor] = useState<{ x: number; y: number } | null>(null);
+  const [connectAnchor, setConnectAnchor] = useState<{ x: number; y: number } | null>(null);
   // Arrastre en curso: mover (posiblemente varios nodos a la vez, guardando su
   // posición inicial) o redimensionar un contenedor concreto.
   const [draggingInfo, setDraggingInfo] = useState<
@@ -3293,6 +3294,8 @@ export const ComponentDesigner: React.FC<{
   const nodesRef = useRef(nodes);
   const linksRef = useRef(links);
   const connectFromRef = useRef<string | null>(null);
+  const connectAnchorRef = useRef<{ x: number; y: number } | null>(null);
+  const connectDraftIdRef = useRef<string | null>(null);
   const selectedIdsRef = useRef(selectedIds);
   // ¿Hay un inspector (nodo o enlace) abierto? Lo leen los handlers de clic para
   // hacer que la edición SIGA a la selección sin recrearse en cada cambio.
@@ -3599,6 +3602,7 @@ export const ComponentDesigner: React.FC<{
   }, [pushSnapshot, clearSelection, esLineaDeVida]);
 
   const cancelOrDeselect = useCallback(() => {
+    connectFromRef.current = null; connectAnchorRef.current = null; connectDraftIdRef.current = null; setConnectAnchor(null);
     setConnectFrom(null);
     setConnectCursor(null);
     setMarquee(null);
@@ -4076,17 +4080,25 @@ export const ComponentDesigner: React.FC<{
   };
   const presencePoint = useRef<{ x: number; y: number } | null>(null);
   const presenceSent = useRef(0);
+  const presenceNodes = useMemo(() => new Map([...nodes].map(([id, node]) => {
+    const { w, h } = nodeBox(node, notationId);
+    return [id, { x: node.x, y: node.y, width: w, height: h }] as const;
+  })), [nodes, notationId]);
   const presenceSender = collaboration?.publishPresence;
-  const presenceState = useRef({ selectedIds, draggingInfo, viewId: isViewMode ? sourceId ?? "design" : "design" });
-  presenceState.current = { selectedIds, draggingInfo, viewId: isViewMode ? sourceId ?? "design" : "design" };
+  const presenceState = useRef({ selectedIds, draggingInfo, connectFrom, connectCursor, connectAnchor, viewId: isViewMode ? sourceId ?? "design" : "design" });
+  presenceState.current = { selectedIds, draggingInfo, connectFrom, connectCursor, connectAnchor, viewId: isViewMode ? sourceId ?? "design" : "design" };
   const sendCanvasPresence = useCallback(() => {
     const state = presenceState.current;
     presenceSender?.({ viewId: state.viewId, pointer: presencePoint.current, selectedIds: [...state.selectedIds],
+      connecting: state.connectFrom && state.connectCursor ? { sourceId: state.connectFrom, ...state.connectCursor, ...(state.connectAnchor ? { anchor: state.connectAnchor } : {}), ...(connectDraftIdRef.current ? { id: connectDraftIdRef.current } : {}) } : undefined,
       moving: state.draggingInfo ? [...state.selectedIds].slice(0, 2).flatMap(id => {
         const node = nodesRef.current.get(id);
-        return node ? [{ id, x: node.x, y: node.y, width: node.width ?? 180, height: node.height ?? 80 }] : [];
+        if (!node) return [];
+        const { w, h } = nodeBox(node, notationIdRef.current);
+        return [{ id, x: node.x, y: node.y, width: w, height: h }];
       }) : [] });
   }, [presenceSender]);
+  useEffect(() => { sendCanvasPresence(); }, [connectFrom, draggingInfo, sendCanvasPresence]);
   useEffect(() => {
     sendCanvasPresence(); const timer = setInterval(sendCanvasPresence, 2000);
     return () => { clearInterval(timer); presenceSender?.({ viewId: presenceState.current.viewId, pointer: null, selectedIds: [], moving: [] }); };
@@ -4416,6 +4428,7 @@ export const ComponentDesigner: React.FC<{
   const handleCanvasMouseUp = useCallback(() => {
     // Soltar sobre lienzo vacío durante una conexión → cancelar (sin enlace).
     if (connectFromRef.current) {
+      connectFromRef.current = null; connectAnchorRef.current = null; connectDraftIdRef.current = null; setConnectAnchor(null);
       setConnectFrom(null);
       setConnectCursor(null);
       return;
@@ -4699,21 +4712,35 @@ export const ComponentDesigner: React.FC<{
       e.preventDefault();
       const node = nodesRef.current.get(nodeId);
       if (!node || !svgRef.current) return;
-      const p = toSvgPoint(e.clientX, e.clientY);
+      let p = toSvgPoint(e.clientX, e.clientY);
+      const port = e.currentTarget.querySelector("circle");
+      if (port instanceof SVGCircleElement) {
+        const point = svgRef.current.createSVGPoint(); point.x = port.cx.baseVal.value; point.y = port.cy.baseVal.value;
+        const screen = point.matrixTransform(port.getScreenCTM()!); p = toSvgPoint(screen.x, screen.y);
+      }
+      const { w, h } = nodeBox(node, notationId);
+      const anchor = { x: Math.min(1, Math.max(0, (p.x - node.x) / w)), y: Math.min(1, Math.max(0, (p.y - node.y) / h)) };
+      connectFromRef.current = nodeId; connectAnchorRef.current = anchor; setConnectAnchor(anchor);
+      connectDraftIdRef.current = `link-${crypto.randomUUID()}`;
       clearSelection();
       setConnectFrom(nodeId);
       setConnectCursor({ x: p.x, y: p.y });
     },
-    [clearSelection]
+    [clearSelection, notationId]
   );
 
   const finishConnect = useCallback(
     (targetId: string) => {
       const from = connectFromRef.current;
+      const sourceAnchor = connectAnchorRef.current ?? undefined;
+      const draftId = connectDraftIdRef.current; connectDraftIdRef.current = null;
+      // Consumir la sesión inmediatamente: dos mouseup antes del siguiente
+      // render no pueden crear dos aristas por una sola acción.
+      connectFromRef.current = null; connectAnchorRef.current = null; setConnectAnchor(null);
       setConnectFrom(null);
       setConnectCursor(null);
       if (!from) return;
-      const id = `link-${from}-${targetId}-${crypto.randomUUID()}`;
+      const id = draftId ?? `link-${from}-${targetId}-${crypto.randomUUID()}`;
       // Una auto-llamada (mismo participante) es válida en secuencia: es cuando
       // un objeto se llama a sí mismo. En el resto de las notaciones sigue sin
       // tener sentido, así que ahí se descarta como antes.
@@ -4733,6 +4760,7 @@ export const ComponentDesigner: React.FC<{
         n.set(id, {
           id,
           sourceId: from,
+          sourceAnchor,
           targetId,
           descripcion: "interactúa",
           routing: newLinkRouting,
@@ -5828,10 +5856,11 @@ export const ComponentDesigner: React.FC<{
                 const s = nodes.get(connectFrom);
                 if (!s) return null;
                 const { w: sw, h: sh } = nodeBox(s, notationId);
-                const sx = s.x + sw / 2;
-                const sy = s.y + sh / 2;
+                const sx = s.x + sw * (connectAnchor?.x ?? .5);
+                const sy = s.y + sh * (connectAnchor?.y ?? .5);
                 return (
                   <path
+                    data-connection-draft=""
                     d={`M${sx},${sy} L${connectCursor.x},${connectCursor.y}`}
                     className="stroke-blue-500"
                     strokeWidth={2}
@@ -5926,7 +5955,7 @@ export const ComponentDesigner: React.FC<{
                 pointerEvents="none"
               />
             )}
-            {!capturing && collaboration ? <PresenceLayer peers={collaboration.peers} viewId={isViewMode ? sourceId ?? "design" : "design"} nodes={nodes} zoom={zoom} /> : null}
+            {!capturing && collaboration ? <PresenceLayer peers={collaboration.peers} viewId={isViewMode ? sourceId ?? "design" : "design"} nodes={presenceNodes} links={links} zoom={zoom} /> : null}
           </svg>
           </SkinContext.Provider>
           </div>

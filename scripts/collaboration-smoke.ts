@@ -99,6 +99,13 @@ async function run() {
     const backup = ok(await host.command({ type: "recover", fileId: "host-project" })).recovery!;
     assert.equal(backup.includes('"name": "Ana"'), false); assert.equal(backup.includes('"name": "Luis"'), false);
     console.log("PASS: authenticated live cursors and selections are exchanged without entering the durable document");
+    await eventually(async () => {
+      await host.publish("host-project", { name: "Ana", sessionId: "first-window", viewId: "design", pointer: { x: 50, y: 60 }, selectedIds: [], connecting: { sourceId: "a", x: 300, y: 400 } });
+      await host.publish("host-project", { name: "Ana", sessionId: "second-window", viewId: "detail", pointer: { x: 70, y: 80 }, selectedIds: [] });
+      return guest.presence.some(p => p.sessionId === "first-window" && p.connecting?.sourceId === "a") && guest.presence.some(p => p.sessionId === "second-window" && p.viewId === "detail");
+    }, "multiple windows and draft arrows");
+    assert.equal(ok(await host.command({ type: "recover", fileId: "host-project" })).recovery!.includes("first-window"), false);
+    console.log("PASS: separate window/view presence and draft arrows stay ephemeral");
     const readInvite = ok(await host.command({ type: "invite", fileId: "host-project", role: "viewer" })).invitation!;
     const readJoined = ok(await viewer.command({ type: "join", fileId: "reader", invitation: readInvite }));
     assert.equal(readJoined.status!.state, "online", readJoined.status!.error);
@@ -112,6 +119,8 @@ async function run() {
     const member = ok(await host.command({ type: "open", fileId: "host-project", initial })).status!.members!.find(m => m.role === "viewer")!;
     ok(await host.command({ type: "revoke", fileId: "host-project", memberId: member.id }));
     const revoked = ok(await viewer.command({ type: "retry", fileId: "reader" })); assert.equal(revoked.status!.state, "offline"); assert.match(revoked.status!.error ?? "", /revocada/);
+    const reconnectDenied = ok(await viewer.command({ type: "retry", fileId: "reader" }));
+    assert.equal(reconnectDenied.status!.state, "offline"); assert.match(reconnectDenied.status!.error ?? "", /revocada/);
     console.log("PASS: revocation is enforced on authenticated reconnect");
     await host.diskFault(true);
     const beforeFault = await state(guest, "guest-project"), offlineWork = structuredClone(beforeFault); offlineWork.content.notas = "Trabajo que no debe confirmarse sin disco";

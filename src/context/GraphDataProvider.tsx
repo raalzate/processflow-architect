@@ -281,7 +281,8 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
           const files: SavedFile[] = filesParsed;
           setSavedFiles(files);
 
-          const lastFileId = localStorage.getItem(STORAGE_LAST_FILE_ID);
+          const requested = new URLSearchParams(window.location.search).get("project");
+          const lastFileId = requested && files.some(file => file.id === requested) ? requested : localStorage.getItem(STORAGE_LAST_FILE_ID);
           let fileToLoad: SavedFile | undefined = lastFileId
             ? files.find((f) => f.id === lastFileId)
             : files[0]; // Carga el último o el primero

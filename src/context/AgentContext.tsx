@@ -14,7 +14,9 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
 } from "react";
+import { mergeLocalFiles } from "@/lib/collaboration/local-files";
 import { useGraphContext } from "@/context/GraphContext";
 import { useViews } from "@/context/ViewsContext";
 import { useToast } from "@/hooks/use-toast";
@@ -129,7 +131,7 @@ export function readStoredSharedArtifacts(fileId: string): Pick<AgentState, "ver
   const { versions, lineages, artifacts } = loadState(fileId); return { versions, lineages, artifacts };
 }
 export function writeStoredSharedArtifacts(fileId: string, shared: Pick<AgentState, "versions" | "lineages" | "artifacts">) {
-  localStorage.setItem(storageKey(fileId), JSON.stringify({ ...shared, messages: [] }));
+  localStorage.setItem(storageKey(fileId), JSON.stringify({ ...loadState(fileId), ...shared }));
 }
 
 /** Serializa un artefacto a texto plano para inyectarlo como contexto. */
@@ -236,6 +238,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const [lineages, setLineages] = useState<ArtifactLineage[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hydratedProject, setHydratedProject] = useState<string | null>(null);
+  const lastLocalMessages = useRef<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [contextArtifactIds, setContextArtifactIds] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<AgentDocument[]>([]);
@@ -275,6 +279,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   // Cargar estado al cambiar de proyecto.
   useEffect(() => {
     if (!currentFileId) {
+      setHydratedProject(null); lastLocalMessages.current = [];
       setVersions([]);
       setActiveVersionId("");
       setLineages([]);
@@ -285,6 +290,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const s = loadState(currentFileId);
+    lastLocalMessages.current = s.messages; setHydratedProject(currentFileId);
     setVersions(s.versions);
     // Restaura la versión activa guardada si sigue existiendo; si no, la última.
     const savedActive =
@@ -301,16 +307,21 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
 
   // Persistir.
   useEffect(() => {
-    if (!currentFileId) return;
-    try {
+    if (!currentFileId || hydratedProject !== currentFileId) return;
+    const before = lastLocalMessages.current; lastLocalMessages.current = messages;
+    const persist = async () => { try {
+      const stored = loadState(currentFileId);
+      const privateMessages = mergeLocalFiles(stored.messages ?? [], before, messages);
       localStorage.setItem(
         storageKey(currentFileId),
-        JSON.stringify({ versions, lineages, artifacts, messages, activeVersionId } as AgentState)
+        JSON.stringify({ versions, lineages, artifacts, messages: privateMessages, activeVersionId } as AgentState)
       );
     } catch {
       /* ignore quota */
-    }
-  }, [currentFileId, versions, lineages, artifacts, messages, activeVersionId]);
+    } };
+    if (navigator.locks) void navigator.locks.request(`processflow-agent-${currentFileId}`, persist).catch(console.error);
+    else void persist();
+  }, [currentFileId, hydratedProject, versions, lineages, artifacts, messages, activeVersionId]);
 
   /**
    * Catálogo para las herramientas de LECTURA del agente (spec 005): el agente ya

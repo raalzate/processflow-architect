@@ -58,6 +58,7 @@ export interface SystemInfo {
 }
 
 export interface ElectronAPI {
+  openProjectWindow?: (fileId: string) => Promise<void>;
   collaborationCommand?: (command: CollaborationCommand) => Promise<CollaborationResult>;
   collaborationPresence?: (fileId: string, presence: PresenceInput) => void;
   onCollaborationEvent?: (callback: (event: CollaborationEvent) => void) => () => void;

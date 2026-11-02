@@ -1,0 +1,2060 @@
+{
+  "root": {
+    "ref": "S0"
+  },
+  "roots": {
+    "GraphData": {
+      "ref": "S0"
+    },
+    "GraphNode": {
+      "ref": "S23"
+    },
+    "GraphLink": {
+      "ref": "S24"
+    },
+    "Agregado": {
+      "ref": "S20"
+    },
+    "BigPicture": {
+      "ref": "S1"
+    },
+    "DesignView": {
+      "ref": "S25"
+    }
+  },
+  "definitions": {
+    "S0": {
+      "type": "object",
+      "properties": {
+        "nombre_proyecto": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "notation": {
+          "anyOf": [
+            {
+              "literal": "ddd"
+            },
+            {
+              "literal": "bpmn"
+            },
+            {
+              "literal": "c4"
+            },
+            {
+              "literal": "uml"
+            },
+            {
+              "literal": "mer"
+            },
+            {
+              "literal": "general"
+            }
+          ]
+        },
+        "defaultRouting": {
+          "anyOf": [
+            {
+              "literal": "straight"
+            },
+            {
+              "literal": "curved"
+            },
+            {
+              "literal": "orthogonal"
+            }
+          ]
+        },
+        "skin": {
+          "anyOf": [
+            {
+              "literal": "canon"
+            },
+            {
+              "literal": "editorial"
+            }
+          ]
+        },
+        "fecha_analisis": {
+          "type": "string"
+        },
+        "big_picture": {
+          "ref": "S1"
+        },
+        "agregados": {
+          "type": "array",
+          "items": {
+            "ref": "S20"
+          }
+        },
+        "read_models": {
+          "type": "array",
+          "items": {
+            "ref": "S21"
+          }
+        },
+        "politicas_inter_agregados": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S14"
+              }
+            }
+          ]
+        },
+        "responsables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notas": {
+          "type": "string"
+        },
+        "transcript": {
+          "type": "string"
+        },
+        "source_docs": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S22"
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "nombre_proyecto",
+        "agregados",
+        "big_picture"
+      ]
+    },
+    "S1": {
+      "type": "object",
+      "properties": {
+        "descripcion": {
+          "type": "string"
+        },
+        "hotspots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nodos": {
+          "type": "array",
+          "items": {
+            "ref": "S2"
+          }
+        },
+        "aristas": {
+          "type": "array",
+          "items": {
+            "ref": "S14"
+          }
+        }
+      },
+      "required": [
+        "nodos",
+        "aristas"
+      ]
+    },
+    "S2": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "nombre": {
+          "type": "string"
+        },
+        "nivel": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "tipo_elemento": {
+          "type": "string"
+        },
+        "descripcion": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "estado_comparativo": {
+          "anyOf": [
+            {
+              "literal": "nuevo"
+            },
+            {
+              "literal": "modificado"
+            },
+            {
+              "literal": "sin_cambios"
+            },
+            {
+              "literal": "existente"
+            },
+            {
+              "literal": "eliminado"
+            }
+          ]
+        },
+        "tags_tecnologia": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "borderColor": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "icono": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "estilo": {
+          "anyOf": [
+            {
+              "ref": "S3"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S4"
+              }
+            }
+          ]
+        },
+        "spec": {
+          "anyOf": [
+            {
+              "ref": "S5"
+            }
+          ]
+        },
+        "adjuntos": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S11"
+              }
+            }
+          ]
+        },
+        "columnas": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S12"
+              }
+            }
+          ]
+        },
+        "viewRef": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "fuente": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "isGroup": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "_initialDragX": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "_initialDragY": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "fragmentOp": {
+          "anyOf": [
+            {
+              "literal": "loop"
+            },
+            {
+              "literal": "alt"
+            },
+            {
+              "literal": "opt"
+            },
+            {
+              "literal": "par"
+            }
+          ]
+        },
+        "fragmentParts": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S13"
+              }
+            }
+          ]
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "index": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "x": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "y": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "vx": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "vy": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "fx": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "fy": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "nombre",
+        "tipo_elemento"
+      ]
+    },
+    "S3": {
+      "type": "object",
+      "properties": {
+        "fuente": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "tamano": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "negrita": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "cursiva": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "subrayado": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "alineacion": {
+          "anyOf": [
+            {
+              "literal": "izquierda"
+            },
+            {
+              "literal": "centro"
+            },
+            {
+              "literal": "derecha"
+            }
+          ]
+        },
+        "alineacionVertical": {
+          "anyOf": [
+            {
+              "literal": "arriba"
+            },
+            {
+              "literal": "medio"
+            },
+            {
+              "literal": "abajo"
+            }
+          ]
+        },
+        "colorTexto": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "fondo": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "borde": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": []
+    },
+    "S4": {
+      "type": "object",
+      "properties": {
+        "clave": {
+          "type": "string"
+        },
+        "valor": {
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "tipo": {
+          "anyOf": [
+            {
+              "literal": "texto"
+            },
+            {
+              "literal": "numero"
+            },
+            {
+              "literal": "booleano"
+            },
+            {
+              "literal": "url"
+            },
+            {
+              "literal": "fecha"
+            }
+          ]
+        }
+      },
+      "required": [
+        "clave",
+        "valor"
+      ]
+    },
+    "S5": {
+      "type": "object",
+      "properties": {
+        "featureName": {
+          "type": "string"
+        },
+        "createdAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "literal": "borrador"
+            },
+            {
+              "literal": "revision"
+            },
+            {
+              "literal": "aprobada"
+            },
+            {
+              "literal": "obsoleta"
+            }
+          ]
+        },
+        "input": {
+          "type": "string"
+        },
+        "stories": {
+          "type": "array",
+          "items": {
+            "ref": "S6"
+          }
+        },
+        "edgeCases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "ref": "S8"
+          }
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "ref": "S9"
+          }
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "ref": "S10"
+          }
+        }
+      },
+      "required": [
+        "featureName",
+        "status",
+        "input",
+        "stories",
+        "edgeCases",
+        "requirements",
+        "entities",
+        "criteria"
+      ]
+    },
+    "S6": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "tipo": {
+          "anyOf": [
+            {
+              "literal": "entrada"
+            },
+            {
+              "literal": "salida"
+            }
+          ]
+        },
+        "ref": {
+          "type": "string"
+        },
+        "hace": {
+          "type": "string"
+        },
+        "detalle": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "escenarios": {
+          "type": "array",
+          "items": {
+            "ref": "S7"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "tipo",
+        "ref",
+        "hace",
+        "detalle",
+        "escenarios"
+      ]
+    },
+    "S7": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "given": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        },
+        "then": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "given",
+        "when",
+        "then"
+      ]
+    },
+    "S8": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "texto": {
+          "type": "string"
+        },
+        "needsClarification": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "texto"
+      ]
+    },
+    "S9": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "nombre": {
+          "type": "string"
+        },
+        "descripcion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "nombre",
+        "descripcion"
+      ]
+    },
+    "S10": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "texto": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "texto"
+      ]
+    },
+    "S11": {
+      "type": "object",
+      "properties": {
+        "nombre": {
+          "type": "string"
+        },
+        "tipo": {
+          "anyOf": [
+            {
+              "literal": "texto"
+            },
+            {
+              "literal": "pdf"
+            },
+            {
+              "literal": "markdown"
+            },
+            {
+              "literal": "json"
+            },
+            {
+              "literal": "openapi"
+            },
+            {
+              "literal": "imagen"
+            }
+          ]
+        },
+        "origen": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "origenRuta": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "texto": {
+          "type": "string"
+        },
+        "binario": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "bytes": {
+          "type": "number"
+        },
+        "truncado": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "addedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nombre",
+        "tipo",
+        "texto",
+        "bytes",
+        "addedAt"
+      ]
+    },
+    "S12": {
+      "type": "object",
+      "properties": {
+        "nombre": {
+          "type": "string"
+        },
+        "tipo": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "pk": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "fk": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "referencia": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "nulo": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "unico": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "indice": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        }
+      },
+      "required": [
+        "nombre"
+      ]
+    },
+    "S13": {
+      "type": "object",
+      "properties": {
+        "guarda": {
+          "type": "string"
+        },
+        "desde": {
+          "type": "number"
+        },
+        "hasta": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "guarda",
+        "desde",
+        "hasta"
+      ]
+    },
+    "S14": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "descripcion": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "estado_comparativo": {
+          "anyOf": [
+            {
+              "literal": "nuevo"
+            },
+            {
+              "literal": "modificado"
+            },
+            {
+              "literal": "sin_cambios"
+            },
+            {
+              "literal": "existente"
+            },
+            {
+              "literal": "eliminado"
+            }
+          ]
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "fuente": {
+          "type": "string"
+        },
+        "index": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "destino": {
+          "type": "string"
+        },
+        "dashed": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "routing": {
+          "anyOf": [
+            {
+              "literal": "straight"
+            },
+            {
+              "literal": "curved"
+            },
+            {
+              "literal": "orthogonal"
+            }
+          ]
+        },
+        "arrow": {
+          "anyOf": [
+            {
+              "literal": "end"
+            },
+            {
+              "literal": "both"
+            },
+            {
+              "literal": "none"
+            }
+          ]
+        },
+        "relation": {
+          "anyOf": [
+            {
+              "literal": "asociacion"
+            },
+            {
+              "literal": "herencia"
+            },
+            {
+              "literal": "realizacion"
+            },
+            {
+              "literal": "composicion"
+            },
+            {
+              "literal": "agregacion"
+            },
+            {
+              "literal": "dependencia"
+            },
+            {
+              "literal": "cardinalidad_1_1"
+            },
+            {
+              "literal": "cardinalidad_1_n"
+            },
+            {
+              "literal": "cardinalidad_0_1"
+            },
+            {
+              "literal": "cardinalidad_0_n"
+            },
+            {
+              "literal": "cardinalidad_n_m"
+            }
+          ]
+        },
+        "orden": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "messageKind": {
+          "anyOf": [
+            {
+              "literal": "sync"
+            },
+            {
+              "literal": "async"
+            },
+            {
+              "literal": "return"
+            },
+            {
+              "literal": "create"
+            },
+            {
+              "literal": "destroy"
+            }
+          ]
+        },
+        "sourceAnchor": {
+          "anyOf": [
+            {
+              "ref": "S15"
+            }
+          ]
+        },
+        "targetAnchor": {
+          "anyOf": [
+            {
+              "ref": "S16"
+            }
+          ]
+        },
+        "midpoint": {
+          "anyOf": [
+            {
+              "ref": "S17"
+            }
+          ]
+        },
+        "geometriaAuto": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "midpoints": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S18"
+              }
+            }
+          ]
+        },
+        "labelOffset": {
+          "anyOf": [
+            {
+              "ref": "S19"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fuente",
+        "destino"
+      ]
+    },
+    "S15": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ]
+    },
+    "S16": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ]
+    },
+    "S17": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ]
+    },
+    "S18": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ]
+    },
+    "S19": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ]
+    },
+    "S20": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "nombre_agregado": {
+          "type": "string"
+        },
+        "entidad_raiz": {
+          "type": "string"
+        },
+        "descripcion": {
+          "type": "string"
+        },
+        "nodos": {
+          "type": "array",
+          "items": {
+            "ref": "S2"
+          }
+        },
+        "aristas": {
+          "type": "array",
+          "items": {
+            "ref": "S14"
+          }
+        },
+        "x": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "y": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "tipo_contenedor": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "fuente": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "borderColor": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "estilo": {
+          "anyOf": [
+            {
+              "ref": "S3"
+            }
+          ]
+        },
+        "icono": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S4"
+              }
+            }
+          ]
+        },
+        "spec": {
+          "anyOf": [
+            {
+              "ref": "S5"
+            }
+          ]
+        },
+        "adjuntos": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S11"
+              }
+            }
+          ]
+        },
+        "estado_comparativo": {
+          "anyOf": [
+            {
+              "literal": "nuevo"
+            },
+            {
+              "literal": "modificado"
+            },
+            {
+              "literal": "sin_cambios"
+            },
+            {
+              "literal": "existente"
+            },
+            {
+              "literal": "eliminado"
+            }
+          ]
+        },
+        "fragmentOp": {
+          "anyOf": [
+            {
+              "literal": "loop"
+            },
+            {
+              "literal": "alt"
+            },
+            {
+              "literal": "opt"
+            },
+            {
+              "literal": "par"
+            }
+          ]
+        },
+        "fragmentParts": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S13"
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "nombre_agregado",
+        "nodos",
+        "aristas"
+      ]
+    },
+    "S21": {
+      "type": "object",
+      "properties": {
+        "nombre": {
+          "type": "string"
+        },
+        "descripcion": {
+          "type": "string"
+        },
+        "proyecta": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ui_policies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tecnologias": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "nombre",
+        "descripcion",
+        "proyecta",
+        "ui_policies",
+        "tecnologias"
+      ]
+    },
+    "S22": {
+      "type": "object",
+      "properties": {
+        "nombre": {
+          "type": "string"
+        },
+        "origen": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "texto": {
+          "type": "string"
+        },
+        "truncado": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        }
+      },
+      "required": [
+        "nombre",
+        "texto"
+      ]
+    },
+    "S23": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "nombre": {
+          "type": "string"
+        },
+        "nivel": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "agregado": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "tipo_elemento": {
+          "type": "string"
+        },
+        "descripcion": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "estado_comparativo": {
+          "anyOf": [
+            {
+              "literal": "nuevo"
+            },
+            {
+              "literal": "modificado"
+            },
+            {
+              "literal": "sin_cambios"
+            },
+            {
+              "literal": "existente"
+            },
+            {
+              "literal": "eliminado"
+            }
+          ]
+        },
+        "tags_tecnologia": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "borderColor": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "icono": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "estilo": {
+          "anyOf": [
+            {
+              "ref": "S3"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S4"
+              }
+            }
+          ]
+        },
+        "spec": {
+          "anyOf": [
+            {
+              "ref": "S5"
+            }
+          ]
+        },
+        "adjuntos": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S11"
+              }
+            }
+          ]
+        },
+        "columnas": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S12"
+              }
+            }
+          ]
+        },
+        "viewRef": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "fuente": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "isGroup": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "_initialDragX": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "_initialDragY": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "fragmentOp": {
+          "anyOf": [
+            {
+              "literal": "loop"
+            },
+            {
+              "literal": "alt"
+            },
+            {
+              "literal": "opt"
+            },
+            {
+              "literal": "par"
+            }
+          ]
+        },
+        "fragmentParts": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S13"
+              }
+            }
+          ]
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "index": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "x": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "y": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "vx": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "vy": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "fx": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "fy": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "nombre",
+        "tipo_elemento"
+      ]
+    },
+    "S24": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "fuente": {
+          "type": "string"
+        },
+        "destino": {
+          "type": "string"
+        },
+        "descripcion": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "tipo": {
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "ref": "S23"
+            }
+          ]
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "ref": "S23"
+            }
+          ]
+        },
+        "estado_comparativo": {
+          "anyOf": [
+            {
+              "literal": "nuevo"
+            },
+            {
+              "literal": "modificado"
+            },
+            {
+              "literal": "sin_cambios"
+            },
+            {
+              "literal": "existente"
+            },
+            {
+              "literal": "eliminado"
+            }
+          ]
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "dashed": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "routing": {
+          "anyOf": [
+            {
+              "literal": "straight"
+            },
+            {
+              "literal": "curved"
+            },
+            {
+              "literal": "orthogonal"
+            }
+          ]
+        },
+        "arrow": {
+          "anyOf": [
+            {
+              "literal": "end"
+            },
+            {
+              "literal": "both"
+            },
+            {
+              "literal": "none"
+            }
+          ]
+        },
+        "relation": {
+          "anyOf": [
+            {
+              "literal": "asociacion"
+            },
+            {
+              "literal": "herencia"
+            },
+            {
+              "literal": "realizacion"
+            },
+            {
+              "literal": "composicion"
+            },
+            {
+              "literal": "agregacion"
+            },
+            {
+              "literal": "dependencia"
+            },
+            {
+              "literal": "cardinalidad_1_1"
+            },
+            {
+              "literal": "cardinalidad_1_n"
+            },
+            {
+              "literal": "cardinalidad_0_1"
+            },
+            {
+              "literal": "cardinalidad_0_n"
+            },
+            {
+              "literal": "cardinalidad_n_m"
+            }
+          ]
+        },
+        "orden": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "messageKind": {
+          "anyOf": [
+            {
+              "literal": "sync"
+            },
+            {
+              "literal": "async"
+            },
+            {
+              "literal": "return"
+            },
+            {
+              "literal": "create"
+            },
+            {
+              "literal": "destroy"
+            }
+          ]
+        },
+        "sourceAnchor": {
+          "anyOf": [
+            {
+              "ref": "S15"
+            }
+          ]
+        },
+        "targetAnchor": {
+          "anyOf": [
+            {
+              "ref": "S16"
+            }
+          ]
+        },
+        "midpoint": {
+          "anyOf": [
+            {
+              "ref": "S17"
+            }
+          ]
+        },
+        "geometriaAuto": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "midpoints": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "ref": "S18"
+              }
+            }
+          ]
+        },
+        "labelOffset": {
+          "anyOf": [
+            {
+              "ref": "S19"
+            }
+          ]
+        },
+        "index": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fuente",
+        "destino"
+      ]
+    },
+    "S25": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "literal": "design"
+            },
+            {
+              "literal": "graph"
+            },
+            {
+              "literal": "mermaid"
+            }
+          ]
+        },
+        "notation": {
+          "anyOf": [
+            {
+              "literal": "ddd"
+            },
+            {
+              "literal": "bpmn"
+            },
+            {
+              "literal": "c4"
+            },
+            {
+              "literal": "uml"
+            },
+            {
+              "literal": "mer"
+            },
+            {
+              "literal": "general"
+            }
+          ]
+        },
+        "builtin": {
+          "anyOf": [
+            {
+              "literal": false
+            },
+            {
+              "literal": true
+            }
+          ]
+        },
+        "graph": {
+          "anyOf": [
+            {
+              "ref": "S0"
+            }
+          ]
+        },
+        "mermaidCode": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "createdAt"
+      ]
+    }
+  }
+}

@@ -41,6 +41,7 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
   const [busy, setBusy] = useState(false), [error, setError] = useState<string>();
   const [pending, setPending] = useState(0), [peers, setPeers] = useState<Presence[]>([]);
   const [displayName, setDisplayNameState] = useState("Participante");
+  const [sessionId] = useState(() => crypto.randomUUID());
   const queues = useRef(new Map<string, Projection<SharedProject>>());
   const binding = useRef<{ fileId: string; projection: Projection<SharedProject>; ready: boolean } | undefined>(undefined);
   const file = graph.savedFiles.find(f => f.id === graph.currentFileId);
@@ -100,11 +101,11 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
   useEffect(() => hostBridge()?.onCollaborationEvent?.(event => {
     const session = binding.current;
     if (!session || event.fileId !== session.fileId || event.fileId !== current.current.graph.currentFileId) return;
-    if (event.presence) setPeers(event.presence);
+    if (event.presence) setPeers(event.presence.filter(peer => peer.sessionId !== sessionId));
     if (event.status) setStatus(event.status);
     if (event.error) setError(event.error);
     if (event.snapshot && session.ready) session.projection.receive(event.snapshot);
-  }), []);
+  }), [sessionId]);
   useLayoutEffect(() => {
     const session = binding.current;
     if (session?.ready && session.fileId === graph.currentFileId && project && status?.role === "editor") session.projection.observe(project);
@@ -131,8 +132,8 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
   }, []);
   const publishPresence = useCallback((presence: Omit<PresenceInput, "name">) => {
     const id = graph.currentFileId;
-    if (id && current.current.status) hostBridge()?.collaborationPresence?.(id, { ...presence, name: current.current.displayName });
-  }, [graph.currentFileId]);
+    if (id && current.current.status) hostBridge()?.collaborationPresence?.(id, { ...presence, name: current.current.displayName, sessionId });
+  }, [graph.currentFileId, sessionId]);
   const value: CollaborationContextValue = {
     available: !!hostBridge()?.collaborationCommand && !!hostBridge()?.onCollaborationEvent,
     status, busy, pending, error, peers, displayName,

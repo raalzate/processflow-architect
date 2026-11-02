@@ -6,7 +6,7 @@ import { titleBarOptions } from '../src/lib/window-chrome';
 import { DESIGNER_MENU, type DesignerMenuItem } from '../src/lib/designer-actions';
 import { permisoPermitido } from './services/security';
 
-export function createMainWindow() {
+export function createMainWindow(fileId?: string) {
     const win = new BrowserWindow({
         width: 1200,
         height: 800,
@@ -45,15 +45,17 @@ export function createMainWindow() {
     if (isDev) {
         // El puerto del dev server de Next es configurable: si 3000 está ocupado,
         // Next usa otro (ej. 3001) y se puede apuntar aquí con ELECTRON_RENDERER_URL.
-        win.loadURL(process.env.ELECTRON_RENDERER_URL || 'http://localhost:3000');
+        const url = new URL(process.env.ELECTRON_RENDERER_URL || 'http://localhost:3000');
+        if (fileId) url.searchParams.set('project', fileId);
+        win.loadURL(url.toString());
         win.webContents.openDevTools();
     } else {
         appServe(win).then(() => {
-            win.loadURL("app://-");
+            win.loadURL(fileId ? `app://-/?project=${encodeURIComponent(fileId)}` : "app://-");
         });
     }
 
-    // Nunca se abre una segunda ventana de la app; pero un enlace externo
+    // Las ventanas del proyecto se crean por IPC; un enlace externo
     // (el correo del autor en los créditos, docs de un proveedor de IA) sí debe
     // llegar al programa del sistema. Antes se denegaba todo y el clic no hacía
     // nada. Sólo http(s) y mailto: cualquier otro scheme (file:, etc.) se niega.
@@ -96,8 +98,9 @@ function menuItem(
 }
 
 function setupMenu(win: BrowserWindow) {
-    const navigateTo = (route: string) => win.webContents.send('navigate', route);
-    const designerAction = (action: string) => win.webContents.send('designer-action', action);
+    const target = () => BrowserWindow.getFocusedWindow() ?? (!win.isDestroyed() ? win : BrowserWindow.getAllWindows().find(window => !window.isDestroyed()));
+    const navigateTo = (route: string) => target()?.webContents.send('navigate', route);
+    const designerAction = (action: string) => target()?.webContents.send('designer-action', action);
 
     const template: MenuItemConstructorOptions[] = [
         {

@@ -1,7 +1,7 @@
 import { app, ipcMain, IpcMainInvokeEvent, clipboard, BrowserWindow, dialog } from 'electron';
 import { registerCollaboration } from './services/collaboration';
 import { handleMdToPdf } from './services/pdf';
-import { popupAppMenu } from './window';
+import { popupAppMenu, createMainWindow } from './window';
 import {
   listLitertModels,
   downloadLitertModel,
@@ -172,6 +172,10 @@ export function registerIpcHandlers() {
   ipcMain.on('window-menu-popup', (e, x?: number, y?: number) => {
     const win = BrowserWindow.fromWebContents(e.sender);
     if (win) popupAppMenu(win, x, y);
+  });
+  ipcMain.handle('project-window-open', (_e, fileId: unknown) => {
+    if (typeof fileId !== 'string' || !fileId || fileId.length > 200) throw new Error('Proyecto inválido.');
+    createMainWindow(fileId);
   });
   ipcMain.handle('mcp-orgs-status', async () => mcpOrgsStatus());
   // CRUD de organizaciones desde el header. Eliminar SUELTA los diagramas a la
