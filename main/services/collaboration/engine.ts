@@ -16,6 +16,8 @@ import { LanDiscovery } from "./discovery";
 import { isLanPath } from "../../../src/lib/collaboration/network";
 import { encodeProject } from "../../../src/lib/collaboration/graph-codec";
 import { assertEncodedProject, assertJson } from "../../../src/lib/collaboration/validation";
+import { BranchStore, type BranchRequest, type BranchResponse } from "./branches";
+import { canEditBranch, type HistoryActor } from "../../../src/lib/collaboration/history";
 
 const ALPN = [...Buffer.from("processflow/collaboration/1")];
 const encode = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
@@ -23,14 +25,14 @@ const decode = (text: string) => new Uint8Array(Buffer.from(text, "base64"));
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const validId = (value: unknown): value is string => typeof value === "string" && /^[a-f0-9-]{36}$/.test(value);
 interface Invitation { format: "pf-room/1"; projectId: string; host: string; token: string; role: Role; relays: string[] }
-interface InviteGrant { hash: string; role: Role; member?: string; revoked?: boolean }
+interface InviteGrant { hash: string; role: Role; member?: string; name?: string; revoked?: boolean }
 interface StoredRoom {
   projectId: string; fileId: string; owner: boolean; role: Role; options: RoomOptions;
   invitation?: Invitation; grants: Record<string, InviteGrant>;
 }
 interface Config { key: number[]; port?: number; rooms: StoredRoom[] }
-interface Request { version: 1; stage: "hello" | "sync"; projectId: string; token: string; vector: string; update?: string }
-interface Response { ok: boolean; error?: string; vector?: string; update?: string; capacity?: Capacity; peers?: number }
+interface Request { version: 1; stage: "hello" | "sync"; projectId: string; token: string; vector: string; update?: string; branches?: BranchRequest; name?: string }
+interface Response { ok: boolean; error?: string; vector?: string; update?: string; capacity?: Capacity; peers?: number; branches?: BranchResponse }
 interface Room {
   stored: StoredRoom; document: SharedDocument; journal: Journal; status: CollaborationStatus;
   seats: Seats; clients: Map<string, Connection>; connection?: Connection;
@@ -44,6 +46,8 @@ interface Room {
   networkLoad: NetworkLoad;
   serviceMs?: number;
   quarantined?: boolean;
+  branches?: BranchStore;
+  name?: string;
 }
 
 /** Native transport/persistence service. Existing contexts remain the UI's API. */
@@ -129,6 +133,8 @@ export class CollaborationEngine {
   }
   private refreshCapacity(room: Room) {
     room.status.capacity = this.measure(room.document, room.networkLoad, [...room.clients.values()], room.serviceMs);
+    const extraBytes = room.branches?.bytes() ?? 0;
+    if (extraBytes) { room.status.capacity.projectBytes += extraBytes; room.status.capacity.limit = Math.max(1, Math.min(room.status.capacity.limit, Math.floor(freemem() * .2 / Math.max(1, extraBytes * 6)))); }
     room.seats.resize(room.status.capacity.limit);
   }
   private load(stored: StoredRoom, initial?: SharedProject): Room {
@@ -154,6 +160,11 @@ export class CollaborationEngine {
     this.rooms.set(stored.fileId, room);
     if (!journal.updates.length && initial) document.patch({}, initial);
     document.clearUndo();
+    room.branches = new BranchStore(join(this.root, stored.projectId, "branches.json"), document, () => {
+      room.revision++; if (room.stored.owner) {
+        document.receiveRemote(room.branches!.defaultUpdate(document.vector())); this.notifyClients(room);
+      }
+    });
     room.status.initialized = document.isInitialized();
     if (journal.updates.length || initial) {
       try { document.assertValid(); room.status.capacity = this.measure(document); room.seats.resize(room.status.capacity.limit); }
@@ -163,11 +174,11 @@ export class CollaborationEngine {
   }
   private emit(room: Room, includeSnapshot = false) {
     if (room.disposed) return;
-    room.status.initialized = !room.quarantined && room.document.isInitialized();
+    room.status.initialized = !room.quarantined && (!!room.branches?.enabled || room.document.isInitialized());
     room.status.peers = room.stored.owner ? room.seats.count : room.status.peers;
     this.refreshMembers(room);
     try { room.status.pendingEdges = room.document.pendingEdges(); } catch { /* Joining has not received its first state. */ }
-    this.event({ fileId: room.stored.fileId, status: { ...room.status }, ...(includeSnapshot && !room.quarantined ? { snapshot: room.document.snapshot() } : {}) });
+    this.event({ fileId: room.stored.fileId, status: { ...room.status }, ...(includeSnapshot && !room.quarantined ? { snapshot: room.branches?.enabled ? room.branches.defaultSnapshot() : room.document.snapshot(), workspace: room.branches?.view(this.actor(room)) } : {}) });
   }
   private emitPresence(room: Room) {
     if (room.disposed) return;
@@ -187,6 +198,7 @@ export class CollaborationEngine {
     const room = this.rooms.get(fileId), ownId = this.endpoint?.id().toString();
     if (!room || room.disposed || !ownId) return;
     const presence = sanitizePresence(raw, ownId, Date.now()); if (!presence) return;
+    room.name = presence.name;
     room.networkLoad.record(Buffer.byteLength(JSON.stringify(presence)), Date.now());
     if (presence.sessionId) presence.id = `${ownId}:${presence.sessionId}`;
     // Keep datagrams small even with a large selection or multibyte names.
@@ -224,13 +236,14 @@ export class CollaborationEngine {
         throw new Error(failed.status.error);
       }
       let room = this.rooms.get(command.fileId);
-      if (command.type === "open") return room ? this.result(room) : {};
+      if (command.type === "open") { if (room && command.name) room.name = command.name.slice(0, 40); return room ? this.result(room) : {}; }
       if (command.type === "create") {
         if (room) return this.result(room);
         const options = this.validateOptions(command.options);
         const initial = this.migrate(command.initial);
         const stored: StoredRoom = { fileId: command.fileId, projectId: randomUUID(), owner: true, role: "editor", options, grants: {} };
         this.config.rooms.push(stored); this.saveConfig(); room = this.load(stored, initial);
+        room.name = command.name?.slice(0, 40);
         const endpoint = await this.endpointReady();
         for (const url of options.relayUrls ?? []) await endpoint.insertRelay({ url });
         for (const addr of options.externalAddresses ?? []) await endpoint.addExternalAddr(addr);
@@ -244,15 +257,26 @@ export class CollaborationEngine {
         if (this.config.rooms.some(r => r.projectId === invitation.projectId)) throw new Error("Este proyecto compartido ya existe en este dispositivo.");
         const stored: StoredRoom = { projectId: invitation.projectId, fileId: command.fileId, owner: false, role: invitation.role, invitation, options: { relayUrls: invitation.relays }, grants: {} };
         this.config.rooms.push(stored); this.saveConfig(); room = this.load(stored);
+        room.name = command.name?.slice(0, 40);
         const endpoint = await this.endpointReady(); for (const url of invitation.relays) await endpoint.insertRelay({ url });
         await this.sync(room); this.schedule(room); return this.result(room);
       }
       if (!room) throw new Error("El proyecto todavía no está vinculado.");
+      if (command.type === "history-preview") return { ...this.result(room), preview: room.branches!.preview(command.branchId, command.commitId, command.scopes, command.choices) };
+      if (command.type === "history") {
+        room.name = command.name.slice(0, 40);
+        if (!room.stored.owner && ["merge", "reject", "permission", "editors"].includes(command.action.type) && !room.status.connected) throw new Error("Conecta con el anfitrión para confirmar esta acción.");
+        room.branches!.action(command.action, this.actor(room), command.expectedVector);
+        if (!room.stored.owner) { room.needsSync = true; await this.sync(room); this.schedule(room); }
+        const rejected = room.branches!.view(this.actor(room))?.recoveries.find(r => r.id === command.action.id);
+        this.emit(room, true); if (rejected) throw new Error(rejected.error); return this.result(room);
+      }
       if (command.type === "patch") {
-        if (!room.document.isInitialized()) throw new Error("Espera la primera sincronización antes de editar esta copia.");
+        if (!room.document.isInitialized() && !room.branches?.enabled) throw new Error("Espera la primera sincronización antes de editar esta copia.");
         if (room.stored.role !== "editor") throw new Error("Este vínculo permite lectura. Crea una copia para editar.");
         if (!room.status.saved) throw new Error("El guardado está detenido. Exporta la recuperación antes de continuar.");
-        room.document.patch(command.before, this.migrate(command.after));
+        if (room.branches?.enabled) room.branches.patch(command.branchId ?? "shared", command.before, this.migrate(command.after), this.actor(room));
+        else room.document.patch(command.before, this.migrate(command.after));
         this.emit(room, true); if (!room.stored.owner) { room.needsSync = true; this.schedule(room, 0); }
       } else if (command.type === "invite") {
         if (!room.stored.owner) throw new Error("Solo el anfitrión puede crear invitaciones.");
@@ -276,14 +300,15 @@ export class CollaborationEngine {
         await this.sync(room); this.schedule(room);
       } else if (command.type === "undo" || command.type === "redo") {
         if (room.stored.role !== "editor") throw new Error("El vínculo es de lectura.");
+        if (room.branches?.enabled) throw new Error("Utiliza Deshacer o Rehacer en el lienzo de la rama actual.");
         if (command.type === "undo") room.document.undo(); else room.document.redo(); this.emit(room, true);
       } else if (command.type === "recover") {
         const raw = { format: "processflow-raw-recovery/v1", projectId: room.stored.projectId, crdt: encode(room.document.update()) };
         if (room.quarantined) return { status: { ...room.status }, recovery: JSON.stringify(raw) };
         try {
-          const shared = room.document.snapshot();
+          const shared = room.branches?.enabled ? room.branches.defaultSnapshot() : room.document.snapshot();
           return { ...this.result(room), recovery: JSON.stringify({ ...packBoard(shared.content, { customViews: shared.customViews, activeViewId: "design", injectedViewIds: [] }, shared),
-            recuperacion: JSON.parse(room.document.recoveryJson()), crdt: raw.crdt }, null, 2) };
+            recuperacion: JSON.parse(room.document.recoveryJson()), crdt: raw.crdt, ramas: room.branches?.recovery() }, null, 2) };
         } catch { return { status: { ...room.status }, recovery: JSON.stringify(raw) }; }
       }
       else if (command.type === "revoke") {
@@ -296,7 +321,7 @@ export class CollaborationEngine {
         if (room.timer) clearTimeout(room.timer); room.connection?.close(BigInt(0), []);
         for (const connection of room.clients.values()) connection.close(BigInt(0), []);
         await room.syncTask;
-        room.journal.close(); room.document.destroy(); this.rooms.delete(command.fileId);
+        room.branches?.close(); room.journal.close(); room.document.destroy(); this.rooms.delete(command.fileId);
         this.config.rooms = this.config.rooms.filter(r => r.fileId !== command.fileId); this.saveConfig();
         return {};
       }
@@ -313,11 +338,12 @@ export class CollaborationEngine {
   private result(room: Room): CollaborationResult {
     this.refreshMembers(room);
     if (room.stored.owner) room.status.peers = room.seats.count;
-    let snapshot: SharedProject | undefined; try { if (!room.quarantined) snapshot = room.document.snapshot(); } catch { /* first connection pending */ }
-    return { status: { ...room.status }, snapshot };
+    let snapshot: SharedProject | undefined; try { if (!room.quarantined) snapshot = room.branches?.enabled ? room.branches.defaultSnapshot() : room.document.snapshot(); } catch { /* first connection pending */ }
+    return { status: { ...room.status }, snapshot, workspace: room.branches?.view(this.actor(room)) };
   }
+  private actor(room: Room): HistoryActor { return { id: this.endpoint?.id().toString() ?? "host", name: room.name ?? "Participante", owner: room.stored.owner, role: room.stored.role }; }
   private refreshMembers(room: Room) {
-    if (room.stored.owner) room.status.members = [...new Map(Object.values(room.stored.grants).filter(grant => grant.member).map(grant => [grant.member!, { id: grant.member!, role: grant.role, connected: room.clients.has(grant.member!), revoked: !!grant.revoked }])).values()];
+    if (room.stored.owner) room.status.members = [...new Map(Object.values(room.stored.grants).filter(grant => grant.member).map(grant => [grant.member!, { id: grant.member!, name: grant.name, role: grant.role, connected: room.clients.has(grant.member!), revoked: !!grant.revoked }])).values()];
   }
   private validateOptions(options: RoomOptions): RoomOptions {
     const relayUrls = options.relayUrls ?? [], externalAddresses = options.externalAddresses ?? [];
@@ -367,6 +393,7 @@ export class CollaborationEngine {
           if (!active) this.refreshCapacity(room);
           if (!room.seats.enter(member)) throw new Error("Sala llena según la capacidad del anfitrión y la conexión. Tu copia local se conserva; se reintentará automáticamente.");
           if (!grant.member) { grant.member = member; this.saveConfig(); }
+          if (typeof request.name === "string" && request.name.trim() && grant.name !== request.name.slice(0, 40)) { grant.name = request.name.slice(0, 40); this.saveConfig(); }
           const oldConnection = room.clients.get(member); if (oldConnection && oldConnection !== connection) oldConnection.close(BigInt(0), []);
           room.clients.set(member, connection);
           authenticated();
@@ -375,14 +402,19 @@ export class CollaborationEngine {
             for (const presence of room.presence.values()) this.sendPresence(connection, presence);
           }
           active = room;
-          if (request.update && grant.role !== "editor") throw new Error("El vínculo permite solo lectura.");
           const before = room.revision;
+          const actor: HistoryActor = { id: member, name: typeof request.name === "string" ? request.name.slice(0, 40) : "Participante", owner: false, role: grant.role };
+          if (request.branches && !room.branches?.enabled) room.branches!.activate(this.actor(room));
+          if (request.update && grant.role !== "editor") throw new Error("El vínculo permite solo lectura.");
+          if (request.update && room.branches?.enabled && !canEditBranch(room.branches.view(actor)!.history, "shared", actor, new Date().toISOString())) throw new Error("No tienes permiso para editar esta rama.");
           const serviceStart = performance.now();
           if (!room.status.saved) throw new Error("El guardado está detenido; exporta la recuperación y reinicia después de corregir el disco.");
+          if (request.update && room.branches?.enabled) throw new Error("Actualiza la aplicación para editar esta sala con ramas protegidas.");
           if (request.update) room.document.receiveRemote(decode(request.update));
           if (!room.status.saved) throw new Error("El anfitrión no pudo guardar; vuelve a intentar después.");
           room.status.lastSynced = new Date().toISOString(); room.status.state = "online";
-          const response = { ok: true, update: encode(room.document.update(decode(request.vector))), vector: encode(room.document.vector()), capacity: room.status.capacity, peers: room.seats.count } satisfies Response;
+          const branches = request.branches ? room.branches!.exchange(request.branches, actor) : undefined;
+          const response = { ok: true, update: encode(room.document.update(decode(request.vector))), vector: encode(room.document.vector()), capacity: room.status.capacity, peers: room.seats.count, branches } satisfies Response;
           const serviceMs = performance.now() - serviceStart;
           if (request.stage === "sync") room.serviceMs = room.serviceMs === undefined ? serviceMs : room.serviceMs * .8 + serviceMs * .2;
           await sendFrame(stream, response);
@@ -449,11 +481,15 @@ export class CollaborationEngine {
       const stream = await deadline(room.connection.openBi());
       const authenticated = room.remoteVector !== undefined;
       const request: Request = { version: 1, stage: authenticated ? "sync" : "hello", projectId: room.stored.projectId, token: room.stored.invitation!.token, vector: encode(authenticated ? room.document.vector() : Uint8Array.of(0)),
-        ...(authenticated && room.stored.role === "editor" ? { update: encode(room.document.update(room.remoteVector)) } : {}) };
+        name: room.name, ...(authenticated ? { branches: room.branches!.request() } : { branches: { revision: 0, vectors: {}, updates: {}, operations: [] } }),
+        ...(authenticated && room.stored.role === "editor" && !room.branches?.enabled ? { update: encode(room.document.update(room.remoteVector)) } : {}) };
       await deadline(sendFrame(stream, request)); const response = await deadline(readFrame<Response>(stream));
       if (room.disposed || this.closed) return;
       if (!response.ok) throw new Error(response.error ?? "No se pudo sincronizar.");
-      const before = room.revision; room.document.receiveRemote(decode(response.update!)); room.remoteVector = decode(response.vector!);
+      const before = room.revision;
+      if (!response.branches) room.document.receiveRemote(decode(response.update!));
+      if (response.branches) room.branches!.receive(response.branches);
+      room.remoteVector = decode(response.vector!);
       room.failures = 0; room.status.connected = true; room.status.state = "online"; room.status.error = undefined;
       room.status.lastSynced = new Date().toISOString(); room.status.capacity = response.capacity!; room.status.peers = response.peers!;
       this.updateRoute(room, room.connection.paths());
@@ -473,7 +509,7 @@ export class CollaborationEngine {
     for (const connection of this.incoming) connection.close(BigInt(0), []);
     if (this.endpoint) await this.endpoint.close();
     await Promise.allSettled([...this.rooms.values()].map(room => room.syncTask));
-    for (const room of this.rooms.values()) { room.journal.close(); room.document.destroy(); }
+    for (const room of this.rooms.values()) { room.branches?.close(); room.journal.close(); room.document.destroy(); }
     this.rooms.clear();
   }
 }

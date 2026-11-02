@@ -1,4 +1,5 @@
 export interface PresenceInput {
+  branchId?: string;
   name: string;
   viewId: string;
   pointer: { x: number; y: number } | null;
@@ -26,6 +27,7 @@ export function sanitizePresence(raw: unknown, id: string, now: number): Presenc
       ...(draft.anchor && [draft.anchor.x, draft.anchor.y].every(v => coordinate(v) && v >= 0 && v <= 1) ? { anchor: { x: draft.anchor.x, y: draft.anchor.y } } : {}),
       ...(typeof draft.id === "string" && draft.id.length <= 200 ? { id: draft.id } : {}) } : undefined;
   return { id, color: presenceColor(id), seenAt: now, name: typeof input.name === "string" ? input.name.slice(0, 40).trim() || `Persona ${id.slice(0, 5)}` : `Persona ${id.slice(0, 5)}`,
+    ...(typeof input.branchId === "string" && /^[\w-]{1,100}$/.test(input.branchId) ? { branchId: input.branchId } : {}),
     viewId: input.viewId, pointer: input.pointer ? { x: input.pointer.x, y: input.pointer.y } : null,
     selectedIds: (Array.isArray(input.selectedIds) ? input.selectedIds : []).filter((v): v is string => typeof v === "string" && v.length <= 200).slice(0, 20), moving, connecting,
     ...(typeof input.sessionId === "string" && /^[a-zA-Z0-9-]{1,64}$/.test(input.sessionId) ? { sessionId: input.sessionId } : {}) };

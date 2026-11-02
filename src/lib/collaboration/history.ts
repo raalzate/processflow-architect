@@ -2,6 +2,7 @@ import type { SharedProject, Role } from "./types";
 import { encodeProject, decodeProject } from "./graph-codec";
 import { assertEncodedProject, assertJson } from "./validation";
 import { enRegistro } from "../registro";
+import { parseHistoryAction } from "./history-validation";
 
 export interface HistoryActor { id: string; name: string; owner: boolean; role: Role }
 export interface BranchPermission { mergeMain?: boolean; editMain?: boolean; restoreMain?: boolean; until?: string; proposalId?: string }
@@ -28,6 +29,7 @@ export type HistoryAction = { id: string } & (
 export interface MergeConflict { id: string; path: string; base: unknown; ours: unknown; theirs: unknown }
 export interface MergePreview { project: SharedProject; conflicts: MergeConflict[]; dependencies: string[] }
 export const equalProject = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+export const validBranchIdentity = (id: unknown): id is string => typeof id === "string" && /^[\w-]{1,100}$/.test(id) && !["__proto__", "prototype", "constructor", "toString", "valueOf", "hasOwnProperty"].includes(id);
 const clone = <T>(v: T): T => structuredClone(v);
 const findBranch = (s: DiagramHistory, id: string) => { const b = s.branches.find(b => b.id === id); if (!b) throw new Error("La rama ya no existe."); return b; };
 export const findCommit = (s: DiagramHistory, id: string) => { const c = s.commits.find(c => c.id === id); if (!c) throw new Error("La versión no está disponible."); return c; };
@@ -51,11 +53,19 @@ export function selectScopes(base: SharedProject, next: SharedProject, scopes: s
   if (scopes.includes("project")) { result.name = next.name; result.references = clone(next.references); result.agent = clone(next.agent); result.analysis = clone(next.analysis); }
   return result;
 }
+export function projectDependencies(project: SharedProject): string[] {
+  const known = new Set(["design", ...project.customViews.map(v => v.id)]), dependencies: string[] = [];
+  const graphs = [{ name: "Modelo", graph: project.content }, ...project.customViews.filter(v => v.graph).map(v => ({ name: v.name, graph: v.graph! }))];
+  for (const { name, graph } of graphs) for (const node of [...(graph.big_picture.nodos ?? []), ...graph.agregados.flatMap(a => a.nodos)]) {
+    if (node.viewRef && !known.has(node.viewRef)) dependencies.push(`${name}: ${node.nombre} necesita la vista ${node.viewRef}. Incluye esa vista o retira su vínculo antes de guardar.`);
+  }
+  return dependencies;
+}
 export function canManage(s: DiagramHistory, actor: HistoryActor, permission: keyof Pick<BranchPermission, "mergeMain" | "editMain" | "restoreMain">, at: string, proposalId?: string) {
   if (actor.role !== "editor") return false;
   if (actor.owner) return true;
   const p = enRegistro(s.permissions, actor.id) ? s.permissions[actor.id] : undefined;
-  return !!p?.[permission] && (!p.until || Date.parse(p.until) > Date.parse(at)) && (!p.proposalId || permission === "mergeMain" && p.proposalId === proposalId);
+  return !!p?.[permission] && (!p.until || Date.parse(p.until) > Date.parse(at)) && (permission !== "mergeMain" || !p.proposalId || p.proposalId === proposalId);
 }
 export function canEditBranch(s: DiagramHistory, id: string, actor: HistoryActor, at: string) {
   const branch = s.branches.find(b => b.id === id); if (!branch || actor.role !== "editor") return false;
@@ -84,7 +94,7 @@ export function commonBase(s: DiagramHistory, ours: string, theirs: string, scop
 }
 export function versionAt(s: DiagramHistory, branchId: string, at: string) {
   const known = ancestors(s, findBranch(s, branchId).head);
-  return s.commits.filter(c => known.has(c.id) && Date.parse(c.at) <= Date.parse(at)).sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
+  return [...s.commits].reverse().filter(c => known.has(c.id) && Date.parse(c.at) <= Date.parse(at)).sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
 }
 
 /** Tres vías por identidad de entidad; eliminar frente a editar es conflicto, nunca resurrección implícita. */
@@ -120,30 +130,48 @@ export function mergeProjects(base: SharedProject, ours: SharedProject, theirs: 
   }
   if (scopes.includes("project")) for (const field of ["name", "references", "agent", "analysis"] as const) (merged as unknown as Record<string, unknown>)[field] = merge(b[field], o[field], t[field], ["Datos comunes", field]);
   const dependencies: string[] = [];
-  for (const [name, graph] of [["Modelo", merged.content], ...merged.customViews.filter(v => v.graph).map(v => [v.name, v.graph])] as [string, typeof merged.content][]) {
+  type EncodedGraph = typeof merged.content;
+  const graphs: { scope: string; name: string; graph: EncodedGraph; ours?: EncodedGraph; theirs?: EncodedGraph }[] = [{ scope: "design", name: "Modelo", graph: merged.content, ours: o.content, theirs: t.content }, ...merged.customViews.filter(v => v.graph).map(v => ({ scope: `view:${v.id}`, name: v.name, graph: v.graph as EncodedGraph, ours: o.customViews.find(x => x.id === v.id)?.graph as EncodedGraph | undefined, theirs: t.customViews.find(x => x.id === v.id)?.graph as EncodedGraph | undefined }))];
+  for (const { scope, name, graph, ours: ourGraph, theirs: theirGraph } of graphs) {
     const ids = new Set([...graph.nodes.map(n => n.id), ...graph.containers.map(c => c.id)]);
-    for (const edge of graph.edges) if (!ids.has(edge.fuente) || !ids.has(edge.destino)) dependencies.push(`${name}: la conexión ${edge.id} necesita sus dos componentes. Resuelve el borrado o incluye ambos extremos.`);
-    for (const node of graph.nodes) if (node.parent && !ids.has(node.parent)) dependencies.push(`${name}: ${node.id} necesita el contenedor ${node.parent}.`);
+    for (const edge of [...graph.edges]) for (const missing of [edge.fuente, edge.destino].filter(id => !ids.has(id))) {
+      const id = JSON.stringify(["Dependencia", scope, edge.id, missing]), choice = enRegistro(choices, id) ? choices[id] : undefined;
+      if (choice) {
+        const source = choice === "ours" ? ourGraph : theirGraph, node = source?.nodes.find(n => n.id === missing), container = source?.containers.find(c => c.id === missing);
+        if (node) { graph.nodes.push(clone(node)); ids.add(missing); }
+        else if (container) { graph.containers.push(clone(container)); ids.add(missing); }
+        else graph.edges = graph.edges.filter(e => e.id !== edge.id);
+      } else {
+        const explanation = `${name}: la conexión ${edge.id} necesita el componente ${missing}.`;
+        dependencies.push(explanation); conflicts.push({ id, path: explanation, base: "Componente existente antes de separar las ramas", ours: ourGraph?.nodes.some(n => n.id === missing) ? "Conservar componente y conexión actuales" : "Mantener borrado actual y retirar la conexión", theirs: theirGraph?.nodes.some(n => n.id === missing) ? "Recuperar componente y conexión recibidos" : "Aceptar borrado recibido y retirar la conexión" });
+      }
+    }
+    for (const node of graph.nodes) if (node.parent && !ids.has(node.parent)) {
+      const id = JSON.stringify(["Pertenencia", scope, node.id, node.parent]), choice = enRegistro(choices, id) ? choices[id] : undefined;
+      if (choice) { const source = choice === "ours" ? ourGraph : theirGraph, container = source?.containers.find(c => c.id === node.parent); if (container) { graph.containers.push(clone(container)); ids.add(container.id!); } else node.parent = null; }
+      else { const explanation = `${name}: ${node.id} necesita el contenedor ${node.parent}.`; dependencies.push(explanation); conflicts.push({ id, path: explanation, base: "Pertenencia anterior", ours: "Usar pertenencia de la rama actual", theirs: "Usar pertenencia de la versión recibida" }); }
+    }
   }
   assertJson(merged); assertEncodedProject(merged);
-  return { project: decodeProject(merged).project, conflicts, dependencies };
+  const project = decodeProject(merged).project; dependencies.push(...projectDependencies(project));
+  return { project, conflicts, dependencies };
 }
 
 export function previewIncorporation(s: DiagramHistory, branchId: string, commitId: string, draft: SharedProject, scopes: string[], choices: Choices = {}): MergePreview {
   const branch = findBranch(s, branchId), theirs = findCommit(s, commitId).snapshot;
-  let result = clone(draft); const conflicts: MergeConflict[] = [], dependencies: string[] = [];
+  let base = clone(draft);
   for (const scope of scopes) {
-    const base = commonBase(s, branch.head, commitId, scope).snapshot;
-    const next = mergeProjects(base, result, theirs, [scope], choices); result = next.project; conflicts.push(...next.conflicts); dependencies.push(...next.dependencies);
+    base = selectScopes(base, commonBase(s, branch.head, commitId, scope).snapshot, [scope]);
   }
-  return { project: result, conflicts, dependencies: [...new Set(dependencies)] };
+  return mergeProjects(base, draft, theirs, scopes, choices);
 }
 
 export function executeHistory(input: DiagramHistory, action: HistoryAction, actor: HistoryActor, drafts: Record<string, SharedProject>, at: string): { state: DiagramHistory; writes: Record<string, SharedProject> } {
+  action = parseHistoryAction(action);
   if (!action || typeof action.id !== "string" || !/^[\w-]{1,100}$/.test(action.id)) throw new Error("Operación de historial inválida.");
   if (input.operations.includes(action.id)) return { state: input, writes: {} };
   if (actor.role !== "editor") throw new Error("El vínculo permite solo lectura.");
-  const s = clone(input), writes: Record<string, SharedProject> = {};
+  const s = clone(input), writes: Record<string, SharedProject> = Object.create(null);
   const requireEdit = (id: string) => { if (!canEditBranch(s, id, actor, at)) throw new Error("No tienes permiso para editar esta rama."); };
   const requireOwner = () => { if (!actor.owner) throw new Error("Solo el anfitrión administra los permisos."); };
   const draft = (id: string) => { if (!enRegistro(drafts, id)) throw new Error("La rama no está cargada."); return drafts[id]; };
@@ -157,13 +185,14 @@ export function executeHistory(input: DiagramHistory, action: HistoryAction, act
   const checkpoint = (branchId: string) => addCommit(`${action.id}-before`, branchId, draft(branchId), scopeOptions(draft(branchId)).map(v => v.id), "Punto de recuperación antes de incorporar cambios", "recovery");
   switch (action.type) {
     case "branch": {
-      if (s.branches.some(b => b.id === action.branchId || b.name === action.name.trim()) || !/^[\w-]{1,100}$/.test(action.branchId) || !action.name.trim() || action.name.length > 80) throw new Error("Elige un nombre de rama nuevo y válido.");
+      if (s.branches.some(b => b.id === action.branchId || b.name === action.name.trim()) || !validBranchIdentity(action.branchId) || !action.name.trim() || action.name.length > 80) throw new Error("Elige un nombre de rama nuevo y válido.");
       const commit = findCommit(s, action.fromCommit); s.branches.push({ id: action.branchId, name: action.name.trim(), head: commit.id, creator: actor.id }); writes[action.branchId] = clone(commit.snapshot); break;
     }
     case "commit": {
       requireEdit(action.branchId); if (!action.message.trim()) throw new Error("Describe esta versión.");
       const head = findCommit(s, findBranch(s, action.branchId).head);
       const snapshot = selectScopes(head.snapshot, draft(action.branchId), action.scopes);
+      const missing = projectDependencies(snapshot); if (missing.length) throw new Error(missing.join(" "));
       addCommit(action.id, action.branchId, snapshot, action.scopes, action.message, "commit"); break;
     }
     case "permission": {
@@ -176,7 +205,7 @@ export function executeHistory(input: DiagramHistory, action: HistoryAction, act
       requireEdit(action.branchId); const branch = findBranch(s, action.branchId); findBranch(s, action.targetId);
       if (action.branchId === action.targetId || !ancestors(s, branch.head).has(action.commitId)) throw new Error("Selecciona una versión de una rama diferente al destino.");
       const c = findCommit(s, action.commitId); checkScopes(action.scopes, c.snapshot, findCommit(s, findBranch(s, action.targetId).head).snapshot);
-      s.proposals.push({ ...action, author: { id: actor.id, name: actor.name }, at, status: "open" }); break;
+      s.proposals.push({ id: action.id, branchId: action.branchId, targetId: action.targetId, commitId: action.commitId, scopes: [...action.scopes], message: action.message, author: { id: actor.id, name: actor.name }, at, status: "open" }); break;
     }
     case "reject": {
       const p = s.proposals.find(p => p.id === action.proposalId && p.status === "open"); if (!p) throw new Error("La solicitud ya se resolvió.");
@@ -185,6 +214,7 @@ export function executeHistory(input: DiagramHistory, action: HistoryAction, act
     case "restore": {
       if (action.branchId === "main") { if (!canManage(s, actor, "restoreMain", at)) throw new Error("No tienes permiso para restaurar Principal."); } else requireEdit(action.branchId);
       const old = findCommit(s, action.commitId), restored = selectScopes(draft(action.branchId), old.snapshot, action.scopes);
+      const missing = projectDependencies(restored); if (missing.length) throw new Error(missing.join(" "));
       checkpoint(action.branchId); addCommit(action.id, action.branchId, restored, action.scopes, `Restaurar: ${old.message}`, "restore"); writes[action.branchId] = restored; break;
     }
     case "pull": case "merge": {
