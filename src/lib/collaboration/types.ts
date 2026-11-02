@@ -3,6 +3,7 @@ import type { DesignView } from "../views-types";
 import type { ArtifactVersion, ArtifactLineage, Artifact } from "../agent-types";
 import type { ReferenceDoc } from "../reference-context";
 import type { Presence, PresenceInput } from "./presence";
+import type { DiscardedFieldEdit } from "./field-conflicts";
 import type { Choices, DiagramHistory, HistoryAction, HistoryActor, MergePreview } from "./history";
 
 export interface CollaborationWorkspace {
@@ -12,6 +13,7 @@ export interface CollaborationWorkspace {
   actor: HistoryActor;
   pending: number;
   recoveries: { id: string; branchId?: string; error: string; snapshot?: SharedProject }[];
+  discardedEdits?: Record<string, DiscardedFieldEdit[]>;
 }
 
 export interface SharedProject {
@@ -48,16 +50,29 @@ export interface CollaborationStatus {
   lastSynced?: string;
   error?: string;
   members?: { id: string; name?: string; role: Role; connected: boolean; revoked: boolean }[];
+  selfHostedOnly?: boolean;
+  relayUrls?: string[];
+  externalAddresses?: string[];
+  discardedEdits?: DiscardedFieldEdit[];
 }
 export interface RoomOptions {
   relayUrls?: string[];
   externalAddresses?: string[];
+  selfHostedOnly?: boolean;
 }
 export type CollaborationCommand =
   | { type: "open"; fileId: string; initial: SharedProject; name?: string }
   | { type: "create"; fileId: string; initial: SharedProject; options: RoomOptions; name?: string }
   | { type: "join"; fileId: string; invitation: string; name?: string }
   | { type: "patch"; fileId: string; before: SharedProject; after: SharedProject; branchId?: string }
+  | {
+      type: "resolve-field-conflict";
+      fileId: string;
+      editId: string;
+      keep: "current" | "discarded";
+      branchId?: string;
+    }
+  | { type: "configure-network"; fileId: string; options: RoomOptions }
   | { type: "history"; fileId: string; action: HistoryAction; name: string; expectedVector?: string }
   | {
       type: "history-preview";

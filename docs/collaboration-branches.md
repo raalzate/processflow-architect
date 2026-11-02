@@ -26,10 +26,14 @@ temporales corresponden a la misma rama y vista.
    inmutable. Lo que no selecciones continúa como borrador en la rama.
 3. Pulsa **Enviar a revisión** y **Enviar solicitud de fusión**. Esto es un
    **pull request**: pide revisar una versión concreta para incorporarla a Principal.
-   También puedes elegir una versión anterior en el historial y solicitar su incorporación.
-4. El anfitrión verá un aviso con la persona, rama y descripción, y el botón
-   **Revisar y fusionar**. Puede comparar las vistas, resolver conflictos, aprobar
-   o rechazar. Los cambios posteriores al commit propuesto quedan fuera.
+   Por defecto marca únicamente las vistas guardadas en esa versión. También puedes
+   elegir una versión anterior en el historial y solicitar su incorporación.
+4. El anfitrión —o una persona con permiso expreso de fusión— verá un aviso con la
+   persona, rama y descripción, y el botón **Revisar y fusionar**. Puede comparar las
+   vistas, resolver conflictos, aprobar o rechazar. Los cambios posteriores al commit
+   propuesto quedan fuera.
+5. Si dos personas editan en vivo el mismo campo dentro de una misma rama, aparece
+   un aviso en la rama para elegir entre **Mantener actual** o **Restaurar este valor**.
 
 Guardar automáticamente, guardar un commit y fusionarlo son acciones distintas.
 Un commit en una rama compartida contiene las contribuciones visibles de esa rama

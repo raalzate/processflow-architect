@@ -105,8 +105,13 @@ El software no exige una suscripción ni establece una cuota comercial de usuari
 Los [relays públicos](https://www.iroh.computer/services/hosting) no requieren cuenta
 ni pago, pero tienen tráfico variable, no garantizan disponibilidad y se recomiendan
 para desarrollo y pruebas. No son un servicio ilimitado ni alojan los documentos.
-El equipo anfitrión y su conexión los aportan los participantes. Para una operación
-con infraestructura controlada sigue disponible [relay propio](../deploy/collaboration/README.md).
+El equipo anfitrión y su conexión los aportan los participantes. Para operar sin
+depender de servicios de terceros, en **Colaborar → Red e intermediario propio (sin terceros)**
+se puede activar **Solo infraestructura propia** —que desactiva los relays y el
+descubrimiento públicos de Iroh/n0— e indicar opcionalmente un [relay propio](../deploy/collaboration/README.md)
+o una dirección pública directa (`IP:puerto`). Si el anfitrión cambia de relay o de
+dirección, los participantes pueden pegar un enlace renovado en **Actualizar dirección del anfitrión**
+conservando su copia y permisos.
 
 ## Capacidad y permisos
 
@@ -160,9 +165,12 @@ remotos para que deshacer un paso propio conserve el trabajo de otra persona.
 Si dos personas cambian exactamente el mismo campo, Yjs elige un valor convergente;
 ambas ediciones quedan en el historial de recuperación. Los textos y el código
 Mermaid se combinan como campos completos, no como un editor de texto por carácter.
-La recuperación incluye el estado visible, las marcas de borrado, los valores
-históricos y el documento CRDT. No existe todavía una interfaz para elegir y
-restaurar automáticamente cada valor conflictivo del historial.
+Cuando ocurre una edición simultánea sobre el mismo campo, la interfaz muestra un
+aviso para comparar el valor actual en pantalla con la otra edición simultánea y
+elegir entre **Mantener actual** o **Restaurar este valor**, sincronizando la
+resolución con los demás participantes. La exportación de recuperación también
+incluye el estado visible, las marcas de borrado, los valores históricos y el
+documento CRDT.
 
 **Descargar JSON** conserva los datos compartidos adicionales. El archivo de
 **Descargar recuperación** también abre como una copia independiente con la

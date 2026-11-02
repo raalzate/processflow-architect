@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Users, Copy, RefreshCw, Download, Link2 } from "lucide-react";
 import { useCollaboration } from "@/context/CollaborationContext";
 import { useGraphContext } from "@/context/GraphContext";
@@ -9,18 +9,49 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { FieldConflictsNotice } from "@/components/collaboration/FieldConflictsNotice";
 import { hostBridge } from "@/lib/host-bridge";
-import type { Role } from "@/lib/collaboration/types";
+import type { Role, RoomOptions } from "@/lib/collaboration/types";
+
+const parseLines = (text: string): string[] =>
+  text
+    .split(/\r?\n|,/)
+    .map(item => item.trim())
+    .filter(Boolean);
 
 export function CollaborationControl() {
   const collaboration = useCollaboration();
   const { currentFileId } = useGraphContext();
   const [invitation, setInvitation] = useState(""),
-    [generated, setGenerated] = useState("");
+    [generated, setGenerated] = useState(""),
+    [updatedLink, setUpdatedLink] = useState("");
   const [role, setRole] = useState<Role>("editor");
   const [notice, setNotice] = useState("");
+  const [selfHostedOnly, setSelfHostedOnly] = useState(false);
+  const [relayText, setRelayText] = useState("");
+  const [externalText, setExternalText] = useState("");
+
+  const status = collaboration?.status;
+  useEffect(() => {
+    if (!status?.owner) return;
+    setSelfHostedOnly(!!status.selfHostedOnly);
+    setRelayText((status.relayUrls ?? []).join("\n"));
+    setExternalText((status.externalAddresses ?? []).join("\n"));
+  }, [
+    status?.owner,
+    status?.projectId,
+    status?.selfHostedOnly,
+    status?.relayUrls,
+    status?.externalAddresses,
+  ]);
+
   if (!collaboration?.available) return null;
-  const { status, busy, error } = collaboration;
+  const { busy, error } = collaboration;
+  const buildNetworkOptions = (): RoomOptions => ({
+    selfHostedOnly,
+    relayUrls: parseLines(relayText),
+    externalAddresses: parseLines(externalText),
+  });
   const run = (operation: () => Promise<void>) => {
     setNotice("");
     void operation().catch(() => {
@@ -100,6 +131,11 @@ export function CollaborationControl() {
                     ? "Tienes acceso de lectura."
                     : "Puedes editar este proyecto."}
               </p>
+              <p className="text-xs text-muted-foreground">
+                {status.selfHostedOnly
+                  ? "Modo independiente: solo red local, ruta directa o tu propio relay (sin servidores de terceros)."
+                  : "Modo automático: red local, ruta directa y respaldo cifrado."}
+              </p>
               <p className="tabular-nums">
                 {status.peers > status.capacity.limit
                   ? `${status.peers} personas conectadas; nuevas entradas en pausa (cupo estimado: ${status.capacity.limit})`
@@ -112,7 +148,9 @@ export function CollaborationControl() {
                   : status.route === "direct"
                     ? "Conexión directa"
                     : status.route === "relay"
-                      ? "Conectado mediante respaldo automático cifrado"
+                      ? status.selfHostedOnly
+                        ? "Conectado mediante intermediario (relay) propio cifrado"
+                        : "Conectado mediante respaldo automático cifrado"
                       : status.owner
                         ? status.peers > 1
                           ? `${status.peers - 1} personas conectadas`
@@ -138,6 +176,13 @@ export function CollaborationControl() {
                 <p>{status.pendingEdges} conexiones esperan componentes pendientes.</p>
               ) : null}
             </div>
+            {!collaboration.workspace && status.role === "editor" && status.discardedEdits?.length ? (
+              <FieldConflictsNotice
+                edits={status.discardedEdits}
+                disabled={busy}
+                onResolve={(editId, keep) => run(() => collaboration.resolveFieldConflict(editId, keep))}
+              />
+            ) : null}
             {status.owner ? (
               <div className="space-y-2 border-t pt-3">
                 <Label htmlFor="collaboration-role">Permiso de la siguiente persona</Label>
@@ -183,16 +228,117 @@ export function CollaborationControl() {
                 </p>
               </div>
             ) : (
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={() => run(collaboration.retry)}
-                className="gap-2"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Reconectar ahora
-              </Button>
+              <div className="space-y-2">
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => run(collaboration.retry)}
+                  className="w-full gap-2"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Reconectar ahora
+                </Button>
+                <details className="border-t pt-3 text-sm">
+                  <summary className="cursor-pointer font-medium">Actualizar dirección del anfitrión</summary>
+                  <form
+                    className="space-y-2 pt-3"
+                    onSubmit={event => {
+                      event.preventDefault();
+                      run(async () => {
+                        await collaboration.refreshLink(updatedLink.trim());
+                        setUpdatedLink("");
+                        setNotice("Dirección del anfitrión actualizada.");
+                      });
+                    }}
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      Si el anfitrión cambió de relay propio o de dirección pública, pega aquí un enlace
+                      actualizado del mismo proyecto. Tu copia y tus permisos se conservan.
+                    </p>
+                    <Label htmlFor="collaboration-refresh-link">Nuevo enlace del anfitrión</Label>
+                    <Textarea
+                      id="collaboration-refresh-link"
+                      value={updatedLink}
+                      onChange={e => setUpdatedLink(e.target.value)}
+                      placeholder="processflow://…"
+                      className="min-h-16 text-xs"
+                      required
+                    />
+                    <Button
+                      type="submit"
+                      variant="outline"
+                      disabled={busy || !updatedLink.trim()}
+                      className="w-full"
+                    >
+                      Actualizar dirección
+                    </Button>
+                  </form>
+                </details>
+              </div>
             )}
+            {status.owner ? (
+              <details className="border-t pt-3 text-sm">
+                <summary className="cursor-pointer font-medium">
+                  Red e intermediario propio (sin terceros)
+                </summary>
+                <div className="space-y-3 pt-3">
+                  <label className="flex cursor-pointer items-start gap-2 text-xs">
+                    <input
+                      id="collaboration-self-hosted"
+                      type="checkbox"
+                      checked={selfHostedOnly}
+                      onChange={e => setSelfHostedOnly(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      Usar solo infraestructura propia (desactivar relays y descubrimiento públicos de
+                      Iroh/n0)
+                    </span>
+                  </label>
+                  <div className="space-y-1">
+                    <Label htmlFor="collaboration-relays" className="text-xs">
+                      Relay(s) propios opcionales (uno por línea)
+                    </Label>
+                    <Textarea
+                      id="collaboration-relays"
+                      value={relayText}
+                      onChange={e => setRelayText(e.target.value)}
+                      placeholder="http://mi-servidor:3340"
+                      className="min-h-16 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="collaboration-external-addrs" className="text-xs">
+                      Dirección pública directa opcional (IP:puerto)
+                    </Label>
+                    <Input
+                      id="collaboration-external-addrs"
+                      value={externalText}
+                      onChange={e => setExternalText(e.target.value)}
+                      placeholder="203.0.113.10:4433"
+                      className="text-xs"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    className="w-full"
+                    onClick={() =>
+                      run(async () => {
+                        await collaboration.configureNetwork(buildNetworkOptions());
+                        setGenerated("");
+                        setNotice(
+                          "Configuración de red guardada. Genera un nuevo enlace si cambiaste de relay.",
+                        );
+                      })
+                    }
+                  >
+                    Guardar red de la sala
+                  </Button>
+                </div>
+              </details>
+            ) : null}
             <Button
               variant="outline"
               disabled={busy}
@@ -236,8 +382,11 @@ export function CollaborationControl() {
                   {status.members.map(member => (
                     <div key={member.id} className="flex items-center justify-between gap-3">
                       <span>
-                        {collaboration.peers.find(p => p.id === member.id || p.id.startsWith(`${member.id}:`))
-                          ?.name ?? member.id.slice(0, 8)}{" "}
+                        {member.name ??
+                          collaboration.peers.find(
+                            p => p.id === member.id || p.id.startsWith(`${member.id}:`),
+                          )?.name ??
+                          member.id.slice(0, 8)}{" "}
                         · {member.revoked ? "Revocado" : member.role === "viewer" ? "Lectura" : "Edición"}
                       </span>
                       <Button
@@ -266,7 +415,7 @@ export function CollaborationControl() {
                 disabled={busy || !currentFileId}
                 onClick={() =>
                   run(async () => {
-                    await collaboration.create({});
+                    await collaboration.create(buildNetworkOptions());
                   })
                 }
               >
@@ -278,13 +427,53 @@ export function CollaborationControl() {
                 </p>
               ) : null}
               <p className="text-sm text-muted-foreground">
-                Comparte la invitación y listo. La conexión elige la red local, una ruta directa o un respaldo
-                cifrado gratuito automáticamente, sin configurar servidores ni puertos.
+                Comparte la invitación y listo. La conexión elige la red local, una ruta directa o un
+                intermediario cifrado automáticamente.
               </p>
-              <p className="text-xs text-muted-foreground">
-                El respaldo gratuito es compartido y tiene disponibilidad y tráfico variables. El cupo se
-                ajusta según el anfitrión y las conexiones observadas.
-              </p>
+              <details className="rounded-md border p-2.5 text-sm">
+                <summary className="cursor-pointer text-xs font-medium">
+                  Red e intermediario propio (opcional, sin terceros)
+                </summary>
+                <div className="space-y-2.5 pt-2.5">
+                  <label className="flex cursor-pointer items-start gap-2 text-xs">
+                    <input
+                      id="collaboration-create-self-hosted"
+                      type="checkbox"
+                      checked={selfHostedOnly}
+                      onChange={e => setSelfHostedOnly(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      Solo infraestructura propia (no usar servidores públicos de Iroh/n0; opera por LAN, IP
+                      directa o tu propio relay)
+                    </span>
+                  </label>
+                  <div className="space-y-1">
+                    <Label htmlFor="collaboration-create-relays" className="text-xs">
+                      Relay(s) propios opcionales (uno por línea)
+                    </Label>
+                    <Textarea
+                      id="collaboration-create-relays"
+                      value={relayText}
+                      onChange={e => setRelayText(e.target.value)}
+                      placeholder="http://mi-servidor:3340"
+                      className="min-h-16 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="collaboration-create-external" className="text-xs">
+                      Dirección pública directa opcional (IP:puerto)
+                    </Label>
+                    <Input
+                      id="collaboration-create-external"
+                      value={externalText}
+                      onChange={e => setExternalText(e.target.value)}
+                      placeholder="203.0.113.10:4433"
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+              </details>
             </div>
             <form
               className="space-y-2 border-t pt-3"

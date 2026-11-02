@@ -16,6 +16,7 @@ import type {
   MergePreview,
 } from "../../../src/lib/collaboration/history";
 import type { SharedProject } from "../../../src/lib/collaboration/types";
+import type { DiscardedFieldEdit } from "../../../src/lib/collaboration/field-conflicts";
 import { assertEncodedProject, assertJson } from "../../../src/lib/collaboration/validation";
 import { encodeProject } from "../../../src/lib/collaboration/graph-codec";
 import { writePrivateJson } from "./journal";
@@ -44,6 +45,7 @@ export interface WorkspaceView {
   actor: HistoryActor;
   pending: number;
   recoveries: BranchRecovery[];
+  discardedEdits: Record<string, DiscardedFieldEdit[]>;
 }
 export interface BranchRequest {
   revision: number;
@@ -172,6 +174,7 @@ export class BranchStore {
           actor,
           pending: this.pending.length,
           recoveries: this.recoveries,
+          discardedEdits: Object.fromEntries([...this.documents].map(([id, d]) => [id, d.discardedEdits()])),
         }
       : undefined;
   }
@@ -198,6 +201,19 @@ export class BranchStore {
     const doc = this.cloneDoc(id);
     try {
       doc.patch(before, after);
+      this.transaction(this.history, new Map([...this.documents, [id, doc]]), this.pending);
+    } catch (error) {
+      if (this.documents.get(id) !== doc) doc.destroy();
+      throw error;
+    }
+    this.changed();
+  }
+  resolveFieldConflict(id: string, editId: string, keep: "current" | "discarded", actor: HistoryActor) {
+    if (!this.history || !canEditBranch(this.history, id, actor, new Date().toISOString()))
+      throw new Error("No tienes permiso para editar esta rama.");
+    const doc = this.cloneDoc(id);
+    try {
+      doc.resolveFieldConflict(editId, keep);
       this.transaction(this.history, new Map([...this.documents, [id, doc]]), this.pending);
     } catch (error) {
       if (this.documents.get(id) !== doc) doc.destroy();

@@ -15,14 +15,29 @@ async function connectDevice(port: number) {
   throw new Error(`Electron no abrió el puerto de prueba ${port}`);
 }
 async function click(page: Page, text: string) {
-  await page.waitForFunction(
-    t =>
-      [...(document.querySelector('[role="dialog"]') ?? document).querySelectorAll("button")].some(
-        b => b.textContent?.trim() === t && !b.disabled,
-      ),
-    { timeout: 30_000 },
-    text,
-  );
+  try {
+    await page.waitForFunction(
+      t =>
+        [...(document.querySelector('[role="dialog"]') ?? document).querySelectorAll("button")].some(
+          b => b.textContent?.trim() === t && !b.disabled,
+        ),
+      { timeout: 30_000 },
+      text,
+    );
+  } catch (error) {
+    const state = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      const scope = dialog ?? document;
+      const buttons = [...scope.querySelectorAll("button")].map(b => ({
+        text: b.textContent?.trim(),
+        disabled: b.disabled,
+      }));
+      return { hasDialog: !!dialog, dialogHeading: dialog?.querySelector("h2,h3")?.textContent, buttons };
+    });
+    throw new Error(`No se encontró botón activo "${text}". Estado DOM: ${JSON.stringify(state)}`, {
+      cause: error,
+    });
+  }
   await page.evaluate(
     t =>
       (
@@ -32,6 +47,43 @@ async function click(page: Page, text: string) {
       ).click(),
     text,
   );
+}
+async function closeDialogs(page: Page) {
+  for (let i = 0; i < 10; i++) {
+    const action = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]') as HTMLElement | null;
+      if (!dialog) return "none";
+      const expandedPopover = document.querySelector(
+        'button[aria-label="Colaboración del proyecto"][aria-expanded="true"]',
+      ) as HTMLButtonElement | null;
+      if (expandedPopover && dialog.textContent?.includes("Trabajar en el mismo proyecto")) {
+        expandedPopover.click();
+        return "clicked-close";
+      }
+      const closeBtn = [...dialog.querySelectorAll("button")].find(
+        b =>
+          !b.disabled &&
+          (b.textContent?.trim() === "Cerrar" ||
+            b.getAttribute("aria-label") === "Cerrar" ||
+            b.getAttribute("aria-label") === "Close" ||
+            b.querySelector(".sr-only")?.textContent?.trim() === "Close"),
+      ) as HTMLButtonElement | undefined;
+      if (closeBtn) {
+        closeBtn.click();
+        return "clicked-close";
+      }
+      const focusable =
+        (dialog.querySelector(
+          "button:not([disabled]), input, select, textarea, [tabindex]",
+        ) as HTMLElement | null) ?? dialog;
+      focusable.focus();
+      return "focused-dialog";
+    });
+    if (action === "none") return;
+    if (action === "focused-dialog") await page.keyboard.press("Escape");
+    await wait(150);
+  }
+  await page.waitForFunction(() => !document.querySelector('[role="dialog"]'), { timeout: 10_000 });
 }
 async function fill(page: Page, selector: string, value: string) {
   await page.waitForSelector(selector);
@@ -66,6 +118,7 @@ async function rename(page: Page, before: string, after: string) {
     e.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true })),
   );
   await text(page, after);
+  await closeDialogs(page);
   await wait(600);
 }
 async function nativeState(page: Page) {
@@ -157,13 +210,13 @@ async function run() {
     await click(a, "Generar invitación");
     await a.waitForSelector("#collaboration-generated");
     const invitation = await a.$eval("#collaboration-generated", e => (e as HTMLTextAreaElement).value);
-    await a.keyboard.press("Escape");
+    await closeDialogs(a);
     await b.click('button[aria-label="Colaboración del proyecto"]');
     await fill(b, "#collaboration-name", "Luis");
     await fill(b, "#collaboration-invitation", invitation);
     await click(b, "Vincular una copia y unirme");
-    await b.keyboard.press("Escape");
     for (const p of [a, b]) await p.waitForSelector("#current-branch");
+    await closeDialogs(b);
     passed("segundo participante activa las ramas en ambas ventanas");
     await click(b, "Guardar versión");
     await fill(b, "#version-message", "Consultas revisadas");
@@ -171,8 +224,11 @@ async function run() {
     await text(b, "Operación guardada");
     await fill(b, "#new-branch", "Ensayo Backend");
     await click(b, "Crear rama");
-    await wait(700);
-    await b.keyboard.press("Escape");
+    await b.waitForFunction(
+      () => (document.querySelector("#current-branch") as HTMLSelectElement | null)?.value !== "shared",
+      { timeout: 15_000 },
+    );
+    await closeDialogs(b);
     const branchId = await b.$eval("#current-branch", e => (e as HTMLSelectElement).value);
     assert.notEqual(branchId, "shared");
     await rename(b, "Consulta", "Consulta en borrador");
@@ -198,7 +254,7 @@ async function run() {
     await fill(second, "#version-message", "Actualizar paciente en Principal");
     await click(second, "Guardar versión");
     await text(second, "Operación guardada");
-    await second.keyboard.press("Escape");
+    await closeDialogs(second);
     assert.equal(await a.$eval("#current-branch", e => (e as HTMLSelectElement).value), "shared");
     await text(a, "Paciente");
     assert.equal(await a.evaluate(() => document.body.innerText.includes("Paciente actualizado")), false);
@@ -208,7 +264,8 @@ async function run() {
     await click(b, "Traer cambios de Principal");
     await text(b, "Revisar incorporación");
     await click(b, "Confirmar incorporación");
-    await b.keyboard.press("Escape");
+    await text(b, "Operación guardada");
+    await closeDialogs(b);
     await text(b, "Paciente actualizado");
     await text(b, "Consulta en borrador");
     passed("pull por pantalla trae Principal y conserva el borrador sin commit");
@@ -221,7 +278,7 @@ async function run() {
     await text(b, "Viendo versión anterior");
     await b.screenshot({ path: resolve(output, "arbol-versiones.png") });
     const before = await nativeState(b);
-    await b.keyboard.press("Escape");
+    await closeDialogs(b);
     await text(b, "Consulta");
     assert.equal(await b.evaluate(() => document.body.innerText.includes("Consulta en borrador")), false);
     await click(b, "Volver al trabajo actual");
@@ -236,8 +293,9 @@ async function run() {
     assert.equal(persisted.content.agregados[0].nodos[0].nombre, "Consulta");
     await click(b, "Guardar versión");
     await click(b, "Historial y árbol");
+    await wait(300);
     await b.screenshot({ path: resolve(output, "historial-ramas.png") });
-    await b.keyboard.press("Escape");
+    await closeDialogs(b);
     await b.reload({ waitUntil: "domcontentloaded" });
     await b.waitForSelector("#current-branch");
     await b.select("#current-branch", branchId);
@@ -253,9 +311,13 @@ async function run() {
     await b.$eval('button[aria-label="Ver Solicitud final"]', e => (e as HTMLButtonElement).click());
     await text(b, "Viendo versión anterior");
     await click(b, "Solicitar incorporación a Principal");
+    await text(b, "Pendiente de revisión");
     const proposalState = await nativeState(b),
       proposal = proposalState.workspace.history.proposals.find((p: any) => p.message === "Solicitud final");
     assert.ok(proposal);
+    await text(a, "Tienes una solicitud de fusión por revisar");
+    await text(a, "Revisar y fusionar");
+    passed("el anfitrión recibe aviso visible de pull request con botón Revisar y fusionar");
     await a.select("#current-branch", "shared");
     await click(a, "Permisos");
     await a.select("#permission-person", proposalState.workspace.actor.id);
@@ -268,11 +330,14 @@ async function run() {
     await a.select("#permission-proposal", proposal.id);
     await click(a, "Guardar permisos");
     await text(a, "Operación guardada");
-    await a.keyboard.press("Escape");
-    await wait(1200);
+    await closeDialogs(a);
+    await closeDialogs(b);
+    await text(b, "Tienes una solicitud de fusión por revisar");
+    await click(b, "Revisar y fusionar");
     await click(b, "Revisar cambios");
     await click(b, "Aprobar y fusionar");
-    await b.keyboard.press("Escape");
+    await text(b, "Fusionada");
+    await closeDialogs(b);
     await second.select("#current-branch", "shared");
     await second.select("#current-branch", "main");
     await text(second, "Consulta en borrador");
@@ -296,7 +361,8 @@ async function run() {
     await text(second, "Revisar restauración de Principal");
     await second.screenshot({ path: resolve(output, "comparacion-restauracion.png") });
     await click(second, "Confirmar restauración");
-    await second.keyboard.press("Escape");
+    await text(second, "Operación guardada");
+    await closeDialogs(second);
     await text(second, "Consulta");
     await text(second, "Paciente");
     const restored = await nativeState(second);
@@ -304,8 +370,9 @@ async function run() {
     assert.equal(restored.workspace.history.commits.at(-1).kind, "restore");
     passed("Principal se restaura con comparación visual y conserva la fusión anterior");
     await click(second, "Historial");
+    await wait(300);
     await second.screenshot({ path: resolve(output, "arbol-fusiones-restauraciones.png") });
-    await second.keyboard.press("Escape");
+    await closeDialogs(second);
     await second.screenshot({ path: resolve(output, "barra-colaboracion.png") });
     writeFileSync(
       resolve(output, "resultado.json"),

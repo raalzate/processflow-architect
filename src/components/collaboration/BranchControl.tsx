@@ -7,6 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { BranchPermissionsPanel } from "@/components/collaboration/BranchPermissionsPanel";
+import { BranchReviewPanel } from "@/components/collaboration/BranchReviewPanel";
+import { CommitTree } from "@/components/collaboration/CommitTree";
+import { FieldConflictsNotice } from "@/components/collaboration/FieldConflictsNotice";
+import { ScopeSelection } from "@/components/collaboration/ScopeSelection";
+import {
+  downloadBoardJson,
+  formatBranchDate,
+  selectStyle,
+  type ReviewState,
+} from "@/components/collaboration/branch-utils";
 import {
   canEditBranch,
   canManage,
@@ -15,171 +26,10 @@ import {
   projectDependencies,
   versionAt,
   type Choices,
-  type DiagramCommit,
   type HistoryAction,
-  type MergePreview,
 } from "@/lib/collaboration/history";
-import type { SharedProject } from "@/lib/collaboration/types";
-import type { GraphData } from "@/lib/types";
-import { encodeGraph } from "@/lib/collaboration/graph-codec";
-import { MermaidDiagram } from "@/components/canvas/MermaidDiagram";
 import { packBoard } from "@/lib/board-file";
-
-const selectStyle =
-  "h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-const date = (at: string) => new Date(at).toLocaleString("es", { dateStyle: "short", timeStyle: "short" });
-const download = (value: unknown, name: string) => {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-};
-type Review = {
-  mode: "pull" | "restore" | "compare";
-  branchId: string;
-  commitId: string;
-  scopes: string[];
-  head: string;
-  vector: string;
-  proposalId?: string;
-  choices: Choices;
-  preview: MergePreview;
-};
-
-function ScopeSelection({
-  options,
-  selected,
-  onChange,
-}: {
-  options: { id: string; name: string }[];
-  selected: string[];
-  onChange: (selected: string[]) => void;
-}) {
-  return (
-    <fieldset className="space-y-2 rounded-md border p-3">
-      <legend className="px-1 text-sm font-medium">Vistas que se incluirán</legend>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => onChange(selected.length === options.length ? [] : options.map(o => o.id))}
-      >
-        {selected.length === options.length ? "Desmarcar todas" : "Seleccionar todas"}
-      </Button>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {options.map(o => (
-          <label key={o.id} className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={selected.includes(o.id)}
-              onChange={e =>
-                onChange(e.target.checked ? [...selected, o.id] : selected.filter(id => id !== o.id))
-              }
-            />
-            {o.name}
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
-
-function CommitTree({
-  commits,
-  branches,
-  selected,
-  choose,
-}: {
-  commits: DiagramCommit[];
-  branches: { id: string; name: string }[];
-  selected?: string;
-  choose: (id: string) => void;
-}) {
-  const lane = new Map(branches.map((b, i) => [b.id, i]));
-  const points = new Map(
-    commits.map((c, i) => [c.id, { x: 30 + (lane.get(c.branchId) ?? 0) * 220, y: 48 + i * 54 }]),
-  );
-  return (
-    <div
-      className="max-h-80 overflow-auto rounded-md border bg-muted/20"
-      aria-label="Árbol de ramas y versiones"
-    >
-      <svg
-        role="group"
-        aria-label="Selecciona una versión del árbol"
-        width={Math.max(600, branches.length * 220 + 240)}
-        height={Math.max(100, commits.length * 54 + 40)}
-      >
-        {branches.map((branch, index) => (
-          <text
-            key={branch.id}
-            x={18 + index * 220}
-            y={19}
-            fill="currentColor"
-            fontSize={12}
-            fontWeight={600}
-          >
-            {branch.name.slice(0, 28)}
-          </text>
-        ))}
-        {commits.flatMap(c =>
-          [...c.parents, ...(c.mergeParent ? [c.mergeParent] : [])].map(parent => {
-            const a = points.get(parent),
-              b = points.get(c.id);
-            return a && b ? (
-              <path
-                key={`${c.id}-${parent}`}
-                d={`M${a.x} ${a.y} C${a.x} ${b.y}, ${b.x} ${a.y}, ${b.x} ${b.y}`}
-                stroke="currentColor"
-                className="text-muted-foreground"
-                strokeWidth={2}
-                fill="none"
-                strokeDasharray={parent === c.mergeParent ? "5 4" : undefined}
-              />
-            ) : null;
-          }),
-        )}
-        {commits.map(c => {
-          const p = points.get(c.id)!;
-          return (
-            <g
-              key={c.id}
-              role="button"
-              tabIndex={0}
-              aria-label={`Ver versión: ${c.message}, ${date(c.at)}, ${c.author.name}`}
-              aria-pressed={selected === c.id}
-              className="cursor-pointer text-foreground outline-none focus-visible:text-primary"
-              onClick={() => choose(c.id)}
-              onKeyDown={e => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  choose(c.id);
-                }
-              }}
-            >
-              <title>{`${branches.find(b => b.id === c.branchId)?.name ?? "Rama"}: ${c.message} · ${c.author.name} · ${date(c.at)}`}</title>
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r={selected === c.id ? 9 : 6}
-                fill="currentColor"
-                className={selected === c.id ? "text-primary" : "text-muted-foreground"}
-              />
-              <text x={p.x + 15} y={p.y - 3} fill="currentColor" fontSize={12}>
-                {c.message.slice(0, 34)}
-              </text>
-              <text x={p.x + 15} y={p.y + 14} fill="currentColor" fontSize={11}>
-                {c.author.name} · {date(c.at)}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
+import { deRegistro } from "@/lib/registro";
 
 export function BranchControl() {
   const c = useCollaboration();
@@ -188,21 +38,17 @@ export function BranchControl() {
   const [message, setMessage] = useState(""),
     [branchName, setBranchName] = useState("");
   const [selection, setSelection] = useState<{ branch: string; scopes: string[] }>();
+  const [proposeSelection, setProposeSelection] = useState<{ commitId: string; scopes: string[] }>();
   const [selectedCommit, setSelectedCommit] = useState<string>(),
-    [review, setReview] = useState<Review>();
+    [review, setReview] = useState<ReviewState>();
   const [notice, setNotice] = useState(""),
     [localError, setLocalError] = useState("");
-  const [chosenMember, setChosenMember] = useState(""),
-    [permissionUntil, setPermissionUntil] = useState(""),
-    [proposalLimit, setProposalLimit] = useState("");
-  const [mergePermission, setMergePermission] = useState(false),
-    [editPermission, setEditPermission] = useState(false),
-    [restorePermission, setRestorePermission] = useState(false);
+
   if (!c?.workspace || !c.status) return null;
   const w = c.workspace,
     s = w.history,
     branch = s.branches.find(b => b.id === c.branchId) ?? s.branches[1];
-  const draft = w.snapshots[branch.id],
+  const draft = deRegistro(w.snapshots, branch.id) ?? w.snapshots.shared,
     head = s.commits.find(v => v.id === branch.head)!;
   const chosen = s.commits.find(v => v.id === selectedCommit) ?? head;
   const options = scopeOptions(head.snapshot, draft, chosen.snapshot);
@@ -210,11 +56,24 @@ export function BranchControl() {
     selection?.branch === branch.id
       ? selection.scopes.filter(id => options.some(o => o.id === id))
       : options.map(o => o.id);
-  const setScopes = (scopes: string[]) => setSelection({ branch: branch.id, scopes });
+  const setScopes = (nextScopes: string[]) => setSelection({ branch: branch.id, scopes: nextScopes });
+
+  const proposeOptions = scopeOptions(head.snapshot, w.snapshots.main);
+  const defaultProposeScopes = head.scopes.filter(id => proposeOptions.some(o => o.id === id));
+  const proposeScopes =
+    proposeSelection?.commitId === head.id
+      ? proposeSelection.scopes.filter(id => proposeOptions.some(o => o.id === id))
+      : defaultProposeScopes.length
+        ? defaultProposeScopes
+        : proposeOptions.map(o => o.id);
+
   const at = new Date().toISOString(),
     editable = canEditBranch(s, branch.id, w.actor, at),
     owner = w.actor.owner;
   const pendingProposals = s.proposals.filter(p => p.status === "open" && p.targetId === "main");
+  const reviewableProposals = pendingProposals.filter(p => canManage(s, w.actor, "mergeMain", at, p.id));
+  const branchFieldConflicts = w.discardedEdits ? (deRegistro(w.discardedEdits, branch.id) ?? []) : [];
+
   const run = async (operation: () => Promise<void>) => {
     setLocalError("");
     setNotice("");
@@ -233,44 +92,44 @@ export function BranchControl() {
     await c.previewVersion(id);
   };
   const startReview = async (
-    branchId: string,
+    targetBranchId: string,
     commitId: string,
     selected: string[],
     proposalId?: string,
     choices: Choices = {},
-    mode: Review["mode"] = "pull",
+    mode: ReviewState["mode"] = "pull",
   ) => {
     if (mode !== "pull") {
-      const commit = s.commits.find(c => c.id === commitId)!;
-      const project = selectScopes(w.snapshots[branchId], commit.snapshot, selected);
+      const commit = s.commits.find(item => item.id === commitId)!;
+      const targetDraft = deRegistro(w.snapshots, targetBranchId)!;
+      const project = selectScopes(targetDraft, commit.snapshot, selected);
       setReview({
         mode,
-        branchId,
+        branchId: targetBranchId,
         commitId,
         scopes: selected,
         choices,
-        head: s.branches.find(b => b.id === branchId)!.head,
-        vector: w.vectors[branchId],
+        head: s.branches.find(b => b.id === targetBranchId)!.head,
+        vector: deRegistro(w.vectors, targetBranchId) ?? "",
         preview: { project, conflicts: [], dependencies: projectDependencies(project) },
       });
       return;
     }
-    const result = await c.previewMerge(branchId, commitId, selected, choices);
+    const result = await c.previewMerge(targetBranchId, commitId, selected, choices);
     if (result.preview && result.workspace)
       setReview({
         mode,
-        branchId,
+        branchId: targetBranchId,
         commitId,
         scopes: selected,
         proposalId,
         choices,
         preview: result.preview,
-        head: result.workspace.history.branches.find(b => b.id === branchId)!.head,
-        vector: result.workspace.vectors[branchId],
+        head: result.workspace.history.branches.find(b => b.id === targetBranchId)!.head,
+        vector: deRegistro(result.workspace.vectors, targetBranchId) ?? "",
       });
   };
-  const showValue = (v: unknown) =>
-    v === undefined ? "Eliminado / sin valor" : typeof v === "string" ? v : JSON.stringify(v);
+
   return (
     <>
       <div className="space-y-3 rounded-lg border bg-muted/20 p-3" data-branch-controls="">
@@ -292,6 +151,7 @@ export function BranchControl() {
                 onChange={e => {
                   setSelectedCommit(undefined);
                   setSelection(undefined);
+                  setProposeSelection(undefined);
                   void run(() => c.selectBranch(e.target.value));
                 }}
               >
@@ -381,7 +241,7 @@ export function BranchControl() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              variant={pendingProposals.length && owner ? "secondary" : "ghost"}
+              variant={reviewableProposals.length ? "secondary" : "ghost"}
               className="gap-2"
               onClick={() => {
                 setOpen(true);
@@ -390,9 +250,7 @@ export function BranchControl() {
             >
               <GitPullRequest className="h-4 w-4" aria-hidden="true" />
               Solicitudes
-              {s.proposals.some(p => p.status === "open")
-                ? ` (${s.proposals.filter(p => p.status === "open").length})`
-                : ""}
+              {pendingProposals.length ? ` (${pendingProposals.length})` : ""}
             </Button>
             {owner ? (
               <Button
@@ -423,7 +281,7 @@ export function BranchControl() {
               : "Tu trabajo se guarda en esta rama. Traer cambios conserva lo que estás haciendo."}
           </p>
         )}
-        {owner && pendingProposals.length ? (
+        {reviewableProposals.length ? (
           <div
             className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/10 p-3"
             role="status"
@@ -431,13 +289,13 @@ export function BranchControl() {
           >
             <div>
               <p className="text-sm font-semibold">
-                {pendingProposals.length === 1
+                {reviewableProposals.length === 1
                   ? "Tienes una solicitud de fusión por revisar"
-                  : `Tienes ${pendingProposals.length} solicitudes de fusión por revisar`}
+                  : `Tienes ${reviewableProposals.length} solicitudes de fusión por revisar`}
               </p>
               <p className="text-xs text-muted-foreground">
-                {pendingProposals[0].author.name} envió «{pendingProposals[0].message}» desde{" "}
-                {s.branches.find(b => b.id === pendingProposals[0].branchId)?.name} hacia Principal.
+                {reviewableProposals[0].author.name} envió «{reviewableProposals[0].message}» desde{" "}
+                {s.branches.find(b => b.id === reviewableProposals[0].branchId)?.name} hacia Principal.
               </p>
             </div>
             <Button
@@ -449,6 +307,28 @@ export function BranchControl() {
             >
               <GitPullRequest className="h-4 w-4" aria-hidden="true" />
               Revisar y fusionar
+            </Button>
+          </div>
+        ) : null}
+        {editable && !c.previewCommitId && branchFieldConflicts.length ? (
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/40 bg-muted/40 p-3"
+            role="status"
+            aria-live="polite"
+          >
+            <p className="text-sm">
+              {branchFieldConflicts.length === 1
+                ? "Dos personas editaron el mismo campo en vivo en esta rama."
+                : `Hay ${branchFieldConflicts.length} campos con ediciones simultáneas en esta rama.`}
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setOpen(true);
+                setTab("work");
+              }}
+            >
+              Elegir valor
             </Button>
           </div>
         ) : null}
@@ -530,6 +410,13 @@ export function BranchControl() {
 
             {tab === "work" ? (
               <>
+                {editable && !c.previewCommitId && branchFieldConflicts.length ? (
+                  <FieldConflictsNotice
+                    edits={branchFieldConflicts}
+                    disabled={c.busy}
+                    onResolve={(editId, keep) => void run(() => c.resolveFieldConflict(editId, keep))}
+                  />
+                ) : null}
                 <div>
                   <h3 className="font-semibold">1. Guarda una versión (commit)</h3>
                   <p className="text-sm text-muted-foreground">
@@ -551,6 +438,7 @@ export function BranchControl() {
                         message,
                       });
                       setMessage("");
+                      setProposeSelection(undefined);
                     });
                   }}
                 >
@@ -585,15 +473,25 @@ export function BranchControl() {
                       independiente hasta que aprueben la fusión.
                     </p>
                     <p className="text-sm">
-                      Versión que enviarás: <strong>{head.message}</strong> · {date(head.at)}
+                      Versión que enviarás: <strong>{head.message}</strong> · {formatBranchDate(head.at)}
                     </p>
+                    <ScopeSelection
+                      legend="Vistas de esta versión que propones fusionar"
+                      options={proposeOptions}
+                      selected={proposeScopes}
+                      onChange={next => setProposeSelection({ commitId: head.id, scopes: next })}
+                    />
                     <p className="text-xs text-muted-foreground">
-                      Se enviarán únicamente las vistas marcadas arriba de esta versión guardada. Tus cambios
-                      posteriores sin versión quedan fuera.
+                      Por defecto se marcan las vistas guardadas en «{head.message}». Tus cambios posteriores
+                      sin versión quedan fuera.
                     </p>
                     <Button
                       disabled={
-                        c.busy || !editable || head.kind === "initial" || !scopes.length || w.pending > 0
+                        c.busy ||
+                        !editable ||
+                        head.kind === "initial" ||
+                        !proposeScopes.length ||
+                        w.pending > 0
                       }
                       className="gap-2"
                       onClick={() =>
@@ -604,7 +502,7 @@ export function BranchControl() {
                             branchId: branch.id,
                             targetId: "main",
                             commitId: head.id,
-                            scopes,
+                            scopes: proposeScopes,
                             message: head.message,
                           });
                           setTab("requests");
@@ -736,13 +634,16 @@ export function BranchControl() {
                             <br />
                             {v.author.name}
                           </td>
-                          <td className="p-2">{date(v.at)}</td>
+                          <td className="p-2">{formatBranchDate(v.at)}</td>
                           <td className="p-2">
                             <Button
                               size="sm"
                               variant="ghost"
                               aria-label={`Ver ${v.message}`}
-                              onClick={() => void run(() => chooseVersion(v.id))}
+                              onClick={() => {
+                                setSelection({ branch: branch.id, scopes: v.scopes });
+                                void run(() => chooseVersion(v.id));
+                              }}
                             >
                               Ver
                             </Button>
@@ -780,7 +681,7 @@ export function BranchControl() {
                     variant="outline"
                     onClick={() => {
                       setTab("work");
-                      setBranchName(`Desde ${date(chosen.at)}`);
+                      setBranchName(`Desde ${formatBranchDate(chosen.at)}`);
                     }}
                   >
                     Crear rama desde esta versión
@@ -888,325 +789,35 @@ export function BranchControl() {
             ) : null}
 
             {review ? (
-              <section
-                className="space-y-3 rounded-md border-2 border-primary p-4"
-                aria-label="Revisión antes de incorporar"
-              >
-                <h3 className="font-semibold">
-                  {review.mode === "compare"
-                    ? "Comparar versión con"
-                    : review.mode === "restore"
-                      ? "Revisar restauración de"
-                      : "Revisar incorporación a"}{" "}
-                  {s.branches.find(b => b.id === review.branchId)?.name}
-                </h3>
-                <p className="text-sm">
-                  Se conservará tu trabajo pendiente y se guardará una versión de recuperación antes de
-                  aplicar el resultado.
-                </p>
-                <ScopeSelection
-                  options={scopeOptions(
-                    w.snapshots[review.branchId],
-                    s.commits.find(v => v.id === review.commitId)!.snapshot,
-                  ).filter(
-                    o =>
-                      !review.proposalId ||
-                      s.proposals.find(p => p.id === review.proposalId)!.scopes.includes(o.id),
-                  )}
-                  selected={review.scopes}
-                  onChange={selected => {
-                    if (selected.length)
-                      void run(() =>
-                        startReview(
-                          review.branchId,
-                          review.commitId,
-                          selected,
-                          review.proposalId,
-                          review.choices,
-                          review.mode,
-                        ),
-                      );
-                  }}
-                />
-                <ChangesBeforeAfter before={w.snapshots[review.branchId]} after={review.preview.project} />
-                {review.preview.conflicts.map(conflict => (
-                  <fieldset key={conflict.id} className="space-y-2 rounded-md border p-3">
-                    <legend className="text-sm font-medium">Conflicto: {conflict.path}</legend>
-                    <p className="break-all text-xs text-muted-foreground">
-                      Antes: {showValue(conflict.base)}
-                    </p>
-                    <Button
-                      variant="outline"
-                      className="h-auto max-w-full whitespace-normal text-left"
-                      onClick={() =>
-                        void run(() =>
-                          startReview(review.branchId, review.commitId, review.scopes, review.proposalId, {
-                            ...review.choices,
-                            [conflict.id]: "ours",
-                          }),
-                        )
-                      }
-                    >
-                      Conservar lo actual: {showValue(conflict.ours)?.slice(0, 180)}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="h-auto max-w-full whitespace-normal text-left"
-                      onClick={() =>
-                        void run(() =>
-                          startReview(review.branchId, review.commitId, review.scopes, review.proposalId, {
-                            ...review.choices,
-                            [conflict.id]: "theirs",
-                          }),
-                        )
-                      }
-                    >
-                      Usar lo recibido: {showValue(conflict.theirs)?.slice(0, 180)}
-                    </Button>
-                  </fieldset>
-                ))}
-                {review.preview.dependencies.map(text => (
-                  <p key={text} role="alert" className="text-sm text-destructive">
-                    {text}
-                  </p>
-                ))}
-                <div className="flex flex-wrap gap-2">
-                  {review.mode !== "compare" ? (
-                    <Button
-                      disabled={
-                        c.busy ||
-                        !!review.preview.conflicts.length ||
-                        !!review.preview.dependencies.length ||
-                        (review.proposalId
-                          ? !canManage(s, w.actor, "mergeMain", at, review.proposalId) || !c.status.connected
-                          : review.mode === "restore" && review.branchId === "main"
-                            ? !canManage(s, w.actor, "restoreMain", at)
-                            : !canEditBranch(s, review.branchId, w.actor, at))
-                      }
-                      onClick={() =>
-                        void run(async () => {
-                          const action: HistoryAction = review.proposalId
-                            ? {
-                                type: "merge",
-                                id: crypto.randomUUID(),
-                                proposalId: review.proposalId,
-                                expectedHead: review.head,
-                                choices: review.choices,
-                                scopes: review.scopes,
-                              }
-                            : review.mode === "restore"
-                              ? {
-                                  type: "restore",
-                                  id: crypto.randomUUID(),
-                                  branchId: review.branchId,
-                                  commitId: review.commitId,
-                                  scopes: review.scopes,
-                                }
-                              : {
-                                  type: "pull",
-                                  id: crypto.randomUUID(),
-                                  branchId: review.branchId,
-                                  commitId: review.commitId,
-                                  expectedHead: review.head,
-                                  choices: review.choices,
-                                  scopes: review.scopes,
-                                };
-                          await perform(action, review.vector);
-                          setReview(undefined);
-                          await c.previewVersion();
-                        })
-                      }
-                    >
-                      {review.proposalId
-                        ? "Aprobar y fusionar"
-                        : review.mode === "restore"
-                          ? "Confirmar restauración"
-                          : "Confirmar incorporación"}
-                    </Button>
-                  ) : null}
-                  <Button variant="ghost" onClick={() => setReview(undefined)}>
-                    Cancelar sin cambios
-                  </Button>
-                </div>
-              </section>
+              <BranchReviewPanel
+                review={review}
+                workspace={w}
+                busy={c.busy}
+                connected={!!c.status.connected}
+                at={at}
+                onRestartReview={(targetBranchId, commitId, selected, proposalId, choices, mode) =>
+                  void run(() => startReview(targetBranchId, commitId, selected, proposalId, choices, mode))
+                }
+                onConfirm={(action, vector) =>
+                  void run(async () => {
+                    await perform(action, vector);
+                    setReview(undefined);
+                    await c.previewVersion();
+                  })
+                }
+                onCancel={() => setReview(undefined)}
+              />
             ) : null}
 
             {tab === "permissions" && owner ? (
-              <form
-                className="space-y-3"
-                onSubmit={e => {
-                  e.preventDefault();
-                  void run(() =>
-                    perform({
-                      type: "permission",
-                      id: crypto.randomUUID(),
-                      memberId: chosenMember,
-                      permission: {
-                        mergeMain: mergePermission,
-                        editMain: editPermission,
-                        restoreMain: restorePermission,
-                        ...(permissionUntil ? { until: new Date(permissionUntil).toISOString() } : {}),
-                        ...(proposalLimit ? { proposalId: proposalLimit } : {}),
-                      },
-                    }),
-                  );
-                }}
-              >
-                <p className="flex items-center gap-2 text-sm">
-                  <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                  Solo el anfitrión concede o revoca estos permisos.
-                </p>
-                <Label htmlFor="permission-person">Persona</Label>
-                <select
-                  id="permission-person"
-                  className={`${selectStyle} w-full`}
-                  value={chosenMember}
-                  onChange={e => {
-                    const id = e.target.value,
-                      p = s.permissions[id];
-                    setChosenMember(id);
-                    setMergePermission(!!p?.mergeMain);
-                    setEditPermission(!!p?.editMain);
-                    setRestorePermission(!!p?.restoreMain);
-                    setPermissionUntil(p?.until ? p.until.slice(0, 16) : "");
-                    setProposalLimit(p?.proposalId ?? "");
-                  }}
-                  required
-                >
-                  <option value="">Selecciona una persona</option>
-                  {c.status.members
-                    ?.filter(m => !m.revoked)
-                    .map((m, i) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name ?? c.peers.find(p => p.id.startsWith(m.id))?.name ?? `Participante ${i + 1}`}{" "}
-                        ({m.role === "viewer" ? "Lectura" : "Edición"})
-                      </option>
-                    ))}
-                </select>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={mergePermission}
-                    onChange={e => setMergePermission(e.target.checked)}
-                  />
-                  Aprobar fusiones hacia Principal
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={editPermission}
-                    onChange={e => setEditPermission(e.target.checked)}
-                  />
-                  Editar Principal directamente
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={restorePermission}
-                    onChange={e => setRestorePermission(e.target.checked)}
-                  />
-                  Restaurar versiones de Principal
-                </label>
-                <Label htmlFor="permission-until">Vencimiento opcional</Label>
-                <Input
-                  id="permission-until"
-                  type="datetime-local"
-                  value={permissionUntil}
-                  onChange={e => setPermissionUntil(e.target.value)}
-                />
-                <Label htmlFor="permission-proposal">Limitar a una solicitud de fusión</Label>
-                <select
-                  id="permission-proposal"
-                  className={`${selectStyle} w-full`}
-                  value={proposalLimit}
-                  onChange={e => setProposalLimit(e.target.value)}
-                >
-                  <option value="">Sin limitar a una solicitud</option>
-                  {s.proposals
-                    .filter(p => p.status === "open")
-                    .map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.message}
-                      </option>
-                    ))}
-                </select>
-                <p className="text-xs text-muted-foreground">
-                  Para revocar, desmarca los permisos y guarda. Fusionar no concede edición ni restauración.
-                  Una limitación por solicitud se aplica exclusivamente a la aprobación de fusiones.
-                </p>
-                <div className="flex gap-2">
-                  <Button disabled={c.busy || !chosenMember}>Guardar permisos</Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={c.busy || !chosenMember}
-                    onClick={() =>
-                      void run(() =>
-                        perform({
-                          type: "permission",
-                          id: crypto.randomUUID(),
-                          memberId: chosenMember,
-                          permission: {},
-                        }),
-                      )
-                    }
-                  >
-                    Revocar permisos especiales
-                  </Button>
-                </div>
-                <fieldset className="space-y-2 border-t pt-3">
-                  <legend className="font-medium">Quién puede editar {branch.name}</legend>
-                  <p className="text-xs text-muted-foreground">
-                    Principal usa los permisos especiales de arriba. Las otras ramas pueden ser compartidas o
-                    tener personas asignadas.
-                  </p>
-                  {branch.id !== "main" ? (
-                    <>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={c.busy}
-                        onClick={() =>
-                          void run(() =>
-                            perform({ type: "editors", id: crypto.randomUUID(), branchId: branch.id }),
-                          )
-                        }
-                      >
-                        Permitir a todos los editores
-                      </Button>
-                      {c.status.members
-                        ?.filter(m => m.role === "editor" && !m.revoked)
-                        .map((m, i) => (
-                          <label key={m.id} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={!branch.editors || branch.editors.includes(m.id)}
-                              onChange={e => {
-                                const all = c
-                                    .status!.members!.filter(m => m.role === "editor" && !m.revoked)
-                                    .map(m => m.id),
-                                  current = branch.editors ?? all;
-                                void run(() =>
-                                  perform({
-                                    type: "editors",
-                                    id: crypto.randomUUID(),
-                                    branchId: branch.id,
-                                    editors: e.target.checked
-                                      ? [...current, m.id]
-                                      : current.filter(id => id !== m.id),
-                                  }),
-                                );
-                              }}
-                            />
-                            {m.name ??
-                              c.peers.find(p => p.id.startsWith(m.id))?.name ??
-                              `Participante ${i + 1}`}
-                          </label>
-                        ))}
-                    </>
-                  ) : null}
-                </fieldset>
-              </form>
+              <BranchPermissionsPanel
+                history={s}
+                branch={branch}
+                status={c.status}
+                peers={c.peers}
+                busy={c.busy}
+                onPerform={action => void run(() => perform(action))}
+              />
             ) : null}
             {w.recoveries.length ? (
               <details className="rounded-md border p-3">
@@ -1222,7 +833,7 @@ export function BranchControl() {
                         variant="outline"
                         onClick={() => {
                           const p = r.snapshot!;
-                          download(
+                          downloadBoardJson(
                             packBoard(
                               p.content,
                               { customViews: p.customViews, activeViewId: "design", injectedViewIds: [] },
@@ -1243,124 +854,5 @@ export function BranchControl() {
         </DialogContent>
       </Dialog>
     </>
-  );
-}
-
-function ChangesBeforeAfter({ before, after }: { before: SharedProject; after: SharedProject }) {
-  const options = scopeOptions(before, after),
-    changed = options.filter(
-      o =>
-        JSON.stringify(
-          o.id === "design"
-            ? before.content
-            : o.id === "project"
-              ? [before.name, before.references, before.agent, before.analysis]
-              : before.customViews.find(v => `view:${v.id}` === o.id),
-        ) !==
-        JSON.stringify(
-          o.id === "design"
-            ? after.content
-            : o.id === "project"
-              ? [after.name, after.references, after.agent, after.analysis]
-              : after.customViews.find(v => `view:${v.id}` === o.id),
-        ),
-    );
-  return (
-    <div className="space-y-2">
-      <p className="text-sm font-medium">
-        {changed.length ? `Cambios en ${changed.length} ámbitos` : "No hay diferencias de contenido"}
-      </p>
-      {changed.map(o => (
-        <details key={o.id} open className="rounded-md border p-2">
-          <summary className="cursor-pointer text-sm">{o.name} · antes / después</summary>
-          <div className="grid gap-2 pt-2 sm:grid-cols-2">
-            {[
-              { label: "Actual", p: before },
-              { label: "Resultado propuesto", p: after },
-            ].map(({ label, p }) => {
-              const view = p.customViews.find(v => `view:${v.id}` === o.id),
-                graph = o.id === "design" ? p.content : view?.graph;
-              return (
-                <div key={label} className="min-w-0 space-y-2">
-                  <p className="text-xs font-medium">{label}</p>
-                  {graph ? (
-                    <DiagramPreview graph={graph} label={`${label}: ${o.name}`} />
-                  ) : view?.kind === "mermaid" ? (
-                    <div className="max-h-64 overflow-auto rounded bg-muted p-2">
-                      <MermaidDiagram code={view.mermaidCode ?? ""} />
-                    </div>
-                  ) : o.id === "project" ? (
-                    <div className="rounded bg-muted p-3 text-sm">
-                      <p>{p.name}</p>
-                      <p>
-                        {p.references.length} documentos de referencia · {p.agent.artifacts.length} artefactos
-                      </p>
-                      <p>{Object.values(p.analysis).filter(Boolean).length} resultados de análisis</p>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Vista eliminada</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </details>
-      ))}
-    </div>
-  );
-}
-
-function DiagramPreview({ graph, label }: { graph: GraphData; label: string }) {
-  const record = encodeGraph(graph),
-    nodes = record.nodes.map((n, index) => ({
-      id: n.id,
-      name: n.value.nombre,
-      x: n.value.x ?? (index % 3) * 210,
-      y: n.value.y ?? Math.floor(index / 3) * 110,
-    }));
-  const minX = Math.min(0, ...nodes.map(n => n.x)),
-    minY = Math.min(0, ...nodes.map(n => n.y));
-  const width = Math.max(300, ...nodes.map(n => n.x + 190)) - minX + 30,
-    height = Math.max(150, ...nodes.map(n => n.y + 90)) - minY + 30;
-  const positions = new Map(nodes.map(n => [n.id, n]));
-  return (
-    <div className="rounded border bg-muted/20 p-2">
-      <svg
-        viewBox={`${minX - 15} ${minY - 15} ${width} ${height}`}
-        role="img"
-        aria-label={label}
-        className="h-56 w-full text-foreground"
-      >
-        {record.edges.map(e => {
-          const a = positions.get(e.fuente),
-            b = positions.get(e.destino);
-          return a && b ? (
-            <g key={e.id}>
-              <path
-                d={`M${a.x + 90} ${a.y + 32} L${b.x + 90} ${b.y + 32}`}
-                fill="none"
-                stroke="currentColor"
-                opacity={0.5}
-              />
-              <text x={(a.x + b.x) / 2 + 90} y={(a.y + b.y) / 2 + 26} fontSize={10} fill="currentColor">
-                {e.descripcion?.slice(0, 24)}
-              </text>
-            </g>
-          ) : null;
-        })}
-        {nodes.map(n => (
-          <g key={n.id}>
-            <rect x={n.x} y={n.y} width={180} height={64} rx={5} className="fill-background stroke-primary" />
-            <text x={n.x + 90} y={n.y + 35} textAnchor="middle" fill="currentColor" fontSize={12}>
-              {n.name.slice(0, 25)}
-            </text>
-            <title>{n.name}</title>
-          </g>
-        ))}
-      </svg>
-      <p className="text-xs text-muted-foreground">
-        {nodes.length} componentes · {record.edges.length} conexiones
-      </p>
-    </div>
   );
 }

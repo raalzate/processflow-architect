@@ -1,5 +1,6 @@
 import * as Y from "yjs";
 import { encodeProject, decodeProject } from "./graph-codec";
+import { collectDiscardedFieldEdits, type DiscardedFieldEdit } from "./field-conflicts";
 import type { SharedProject } from "./types";
 import { assertCell, assertEncodedProject, assertJson } from "./validation";
 
@@ -129,6 +130,48 @@ export class SharedDocument {
   }
   deleted(): string[] {
     return [...this.tombstones.keys()].filter(k => this.tombstones.get(k));
+  }
+  discardedEdits(): DiscardedFieldEdit[] {
+    if (!this.isInitialized()) return [];
+    const fields = new Map<string, Cell>(this.fields.entries());
+    const tombstones = new Map<string, boolean>(this.tombstones.entries());
+    const encoded = this.materialize() as ReturnType<typeof encodeProject>;
+    return collectDiscardedFieldEdits(fields, tombstones, this.audit.entries(), encoded);
+  }
+  resolveFieldConflict(editId: string, keep: "current" | "discarded") {
+    const conflict = this.discardedEdits().find(item => item.id === editId);
+    if (!conflict) throw new Error("Ese cambio simultáneo ya no está pendiente.");
+    const currentCell = this.fields.get(conflict.pathKey);
+    const entry = this.audit.get(editId);
+    if (!currentCell || currentCell.kind !== "value" || entry?.value?.kind !== "value")
+      throw new Error("Ese cambio simultáneo ya no está pendiente.");
+    const discardedCell: Cell = entry.value;
+    if (keep === "discarded") {
+      const probe = new SharedDocument();
+      try {
+        probe.receive(this.update());
+        probe.fields.set(conflict.pathKey, discardedCell);
+        probe.assertValid();
+      } finally {
+        probe.destroy();
+      }
+    }
+    this.doc.transact(() => {
+      if (keep === "discarded") {
+        this.audit.set(`${this.doc.clientID}:${this.sequence++}`, {
+          path: conflict.pathKey,
+          previous: currentCell,
+          value: discardedCell,
+        });
+        this.fields.set(conflict.pathKey, discardedCell);
+      } else {
+        this.audit.set(`${this.doc.clientID}:${this.sequence++}`, {
+          path: conflict.pathKey,
+          previous: discardedCell,
+          value: currentCell,
+        });
+      }
+    }, LOCAL);
   }
   recoveryJson(): string {
     return JSON.stringify(
