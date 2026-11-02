@@ -178,6 +178,9 @@ Git, Rust >=1.91, CMake y las herramientas de línea de comandos de Xcode sólo 
 la máquina que compila esa variante. El script conserva la fuente y el caché
 fuera del repositorio y rechaza revisiones o fuentes locales modificadas.
 En las otras plataformas se utilizan los paquetes nativos publicados.
+El empaquetado manual permite elegir `macos-latest` (Apple Silicon) o
+`macos-15-intel`. Cada ejecución genera una variante de Mac, evitando colisiones
+de instaladores o de sus metadatos de actualización.
 
 El [kit SDD local](harness/sdd.md) está incluido en el clon y no requiere el kit
 privado Sofka. Sus comprobaciones se ejecutan también en la matriz de CI.

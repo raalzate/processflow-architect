@@ -10,7 +10,15 @@ on:
   push:
     tags:
       - "v*" # Ej: v1.0.0
-  workflow_dispatch: # Permite lanzar builds a demanda desde la UI de GitHub.
+  workflow_dispatch: # Permite elegir la variante de Mac sin mezclar sus metadatos.
+    inputs:
+      mac_runner:
+        description: Variante de Mac para el instalador de esta ejecución
+        type: choice
+        options:
+          - macos-latest
+          - macos-15-intel
+        default: macos-latest
 
 # Necesario para que softprops/action-gh-release pueda crear/editar el release
 # y subir los assets del repositorio actual.
@@ -29,9 +37,7 @@ jobs:
       fail-fast: false # Un fallo en una plataforma no cancela las demás.
       matrix:
         include:
-          - os: macos-latest
-            platform: mac
-          - os: macos-15-intel
+          - os: ${{ inputs.mac_runner || 'macos-latest' }}
             platform: mac
           - os: windows-latest
             platform: win
