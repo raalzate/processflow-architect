@@ -35,6 +35,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -E
+          exec > >(tee "$RUNNER_TEMP/relay-step.log") 2>&1
+          trap 'echo "::error::Relay preparation failed at line $LINENO: $BASH_COMMAND"; tail -c 1800 "$RUNNER_TEMP/relay-step.log" | tr "\n" " " | sed "s/^/::error::Relay diagnostic: /"' ERR
           mkdir -p "$RUNNER_TEMP/pf-relay"
           gh release download v1.4.1 --repo n0-computer/iroh --pattern 'iroh-relay-v1.4.1-x86_64-unknown-linux-gnu.tar.gz' --dir "$RUNNER_TEMP/pf-relay"
           tar -xzf "$RUNNER_TEMP/pf-relay/iroh-relay-v1.4.1-x86_64-unknown-linux-gnu.tar.gz" -C "$RUNNER_TEMP/pf-relay"
