@@ -243,13 +243,15 @@ export class CollaborationEngine {
   ): Capacity {
     const projectBytes = document.update().byteLength;
     const probe = new SharedDocument();
-    // La carga inicial sucede una vez; no debe contarse como trabajo de cada tick.
+    // La carga inicial y la proyección local del editor ocurren una sola vez, no una vez por participante.
     probe.receive(document.update());
+    probe.snapshot();
+    const vector = probe.vector();
     const begin = performance.now();
     let mergeMs: number;
     try {
-      probe.receiveRemote(document.update(probe.vector()));
-      probe.snapshot();
+      probe.receiveRemote(document.update(vector));
+      probe.vector();
       mergeMs = performance.now() - begin;
     } finally {
       probe.destroy();
@@ -374,8 +376,7 @@ export class CollaborationEngine {
     if (journal.updates.length || initial) {
       try {
         document.assertValid();
-        room.status.capacity = this.measure(document);
-        room.seats.resize(room.status.capacity.limit);
+        this.refreshCapacity(room);
       } catch (error) {
         room.quarantined = true;
         room.status.saved = false;
