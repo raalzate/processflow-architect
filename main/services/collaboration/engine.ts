@@ -14,6 +14,8 @@ import { sanitizePresence, livePresence, type Presence } from "../../../src/lib/
 import { packBoard } from "../../../src/lib/board-file";
 import { LanDiscovery } from "./discovery";
 import { isLanPath } from "../../../src/lib/collaboration/network";
+import { encodeProject } from "../../../src/lib/collaboration/graph-codec";
+import { assertEncodedProject, assertJson } from "../../../src/lib/collaboration/validation";
 
 const ALPN = [...Buffer.from("processflow/collaboration/1")];
 const encode = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
@@ -37,12 +39,14 @@ interface Room {
   disposed?: boolean;
   syncTask?: Promise<void>;
   presence: Map<string, Presence>;
+  quarantined?: boolean;
 }
 
 /** Native transport/persistence service. Existing contexts remain the UI's API. */
 export class CollaborationEngine {
   private config: Config;
   private rooms = new Map<string, Room>();
+  private failedRooms = new Map<string, { stored: StoredRoom; status: CollaborationStatus }>();
   private endpoint?: Endpoint;
   private starting?: Promise<Endpoint>;
   private closed = false;
@@ -59,11 +63,18 @@ export class CollaborationEngine {
   }
   private saveConfig() { writePrivateJson(join(this.root, "device.json"), this.config); }
   async start(): Promise<void> {
-    for (const stored of this.config.rooms) this.load(stored);
+    for (const stored of this.config.rooms) {
+      try { this.load(stored); }
+      catch (error) {
+        const status: CollaborationStatus = { projectId: stored.projectId, fileId: stored.fileId, owner: stored.owner, role: stored.role, connected: false, state: "error", route: "none", peers: 1, pendingEdges: 0, saved: false, initialized: false,
+          capacity: estimateCapacity({ freeMemoryBytes: freemem(), projectBytes: 0, mergeMs: 1 }), error: `Historial en cuarentena: ${error instanceof Error ? error.message : String(error)}` };
+        this.failedRooms.set(stored.fileId, { stored, status });
+      }
+    }
     if (this.rooms.size) await this.endpointReady();
-    for (const room of this.rooms.values()) if (!room.stored.owner) this.schedule(room, 0);
+    for (const room of this.rooms.values()) if (!room.stored.owner && room.status.saved) this.schedule(room, 0);
     this.monitor = setInterval(() => {
-      for (const room of this.rooms.values()) if (room.stored.owner) {
+      for (const room of this.rooms.values()) if (room.stored.owner && room.status.saved) {
         room.status.capacity = this.measure(room.document); room.seats.resize(room.status.capacity.limit); this.emit(room);
       }
     }, 30_000); this.monitor.unref();
@@ -95,7 +106,7 @@ export class CollaborationEngine {
   private measure(document: SharedDocument): Capacity {
     const projectBytes = document.update().byteLength;
     const probe = new SharedDocument(); const begin = performance.now();
-    try { probe.receive(document.update()); probe.snapshot(); }
+    try { probe.receiveRemote(document.update()); probe.snapshot(); }
     finally { probe.destroy(); }
     return estimateCapacity({ freeMemoryBytes: freemem(), projectBytes, mergeMs: performance.now() - begin });
   }
@@ -104,7 +115,8 @@ export class CollaborationEngine {
     if (!validId(stored.projectId)) throw new Error("Identidad de proyecto inválida.");
     const document = new SharedDocument(), journalFile = join(this.root, stored.projectId, "updates.bin");
     const journal = this.dependencies.journal?.(journalFile) ?? new Journal(journalFile);
-    for (const update of journal.updates) document.receive(update);
+    try { for (const update of journal.updates) document.receive(update); }
+    catch (error) { journal.close(); document.destroy(); throw error; }
     const room: Room = {
       stored, document, journal, clients: new Map(), failures: 0, seats: new Seats(1), revision: 0, presence: new Map(),
       status: { projectId: stored.projectId, fileId: stored.fileId, owner: stored.owner, role: stored.role, connected: stored.owner, state: stored.owner ? "local" : "offline", route: "none", peers: 1, pendingEdges: 0, saved: true, initialized: false,
@@ -121,15 +133,19 @@ export class CollaborationEngine {
     if (!journal.updates.length && initial) document.patch({}, initial);
     document.clearUndo();
     room.status.initialized = document.isInitialized();
-    if (journal.updates.length || initial) { room.status.capacity = this.measure(document); room.seats.resize(room.status.capacity.limit); }
+    if (journal.updates.length || initial) {
+      try { document.assertValid(); room.status.capacity = this.measure(document); room.seats.resize(room.status.capacity.limit); }
+      catch (error) { room.quarantined = true; room.status.saved = false; room.status.initialized = false; room.status.state = "error"; room.status.error = `Documento en cuarentena: ${error instanceof Error ? error.message : String(error)}`; }
+    }
     return room;
   }
   private emit(room: Room, includeSnapshot = false) {
     if (room.disposed) return;
-    room.status.initialized = room.document.isInitialized();
+    room.status.initialized = !room.quarantined && room.document.isInitialized();
     room.status.peers = room.stored.owner ? room.seats.count : room.status.peers;
+    this.refreshMembers(room);
     try { room.status.pendingEdges = room.document.pendingEdges(); } catch { /* Joining has not received its first state. */ }
-    this.event({ fileId: room.stored.fileId, status: { ...room.status }, ...(includeSnapshot ? { snapshot: room.document.snapshot() } : {}) });
+    this.event({ fileId: room.stored.fileId, status: { ...room.status }, ...(includeSnapshot && !room.quarantined ? { snapshot: room.document.snapshot() } : {}) });
   }
   private emitPresence(room: Room) {
     if (room.disposed) return;
@@ -168,6 +184,13 @@ export class CollaborationEngine {
   async command(command: CollaborationCommand): Promise<CollaborationResult> {
     try {
       if (!command || typeof command.fileId !== "string" || command.fileId.length > 200) throw new Error("Proyecto inválido.");
+      const failed = this.failedRooms.get(command.fileId);
+      if (failed) {
+        if (command.type === "recover") return { status: failed.status, recovery: JSON.stringify({ format: "processflow-raw-recovery/v1", error: failed.status.error, projectId: failed.stored.projectId, journal: readFileSync(join(this.root, failed.stored.projectId, "updates.bin")).toString("base64") }) };
+        if (command.type === "leave") { this.failedRooms.delete(command.fileId); this.config.rooms = this.config.rooms.filter(r => r.fileId !== command.fileId); this.saveConfig(); return {}; }
+        if (command.type === "open") return { status: failed.status };
+        throw new Error(failed.status.error);
+      }
       let room = this.rooms.get(command.fileId);
       if (command.type === "open") return room ? this.result(room) : {};
       if (command.type === "create") {
@@ -222,9 +245,13 @@ export class CollaborationEngine {
         if (room.stored.role !== "editor") throw new Error("El vínculo es de lectura.");
         if (command.type === "undo") room.document.undo(); else room.document.redo(); this.emit(room, true);
       } else if (command.type === "recover") {
-        const shared = room.document.snapshot();
-        return { ...this.result(room), recovery: JSON.stringify({ ...packBoard(shared.content, { customViews: shared.customViews, activeViewId: "design", injectedViewIds: [] }, shared),
-          recuperacion: JSON.parse(room.document.recoveryJson()), crdt: encode(room.document.update()) }, null, 2) };
+        const raw = { format: "processflow-raw-recovery/v1", projectId: room.stored.projectId, crdt: encode(room.document.update()) };
+        if (room.quarantined) return { status: { ...room.status }, recovery: JSON.stringify(raw) };
+        try {
+          const shared = room.document.snapshot();
+          return { ...this.result(room), recovery: JSON.stringify({ ...packBoard(shared.content, { customViews: shared.customViews, activeViewId: "design", injectedViewIds: [] }, shared),
+            recuperacion: JSON.parse(room.document.recoveryJson()), crdt: raw.crdt }, null, 2) };
+        } catch { return { status: { ...room.status }, recovery: JSON.stringify(raw) }; }
       }
       else if (command.type === "revoke") {
         if (!room.stored.owner) throw new Error("Solo el anfitrión administra los accesos.");
@@ -244,12 +271,18 @@ export class CollaborationEngine {
   }
   private migrate(project: SharedProject): SharedProject {
     if (!project || !project.content || !Array.isArray(project.customViews)) throw new Error("Contenido compartido inválido.");
-    return { ...project, content: withStableGraphIds(project.content), customViews: project.customViews.map(v => ({ ...v, ...(v.graph ? { graph: withStableGraphIds(v.graph) } : {}) })) };
+    const safe: SharedProject = { name: project.name, content: withStableGraphIds(project.content), customViews: project.customViews.map(v => ({ ...v, ...(v.graph ? { graph: withStableGraphIds(v.graph) } : {}) })),
+      references: project.references, agent: { versions: project.agent.versions, lineages: project.agent.lineages, artifacts: project.agent.artifacts },
+      analysis: { driversResult: project.analysis.driversResult, constraintsResult: project.analysis.constraintsResult, roadmapResult: project.analysis.roadmapResult, proposalResult: project.analysis.proposalResult } };
+    assertJson(safe); assertEncodedProject(encodeProject(safe)); return safe;
   }
   private result(room: Room): CollaborationResult {
-    if (room.stored.owner) room.status.members = [...new Map(Object.values(room.stored.grants).filter(grant => grant.member).map(grant => [grant.member!, { id: grant.member!, role: grant.role, connected: room.clients.has(grant.member!), revoked: !!grant.revoked }])).values()];
-    let snapshot: SharedProject | undefined; try { snapshot = room.document.snapshot(); } catch { /* first connection pending */ }
+    this.refreshMembers(room);
+    let snapshot: SharedProject | undefined; try { if (!room.quarantined) snapshot = room.document.snapshot(); } catch { /* first connection pending */ }
     return { status: { ...room.status }, snapshot };
+  }
+  private refreshMembers(room: Room) {
+    if (room.stored.owner) room.status.members = [...new Map(Object.values(room.stored.grants).filter(grant => grant.member).map(grant => [grant.member!, { id: grant.member!, role: grant.role, connected: room.clients.has(grant.member!), revoked: !!grant.revoked }])).values()];
   }
   private validateOptions(options: RoomOptions): RoomOptions {
     const relayUrls = options.relayUrls ?? [], externalAddresses = options.externalAddresses ?? [];
@@ -309,7 +342,7 @@ export class CollaborationEngine {
           if (request.update && grant.role !== "editor") throw new Error("El vínculo permite solo lectura.");
           const before = room.revision;
           if (!room.status.saved) throw new Error("El guardado está detenido; exporta la recuperación y reinicia después de corregir el disco.");
-          if (request.update) room.document.receive(decode(request.update));
+          if (request.update) room.document.receiveRemote(decode(request.update));
           if (!room.status.saved) throw new Error("El anfitrión no pudo guardar; vuelve a intentar después.");
           room.status.lastSynced = new Date().toISOString(); room.status.state = "online";
           await sendFrame(stream, { ok: true, update: encode(room.document.update(decode(request.vector))), vector: encode(room.document.vector()), capacity: room.status.capacity, peers: room.seats.count } satisfies Response);
@@ -363,7 +396,7 @@ export class CollaborationEngine {
       await deadline(sendFrame(stream, request)); const response = await deadline(readFrame<Response>(stream));
       if (room.disposed || this.closed) return;
       if (!response.ok) throw new Error(response.error ?? "No se pudo sincronizar.");
-      const before = room.revision; room.document.receive(decode(response.update!)); room.remoteVector = decode(response.vector!);
+      const before = room.revision; room.document.receiveRemote(decode(response.update!)); room.remoteVector = decode(response.vector!);
       room.failures = 0; room.status.connected = true; room.status.state = "online"; room.status.error = undefined;
       room.status.lastSynced = new Date().toISOString(); room.status.capacity = response.capacity!; room.status.peers = response.peers!;
       const paths = room.connection.paths();

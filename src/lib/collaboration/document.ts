@@ -1,6 +1,7 @@
 import * as Y from "yjs";
 import { encodeProject, decodeProject } from "./graph-codec";
 import type { SharedProject } from "./types";
+import { assertCell, assertEncodedProject, assertJson } from "./validation";
 
 type Path = string[];
 type Cell = { kind: "object" | "list" } | { kind: "value"; value: unknown };
@@ -91,13 +92,31 @@ export class SharedDocument {
     return build([]);
   }
   snapshot(): SharedProject { return decodeProject(this.materialize() as ReturnType<typeof encodeProject>).project; }
-  isInitialized(): boolean { return this.fields.has("[]"); }
+  isInitialized(): boolean { return this.fields.get("[]")?.kind === "object" && this.fields.get('["content"]')?.kind === "object"; }
   pendingEdges(): number { return decodeProject(this.materialize() as ReturnType<typeof encodeProject>).pending; }
   deleted(): string[] { return [...this.tombstones.keys()].filter(k => this.tombstones.get(k)); }
   recoveryJson(): string { return JSON.stringify({ format: "processflow-recovery/v1", deleted: this.deleted(), fields: Object.fromEntries(this.fields), edits: [...this.audit.values()] }, null, 2); }
   update(vector?: Uint8Array) { return Y.encodeStateAsUpdate(this.doc, vector); }
   vector() { return Y.encodeStateVector(this.doc); }
   receive(update: Uint8Array) { Y.applyUpdate(this.doc, update, "remote"); }
+  /** Network changes are checked on a candidate before any durable live update. */
+  receiveRemote(update: Uint8Array) {
+    if (update.byteLength > 32 * 1024 ** 2) throw new Error("Actualización remota inválida: supera 32 MiB.");
+    const candidate = new SharedDocument();
+    try {
+      candidate.receive(this.update()); candidate.receive(update); candidate.assertValid();
+    } catch { throw new Error("Documento remoto inválido; se conserva la copia anterior."); }
+    finally { candidate.destroy(); }
+    this.receive(update);
+  }
+  assertValid() {
+    const allowed = new Set(["fields-v1", "deleted-v1", "edit-history-v1"]);
+    if ([...this.doc.share.keys()].some(name => !allowed.has(name)) || this.fields.size > 500_000 || this.audit.size > 1_000_000) throw new Error("Documento inválido: estructura excesiva o desconocida.");
+    for (const [pathKey, cell] of this.fields) assertCell(pathKey, cell);
+    for (const [pathKey, deleted] of this.tombstones) { assertCell(pathKey, { kind: "object" }); if (typeof deleted !== "boolean") throw new Error("Marca de borrado inválida."); }
+    for (const entry of this.audit.values()) assertJson(entry);
+    assertEncodedProject(this.materialize());
+  }
   undo() { this.history.undo(); }
   redo() { this.history.redo(); }
   clearUndo() { this.history.clear(); }

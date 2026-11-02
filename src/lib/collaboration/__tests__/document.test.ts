@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { SharedDocument } from "../document";
 import type { GraphData } from "../../types";
+import type { SharedProject } from "../types";
 
 const graph = (): GraphData => ({ nombre_proyecto: "Equipo", version: "1", fecha_analisis: "", responsables: [], notas: "", transcript: "", read_models: [], agregados: [
   { id: "group", nombre_agregado: "Grupo", entidad_raiz: "", descripcion: "", nodos: [
@@ -9,7 +10,7 @@ const graph = (): GraphData => ({ nombre_proyecto: "Equipo", version: "1", fecha
     { id: "b", nombre: "B", tipo_elemento: "Evento", estado_comparativo: "nuevo", descripcion: "", x: 100, y: 10 },
   ], aristas: [] },
 ], big_picture: { descripcion: "", hotspots: [], nodos: [], aristas: [] }, politicas_inter_agregados: [] });
-const seed = () => ({ name: "Equipo", content: graph(), customViews: [], references: [], agent: { versions: [], lineages: [], artifacts: [] }, analysis: {} });
+const seed = (): SharedProject => ({ name: "Equipo", content: graph(), customViews: [], references: [], agent: { versions: [], lineages: [], artifacts: [] }, analysis: {} });
 function pair() {
   const a = new SharedDocument(); a.patch({}, seed());
   const b = new SharedDocument(); b.receive(a.update());
@@ -92,5 +93,45 @@ describe("durable project document", () => {
     a.patch(oa, na); b.patch(ob, nb); exchange(a, b);
     expect(a.snapshot()).toEqual(b.snapshot());
     expect(a.recoveryJson()).toContain("Trabajo de Ana"); expect(a.recoveryJson()).toContain("Trabajo de Luis");
+  });
+  it("rejects a malformed remote document before changing the live state", () => {
+    const { a } = pair(), expected = a.snapshot(), attacker = new Y.Doc();
+    Y.applyUpdate(attacker, a.update()); attacker.getMap("fields-v1").set("[]", { kind: "value", value: null });
+    expect(() => a.receiveRemote(Y.encodeStateAsUpdate(attacker, a.vector()))).toThrow(/inválid/);
+    expect(a.snapshot()).toEqual(expected); expect(a.isInitialized()).toBe(true);
+  });
+  it("rejects malformed references and invalid paths instead of persisting a crashing projection", () => {
+    const { a } = pair(), expected = a.snapshot(), attacker = new Y.Doc();
+    Y.applyUpdate(attacker, a.update());
+    attacker.getMap("fields-v1").set('["references"]', { kind: "value", value: [{ id: "bad", name: "bad", text: 42 }] });
+    expect(() => a.receiveRemote(Y.encodeStateAsUpdate(attacker, a.vector()))).toThrow(/inválid/);
+    const other = new Y.Doc(); Y.applyUpdate(other, a.update()); other.getMap("fields-v1").set("not a JSON path", { kind: "object" });
+    expect(() => a.receiveRemote(Y.encodeStateAsUpdate(other, a.vector()))).toThrow(/inválid/);
+    expect(a.snapshot()).toEqual(expected);
+  });
+  it.each([
+    ["non-finite geometry", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["content","nodes","@a","value","x"]', { kind: "value", value: NaN }); }],
+    ["invalid analysis", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["analysis","driversResult"]', { kind: "value", value: 42 }); }],
+    ["unknown namespace", (doc: Y.Doc): void => { doc.getMap("unexpected").set("x", "hidden"); }],
+    ["invalid tombstone", (doc: Y.Doc): void => { doc.getMap("deleted-v1").set('["content","nodes","@a"]', "yes"); }],
+    ["invalid cell", (doc: Y.Doc): void => { doc.getMap("fields-v1").set('["name"]', { kind: "unknown" }); }],
+    ["deep path", (doc: Y.Doc): void => { doc.getMap("fields-v1").set(JSON.stringify(["content", ...Array(70).fill("nested")]), { kind: "object" }); }],
+  ] as const)("rejects %s and retains the valid replica", (_label, corrupt) => {
+    const { a } = pair(), expected = a.snapshot(), attacker = new Y.Doc(); Y.applyUpdate(attacker, a.update()); corrupt(attacker);
+    expect(() => a.receiveRemote(Y.encodeStateAsUpdate(attacker, a.vector()))).toThrow(/inválid/); expect(a.snapshot()).toEqual(expected);
+  });
+  it("rejects an oversized remote update before decoding it", () => {
+    const { a } = pair(); expect(() => a.receiveRemote(new Uint8Array(32 * 1024 ** 2 + 1))).toThrow("32 MiB"); expect(a.snapshot().name).toBe("Equipo");
+  });
+  it("accepts full projects with views, references, artifact revisions and analyses", () => {
+    const project = seed(); const now = "2026-11-01T00:00:00Z";
+    project.customViews.push({ id: "view", name: "Otra vista", kind: "graph", createdAt: now, graph: graph() });
+    project.references.push({ id: "ref", name: "Contrato", kind: "text", text: "Referencia compartida", chars: 20, addedAt: now });
+    project.agent.versions.push({ id: "v1", label: "v1", createdAt: now });
+    project.agent.lineages.push({ id: "lineage", key: "adr:decision", kind: "adr", versionId: "v1", createdAt: now });
+    project.agent.artifacts.push({ id: "artifact", title: "Decisión", kind: "adr", render: "markdown", versionId: "v1", lineageId: "lineage", revision: 1, createdAt: now, payload: { markdown: "# Decisión compartida" } });
+    project.analysis.roadmapResult = { phases: [] };
+    const a = new SharedDocument(), b = new SharedDocument(); a.patch({}, project); b.receiveRemote(a.update());
+    expect(b.snapshot()).toEqual(a.snapshot()); expect(b.snapshot().agent.artifacts[0].payload.markdown).toContain("Decisión compartida");
   });
 });

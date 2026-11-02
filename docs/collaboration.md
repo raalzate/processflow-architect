@@ -131,6 +131,11 @@ Los datos del historial de recuperación se conservan como material adicional pa
 inspección. Importar una copia no la vuelve miembro de la sala automáticamente.
 
 El registro detecta corrupción y repara solamente un último frame incompleto.
+Las actualizaciones remotas se validan en una réplica candidata antes de modificar
+el documento vivo o escribir el registro. Una sala con un historial anterior
+inválido queda en cuarentena y no impide abrir las demás. Si no puede proyectarse,
+su recuperación contiene el CRDT o registro crudo, para reparación posterior;
+ese formato crudo no se importa como un tablero visible automáticamente.
 Tras un fallo de escritura no se confirma más trabajo ni se vuelve a marcar como
 guardado una réplica que contiene cambios sin persistir. La aplicación ofrece la
 recuperación y conserva las copias de los demás participantes.

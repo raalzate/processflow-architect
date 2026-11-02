@@ -1,11 +1,13 @@
 /** Real QUIC loopback/LAN integration. No public discovery, relay or Internet. */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { CollaborationCommand, CollaborationResult, SharedProject } from "../src/lib/collaboration/types";
 import type { Presence, PresenceInput } from "../src/lib/collaboration/presence";
+import { Journal } from "../main/services/collaboration/journal";
+import * as Y from "yjs";
 
 class Device {
   presence: Presence[] = [];
@@ -60,6 +62,7 @@ async function run() {
   const dir = mkdtempSync(join(tmpdir(), "pf-collab-smoke-"));
   let host = new Device(join(dir, "host")); let guest = new Device(join(dir, "guest"));
   const viewer = new Device(join(dir, "viewer")); const trespasser = new Device(join(dir, "trespasser"));
+  let damaged = new Device(join(dir, "damaged"));
   const state = async (engine: Device, fileId: string) => ok(await engine.command({ type: "open", fileId, initial })).snapshot!;
   try {
     await host.start(); await guest.start(); await viewer.start(); await trespasser.start();
@@ -121,8 +124,28 @@ async function run() {
     await eventually(async () => (await state(host, "host-project")).content.notas === offlineWork.content.notas, "unacknowledged work resent after restart");
     assert.equal((await host.command({ type: "open", fileId: "host-project", initial })).status!.saved, true);
     console.log("PASS: disk failure never yields a false durable ACK; the other replica restores the work after host restart");
+    await damaged.start();
+    const badRoom = ok(await damaged.command({ type: "create", fileId: "bad", initial, options: {} }));
+    ok(await damaged.command({ type: "create", fileId: "good", initial, options: {} })); await damaged.close();
+    const file = join(dir, "damaged", badRoom.status!.projectId, "updates.bin"), journal = new Journal(file), invalidDocument = new Y.Doc();
+    for (const update of journal.updates) Y.applyUpdate(invalidDocument, update);
+    const previousVector = Y.encodeStateVector(invalidDocument);
+    invalidDocument.getMap("fields-v1").set("[]", { kind: "value", value: null });
+    journal.append(Y.encodeStateAsUpdate(invalidDocument, previousVector)); journal.close(); invalidDocument.destroy();
+    damaged = new Device(join(dir, "damaged")); await damaged.start();
+    assert.equal(ok(await damaged.command({ type: "open", fileId: "bad", initial })).status!.state, "error");
+    assert.equal((await state(damaged, "good")).name, initial.name);
+    const rawState = JSON.parse(ok(await damaged.command({ type: "recover", fileId: "bad" })).recovery!);
+    assert.equal(rawState.format, "processflow-raw-recovery/v1"); assert.equal(typeof rawState.crdt, "string");
+    await damaged.close();
+    const bytes = readFileSync(file); bytes[bytes.length - 1] ^= 1; writeFileSync(file, bytes);
+    damaged = new Device(join(dir, "damaged")); await damaged.start();
+    assert.equal((await state(damaged, "good")).name, initial.name);
+    const rawJournal = JSON.parse(ok(await damaged.command({ type: "recover", fileId: "bad" })).recovery!);
+    assert.equal(rawJournal.format, "processflow-raw-recovery/v1"); assert.equal(typeof rawJournal.journal, "string");
+    console.log("PASS: malformed historical state and checksum corruption isolate one room while raw recovery and other rooms remain available");
   } finally {
-    await Promise.allSettled([host.close(), guest.close(), viewer.close(), trespasser.close()]);
+    await Promise.allSettled([host.close(), guest.close(), viewer.close(), trespasser.close(), damaged.close()]);
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
