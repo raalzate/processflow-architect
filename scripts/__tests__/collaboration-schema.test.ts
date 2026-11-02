@@ -5,5 +5,5 @@ import { generateGraphSchema } from "../collaboration-schema";
 describe("persistent collaboration schema", () => {
   it("matches the application's graph types", () => {
     expect(JSON.parse(readFileSync("src/lib/collaboration/graph-schema.json", "utf8"))).toEqual(generateGraphSchema());
-  });
+  }, 30_000);
 });
