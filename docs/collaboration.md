@@ -1,5 +1,8 @@
 # Colaboración en un proyecto compartido
 
+Al incorporarse otra persona se habilitan [ramas, versiones e historial visual](collaboration-branches.md).
+Principal conserva lo aprobado y Trabajo compartido continúa la edición en vivo.
+
 Esta rama conserva el monolito de escritorio por capas. Agrega colaboración al
 proyecto completo: modelo, vistas, documentación de referencia, adjuntos incluidos
 en los componentes, artefactos/versiones y resultados de análisis. El chat, llaves

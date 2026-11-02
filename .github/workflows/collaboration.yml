@@ -22,6 +22,8 @@ jobs:
         run: npx vitest run scripts/__tests__/sdd-integrity.test.ts
       - run: npm run harness:selftest
       - run: npm run test:collaboration
+      - name: Ramas, versiones, permisos y recuperación nativos
+        run: node --import tsx scripts/collaboration-branches-smoke.ts
   relay:
     runs-on: ubuntu-latest
     steps:

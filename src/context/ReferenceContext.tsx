@@ -72,7 +72,7 @@ export const useReference = () => {
 };
 
 export function ReferenceProvider({ children }: { children: React.ReactNode }) {
-  const { currentFileId, sharedReadOnly } = useGraphContext();
+  const { currentFileId, sharedReadOnly, sharedStorageScope } = useGraphContext();
   const { toast } = useToast();
   const [docs, setDocs] = useState<ReferenceDoc[]>([]);
 
@@ -89,11 +89,11 @@ export function ReferenceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!currentFileId) return;
     try {
-      localStorage.setItem(storageKey(currentFileId), JSON.stringify(docs));
+      localStorage.setItem(storageKey(sharedStorageScope ?? currentFileId), JSON.stringify(docs));
     } catch {
       /* ignore quota */
     }
-  }, [currentFileId, docs]);
+  }, [currentFileId, sharedStorageScope, docs]);
 
   const addFiles = useCallback(
     async (files: FileList | File[]) => {

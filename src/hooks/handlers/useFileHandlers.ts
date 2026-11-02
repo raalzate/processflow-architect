@@ -11,6 +11,7 @@ import { normalizeProjectName, renameSavedFile } from "@/lib/project-rename";
 import type { NotationId } from "@/lib/notations";
 
 type FileHandlersDeps = {
+    sharedStorageScope?: string;
     savedFiles: SavedFile[];
     setSavedFiles: (files: SavedFile[]) => void;
     currentFileId: string | null;
@@ -28,6 +29,7 @@ type FileHandlersDeps = {
 
 export function useFileHandlers(deps: FileHandlersDeps) {
     const {
+        sharedStorageScope,
         savedFiles,
         setSavedFiles,
         currentFileId,
@@ -184,13 +186,14 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         // Exporta el TABLERO completo: el GraphData del Modelo + TODAS las vistas
         // (las tabs viven en localStorage por proyecto). Antes sólo salía el Modelo
         // y al reimportar se perdían las demás vistas (#428).
-        const board = packBoard(graphData, readStoredViews(currentFileId), { references: readStoredReferences(currentFileId), agent: readStoredSharedArtifacts(currentFileId), analysis: {
+        const scope = sharedStorageScope ?? currentFileId;
+        const board = packBoard(graphData, readStoredViews(scope), { references: readStoredReferences(scope), agent: readStoredSharedArtifacts(scope), analysis: {
             driversResult: currentFile.driversResult, constraintsResult: currentFile.constraintsResult, roadmapResult: currentFile.roadmapResult, proposalResult: currentFile.proposalResult,
         } });
         const blob = new Blob([JSON.stringify(board, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = currentFile.name; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         toast({ title: "Descarga Iniciada", description: `Se está descargando "${currentFile.name}".` });
-    }, [graphData, currentFileId, savedFiles, toast]);
+    }, [graphData, currentFileId, sharedStorageScope, savedFiles, toast]);
 
     return {
         handleCreateProject,

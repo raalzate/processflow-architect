@@ -229,7 +229,7 @@ export const useAgent = () => {
 };
 
 export function AgentProvider({ children }: { children: React.ReactNode }) {
-  const { currentFileId, graphData, sharedReadOnly } = useGraphContext();
+  const { currentFileId, graphData, sharedReadOnly, sharedStorageScope } = useGraphContext();
   const { views, injectedViews, activeView } = useViews();
   const { toast } = useToast();
 
@@ -310,10 +310,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     if (!currentFileId || hydratedProject !== currentFileId) return;
     const before = lastLocalMessages.current; lastLocalMessages.current = messages;
     const persist = async () => { try {
-      const stored = loadState(currentFileId);
+      const stored = loadState(sharedStorageScope ?? currentFileId);
       const privateMessages = mergeLocalFiles(stored.messages ?? [], before, messages);
       localStorage.setItem(
-        storageKey(currentFileId),
+        storageKey(sharedStorageScope ?? currentFileId),
         JSON.stringify({ versions, lineages, artifacts, messages: privateMessages, activeVersionId } as AgentState)
       );
     } catch {
@@ -321,7 +321,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     } };
     if (navigator.locks) void navigator.locks.request(`processflow-agent-${currentFileId}`, persist).catch(console.error);
     else void persist();
-  }, [currentFileId, hydratedProject, versions, lineages, artifacts, messages, activeVersionId]);
+  }, [currentFileId, sharedStorageScope, hydratedProject, versions, lineages, artifacts, messages, activeVersionId]);
 
   /**
    * Catálogo para las herramientas de LECTURA del agente (spec 005): el agente ya

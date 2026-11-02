@@ -43,12 +43,14 @@ import {
   STORAGE_TOKEN_USAGE,
 } from "@/lib/graph-constants";
 import { hostBridge } from "@/lib/host-bridge";
+import type { SharedProject } from "@/lib/collaboration/types";
 
 interface GraphDataProviderProps {
   children: ReactNode;
 }
 
 export function GraphDataProvider({ children }: GraphDataProviderProps) {
+  const [sharedStorageScope, updateSharedStorageScope] = useState<string>();
   const [readOnlyFiles, setReadOnlyFiles] = useState<Record<string, boolean>>({});
   const setSharedReadOnly = useCallback((fileId: string, value: boolean) => setReadOnlyFiles(previous => previous[fileId] === value ? previous : { ...previous, [fileId]: value }), []);
   // --- Core Hooks & Refs ---
@@ -71,7 +73,12 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     setOrgOverview,
     setFileOrg,
     clearOrgFromProjects,
+    setStorageProjection,
   } = useSavedFiles();
+  const setSharedStorageScope = useCallback((scope?: string, canonical?: SharedProject) => {
+    updateSharedStorageScope(scope);
+    setStorageProjection(scope && canonical && currentFileId ? { fileId: currentFileId, canonical: { name: canonical.name, content: canonical.content, ...canonical.analysis } } : undefined);
+  }, [currentFileId, setStorageProjection]);
 
   // Gestiona el parsing del JSON y deriva datos base (nodos, links, etc.)
   const {
@@ -185,6 +192,7 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
 
   // --- Handlers Hooks ---
   const fileHandlers = useFileHandlers({
+    sharedStorageScope,
     savedFiles,
     setSavedFiles,
     currentFileId,
@@ -379,6 +387,8 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
   }, [savedFiles, currentFileId, setSavedFiles, loadFile]);
   // Ensambla el valor final para el GraphContext.Provider
   const contextValue: GraphContextType = {
+    sharedStorageScope,
+    setSharedStorageScope,
     sharedReadOnly: !!(currentFileId && readOnlyFiles[currentFileId]),
     setSharedReadOnly,
     applySharedFile,

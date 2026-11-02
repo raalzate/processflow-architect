@@ -1,5 +1,6 @@
 "use client";
 import { CollaborationControl } from "@/components/collaboration/CollaborationControl";
+import { BranchControl } from "@/components/collaboration/BranchControl";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
@@ -1034,7 +1035,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
     } = useViews();
 
   return (
-    <header className="z-10 min-w-0 border-b bg-card p-4 shadow-xs">
+    <header className="z-10 min-w-0 space-y-3 border-b bg-card px-4 py-3 shadow-xs">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           {/* Disparador del Sidebar para móviles */}
@@ -1052,7 +1053,6 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-          <CollaborationControl />
           {/* Búsqueda global: en la app de escritorio se pinta en la barra de
               título (issue #169); en el navegador, acá mismo. */}
           {mounted ? (
@@ -1154,15 +1154,19 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             </DropdownMenu>
           )}
 
-          {/* Gestión de Archivos */}
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t pt-3">
+          {/* Proyecto y personas forman una fila propia; las versiones tienen su barra debajo. */}
           {mounted ? (
             <FileManagement {...fileManagementProps} />
           ) : (
             // Esqueleto para el FileManagement
             <div className="w-[320px] h-10 bg-muted rounded-md" />
           )}
-        </div>
+          <CollaborationControl />
       </div>
+      <BranchControl />
     </header>
   );
 };

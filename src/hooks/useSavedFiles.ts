@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { mergeLocalFiles } from "@/lib/collaboration/local-files";
+import { mergeProjectedFiles } from "@/lib/collaboration/local-files";
 import type { SavedFile } from "@/lib/types";
 import {
   STORAGE_SAVED_FILES,
@@ -9,6 +9,8 @@ import {
 import { ORG_TODAS, type OrgFilter } from "@/lib/project-orgs";
 
 export function useSavedFiles(initial: SavedFile[] = []) {
+  const storageProjection = useRef<{ fileId: string; canonical: Partial<SavedFile> } | undefined>(undefined);
+  const setStorageProjection = useCallback((projection?: { fileId: string; canonical: Partial<SavedFile> }) => { storageProjection.current = projection; }, []);
   const [savedFiles, setSavedFiles] = useState<SavedFile[]>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_SAVED_FILES);
@@ -57,7 +59,8 @@ export function useSavedFiles(initial: SavedFile[] = []) {
       const raw = localStorage.getItem(STORAGE_SAVED_FILES);
       const parsed = raw ? JSON.parse(raw) : before;
       const persisted = Array.isArray(parsed) ? parsed : [parsed];
-      const merged = mergeLocalFiles(persisted, before, files);
+      const projection = storageProjection.current;
+      const merged = mergeProjectedFiles(persisted, before, files, projection);
       const json = JSON.stringify(merged, getCircularReplacer());
       localStorage.setItem(STORAGE_SAVED_FILES, json);
       // small debug trace to help diagnose persistence issues
@@ -181,6 +184,7 @@ export function useSavedFiles(initial: SavedFile[] = []) {
   );
 
   return {
+    setStorageProjection,
     savedFiles,
     setSavedFiles: saveFilesToStorage,
     currentFileId,

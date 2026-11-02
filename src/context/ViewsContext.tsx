@@ -192,7 +192,7 @@ export const useViews = () => {
 };
 
 export function ViewsProvider({ children }: { children: React.ReactNode }) {
-  const { currentFileId, graphData, sharedReadOnly } = useGraphContext();
+  const { currentFileId, graphData, sharedReadOnly, sharedStorageScope } = useGraphContext();
   const { toast } = useToast();
 
   const [customViews, setCustomViews] = useState<DesignView[]>([]);
@@ -228,7 +228,7 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     if (!currentFileId) return;
     try {
       localStorage.setItem(
-        storageKey(currentFileId),
+        storageKey(sharedStorageScope ?? currentFileId),
         JSON.stringify({
           customViews,
           activeViewId,
@@ -239,7 +239,7 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore quota */
     }
-  }, [currentFileId, customViews, activeViewId, injectedViewIds, rawOpenViewIds]);
+  }, [currentFileId, sharedStorageScope, customViews, activeViewId, injectedViewIds, rawOpenViewIds]);
 
   // La notación de la vista built-in "Modelo" se deriva del documento activo
   // (graphData.notation), no del "ddd" cableado: así un proyecto BPMN se ve como

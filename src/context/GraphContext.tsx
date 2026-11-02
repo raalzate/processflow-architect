@@ -15,6 +15,7 @@ import type { NotationId } from "@/lib/notations";
 import type { OrgFilter } from "@/lib/project-orgs";
 import type { PersistedViews } from "@/lib/views-types";
 import type { SharedBoardExtras } from "@/lib/board-file";
+import type { SharedProject } from "@/lib/collaboration/types";
 
 
 
@@ -32,6 +33,8 @@ type NodeTree = {
 // Define el tipo para el estado del contexto
 // Esto es básicamente una lista de todos tus estados y funciones
 export interface GraphContextType {
+  sharedStorageScope?: string;
+  setSharedStorageScope?: (scope?: string, canonical?: SharedProject) => void;
   sharedReadOnly: boolean;
   setSharedReadOnly: (fileId: string, value: boolean) => void;
   /** Apply a merged shared file while retaining this device's local identity/org. */

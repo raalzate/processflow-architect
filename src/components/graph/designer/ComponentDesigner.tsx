@@ -2961,11 +2961,11 @@ export const ComponentDesigner: React.FC<{
 
   // Modo vista: editar el grafo de una vista custom; si no, el proyecto activo.
   const isViewMode = value !== undefined;
-  const sourceKey = isViewMode ? `view:${sourceId ?? "?"}` : currentFileId;
   const collaboration = useCollaboration();
+  const sourceKey = `${isViewMode ? `view:${sourceId ?? "?"}` : currentFileId}:${collaboration?.branchId ?? "shared"}:${collaboration?.previewCommitId ?? "live"}`;
   const sharedProject = !!collaboration?.status;
   const readOnlyRef = useRef(false);
-  readOnlyRef.current = !!collaboration?.status && (collaboration.status.role === "viewer" || collaboration.status.initialized === false || !collaboration.status.saved);
+  readOnlyRef.current = !!collaboration?.readOnly;
   const sourceContent: GraphData | undefined = isViewMode
     ? value
     : savedFiles.find((f) => f.id === currentFileId)?.content;
