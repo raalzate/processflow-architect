@@ -95,7 +95,7 @@ const MemoizedAppHeader = React.memo(() => {
       onOrgCleared={clearOrgFromProjects}
       onFileSelect={handleFileSelect}
       onCreateProject={handleCreateProject}
-      onImportJson={handleCreateProjectFromContent}
+      onImportJson={(name, content, vistas, compartido) => handleCreateProjectFromContent(name, content, vistas, undefined, compartido)}
       onFileDelete={handleFileDelete}
       onRenameProject={handleRenameProject}
       onDownloadJson={handleDownloadJson}
@@ -627,8 +627,8 @@ const WelcomeScreen = () => {
       if (!isJsonFile(file)) throw new Error("Arrastra un archivo .json (GraphData).");
       // Importa el TABLERO completo (proyecto + vistas). Un .json viejo (una sola
       // vista) sigue entrando: `parseBoardFile` devuelve las vistas vacías.
-      const { name, content, vistas } = parseBoardFile(await file.text(), file.name);
-      handleCreateProjectFromContent(name, content, vistas);
+      const { name, content, vistas, compartido } = parseBoardFile(await file.text(), file.name);
+      handleCreateProjectFromContent(name, content, vistas, undefined, compartido);
     } catch (err: any) {
       toast({
         variant: "destructive",

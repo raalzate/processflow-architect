@@ -101,6 +101,7 @@ export function readStoredCustomViews(fileId: string): DesignView[] {
 }
 
 export interface ViewsContextType {
+  replaceSharedViews: (views: DesignView[]) => void;
   views: DesignView[]; // built-in + custom (en orden)
   customViews: DesignView[];
   activeViewId: string;
@@ -191,7 +192,7 @@ export const useViews = () => {
 };
 
 export function ViewsProvider({ children }: { children: React.ReactNode }) {
-  const { currentFileId, graphData } = useGraphContext();
+  const { currentFileId, graphData, sharedReadOnly } = useGraphContext();
   const { toast } = useToast();
 
   const [customViews, setCustomViews] = useState<DesignView[]>([]);
@@ -578,6 +579,7 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value: ViewsContextType = {
+    replaceSharedViews: setCustomViews,
     views,
     customViews,
     activeViewId,
@@ -595,14 +597,14 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     enterView,
     enterViewPath,
     goToDrill,
-    createView,
-    cloneView,
-    renameView,
-    setViewNotation,
-    deleteView,
-    updateViewGraph,
-    updateViewMermaid,
-    moveCustomView,
+    createView: (...args) => sharedReadOnly ? null : createView(...args),
+    cloneView: (...args) => sharedReadOnly ? null : cloneView(...args),
+    renameView: (...args) => { if (!sharedReadOnly) renameView(...args); },
+    setViewNotation: (...args) => { if (!sharedReadOnly) setViewNotation(...args); },
+    deleteView: (...args) => { if (!sharedReadOnly) deleteView(...args); },
+    updateViewGraph: (...args) => { if (!sharedReadOnly) updateViewGraph(...args); },
+    updateViewMermaid: (...args) => { if (!sharedReadOnly) updateViewMermaid(...args); },
+    moveCustomView: (...args) => { if (!sharedReadOnly) moveCustomView(...args); },
     toggleInject,
     clearInjected,
     filterOptions: optionsForActive,

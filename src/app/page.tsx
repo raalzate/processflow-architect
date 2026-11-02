@@ -8,6 +8,7 @@ import { GraphDataProvider } from "@/context/GraphDataProvider";
 import { ViewsProvider } from "@/context/ViewsContext";
 import { AgentProvider } from "@/context/AgentContext";
 import { ReferenceProvider } from "@/context/ReferenceContext";
+import { CollaborationProvider } from "@/context/CollaborationContext";
 
 // Layout Components
 import { AppSidebar } from "@/components/layout/AppSidebar";
@@ -19,6 +20,7 @@ export default function Home() {
       <ReferenceProvider>
         <ViewsProvider>
           <AgentProvider>
+            <CollaborationProvider>
             {/* Colapsado al abrir: el panel del agente se pide, no se impone, y el
                 lienzo se ve entero desde el arranque (#254).
 
@@ -32,6 +34,7 @@ export default function Home() {
               <AppSidebar />
               <AppContent />
             </SidebarProvider>
+            </CollaborationProvider>
           </AgentProvider>
         </ViewsProvider>
       </ReferenceProvider>

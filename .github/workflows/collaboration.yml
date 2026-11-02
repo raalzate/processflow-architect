@@ -1,0 +1,41 @@
+name: Native collaboration
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run test:collaboration
+  relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Relay propio local con binario oficial
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/pf-relay"
+          gh release download v1.4.1 --repo n0-computer/iroh --pattern 'iroh-relay-v1.4.1-x86_64-unknown-linux-gnu.tar.gz' --dir "$RUNNER_TEMP/pf-relay"
+          tar -xzf "$RUNNER_TEMP/pf-relay/iroh-relay-v1.4.1-x86_64-unknown-linux-gnu.tar.gz" -C "$RUNNER_TEMP/pf-relay"
+          relay_binary=$(find "$RUNNER_TEMP/pf-relay" -type f -name iroh-relay | head -n 1)
+          "$relay_binary" --dev > "$RUNNER_TEMP/pf-relay/relay.log" 2>&1 &
+          relay_pid=$!
+          trap 'kill "$relay_pid"' EXIT
+          npx tsx scripts/collaboration-relay-smoke.ts 'http://[::1]:3340'

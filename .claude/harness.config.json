@@ -248,6 +248,8 @@
     "prefix": "tessl/npm-",
     "$allow": "DEUDA DECLARADA — deps que estaban sin tile al instalar la regla (auditoría 2026-08-28). La lista sólo baja: salir de acá es `tessl search <dep>` + `tessl install`. Los primeros candidatos son los de API más exótica: @litert-lm/core (el motor de IA), electron-updater (feature activa #208) y @modelcontextprotocol/sdk. ÚNICA EXCEPCIÓN que subió: @tailwindcss/postcss (2026-10-10, #501), que Tailwind 4 exige con Next y no tiene tile publicado (`tessl install tessl/npm-tailwindcss--postcss` → «no published versions»); sale apenas exista.",
     "allow": [
+      "@number0/iroh",
+      "yjs",
       "@electron/notarize",
       "@electron/rebuild",
       "@hookform/resolvers",
@@ -468,7 +470,7 @@
     ],
     "$github": "Los artefactos SDD viven en GitHub, no en el repo: la issue madre lleva el spec (plan/checklist/testify/analyze como comentarios) y cada tarea es su propio issue, asignable y cerrable. `specs/` se borró y con él el freno del gate que lo vigilaba (#156): esto es convención escrita en docs/harness/sdd.md, no un mecanismo.",
     "github": {
-      "repo": "raalzate/processflow-architect",
+      "repo": "cristhianDavidOrbes/processflow-architect-collab-temp-20261101",
       "featureLabel": "sdd:feature",
       "taskLabel": "sdd:task",
       "featureLabelPrefix": "feature:",

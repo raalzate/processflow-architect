@@ -2,6 +2,7 @@
 import type {NextConfig} from 'next';
 const isProd = process.env.NODE_ENV === 'production';
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: process.cwd(),
   output: 'export',
   // El dev server y el build de producción usaban el MISMO `.next`: correr
   // `npm run gate` con la app levantada la mataba a mitad de sesión. Separados,

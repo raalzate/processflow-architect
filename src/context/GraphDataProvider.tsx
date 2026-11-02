@@ -49,6 +49,8 @@ interface GraphDataProviderProps {
 }
 
 export function GraphDataProvider({ children }: GraphDataProviderProps) {
+  const [readOnlyFiles, setReadOnlyFiles] = useState<Record<string, boolean>>({});
+  const setSharedReadOnly = useCallback((fileId: string, value: boolean) => setReadOnlyFiles(previous => previous[fileId] === value ? previous : { ...previous, [fileId]: value }), []);
   // --- Core Hooks & Refs ---
   const { toast } = useToast();
   const router = useRouter();
@@ -362,8 +364,23 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
   }, [router]);
 
   // --- Context Provider Value ---
+  const applySharedFile = useCallback((fileId: string, shared: Pick<SavedFile, "name" | "content" | "driversResult" | "constraintsResult" | "roadmapResult" | "proposalResult">) => {
+    const next = savedFiles.map(file => file.id === fileId ? { ...file, ...shared } : file);
+    setSavedFiles(next);
+    if (fileId === currentFileId) {
+      const file = next.find(value => value.id === fileId);
+      if (file) loadFile(file);
+      setDriversResult(shared.driversResult ?? null);
+      setConstraintsResult(shared.constraintsResult ?? null);
+      setRoadmapResult(shared.roadmapResult ?? null);
+      setProposalResult(shared.proposalResult ?? null);
+    }
+  }, [savedFiles, currentFileId, setSavedFiles, loadFile]);
   // Ensambla el valor final para el GraphContext.Provider
   const contextValue: GraphContextType = {
+    sharedReadOnly: !!(currentFileId && readOnlyFiles[currentFileId]),
+    setSharedReadOnly,
+    applySharedFile,
     // Datos del Grafo
     graphData,
     allNodes,
@@ -414,6 +431,10 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     ...analysisHandlers,
     ...pdfHandlers,
     ...uiHandlers,
+    handleDesignUpdate: (id, content) => { if (!readOnlyFiles[id]) fileHandlers.handleDesignUpdate(id, content); },
+    handleRenameProject: (id, name) => !readOnlyFiles[id] && fileHandlers.handleRenameProject(id, name),
+    handleNodeUpdate: node => { if (!currentFileId || !readOnlyFiles[currentFileId]) uiHandlers.handleNodeUpdate(node); },
+    handleRunAnalysis: async (type, options) => { if (!currentFileId || !readOnlyFiles[currentFileId]) await analysisHandlers.handleRunAnalysis(type, options); },
   };
 
   return (

@@ -1,0 +1,96 @@
+import { describe, expect, it } from "vitest";
+import * as Y from "yjs";
+import { SharedDocument } from "../document";
+import type { GraphData } from "../../types";
+
+const graph = (): GraphData => ({ nombre_proyecto: "Equipo", version: "1", fecha_analisis: "", responsables: [], notas: "", transcript: "", read_models: [], agregados: [
+  { id: "group", nombre_agregado: "Grupo", entidad_raiz: "", descripcion: "", nodos: [
+    { id: "a", nombre: "A", tipo_elemento: "Comando", estado_comparativo: "nuevo", descripcion: "", x: 10, y: 10 },
+    { id: "b", nombre: "B", tipo_elemento: "Evento", estado_comparativo: "nuevo", descripcion: "", x: 100, y: 10 },
+  ], aristas: [] },
+], big_picture: { descripcion: "", hotspots: [], nodos: [], aristas: [] }, politicas_inter_agregados: [] });
+const seed = () => ({ name: "Equipo", content: graph(), customViews: [], references: [], agent: { versions: [], lineages: [], artifacts: [] }, analysis: {} });
+function pair() {
+  const a = new SharedDocument(); a.patch({}, seed());
+  const b = new SharedDocument(); b.receive(a.update());
+  return { a, b };
+}
+function exchange(a: SharedDocument, b: SharedDocument) {
+  const au = a.update(b.vector()), bu = b.update(a.vector()); a.receive(bu); b.receive(au);
+}
+
+describe("durable project document", () => {
+  it("merges an offline edge with another person's component edits", () => {
+    const { a, b } = pair(); const beforeA = a.snapshot(), beforeB = b.snapshot();
+    const nextA = structuredClone(beforeA); nextA.content.agregados[0].aristas.push({ id: "ab", fuente: "a", destino: "b", descripcion: "conecta" });
+    const nextB = structuredClone(beforeB); nextB.content.agregados[0].nodos[1].nombre = "B editado"; nextB.content.agregados[0].nodos[1].x = 500;
+    a.patch(beforeA, nextA); b.patch(beforeB, nextB); exchange(a, b);
+    expect(a.snapshot()).toEqual(b.snapshot());
+    expect(a.snapshot().content.agregados[0].aristas[0]).toMatchObject({ id: "ab", fuente: "a", destino: "b" });
+    expect(a.snapshot().content.agregados[0].nodos[1]).toMatchObject({ nombre: "B editado", x: 500 });
+  });
+  it("reopens after days and exchanges both users' saved changes", () => {
+    const { a, b } = pair(); const oldA = a.snapshot(), oldB = b.snapshot();
+    const nextA = structuredClone(oldA); nextA.name = "Día uno"; a.patch(oldA, nextA);
+    const nextB = structuredClone(oldB); nextB.content.agregados[0].nodos[1].descripcion = "Día tres"; b.patch(oldB, nextB);
+    const reopenedA = new SharedDocument(), reopenedB = new SharedDocument();
+    reopenedA.receive(a.update()); reopenedB.receive(b.update()); exchange(reopenedA, reopenedB);
+    expect(reopenedA.snapshot()).toEqual(reopenedB.snapshot());
+    expect(reopenedA.snapshot().name).toBe("Día uno");
+    expect(reopenedA.snapshot().content.agregados[0].nodos[1].descripcion).toBe("Día tres");
+  });
+  it("keeps edges pending until the referenced component arrives", () => {
+    const { a } = pair(); let old = a.snapshot(), next = structuredClone(old);
+    next.content.agregados[0].aristas.push({ id: "ac", fuente: "a", destino: "c", descripcion: "" }); a.patch(old, next);
+    expect(a.pendingEdges()).toBe(1); expect(a.snapshot().content.agregados[0].aristas).toEqual([]);
+    old = a.snapshot(); next = structuredClone(old); next.content.agregados[0].nodos.push({ id: "c", nombre: "C", tipo_elemento: "Evento", estado_comparativo: "nuevo", descripcion: "" }); a.patch(old, next);
+    expect(a.pendingEdges()).toBe(0); expect(a.snapshot().content.agregados[0].aristas[0].id).toBe("ac");
+  });
+  it("does not erase remote additions using a stale local projection", () => {
+    const { a, b } = pair(); const stale = a.snapshot(), beforeB = b.snapshot();
+    const nextB = structuredClone(beforeB); nextB.content.agregados[0].nodos.push({ id: "c", nombre: "C", tipo_elemento: "Evento", estado_comparativo: "nuevo", descripcion: "" }); b.patch(beforeB, nextB); a.receive(b.update(a.vector()));
+    const local = structuredClone(stale); local.content.agregados[0].nodos[0].nombre = "A nuevo"; a.patch(stale, local);
+    expect(a.snapshot().content.agregados[0].nodos.map(n => n.id)).toContain("c");
+  });
+  it("uses tombstones for delete versus offline edit, retaining recoverable contents", () => {
+    const { a, b } = pair(); const oldA = a.snapshot(), oldB = b.snapshot();
+    const nextA = structuredClone(oldA); nextA.content.agregados[0].nodos.splice(1, 1); a.patch(oldA, nextA);
+    const nextB = structuredClone(oldB); nextB.content.agregados[0].nodos[1].nombre = "Trabajo offline"; b.patch(oldB, nextB); exchange(a, b);
+    expect(a.snapshot().content.agregados[0].nodos.map(n => n.id)).toEqual(["a"]);
+    expect(a.deleted().length).toBe(1); expect(a.recoveryJson()).toContain("Trabajo offline");
+  });
+  it("own undo preserves edits from the other user", () => {
+    const { a, b } = pair(); a.clearUndo();
+    let old = a.snapshot(), next = structuredClone(old); next.name = "Mío"; a.patch(old, next);
+    old = b.snapshot(); next = structuredClone(old); next.content.agregados[0].nodos[0].descripcion = "De B"; b.patch(old, next); a.receive(b.update(a.vector()));
+    a.undo(); expect(a.snapshot().name).toBe("Equipo"); expect(a.snapshot().content.agregados[0].nodos[0].descripcion).toBe("De B");
+  });
+  it("restores an explicitly re-added entity after local canvas undo", () => {
+    const { a } = pair(); const original = a.snapshot(), removed = structuredClone(original);
+    removed.content.agregados[0].nodos.splice(1, 1); a.patch(original, removed);
+    const observed = a.snapshot(), restored = structuredClone(observed);
+    restored.content.agregados[0].nodos.push(original.content.agregados[0].nodos[1]); a.patch(observed, restored);
+    expect(a.snapshot().content.agregados[0].nodos.map(n => n.id)).toEqual(["a", "b"]);
+  });
+  it("keeps identities when a container is renamed and a node is moved", () => {
+    const { a, b } = pair(); const oa = a.snapshot(), ob = b.snapshot(), na = structuredClone(oa), nb = structuredClone(ob);
+    na.content.agregados[0].nombre_agregado = "Renombrado"; nb.content.agregados[0].nodos[1].x = 42;
+    a.patch(oa, na); b.patch(ob, nb); exchange(a, b);
+    expect(a.snapshot().content.agregados[0]).toMatchObject({ id: "group", nombre_agregado: "Renombrado" });
+    expect(a.snapshot().content.agregados[0].nodos[1].x).toBe(42);
+  });
+  it("is idempotent and converges with duplicate, reordered updates", () => {
+    const { a, b } = pair(); const updates: Uint8Array[] = []; a.doc.on("update", u => updates.push(u));
+    for (const name of ["Uno", "Dos", "Tres"]) { const old = a.snapshot(); a.patch(old, { ...old, name }); }
+    for (const u of [...updates].reverse()) { b.receive(u); b.receive(u); }
+    expect(b.snapshot()).toEqual(a.snapshot());
+    expect(Y.encodeStateVector(b.doc)).toEqual(Y.encodeStateVector(a.doc));
+  });
+  it("retains both concurrent edits of the same field for recovery", () => {
+    const { a, b } = pair(); const oa = a.snapshot(), ob = b.snapshot(), na = structuredClone(oa), nb = structuredClone(ob);
+    na.content.agregados[0].nodos[0].nombre = "Trabajo de Ana"; nb.content.agregados[0].nodos[0].nombre = "Trabajo de Luis";
+    a.patch(oa, na); b.patch(ob, nb); exchange(a, b);
+    expect(a.snapshot()).toEqual(b.snapshot());
+    expect(a.recoveryJson()).toContain("Trabajo de Ana"); expect(a.recoveryJson()).toContain("Trabajo de Luis");
+  });
+});

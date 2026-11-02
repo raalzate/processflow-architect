@@ -125,6 +125,12 @@ export function readStoredArtifacts(fileId: string): Artifact[] {
   if (!fileId) return [];
   return loadState(fileId).artifacts ?? [];
 }
+export function readStoredSharedArtifacts(fileId: string): Pick<AgentState, "versions" | "lineages" | "artifacts"> {
+  const { versions, lineages, artifacts } = loadState(fileId); return { versions, lineages, artifacts };
+}
+export function writeStoredSharedArtifacts(fileId: string, shared: Pick<AgentState, "versions" | "lineages" | "artifacts">) {
+  localStorage.setItem(storageKey(fileId), JSON.stringify({ ...shared, messages: [] }));
+}
 
 /** Serializa un artefacto a texto plano para inyectarlo como contexto. */
 export function artifactToText(a: Artifact): string {
@@ -158,6 +164,7 @@ function viewToContext(view: any): { kind: string; title: string; content: strin
 }
 
 export interface AgentContextType {
+  replaceSharedArtifacts: (shared: Pick<AgentState, "versions" | "lineages" | "artifacts">) => void;
   versions: ArtifactVersion[];
   activeVersionId: string;
   lineages: ArtifactLineage[];
@@ -220,7 +227,7 @@ export const useAgent = () => {
 };
 
 export function AgentProvider({ children }: { children: React.ReactNode }) {
-  const { currentFileId, graphData } = useGraphContext();
+  const { currentFileId, graphData, sharedReadOnly } = useGraphContext();
   const { views, injectedViews, activeView } = useViews();
   const { toast } = useToast();
 
@@ -1012,6 +1019,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value: AgentContextType = {
+    replaceSharedArtifacts: (shared) => {
+      setVersions(shared.versions); setLineages(shared.lineages); setArtifacts(shared.artifacts);
+      setActiveVersionId(previous => shared.versions.some(v => v.id === previous) ? previous : shared.versions[0]?.id ?? "");
+    },
     versions,
     activeVersionId,
     lineages,
@@ -1024,20 +1035,20 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     attachments,
     agentId,
     setAgentId,
-    sendMessage,
-    answerBuilderQuestion,
-    resumeRun,
-    retryWithWiderWindow,
+    sendMessage: async (...args) => { if (!sharedReadOnly) await sendMessage(...args); },
+    answerBuilderQuestion: async (...args) => { if (!sharedReadOnly) await answerBuilderQuestion(...args); },
+    resumeRun: async (...args) => { if (!sharedReadOnly) await resumeRun(...args); },
+    retryWithWiderWindow: async (...args) => { if (!sharedReadOnly) await retryWithWiderWindow(...args); },
     cancelRun,
     historyOf,
-    restoreArtifactRevision,
-    editArtifact,
-    purgeArtifact,
-    attachArtifactTo,
-    detachArtifactRevision,
-    deleteArtifact,
-    clearVersionArtifacts,
-    createVersion,
+    restoreArtifactRevision: (...args) => { if (!sharedReadOnly) restoreArtifactRevision(...args); },
+    editArtifact: (...args) => { if (!sharedReadOnly) editArtifact(...args); },
+    purgeArtifact: (...args) => { if (!sharedReadOnly) purgeArtifact(...args); },
+    attachArtifactTo: (...args) => { if (!sharedReadOnly) attachArtifactTo(...args); },
+    detachArtifactRevision: (...args) => { if (!sharedReadOnly) detachArtifactRevision(...args); },
+    deleteArtifact: (...args) => { if (!sharedReadOnly) deleteArtifact(...args); },
+    clearVersionArtifacts: (...args) => { if (!sharedReadOnly) clearVersionArtifacts(...args); },
+    createVersion: (...args) => { if (!sharedReadOnly) createVersion(...args); },
     setActiveVersion,
     toggleContextArtifact,
     clearContextArtifacts,

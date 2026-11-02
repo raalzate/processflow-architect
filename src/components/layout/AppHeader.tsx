@@ -1,4 +1,5 @@
 "use client";
+import { CollaborationControl } from "@/components/collaboration/CollaborationControl";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
@@ -85,7 +86,7 @@ import { isChecked } from "@/lib/graph-filters";
 import { useToast } from "@/hooks/use-toast";
 import { BetaBadge } from "@/components/layout/AppCredits";
 import { buscarNodos, nodosBuscables, MIN_QUERY } from "@/lib/search-nodes";
-import { parseBoardFile } from "@/lib/board-file";
+import { parseBoardFile, type SharedBoardExtras } from "@/lib/board-file";
 import { importarMermaid } from "@/lib/mcp/import-mermaid-file";
 import type { PersistedViews } from "@/lib/views-types";
 import { normalizeProjectName } from "@/lib/project-rename";
@@ -124,7 +125,7 @@ interface AppHeaderProps {
   onFileSelect: (id: string) => void;
   onCreateProject: (nombre: string, notation?: NotationId) => void;
   /** Importa un GraphData ya generado (p. ej. exportado por el MCP / Claude Code). */
-  onImportJson: (nombre: string, content: GraphData, vistas?: PersistedViews) => string | null;
+  onImportJson: (nombre: string, content: GraphData, vistas?: PersistedViews, compartido?: SharedBoardExtras) => string | null;
   onFileDelete: (id: string) => void;
   /** Renombra el proyecto activo; `false` si el nombre no era válido. */
   onRenameProject: (id: string, nombre: string) => boolean;
@@ -452,8 +453,8 @@ const FileManagement: React.FC<
     try {
       const raw = await file.text();
       // Importa el TABLERO completo (proyecto + vistas); un .json viejo entra igual.
-      const { name, content, vistas } = parseBoardFile(raw, file.name);
-      onImportJson(name, content, vistas);
+      const { name, content, vistas, compartido } = parseBoardFile(raw, file.name);
+      onImportJson(name, content, vistas, compartido);
     } catch (err: any) {
       toast({
         variant: "destructive",
@@ -1051,6 +1052,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+          <CollaborationControl />
           {/* Búsqueda global: en la app de escritorio se pinta en la barra de
               título (issue #169); en el navegador, acá mismo. */}
           {mounted ? (

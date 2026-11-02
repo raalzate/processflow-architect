@@ -1,4 +1,5 @@
 import { app, ipcMain, IpcMainInvokeEvent, clipboard, BrowserWindow, dialog } from 'electron';
+import { registerCollaboration } from './services/collaboration';
 import { handleMdToPdf } from './services/pdf';
 import { popupAppMenu } from './window';
 import {
@@ -55,6 +56,7 @@ import type { ChatEvent } from '../src/lib/agent-cli/types';
  * exportación a PDF y portapapeles.
  */
 export function registerIpcHandlers() {
+  registerCollaboration();
   ipcMain.handle('convert-md-to-pdf', handleMdToPdf);
 
   // Estado de la GPU: la MISMA información de `chrome://gpu`. Sirve para explicar

@@ -16,6 +16,7 @@ import type { AppReadRequest, AppReadResult } from "@/lib/mcp/app-read";
 import type { AppActionRequest, AppActionResult } from "@/lib/mcp/app-actions";
 import type { ChatEvent, CliStatus } from "@/lib/agent-cli/types";
 import type { GenerateInput, LaunchInput } from "@/lib/agent-cli/args";
+import type { CollaborationCommand, CollaborationEvent, CollaborationResult, PresenceInput } from "@/lib/collaboration/types";
 
 export interface McpServerStatus {
   running: boolean;
@@ -57,6 +58,9 @@ export interface SystemInfo {
 }
 
 export interface ElectronAPI {
+  collaborationCommand?: (command: CollaborationCommand) => Promise<CollaborationResult>;
+  collaborationPresence?: (fileId: string, presence: PresenceInput) => void;
+  onCollaborationEvent?: (callback: (event: CollaborationEvent) => void) => () => void;
   generatePdf: (markdown: string) => Promise<any>;
   navigate: (callback: (event: any, ...args: any[]) => void) => void;
   onDesignerAction: (callback: (action: string) => void) => () => void;

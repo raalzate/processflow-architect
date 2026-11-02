@@ -10,6 +10,13 @@ import { registerIpcHandlers } from './main/ipc';
 import { cancelAllAgentCli } from './main/services/agent-cli';
 import { kokoroArchivoLocal } from './main/services/kokoro-models';
 import { resumenGpu } from './src/lib/gpu-status';
+import { closeCollaboration } from './main/services/collaboration';
+
+// The collaboration preview has its own identity and storage, including in dev.
+app.setName('Processflow-Architect-Collab');
+app.setPath('userData', process.env.PROCESSFLOW_COLLAB_DATA
+  ? path.resolve(process.env.PROCESSFLOW_COLLAB_DATA)
+  : path.join(app.getPath('appData'), 'Processflow-Architect-Collab'));
 
 // Schemes privilegiados: registrar AQUÍ (tras los imports, antes de ready) para
 // pisar el registro parcial que hace electron-serve al importarse. Ver main/schemes.ts.
@@ -85,4 +92,5 @@ app.on('window-all-closed', () => {
 // proceso ya hubiera salido, y la limpieza no corría nunca.
 app.on('before-quit', () => {
   cancelAllAgentCli();
+  void closeCollaboration();
 });

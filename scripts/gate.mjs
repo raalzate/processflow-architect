@@ -29,7 +29,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { resolverEjecutable } from "../.claude/hooks/harness.mjs";
+import { resolverEjecutable, resolverComando } from "../.claude/hooks/harness.mjs";
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const CONFIG_PATH = path.join(REPO_ROOT, ".claude", "harness.config.json");
@@ -100,7 +100,8 @@ for (const senal of senales) {
   // comandos. En Windows, los lanzadores `.cmd`/`.bat` (npm, npx, gradlew) sólo se pueden
   // ejecutar a través del shell, así que ESOS —y sólo ésos— se resuelven a su archivo real.
   const t0 = process.hrtime.bigint();
-  const r = spawnSync(resolverEjecutable(argv[0]), argv.slice(1), {
+  const command = resolverComando(argv);
+  const r = spawnSync(command[0], command.slice(1), {
     cwd: REPO_ROOT,
     stdio: "inherit",
     shell: false,

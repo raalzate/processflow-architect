@@ -20,6 +20,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { RUTAS_INDEXABLES, sealVerdict } from "./graph-seal.mjs";
 import { fileURLToPath } from "node:url";
+import { resolverEjecutable } from "../.claude/hooks/harness.mjs";
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const abs = (p) => path.join(REPO_ROOT, p);
@@ -181,7 +182,7 @@ for (const [hook, name, payload, expected] of blocks) {
         );
     }
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 
@@ -214,7 +215,7 @@ for (const [hook, name, payload, expected] of blocks) {
  */
 {
   const empujar = (rama) =>
-    spawnSync("bash", [abs(".githooks/pre-push")], {
+    spawnSync(resolverEjecutable("bash"), [abs(".githooks/pre-push")], {
       cwd: REPO_ROOT,
       input: `refs/heads/${rama} aaa refs/heads/${rama} bbb\n`,
       encoding: "utf8",
@@ -303,10 +304,10 @@ for (const [hook, name, payload, expected] of blocks) {
       for (const rel of Object.keys(archivos)) git("add", rel);
       const msgFile = path.join(tmp, "MSG");
       fs.writeFileSync(msgFile, mensaje);
-      const res = spawnSync("bash", [hook, msgFile], { cwd: tmp, encoding: "utf8" });
+      const res = spawnSync(resolverEjecutable("bash"), [hook, msgFile], { cwd: tmp, encoding: "utf8" });
       return { status: res.status, stderr: res.stderr ?? "" };
     } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
+      fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   };
 
@@ -401,7 +402,7 @@ for (const [hook, name, payload, expected] of blocks) {
         : "";
       return { head, sello, antes, status: res.status };
     } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
+      fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   };
 

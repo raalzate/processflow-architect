@@ -554,3 +554,9 @@ Regla:   cada captura declara el texto que TIENE que estar en pantalla (`listo`)
          Para regenerar, dejar que el script levante su propio servidor (sin `BASE`).
 Mecanismo: `esperarListo()` en `scripts/screenshots.ts`: una captura de la pantalla de carga
          ya no puede llegar a `docs/screenshots/`.
+### GOTCHA — El gate de Windows necesita el ejecutable real de npm y Git Bash
+
+Síntoma: `spawnSync` terminaba con `EINVAL`/status nulo para npm y el self-test de hooks elegía el lanzador de WSL.
+Causa: resolver `npm.cmd` no lo hace ejecutable sin shell; el primer `bash.exe` del PATH de Windows puede ser WSL.
+Regla: ejecutar el CLI JavaScript de npm con Node y resolver Git Bash cuando se prueba un hook local.
+Mecanismo: `scripts/__tests__/command-execution.test.ts` ejecuta npm, verifica argumentos literales y ejecuta bash; `.gitattributes` conserva LF para scripts y archivos con hashes.

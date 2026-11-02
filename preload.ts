@@ -2,8 +2,16 @@
 // (LiteRT-LM / WebGPU); aquí solo: navegación, PDF, portapapeles y gestión de
 // modelos .litertlm (descarga/estado/borrado, servidos por litert-model://).
 import { contextBridge, ipcRenderer } from 'electron';
+import type { CollaborationCommand, CollaborationEvent, PresenceInput } from './src/lib/collaboration/types';
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  collaborationCommand: (command: CollaborationCommand) => ipcRenderer.invoke('collaboration-command', command),
+  collaborationPresence: (fileId: string, presence: PresenceInput) => ipcRenderer.send('collaboration-presence', fileId, presence),
+  onCollaborationEvent: (callback: (event: CollaborationEvent) => void) => {
+    const listener = (_event: unknown, value: CollaborationEvent) => callback(value);
+    ipcRenderer.on('collaboration-event', listener);
+    return () => ipcRenderer.removeListener('collaboration-event', listener);
+  },
   generatePdf: (markdown: string) => ipcRenderer.invoke('convert-md-to-pdf', markdown),
   navigate: (callback: any) => ipcRenderer.on('navigate', callback),
   onDesignerAction: (callback: (action: string) => void) => {

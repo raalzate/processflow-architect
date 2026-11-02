@@ -42,3 +42,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 Lobe Icons se distribuye bajo la misma licencia MIT (texto de arriba), con
 `Copyright (c) 2023 LobeHub`.
+# Dependencias de la preview colaborativa
+
+- Yjs 13.6.33 — MIT — https://github.com/yjs/yjs
+- @number0/iroh 1.2.0 — MIT OR Apache-2.0 — https://github.com/n0-computer/iroh-ffi
+
+Se conservan los avisos originales de estas dependencias en sus paquetes. El relay
+oficial se ejecuta por separado; no se incorpora su binario a este repositorio.
