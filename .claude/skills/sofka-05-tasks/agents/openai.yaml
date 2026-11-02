@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tareas con dependencias"
+  short_description: "Flujo SDD local de Processflow Architect"
+  default_prompt: "Usa $sofka-05-tasks para esta fase del proyecto."

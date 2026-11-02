@@ -8,7 +8,7 @@ jobs:
   native:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -17,6 +17,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: npm run collaboration:prepare-native
+      - name: Kit SDD local e integridad (offline)
+        run: npx vitest run scripts/__tests__/sdd-integrity.test.ts
+      - run: npm run harness:selftest
       - run: npm run test:collaboration
   relay:
     runs-on: ubuntu-latest

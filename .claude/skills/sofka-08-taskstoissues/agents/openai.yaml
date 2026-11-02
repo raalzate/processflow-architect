@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tareas del plan en GitHub"
+  short_description: "Flujo SDD local de Processflow Architect"
+  default_prompt: "Usa $sofka-08-taskstoissues para esta fase del proyecto."

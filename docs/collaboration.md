@@ -166,6 +166,22 @@ opcionales y datos ocultos por borrados. Si esos tipos cambian, ejecutar
 
 ## Implementación y validación
 
+El destino de escritorio es Windows, macOS y Linux. La matriz de integración
+incluye Windows x64, Linux x64, Mac con Apple Silicon y Mac Intel. Los instaladores
+incluyen el binding nativo: quien usa la aplicación no necesita Rust ni Node.
+
+Para desarrollar o empaquetar en Mac Intel, la versión 1.2.0 de Iroh no publica
+un binario x64. `npm run collaboration:prepare-native` compila el mismo binding
+desde una revisión oficial fijada e instala su archivo generado en el paquete.
+También se ejecuta antes de `npm run build` y `npm run electron-dev`. Se requieren
+Git, Rust >=1.91, CMake y las herramientas de línea de comandos de Xcode sólo en
+la máquina que compila esa variante. El script conserva la fuente y el caché
+fuera del repositorio y rechaza revisiones o fuentes locales modificadas.
+En las otras plataformas se utilizan los paquetes nativos publicados.
+
+El [kit SDD local](harness/sdd.md) está incluido en el clon y no requiere el kit
+privado Sofka. Sus comprobaciones se ejecutan también en la matriz de CI.
+
 - `src/lib/collaboration`: identidad, proyección del grafo, combinación CRDT,
   políticas de capacidad, rutas, presencia y cola de proyecciones.
 - `main/services/collaboration`: persistencia y transporte nativo, descubrimiento

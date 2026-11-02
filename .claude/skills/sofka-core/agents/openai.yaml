@@ -1,0 +1,4 @@
+interface:
+  display_name: "Estado del flujo SDD"
+  short_description: "Flujo SDD local de Processflow Architect"
+  default_prompt: "Usa $sofka-core para esta fase del proyecto."

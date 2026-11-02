@@ -12,7 +12,7 @@
  *   3. los hooks BLOQUEAN de verdad lo que dicen bloquear (se ejecutan con payloads reales);
  *   4. el clasificador SDD no se degrada (casos de ruteo fijos);
  *   5. subagentes y comandos citados por el arnés existen;
- *   6. el kit de SDD está instalado (en CI se reporta "omitido", nunca "pasó").
+ *   6. las fases del kit de SDD contienen skills válidas.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -21,6 +21,7 @@ import { spawnSync } from "node:child_process";
 import { RUTAS_INDEXABLES, sealVerdict } from "./graph-seal.mjs";
 import { fileURLToPath } from "node:url";
 import { resolverEjecutable } from "../.claude/hooks/harness.mjs";
+import { kitProblems } from "./sdd-integrity.mjs";
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const abs = (p) => path.join(REPO_ROOT, p);
@@ -940,9 +941,9 @@ for (const [dir, expected] of [
 // ── 6. Kit de SDD instalado ──────────────────────────────────────────────────
 section("6. kit de SDD");
 const skillRoots = (config.sdd.skillRoots ?? []).map((r) => (r.startsWith("~") ? path.join(os.homedir(), r.slice(1)) : abs(r)));
-const missingSkills = config.sdd.phases.filter((phase) => !skillRoots.some((root) => fs.existsSync(path.join(root, phase))));
+const missingSkills = kitProblems(skillRoots, config.sdd.phases);
 if (!missingSkills.length) ok(`las ${config.sdd.phases.length} fases del kit \`${config.sdd.kit}\` están instaladas`);
-else if (process.env.CI) skip("kit de SDD instalado", `faltan ${missingSkills.length} fases; el kit no se versiona en el repo`);
+else if (process.env.CI && !config.sdd.requiredInCi) skip("kit de SDD instalado", `faltan ${missingSkills.length} fases; kit externo no incluido`);
 else bad("kit de SDD instalado", `faltan: ${missingSkills.join(", ")}. Instalá el kit o corregí \`sdd.skillRoots\` en la config.`);
 
 // El puntero de feature activa no puede quedar colgado. Desde que los artefactos

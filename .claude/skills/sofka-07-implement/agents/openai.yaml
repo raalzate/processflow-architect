@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implementación con evidencia"
+  short_description: "Flujo SDD local de Processflow Architect"
+  default_prompt: "Usa $sofka-07-implement para esta fase del proyecto."

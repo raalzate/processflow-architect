@@ -31,6 +31,8 @@ jobs:
         include:
           - os: macos-latest
             platform: mac
+          - os: macos-15-intel
+            platform: mac
           - os: windows-latest
             platform: win
           - os: ubuntu-latest
@@ -53,7 +55,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       # `npm ci` es reproducible (respeta package-lock.json). Aquí SÍ corre el

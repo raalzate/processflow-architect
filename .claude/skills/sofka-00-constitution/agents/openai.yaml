@@ -1,0 +1,4 @@
+interface:
+  display_name: "Principios de la implementación"
+  short_description: "Flujo SDD local de Processflow Architect"
+  default_prompt: "Usa $sofka-00-constitution para esta fase del proyecto."

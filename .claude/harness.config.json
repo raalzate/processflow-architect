@@ -450,12 +450,13 @@
     }
   },
   "sdd": {
-    "$comment": "Ruta SDD. Este repo NO tiene el Intent Integrity Kit instalado en .tessl/plugins; usa las skills sofka-0x del entorno. El self-test exige que las skills existan y en CI reporta 'omitido' en vez de fallar. Ver docs/harness/sdd.md.",
-    "kit": "sofka",
+    "$comment": "Kit SDD local original de Processflow, versionado en .claude/skills. Los nombres sofka-* mantienen compatibilidad con el arnés; no contienen el kit privado original. Las fases son obligatorias también en CI. Ver docs/harness/sdd.md.",
+    "kit": "processflow-local-sdd",
+    "requiredInCi": true,
     "skillPrefix": "sofka-",
     "skillRoots": [
-      "~/.claude/skills",
       ".claude/skills",
+      "~/.claude/skills",
       ".tessl/plugins"
     ],
     "phases": [
