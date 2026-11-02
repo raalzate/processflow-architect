@@ -72,11 +72,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import type { SavedFile, GraphNode, GraphData } from "@/lib/types";
 import { iconForType } from "@/components/graph/designer/DesignerCanvas";
@@ -112,7 +108,7 @@ import {
 import { capacidadesHost, hostBridge } from "@/lib/host-bridge";
 import { loadAiSettings } from "@/lib/ai/remote-settings";
 import { debeMostrarUso, formatearMB, resumirUso, type ResumenUso } from "@/lib/ai/resource-usage";
-      
+
 interface AppHeaderProps {
   savedFiles: SavedFile[];
   currentFileId: string | null;
@@ -126,7 +122,12 @@ interface AppHeaderProps {
   onFileSelect: (id: string) => void;
   onCreateProject: (nombre: string, notation?: NotationId) => void;
   /** Importa un GraphData ya generado (p. ej. exportado por el MCP / Claude Code). */
-  onImportJson: (nombre: string, content: GraphData, vistas?: PersistedViews, compartido?: SharedBoardExtras) => string | null;
+  onImportJson: (
+    nombre: string,
+    content: GraphData,
+    vistas?: PersistedViews,
+    compartido?: SharedBoardExtras,
+  ) => string | null;
   onFileDelete: (id: string) => void;
   /** Renombra el proyecto activo; `false` si el nombre no era válido. */
   onRenameProject: (id: string, nombre: string) => boolean;
@@ -151,7 +152,7 @@ const McpStatusButton = () => {
     const check = () =>
       electron
         .mcpServerStatus()
-        .then((s) => {
+        .then(s => {
           if (!alive) return;
           setRunning(s.running);
           setUrl(s.url);
@@ -173,14 +174,7 @@ const McpStatusButton = () => {
     : "Servidor MCP apagado — actívalo en Ajustes (clic: guía MCP)";
 
   return (
-    <Button
-      asChild
-      variant="ghost"
-      size="icon"
-      className="relative"
-      aria-label={rotulo}
-      title={rotulo}
-    >
+    <Button asChild variant="ghost" size="icon" className="relative" aria-label={rotulo} title={rotulo}>
       <Link href="/mcp">
         <Plug className="h-4 w-4" />
         {/* Señal de estado: sólo en la app de escritorio (running !== null). */}
@@ -224,7 +218,7 @@ const AiUsageIndicator = () => {
       }
       host
         .appUsage()
-        .then((m) => alive && setUso(resumirUso(m)))
+        .then(m => alive && setUso(resumirUso(m)))
         .catch(() => {});
     };
     medir();
@@ -303,17 +297,19 @@ const FileManagement: React.FC<
   // Organizaciones del workspace del MCP: sólo para saber cuál ve el AGENTE («·MCP»)
   // y para ofrecer una recién creada que todavía no tiene proyectos. El renderer no
   // toca disco: esto llega por IPC y en la web simplemente no hay.
-  const [mcpOrgs, setMcpOrgs] = useState<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }>({
-    pinned: null,
-    orgs: [],
-  });
+  const [mcpOrgs, setMcpOrgs] = useState<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }>(
+    {
+      pinned: null,
+      orgs: [],
+    },
+  );
   useEffect(() => {
     const electron = hostBridge();
     if (!electron?.mcpOrgsStatus) return;
     let alive = true;
     const check = () =>
       electron.mcpOrgsStatus!()
-        .then((s) => alive && setMcpOrgs(s))
+        .then(s => alive && setMcpOrgs(s))
         .catch(() => {});
     check();
     const timer = setInterval(check, 5000);
@@ -324,12 +320,16 @@ const FileManagement: React.FC<
   }, []);
 
   const orgNames = useMemo(
-    () => Object.fromEntries(mcpOrgs.orgs.map((o) => [o.slug, o.nombre])),
-    [mcpOrgs.orgs]
+    () => Object.fromEntries(mcpOrgs.orgs.map(o => [o.slug, o.nombre])),
+    [mcpOrgs.orgs],
   );
   const opciones = useMemo(
-    () => orgOptions(savedFiles, mcpOrgs.orgs.map((o) => o.slug)),
-    [savedFiles, mcpOrgs.orgs]
+    () =>
+      orgOptions(
+        savedFiles,
+        mcpOrgs.orgs.map(o => o.slug),
+      ),
+    [savedFiles, mcpOrgs.orgs],
   );
   const visibles = useMemo(() => filterByOrg(savedFiles, orgFilter), [savedFiles, orgFilter]);
   const grupos = useMemo(() => groupByOrg(visibles, orgNames), [visibles, orgNames]);
@@ -367,7 +367,10 @@ const FileManagement: React.FC<
       }
       await refrescarOrgs();
       onOrgFilterChange(r.slug!);
-      toast({ title: `Organización "${nombre}" creada`, description: "Mové proyectos con el menú Proyecto." });
+      toast({
+        title: `Organización "${nombre}" creada`,
+        description: "Mové proyectos con el menú Proyecto.",
+      });
     } else {
       if (orgFilter === ORG_TODAS || orgFilter === null) return;
       const r = await orgApi?.mcpOrgRename?.(orgFilter, nombre);
@@ -402,7 +405,7 @@ const FileManagement: React.FC<
     setOrgBorrar(null);
   };
 
-  const current = savedFiles.find((f) => f.id === currentFileId) ?? null;
+  const current = savedFiles.find(f => f.id === currentFileId) ?? null;
   const currentName = current?.content.nombre_proyecto ?? "";
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -502,7 +505,7 @@ const FileManagement: React.FC<
       {/* El nombre del proyecto también en la barra de título: es donde el sistema
           operativo lo espera, y le da anclaje a la franja. */}
       <EnLaBarraDeTitulo slot={TITLEBAR_TITLE_SLOT}>
-        {(enLaBarra) => (enLaBarra && currentName ? <span title={currentName}>{currentName}</span> : null)}
+        {enLaBarra => (enLaBarra && currentName ? <span title={currentName}>{currentName}</span> : null)}
       </EnLaBarraDeTitulo>
 
       {/* Chip de organización: filtra la VISTA (no mueve nada) y muestra «·MCP» cuando
@@ -535,9 +538,11 @@ const FileManagement: React.FC<
               {orgFilter === ORG_TODAS && <span className="ml-auto text-xs">✓</span>}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            {opciones.map((slug) => (
+            {opciones.map(slug => (
               <DropdownMenuItem key={slug ?? "sin-org"} onClick={() => onOrgFilterChange(slug)}>
-                <span className="truncate">{slug === null ? SIN_ORG_LABEL : orgChipLabel(slug, orgNames)}</span>
+                <span className="truncate">
+                  {slug === null ? SIN_ORG_LABEL : orgChipLabel(slug, orgNames)}
+                </span>
                 {slug !== null && slug === mcpOrgs.pinned && (
                   <span className="ml-1 text-2xs font-semibold text-muted-foreground">·MCP</span>
                 )}
@@ -580,8 +585,8 @@ const FileManagement: React.FC<
         <Input
           autoFocus
           value={renameValue}
-          onChange={(e) => setRenameValue(e.target.value)}
-          onKeyDown={(e) => {
+          onChange={e => setRenameValue(e.target.value)}
+          onKeyDown={e => {
             if (e.key === "Enter") submitRename();
             if (e.key === "Escape") setRenaming(false);
           }}
@@ -607,13 +612,13 @@ const FileManagement: React.FC<
             <SelectValue placeholder={vacio ?? "Seleccionar proyecto..."} />
           </SelectTrigger>
           <SelectContent>
-            {grupos.map((g) => (
+            {grupos.map(g => (
               <SelectGroup key={g.slug ?? "sin-org"}>
                 {/* La etiqueta del grupo sólo aporta cuando hay más de uno a la vista. */}
                 {grupos.length > 1 && <SelectLabel>{g.label}</SelectLabel>}
-                {g.files.map((file) => (
+                {g.files.map(file => (
                   <SelectItem key={file.id} value={file.id}>
-                    {file.content.nombre_proyecto}  ({file.content.fecha_analisis})
+                    {file.content.nombre_proyecto} ({file.content.fecha_analisis})
                   </SelectItem>
                 ))}
               </SelectGroup>
@@ -680,8 +685,8 @@ const FileManagement: React.FC<
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               {opciones
-                .filter((slug) => slug !== null)
-                .map((slug) => (
+                .filter(slug => slug !== null)
+                .map(slug => (
                   <DropdownMenuItem
                     key={slug}
                     onClick={() => currentFileId && onFileOrgChange(currentFileId, slug)}
@@ -690,7 +695,7 @@ const FileManagement: React.FC<
                     {current?.orgId === slug && <span className="ml-auto text-xs">✓</span>}
                   </DropdownMenuItem>
                 ))}
-              {opciones.some((slug) => slug !== null) && <DropdownMenuSeparator />}
+              {opciones.some(slug => slug !== null) && <DropdownMenuSeparator />}
               <DropdownMenuItem onClick={() => currentFileId && onFileOrgChange(currentFileId, null)}>
                 {SIN_ORG_LABEL}
                 {!current?.orgId && <span className="ml-auto text-xs">✓</span>}
@@ -711,7 +716,7 @@ const FileManagement: React.FC<
           En la app va a la barra de título: es un indicador, no necesita el ancho del
           header, y ahí libera sitio para el selector de proyecto. */}
       <EnLaBarraDeTitulo slot={TITLEBAR_RIGHT_SLOT}>
-        {(enLaBarra) => (
+        {enLaBarra => (
           <span
             className="inline-flex items-center gap-1"
             style={enLaBarra ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}
@@ -729,8 +734,8 @@ const FileManagement: React.FC<
               <FilePlus2 className="w-5 h-5" /> Nuevo proyecto
             </DialogTitle>
             <DialogDescription>
-              Ponle un nombre y elige la notación con la que vas a modelar. Luego
-              diséñalo en la pestaña Design.
+              Ponle un nombre y elige la notación con la que vas a modelar. Luego diséñalo en la pestaña
+              Design.
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
@@ -739,29 +744,27 @@ const FileManagement: React.FC<
               id="new-project-name"
               autoFocus
               value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submitNewProject()}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && submitNewProject()}
               placeholder="Ej: Sistema de Reembolsos"
               className="mt-1"
             />
           </div>
           <div className="pb-2">
             <Label htmlFor="new-project-notation">Notación</Label>
-            <Select value={newNotation} onValueChange={(v) => setNewNotation(v as NotationId)}>
+            <Select value={newNotation} onValueChange={v => setNewNotation(v as NotationId)}>
               <SelectTrigger id="new-project-notation" className="mt-1">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {NOTATION_LIST.map((n) => (
+                {NOTATION_LIST.map(n => (
                   <SelectItem key={n.id} value={n.id}>
                     {n.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {getNotation(newNotation).description}
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{getNotation(newNotation).description}</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewOpen(false)}>
@@ -775,7 +778,7 @@ const FileManagement: React.FC<
       </Dialog>
 
       {/* Crear / renombrar organización: un solo diálogo, dos modos. */}
-      <Dialog open={!!orgDialog} onOpenChange={(abierto) => !abierto && setOrgDialog(null)}>
+      <Dialog open={!!orgDialog} onOpenChange={abierto => !abierto && setOrgDialog(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -794,8 +797,8 @@ const FileManagement: React.FC<
               id="org-name"
               autoFocus
               value={orgDialog?.valor ?? ""}
-              onChange={(e) => setOrgDialog((d) => (d ? { ...d, valor: e.target.value } : d))}
-              onKeyDown={(e) => e.key === "Enter" && submitOrgDialog()}
+              onChange={e => setOrgDialog(d => (d ? { ...d, valor: e.target.value } : d))}
+              onKeyDown={e => e.key === "Enter" && submitOrgDialog()}
               placeholder="Ej: Acme Salud"
               className="mt-1"
             />
@@ -813,16 +816,15 @@ const FileManagement: React.FC<
 
       {/* Eliminar: la confirmación dice qué pasa con lo de adentro, porque lo que la
           gente teme —con razón— es perder el trabajo al quitar una etiqueta. */}
-      <AlertDialog open={!!orgBorrar} onOpenChange={(abierto) => !abierto && setOrgBorrar(null)}>
+      <AlertDialog open={!!orgBorrar} onOpenChange={abierto => !abierto && setOrgBorrar(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               ¿Eliminar «{orgBorrar ? orgChipLabel(orgBorrar, orgNames) : ""}»?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              No se borra nada de lo que tiene adentro: sus diagramas vuelven a los que no
-              tienen organización y los proyectos quedan como «{SIN_ORG_LABEL}». Sólo
-              desaparece la organización.
+              No se borra nada de lo que tiene adentro: sus diagramas vuelven a los que no tienen organización
+              y los proyectos quedan como «{SIN_ORG_LABEL}». Sólo desaparece la organización.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -835,19 +837,15 @@ const FileManagement: React.FC<
       {/* Eliminar un proyecto SÍ borra el trabajo: el grafo, las vistas, las fuentes y
           los metadatos se van con él y no hay undo. La confirmación nombra el proyecto
           para que nadie borre el que no era (#258). */}
-      <AlertDialog
-        open={!!proyectoBorrar}
-        onOpenChange={(abierto) => !abierto && setProyectoBorrar(null)}
-      >
+      <AlertDialog open={!!proyectoBorrar} onOpenChange={abierto => !abierto && setProyectoBorrar(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              ¿Eliminar «{savedFiles.find((f) => f.id === proyectoBorrar)?.name ?? ""}»?
+              ¿Eliminar «{savedFiles.find(f => f.id === proyectoBorrar)?.name ?? ""}»?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Se borra el proyecto completo: su grafo, sus vistas, sus fuentes y sus
-              metadatos. Esto no se puede deshacer. Si querés conservarlo, cancelá y
-              descargalo antes con «Descargar JSON».
+              Se borra el proyecto completo: su grafo, sus vistas, sus fuentes y sus metadatos. Esto no se
+              puede deshacer. Si querés conservarlo, cancelá y descargalo antes con «Descargar JSON».
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -898,14 +896,7 @@ const GlobalSearch: React.FC<{
   /** true dentro de la barra de título: campo bajo y ancho, y clicable sobre la
    *  franja arrastrable (sin esto, el clic movería la ventana en vez de enfocar). */
   compact?: boolean;
-}> = ({
-  searchQuery,
-  onSearchQueryChange,
-  searchResults,
-  onSelect,
-  isDisabled,
-  compact = false,
-}) => {
+}> = ({ searchQuery, onSearchQueryChange, searchResults, onSelect, isDisabled, compact = false }) => {
   // Cerrado a mano: un Popover CONTROLADO sin `onOpenChange` no se cierra con
   // Escape ni al hacer clic fuera — sólo borrando el texto (#219).
   const [cerradoPorUsuario, setCerradoPorUsuario] = useState(false);
@@ -921,7 +912,7 @@ const GlobalSearch: React.FC<{
   return (
     <Popover
       open={hayConsulta && !cerradoPorUsuario}
-      onOpenChange={(abierto) => !abierto && setCerradoPorUsuario(true)}
+      onOpenChange={abierto => !abierto && setCerradoPorUsuario(true)}
     >
       <PopoverTrigger asChild>
         <div
@@ -931,19 +922,19 @@ const GlobalSearch: React.FC<{
           <Search
             className={cn(
               "absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground",
-              compact && "left-2.5 h-3.5 w-3.5"
+              compact && "left-2.5 h-3.5 w-3.5",
             )}
           />
           <Input
             type="text"
             placeholder="Buscar elementos..."
             value={searchQuery}
-            onChange={(e) => onSearchQueryChange(e.target.value)}
+            onChange={e => onSearchQueryChange(e.target.value)}
             className={cn(
               "pl-9 pr-8",
               compact
                 ? "h-7 w-full rounded-md border-transparent bg-muted/60 pl-8 text-xs hover:bg-muted focus-visible:border-input"
-                : "w-48 md:w-64"
+                : "w-48 md:w-64",
             )}
             disabled={isDisabled}
           />
@@ -964,7 +955,7 @@ const GlobalSearch: React.FC<{
         className="w-[420px] p-0"
         align="start"
         // Evita que el popover robe el foco al input al aparecer
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        onOpenAutoFocus={e => e.preventDefault()}
       >
         <div className="p-2 text-sm text-muted-foreground">
           {searchResults.length > 0
@@ -972,7 +963,7 @@ const GlobalSearch: React.FC<{
             : "Sin coincidencias en este diagrama."}
         </div>
         <ul className="max-h-80 overflow-y-auto">
-          {searchResults.map((node) => {
+          {searchResults.map(node => {
             // Icono del registro de notaciones: sirve a DDD, BPMN, C4 y UML.
             const Icon = iconForType(node.tipo_elemento);
             return (
@@ -1014,25 +1005,25 @@ const AppHeader: React.FC<AppHeaderProps> = ({
     setMounted(true);
   }, []);
 
-   const { setSearchQuery, searchResults, searchQuery, allNodes } = useGraphContext();
-   const { activeView } = useViews();
-   // Se busca lo que se está VIENDO: si hay una vista de grafo activa, sus nodos;
-   // si no, los del proyecto. El buscador miraba sólo el proyecto, así que
-   // trabajando sobre una vista no encontraba nada y parecía roto (#219).
-   const buscables = useMemo(() => nodosBuscables(activeView, allNodes), [activeView, allNodes]);
-   // Un solo filtro para las dos fuentes (vista o proyecto): el provider usa la
-   // misma función, así que lo que encuentra la barra es lo que encuentra el resto.
-   const resultados = useMemo(() => buscarNodos(searchQuery, buscables), [searchQuery, buscables]);
-   // Los filtros son de la VISTA activa, no del proyecto: en una pestaña BPMN el
-   // menú ofrecía los tipos del C4 del modelo y rotulaba «Límite de Sistema».
-   const {
-      filterOptions: opciones,
-      filters,
-      filtersActive,
-      setContainerVisible,
-      setTypeVisible,
-      clearFilters,
-    } = useViews();
+  const { setSearchQuery, searchResults, searchQuery, allNodes } = useGraphContext();
+  const { activeView } = useViews();
+  // Se busca lo que se está VIENDO: si hay una vista de grafo activa, sus nodos;
+  // si no, los del proyecto. El buscador miraba sólo el proyecto, así que
+  // trabajando sobre una vista no encontraba nada y parecía roto (#219).
+  const buscables = useMemo(() => nodosBuscables(activeView, allNodes), [activeView, allNodes]);
+  // Un solo filtro para las dos fuentes (vista o proyecto): el provider usa la
+  // misma función, así que lo que encuentra la barra es lo que encuentra el resto.
+  const resultados = useMemo(() => buscarNodos(searchQuery, buscables), [searchQuery, buscables]);
+  // Los filtros son de la VISTA activa, no del proyecto: en una pestaña BPMN el
+  // menú ofrecía los tipos del C4 del modelo y rotulaba «Límite de Sistema».
+  const {
+    filterOptions: opciones,
+    filters,
+    filtersActive,
+    setContainerVisible,
+    setTypeVisible,
+    clearFilters,
+  } = useViews();
 
   return (
     <header className="z-10 min-w-0 space-y-3 border-b bg-card px-4 py-3 shadow-xs">
@@ -1043,9 +1034,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             <PanelLeft />
           </SidebarTrigger>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-foreground font-headline">
-              ProcessFlow Architect
-            </h1>
+            <h1 className="text-xl font-bold text-foreground font-headline">ProcessFlow Architect</h1>
             <BetaBadge />
           </div>
           {/* El crédito de autoría vive en el pie del sidebar y en «Acerca de»:
@@ -1057,7 +1046,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
               título (issue #169); en el navegador, acá mismo. */}
           {mounted ? (
             <EnLaBarraDeTitulo>
-              {(enLaBarra) => (
+              {enLaBarra => (
                 <GlobalSearch
                   searchQuery={searchQuery}
                   onSearchQueryChange={setSearchQuery}
@@ -1097,12 +1086,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({
                     <DropdownMenuLabel>Filtrar por {opciones.containerLabel}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <div className="p-2 space-y-2">
-                      {opciones.containers.map((name) => (
+                      {opciones.containers.map(name => (
                         <div key={name} className="flex items-center space-x-2">
                           <Checkbox
                             id={`filter-${name}`}
                             checked={isChecked(filters.hiddenContainers, name)}
-                            onCheckedChange={(checked) => setContainerVisible(name, !!checked)}
+                            onCheckedChange={checked => setContainerVisible(name, !!checked)}
                           />
                           <Label
                             htmlFor={`filter-${name}`}
@@ -1121,12 +1110,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({
                     <DropdownMenuLabel>Filtrar por Tipo de Elemento</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <div className="p-2 grid grid-cols-2 gap-2">
-                      {opciones.types.map((nodeType) => (
+                      {opciones.types.map(nodeType => (
                         <div key={nodeType} className="flex items-center space-x-2">
                           <Checkbox
                             id={`filter-type-${nodeType}`}
                             checked={isChecked(filters.hiddenTypes, nodeType)}
-                            onCheckedChange={(checked) => setTypeVisible(nodeType, !!checked)}
+                            onCheckedChange={checked => setTypeVisible(nodeType, !!checked)}
                           />
                           <Label
                             htmlFor={`filter-type-${nodeType}`}
@@ -1153,20 +1142,21 @@ const AppHeader: React.FC<AppHeaderProps> = ({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-
         </div>
       </div>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t pt-3">
-          {/* Proyecto y personas forman una fila propia; las versiones tienen su barra debajo. */}
-          {mounted ? (
-            <FileManagement {...fileManagementProps} />
-          ) : (
-            // Esqueleto para el FileManagement
-            <div className="w-[320px] h-10 bg-muted rounded-md" />
-          )}
+        {/* Proyecto, ramas y colaboración comparten una sola franja compacta. */}
+        {mounted ? (
+          <FileManagement {...fileManagementProps} />
+        ) : (
+          // Esqueleto para el FileManagement
+          <div className="w-[320px] h-10 bg-muted rounded-md" />
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <BranchControl />
           <CollaborationControl />
+        </div>
       </div>
-      <BranchControl />
     </header>
   );
 };

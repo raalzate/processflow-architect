@@ -127,8 +127,7 @@ export function BranchPermissionsPanel({
           ))}
       </select>
       <p className="text-xs text-muted-foreground">
-        Para revocar, desmarca los permisos y guarda. Fusionar no concede edición ni restauración. Una
-        limitación por solicitud se aplica exclusivamente a la aprobación de fusiones.
+        Para quitar permisos, desmárcalos y guarda (o usa Revocar).
       </p>
       <div className="flex gap-2">
         <Button disabled={busy || !chosenMember}>Guardar permisos</Button>
@@ -149,11 +148,7 @@ export function BranchPermissionsPanel({
         </Button>
       </div>
       <fieldset className="space-y-2 border-t pt-3">
-        <legend className="font-medium">Quién puede editar {branch.name}</legend>
-        <p className="text-xs text-muted-foreground">
-          Principal usa los permisos especiales de arriba. Las otras ramas pueden ser compartidas o tener
-          personas asignadas.
-        </p>
+        <legend className="text-sm font-medium">Editores de {branch.name}</legend>
         {branch.id !== "main" ? (
           <>
             <Button
@@ -188,7 +183,9 @@ export function BranchPermissionsPanel({
                 </label>
               ))}
           </>
-        ) : null}
+        ) : (
+          <p className="text-xs text-muted-foreground">Principal se controla con los permisos de arriba.</p>
+        )}
       </fieldset>
     </form>
   );

@@ -5,6 +5,7 @@ import { Users, Copy, RefreshCw, Download, Link2 } from "lucide-react";
 import { useCollaboration } from "@/context/CollaborationContext";
 import { useGraphContext } from "@/context/GraphContext";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -86,10 +87,16 @@ export function CollaborationControl() {
         className="max-h-[80vh] w-[min(26rem,calc(100vw-2rem))] space-y-4 overflow-y-auto"
       >
         <div className="space-y-1">
-          <h2 className="text-base font-semibold">Trabajar en el mismo proyecto</h2>
-          <p className="text-sm text-muted-foreground">
-            Todas las personas comparten este proyecto y sus vistas. Los cambios se guardan para continuar
-            otro día.
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-base font-semibold">Trabajar en el mismo proyecto</h2>
+            {status ? (
+              <Badge variant={status.owner ? "default" : status.role === "viewer" ? "outline" : "secondary"}>
+                {status.owner ? "Anfitrión" : status.role === "viewer" ? "Huésped · Lectura" : "Huésped"}
+              </Badge>
+            ) : null}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Comparte el proyecto y sus vistas en vivo; los cambios quedan guardados.
           </p>
         </div>
         <div className="space-y-2">

@@ -22,6 +22,7 @@ export function BranchReviewPanel({
   at,
   onRestartReview,
   onConfirm,
+  onRejectProposal,
   onCancel,
 }: {
   review: ReviewState;
@@ -38,6 +39,7 @@ export function BranchReviewPanel({
     mode?: ReviewState["mode"],
   ) => void;
   onConfirm: (action: HistoryAction, vector: string) => void;
+  onRejectProposal?: (proposalId: string) => void;
   onCancel: () => void;
 }) {
   const s = workspace.history;
@@ -63,9 +65,8 @@ export function BranchReviewPanel({
             : "Revisar incorporación a"}{" "}
         {s.branches.find(b => b.id === review.branchId)?.name}
       </h3>
-      <p className="text-sm">
-        Se conservará tu trabajo pendiente y se guardará una versión de recuperación antes de aplicar el
-        resultado.
+      <p className="text-xs text-muted-foreground">
+        Se guarda un respaldo automático antes de aplicar los cambios.
       </p>
       <ScopeSelection
         options={scopeOptions(targetSnapshot, incomingSnapshot).filter(
@@ -203,8 +204,18 @@ export function BranchReviewPanel({
                 : "Confirmar incorporación"}
           </Button>
         ) : null}
+        {review.proposalId && onRejectProposal && canConfirm ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => onRejectProposal(review.proposalId!)}
+          >
+            Rechazar
+          </Button>
+        ) : null}
         <Button type="button" variant="ghost" onClick={onCancel}>
-          Cancelar sin cambios
+          Cancelar
         </Button>
       </div>
     </section>

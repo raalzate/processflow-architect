@@ -6,11 +6,22 @@ ventanas abiertas por una persona no activa el modo por sí sola.
 
 ## Qué aparece en la pantalla
 
-La cabecera separa el proyecto y sus participantes de una barra para trabajar con
-versiones. **Estás trabajando en esta rama** identifica siempre dónde se editará.
-Las acciones principales están visibles: **Nueva rama**, **Guardar versión**,
-**Traer cambios**, **Historial**, **Enviar a revisión**, **Solicitudes** y, para
-el anfitrión, **Permisos**. No se necesita Git, una cuenta de GitHub ni comandos.
+Cuando hay ramas activas, aparece en la cabecera un botón compacto con el icono de fusión
+y el nombre de la rama activa junto a **Proyecto vinculado**, sin ocupar espacio sobre el
+lienzo. Al abrir esa ventana emergente (**Ramas y versiones**) se muestra el rol actual
+(**Anfitrión**, **Huésped** o **Huésped · Lectura**), el selector de **Rama activa** y solo
+las acciones para las que la persona tiene permiso:
+
+- **Edición en rama permitida**: **Nueva**, **Guardar versión**, **Traer cambios** (salvo en
+  Principal) y **Enviar al anfitrión para fusionar** (o **Fusionar rama en Principal** para
+  el anfitrión).
+- **Rama en solo lectura** (por ejemplo, un huésped consultando Principal sin permiso de
+  edición directa, o un participante con rol de lectura): se ocultan los botones de edición
+  y envío; solo quedan disponibles el cambio de rama y **Historial**.
+- **Solicitudes**: visible únicamente para el anfitrión o para un huésped al que el anfitrión
+  haya concedido permiso expreso para aprobar fusiones. Un huésped sin permiso de aprobación
+  no ve la sección ni la pestaña de solicitudes.
+- **Permisos**: visible únicamente para el anfitrión.
 
 **Principal** contiene lo aprobado. **Trabajo compartido** continúa la edición en
 vivo anterior para que activar el historial no cambie lo que las personas tienen
@@ -21,17 +32,18 @@ temporales corresponden a la misma rama y vista.
 ## Guardar y proponer una versión
 
 1. Trabaja normalmente: las modificaciones se guardan dentro de la rama.
-2. Pulsa **Guardar versión**. Marca Modelo, vistas personalizadas y/o datos comunes,
-   escribe una descripción y confirma. Eso crea un **commit**: un punto guardado
-   inmutable. Lo que no selecciones continúa como borrador en la rama.
-3. Pulsa **Enviar a revisión** y **Enviar solicitud de fusión**. Esto es un
-   **pull request**: pide revisar una versión concreta para incorporarla a Principal.
-   Por defecto marca únicamente las vistas guardadas en esa versión. También puedes
-   elegir una versión anterior en el historial y solicitar su incorporación.
-4. El anfitrión —o una persona con permiso expreso de fusión— verá un aviso con la
-   persona, rama y descripción, y el botón **Revisar y fusionar**. Puede comparar las
-   vistas, resolver conflictos, aprobar o rechazar. Los cambios posteriores al commit
-   propuesto quedan fuera.
+2. Abre la ventana emergente de ramas y pulsa **Guardar versión**. Escribe un nombre corto
+   (y, si hay varias vistas, ajusta cuáles incluir) y confirma. Eso crea un **commit**: un
+   punto guardado inmutable. Lo que no selecciones continúa como borrador en la rama.
+3. Pulsa **Enviar al anfitrión para fusionar** y **Enviar solicitud**. Esto pide revisar
+   esa versión para incorporarla a Principal. También puedes elegir una versión anterior en
+   **Historial** y pulsar **Enviar al anfitrión**.
+4. Solo al **anfitrión** le aparece una alerta pequeña flotante en la esquina con la solicitud
+   y el botón **Revisar y fusionar**. Puede cerrarla con **×** para que no estorbe y seguir
+   viendo y abriendo las solicitudes pendientes desde su ventana emergente principal de ramas
+   (además del contador en el botón de la cabecera). Quien tenga permiso expreso de fusión
+   puede comparar las vistas, resolver conflictos, aprobar o rechazar. Los cambios
+   posteriores al commit propuesto quedan fuera.
 5. Si dos personas editan en vivo el mismo campo dentro de una misma rama, aparece
    un aviso en la rama para elegir entre **Mantener actual** o **Restaurar este valor**.
 

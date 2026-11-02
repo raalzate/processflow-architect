@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { GitBranch, History, Save, ArrowDownToLine, ShieldCheck, GitPullRequest, Plus } from "lucide-react";
+import { History, Save, ArrowDownToLine, ShieldCheck, GitPullRequest, Plus, X } from "lucide-react";
 import { useCollaboration } from "@/context/CollaborationContext";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { BranchPermissionsPanel } from "@/components/collaboration/BranchPermissionsPanel";
 import { BranchReviewPanel } from "@/components/collaboration/BranchReviewPanel";
@@ -31,10 +33,16 @@ import {
 import { packBoard } from "@/lib/board-file";
 import { deRegistro } from "@/lib/registro";
 
+type InlinePanel = "none" | "new-branch" | "save" | "propose";
+type ModalSection = "history" | "requests" | "permissions" | "review";
+
 export function BranchControl() {
   const c = useCollaboration();
-  const [open, setOpen] = useState(false),
-    [tab, setTab] = useState("work");
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [inlinePanel, setInlinePanel] = useState<InlinePanel>("none");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [section, setSection] = useState<ModalSection>("history");
+  const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
   const [message, setMessage] = useState(""),
     [branchName, setBranchName] = useState("");
   const [selection, setSelection] = useState<{ branch: string; scopes: string[] }>();
@@ -68,11 +76,24 @@ export function BranchControl() {
         : proposeOptions.map(o => o.id);
 
   const at = new Date().toISOString(),
+    owner = w.actor.owner,
+    canCreateBranch = w.actor.role === "editor",
     editable = canEditBranch(s, branch.id, w.actor, at),
-    owner = w.actor.owner;
+    canRestoreBranch = branch.id === "main" ? canManage(s, w.actor, "restoreMain", at) : editable;
+
   const pendingProposals = s.proposals.filter(p => p.status === "open" && p.targetId === "main");
   const reviewableProposals = pendingProposals.filter(p => canManage(s, w.actor, "mergeMain", at, p.id));
+  const canSeeRequests =
+    owner ||
+    canManage(s, w.actor, "mergeMain", at) ||
+    s.proposals.some(p => canManage(s, w.actor, "mergeMain", at, p.id));
+  const myPendingProposals = !canSeeRequests ? pendingProposals.filter(p => p.author.id === w.actor.id) : [];
+  const unacknowledgedProposals = owner
+    ? reviewableProposals.filter(p => !dismissedAlerts.includes(p.id))
+    : [];
   const branchFieldConflicts = w.discardedEdits ? (deRegistro(w.discardedEdits, branch.id) ?? []) : [];
+
+  const roleLabel = owner ? "Anfitrión" : w.actor.role === "viewer" ? "Huésped · Lectura" : "Huésped";
 
   const run = async (operation: () => Promise<void>) => {
     setLocalError("");
@@ -83,13 +104,19 @@ export function BranchControl() {
       setLocalError(error instanceof Error ? error.message : String(error));
     }
   };
-  const perform = async (action: HistoryAction, vector?: string) => {
+  const perform = async (action: HistoryAction, vector?: string, feedback = "Guardado.") => {
     await c.historyAction(action, vector);
-    setNotice("Operación guardada. Las versiones pendientes se sincronizan al conectar.");
+    setNotice(feedback);
   };
   const chooseVersion = async (id: string) => {
     setSelectedCommit(id);
     await c.previewVersion(id);
+  };
+  const openSection = (next: ModalSection) => {
+    setPopoverOpen(false);
+    if (next !== "review") setReview(undefined);
+    setSection(next);
+    setDialogOpen(true);
   };
   const startReview = async (
     targetBranchId: string,
@@ -113,10 +140,11 @@ export function BranchControl() {
         vector: deRegistro(w.vectors, targetBranchId) ?? "",
         preview: { project, conflicts: [], dependencies: projectDependencies(project) },
       });
+      openSection("review");
       return;
     }
     const result = await c.previewMerge(targetBranchId, commitId, selected, choices);
-    if (result.preview && result.workspace)
+    if (result.preview && result.workspace) {
       setReview({
         mode,
         branchId: targetBranchId,
@@ -128,30 +156,84 @@ export function BranchControl() {
         head: result.workspace.history.branches.find(b => b.id === targetBranchId)!.head,
         vector: deRegistro(result.workspace.vectors, targetBranchId) ?? "",
       });
+      openSection("review");
+    }
   };
+
+  const openProposalReview = (proposalId: string) => {
+    const proposal = s.proposals.find(p => p.id === proposalId);
+    if (!proposal) return;
+    void run(() => startReview(proposal.targetId, proposal.commitId, proposal.scopes, proposal.id));
+  };
+
+  const hasExtraModalTabs = canSeeRequests || owner;
 
   return (
     <>
-      <div className="space-y-3 rounded-lg border bg-muted/20 p-3" data-branch-controls="">
-        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-          <div className="flex min-w-0 flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <Label
-                htmlFor="current-branch"
-                className="flex items-center gap-2 text-xs text-muted-foreground"
-              >
-                <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
-                Estás trabajando en esta rama
-              </Label>
+      {c.previewCommitId ? (
+        <Button variant="secondary" size="sm" onClick={() => void run(() => c.previewVersion())}>
+          Volver al trabajo actual
+        </Button>
+      ) : null}
+
+      <Popover
+        open={popoverOpen}
+        onOpenChange={next => {
+          setPopoverOpen(next);
+          if (!next) {
+            setInlinePanel("none");
+            setNotice("");
+            setLocalError("");
+          }
+        }}
+      >
+        <PopoverTrigger asChild>
+          <Button
+            variant={reviewableProposals.length ? "secondary" : "outline"}
+            className="gap-2"
+            aria-label="Ramas y versiones"
+            data-branch-trigger=""
+          >
+            <GitPullRequest className="h-4 w-4" aria-hidden="true" />
+            <span className="max-w-36 truncate">{branch.name}</span>
+            {reviewableProposals.length ? (
+              <span className="rounded-full bg-primary px-1.5 py-0.5 text-2xs font-semibold text-primary-foreground tabular-nums">
+                {reviewableProposals.length}
+              </span>
+            ) : null}
+          </Button>
+        </PopoverTrigger>
+
+        <PopoverContent
+          align="end"
+          data-branch-controls=""
+          className="max-h-[80vh] w-[min(22rem,calc(100vw-2rem))] space-y-3 overflow-y-auto p-3.5"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-sm font-semibold">
+              <GitPullRequest className="h-4 w-4 text-primary" aria-hidden="true" />
+              Ramas
+            </span>
+            <Badge variant={owner ? "default" : w.actor.role === "viewer" ? "outline" : "secondary"}>
+              {roleLabel}
+            </Badge>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="current-branch" className="text-xs text-muted-foreground">
+              Rama activa
+            </Label>
+            <div className="flex items-center gap-1.5">
               <select
                 id="current-branch"
-                className={`${selectStyle} w-56 max-w-full font-medium`}
+                className={`${selectStyle} min-w-0 flex-1 font-medium`}
                 value={branch.id}
                 disabled={c.busy || c.pending > 0}
                 onChange={e => {
                   setSelectedCommit(undefined);
                   setSelection(undefined);
                   setProposeSelection(undefined);
+                  setInlinePanel("none");
                   void run(() => c.selectBranch(e.target.value));
                 }}
               >
@@ -161,368 +243,160 @@ export function BranchControl() {
                   </option>
                 ))}
               </select>
+              {canCreateBranch ? (
+                <Button
+                  type="button"
+                  variant={inlinePanel === "new-branch" ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-10 shrink-0 gap-1 px-2.5"
+                  disabled={c.busy}
+                  onClick={() => setInlinePanel(prev => (prev === "new-branch" ? "none" : "new-branch"))}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Nueva
+                </Button>
+              ) : null}
             </div>
-            <Button
-              variant="ghost"
-              className="gap-2"
-              disabled={c.busy || w.actor.role !== "editor"}
-              onClick={() => {
-                setOpen(true);
-                setTab("work");
-                setTimeout(() => document.getElementById("new-branch")?.focus(), 100);
-              }}
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Nueva rama
-            </Button>
+            {!editable ? (
+              <p className="text-xs text-muted-foreground">
+                {w.actor.role === "viewer"
+                  ? "Solo lectura."
+                  : branch.id === "main"
+                    ? "Solo lectura aquí. Elige otra rama o crea una para editar."
+                    : "No tienes permiso de edición en esta rama."}
+              </p>
+            ) : null}
           </div>
-          <div className="flex flex-wrap items-center gap-3" aria-label="Acciones de versiones">
-            <Button
-              className="gap-2"
-              disabled={c.busy || !editable || !!c.previewCommitId}
-              onClick={() => {
-                setOpen(true);
-                setTab("work");
-                setTimeout(() => document.getElementById("version-message")?.focus(), 100);
-              }}
-            >
-              <Save className="h-4 w-4" aria-hidden="true" />
-              Guardar versión
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2"
-              disabled={c.busy || !editable || branch.id === "main" || !!c.previewCommitId}
-              onClick={() => {
-                setOpen(true);
-                setTab("work");
+
+          {canCreateBranch && inlinePanel === "new-branch" ? (
+            <form
+              className="space-y-2 rounded-md border bg-muted/20 p-2.5"
+              onSubmit={e => {
+                e.preventDefault();
                 void run(async () => {
-                  const main = s.branches.find(b => b.id === "main")!;
-                  await startReview(
-                    branch.id,
-                    main.head,
-                    scopeOptions(draft, w.snapshots.main).map(o => o.id),
+                  const id = crypto.randomUUID();
+                  await perform(
+                    {
+                      type: "branch",
+                      id: crypto.randomUUID(),
+                      branchId: id,
+                      name: branchName,
+                      fromCommit: c.previewCommitId ?? chosen.id,
+                    },
+                    undefined,
+                    "Rama creada.",
                   );
+                  setBranchName("");
+                  setInlinePanel("none");
+                  await c.selectBranch(id);
                 });
               }}
             >
-              <ArrowDownToLine className="h-4 w-4" aria-hidden="true" />
-              Traer cambios
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => {
-                setOpen(true);
-                setTab("history");
-              }}
-            >
-              <History className="h-4 w-4" aria-hidden="true" />
-              Historial
-            </Button>
-            {branch.id !== "main" ? (
-              <Button
-                variant="outline"
-                className="gap-2"
-                disabled={!editable || head.kind === "initial" || c.busy}
-                onClick={() => {
-                  setOpen(true);
-                  setTab("work");
-                  setTimeout(
-                    () => document.getElementById("send-for-review")?.scrollIntoView({ block: "center" }),
-                    100,
-                  );
-                }}
-              >
-                <GitPullRequest className="h-4 w-4" aria-hidden="true" />
-                Enviar a revisión
-              </Button>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant={reviewableProposals.length ? "secondary" : "ghost"}
-              className="gap-2"
-              onClick={() => {
-                setOpen(true);
-                setTab("requests");
-              }}
-            >
-              <GitPullRequest className="h-4 w-4" aria-hidden="true" />
-              Solicitudes
-              {pendingProposals.length ? ` (${pendingProposals.length})` : ""}
-            </Button>
-            {owner ? (
-              <Button
-                variant="ghost"
-                className="gap-2"
-                onClick={() => {
-                  setOpen(true);
-                  setTab("permissions");
-                }}
-              >
-                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                Permisos
-              </Button>
-            ) : null}
-          </div>
-        </div>
-        {c.previewCommitId ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-            <p className="text-sm font-medium">Viendo una versión anterior · solo lectura</p>
-            <Button variant="secondary" onClick={() => void run(() => c.previewVersion())}>
-              Volver al trabajo actual
-            </Button>
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            {branch.id === "main"
-              ? "Principal contiene la versión aprobada del proyecto."
-              : "Tu trabajo se guarda en esta rama. Traer cambios conserva lo que estás haciendo."}
-          </p>
-        )}
-        {reviewableProposals.length ? (
-          <div
-            className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/10 p-3"
-            role="status"
-            aria-live="polite"
-          >
-            <div>
-              <p className="text-sm font-semibold">
-                {reviewableProposals.length === 1
-                  ? "Tienes una solicitud de fusión por revisar"
-                  : `Tienes ${reviewableProposals.length} solicitudes de fusión por revisar`}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {reviewableProposals[0].author.name} envió «{reviewableProposals[0].message}» desde{" "}
-                {s.branches.find(b => b.id === reviewableProposals[0].branchId)?.name} hacia Principal.
-              </p>
-            </div>
-            <Button
-              onClick={() => {
-                setOpen(true);
-                setTab("requests");
-              }}
-              className="gap-2"
-            >
-              <GitPullRequest className="h-4 w-4" aria-hidden="true" />
-              Revisar y fusionar
-            </Button>
-          </div>
-        ) : null}
-        {editable && !c.previewCommitId && branchFieldConflicts.length ? (
-          <div
-            className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/40 bg-muted/40 p-3"
-            role="status"
-            aria-live="polite"
-          >
-            <p className="text-sm">
-              {branchFieldConflicts.length === 1
-                ? "Dos personas editaron el mismo campo en vivo en esta rama."
-                : `Hay ${branchFieldConflicts.length} campos con ediciones simultáneas en esta rama.`}
-            </p>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setOpen(true);
-                setTab("work");
-              }}
-            >
-              Elegir valor
-            </Button>
-          </div>
-        ) : null}
-        {w.recoveries.length ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3" role="status">
-            <p className="text-sm">Conservamos una copia de los cambios que no pudieron publicarse.</p>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setOpen(true);
-                setTab("work");
-              }}
-            >
-              Ver recuperación
-            </Button>
-          </div>
-        ) : null}
-      </div>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex max-h-[90vh] w-[calc(100vw-2rem)] max-w-5xl flex-col overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Ramas y versiones · {branch.name}</DialogTitle>
-            <DialogDescription>
-              Guarda versiones, revisa cambios y recupera estados anteriores. Tu trabajo se guarda
-              automáticamente dentro de su rama.
-            </DialogDescription>
-          </DialogHeader>
-          <nav className="flex flex-wrap gap-2 border-b pb-3" aria-label="Secciones de versiones">
-            {[
-              ["work", "Trabajo"],
-              ["history", "Historial y árbol"],
-              ["requests", "Solicitudes"],
-              ...(owner ? [["permissions", "Permisos"]] : []),
-            ].map(([id, label]) => (
-              <Button
-                key={id}
-                variant={tab === id ? "secondary" : "ghost"}
-                aria-pressed={tab === id}
-                onClick={() => {
-                  setTab(id);
-                  setReview(undefined);
-                }}
-              >
-                {label}
-              </Button>
-            ))}
-          </nav>
-          <div className="space-y-4 overflow-y-auto px-1 pb-2">
-            {c.previewCommitId ? (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted p-3">
-                <p className="text-sm">
-                  <strong>Viendo versión anterior · solo lectura.</strong>{" "}
-                  {s.commits.find(v => v.id === c.previewCommitId)?.message}
-                </p>
-                <Button size="sm" onClick={() => void run(() => c.previewVersion())}>
-                  Volver al trabajo actual
+              <Label htmlFor="new-branch" className="text-xs">
+                Nombre de la nueva rama
+              </Label>
+              <div className="flex gap-1.5">
+                <Input
+                  id="new-branch"
+                  autoFocus
+                  value={branchName}
+                  onChange={e => setBranchName(e.target.value)}
+                  placeholder="Ej: Mi propuesta"
+                  maxLength={80}
+                  className="h-8 text-xs"
+                  required
+                />
+                <Button type="submit" size="sm" className="h-8" disabled={c.busy || !branchName.trim()}>
+                  Crear rama
                 </Button>
               </div>
-            ) : null}
-            {localError || c.error ? (
-              <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">
-                {localError || c.error}
-              </p>
-            ) : null}
-            {notice ? (
-              <p role="status" className="rounded-md border p-3 text-sm">
-                {notice}
-              </p>
-            ) : null}
-            <p className="text-xs text-muted-foreground">
-              {c.pending
-                ? "Guardando en este dispositivo…"
-                : c.status.saved
-                  ? "Guardado en este dispositivo"
-                  : "Guardado pendiente"}{" "}
-              · {c.status.connected ? "Conectado con la sala" : "Sin conexión: conservamos tu trabajo"}
-              {w.pending ? ` · ${w.pending} versiones u operaciones pendientes de sincronizar` : ""}
-            </p>
+            </form>
+          ) : null}
 
-            {tab === "work" ? (
-              <>
-                {editable && !c.previewCommitId && branchFieldConflicts.length ? (
-                  <FieldConflictsNotice
-                    edits={branchFieldConflicts}
+          {reviewableProposals.length ? (
+            <div className="space-y-2 rounded-md border border-primary/40 bg-primary/10 p-2.5" role="status">
+              <p className="text-xs font-semibold">
+                {reviewableProposals.length === 1
+                  ? "1 solicitud pendiente para fusionar"
+                  : `${reviewableProposals.length} solicitudes pendientes para fusionar`}
+              </p>
+              {reviewableProposals.slice(0, 3).map(p => (
+                <div key={p.id} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="min-w-0 truncate">
+                    <strong>{p.author.name}:</strong> {p.message}
+                  </span>
+                  <Button
+                    size="sm"
+                    className="h-7 shrink-0 px-2.5 text-xs"
                     disabled={c.busy}
-                    onResolve={(editId, keep) => void run(() => c.resolveFieldConflict(editId, keep))}
-                  />
-                ) : null}
-                <div>
-                  <h3 className="font-semibold">1. Guarda una versión (commit)</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Un commit es un punto guardado del trabajo que eliges. No modifica Principal. Selecciona
-                    las vistas y describe el cambio.
-                  </p>
-                </div>
-                <ScopeSelection options={options} selected={scopes} onChange={setScopes} />
-                <form
-                  className="space-y-2"
-                  onSubmit={e => {
-                    e.preventDefault();
-                    void run(async () => {
-                      await perform({
-                        type: "commit",
-                        id: crypto.randomUUID(),
-                        branchId: branch.id,
-                        scopes,
-                        message,
-                      });
-                      setMessage("");
-                      setProposeSelection(undefined);
-                    });
-                  }}
-                >
-                  <Label htmlFor="version-message">¿Qué cambiaste en esta versión?</Label>
-                  <Input
-                    id="version-message"
-                    value={message}
-                    onChange={e => setMessage(e.target.value)}
-                    placeholder="Por ejemplo: mejorar la atención de especialistas"
-                    maxLength={500}
-                    required
-                  />
-                  <Button
-                    type="submit"
-                    disabled={c.busy || !editable || !scopes.length || !!c.previewCommitId || !message.trim()}
-                    className="gap-2"
+                    onClick={() => openProposalReview(p.id)}
                   >
-                    <Save className="h-4 w-4" aria-hidden="true" />
-                    Guardar versión
+                    Revisar y fusionar
                   </Button>
-                  {!editable ? (
-                    <p className="text-sm text-muted-foreground">
-                      Esta rama está protegida. Crea una rama para trabajar o solicita permiso al anfitrión.
-                    </p>
-                  ) : null}
-                </form>
+                </div>
+              ))}
+              {reviewableProposals.length > 3 ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-full text-xs"
+                  onClick={() => openSection("requests")}
+                >
+                  Ver todas ({reviewableProposals.length})
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {myPendingProposals.length ? (
+            <p className="rounded-md bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
+              Enviado al anfitrión: «{myPendingProposals[0].message}» (en espera)
+            </p>
+          ) : null}
+
+          {c.previewCommitId ? (
+            <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/40 p-2 text-xs">
+              <span className="min-w-0 truncate">
+                Viendo: <strong>{s.commits.find(v => v.id === c.previewCommitId)?.message}</strong>
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-7 shrink-0 px-2 text-xs"
+                onClick={() => void run(() => c.previewVersion())}
+              >
+                Volver
+              </Button>
+            </div>
+          ) : null}
+
+          {editable && !c.previewCommitId && branchFieldConflicts.length ? (
+            <FieldConflictsNotice
+              edits={branchFieldConflicts}
+              disabled={c.busy}
+              onResolve={(editId, keep) => void run(() => c.resolveFieldConflict(editId, keep))}
+            />
+          ) : null}
+
+          {editable && !c.previewCommitId ? (
+            <div className="space-y-2 border-t pt-2.5">
+              <div className={branch.id !== "main" ? "grid grid-cols-2 gap-1.5" : "grid grid-cols-1 gap-1.5"}>
+                <Button
+                  size="sm"
+                  variant={inlinePanel === "save" ? "secondary" : "default"}
+                  className="gap-1.5 text-xs"
+                  disabled={c.busy}
+                  onClick={() => setInlinePanel(prev => (prev === "save" ? "none" : "save"))}
+                >
+                  <Save className="h-3.5 w-3.5" aria-hidden="true" />
+                  Guardar versión
+                </Button>
                 {branch.id !== "main" ? (
-                  <section id="send-for-review" className="space-y-3 rounded-md border bg-muted/20 p-3">
-                    <h3 className="font-semibold">2. Envía una solicitud de fusión (pull request)</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Pide al anfitrión que revise e incorpore una versión a Principal. Tu rama sigue
-                      independiente hasta que aprueben la fusión.
-                    </p>
-                    <p className="text-sm">
-                      Versión que enviarás: <strong>{head.message}</strong> · {formatBranchDate(head.at)}
-                    </p>
-                    <ScopeSelection
-                      legend="Vistas de esta versión que propones fusionar"
-                      options={proposeOptions}
-                      selected={proposeScopes}
-                      onChange={next => setProposeSelection({ commitId: head.id, scopes: next })}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Por defecto se marcan las vistas guardadas en «{head.message}». Tus cambios posteriores
-                      sin versión quedan fuera.
-                    </p>
-                    <Button
-                      disabled={
-                        c.busy ||
-                        !editable ||
-                        head.kind === "initial" ||
-                        !proposeScopes.length ||
-                        w.pending > 0
-                      }
-                      className="gap-2"
-                      onClick={() =>
-                        void run(async () => {
-                          await perform({
-                            type: "propose",
-                            id: crypto.randomUUID(),
-                            branchId: branch.id,
-                            targetId: "main",
-                            commitId: head.id,
-                            scopes: proposeScopes,
-                            message: head.message,
-                          });
-                          setTab("requests");
-                        })
-                      }
-                    >
-                      <GitPullRequest className="h-4 w-4" aria-hidden="true" />
-                      Enviar solicitud de fusión
-                    </Button>
-                  </section>
-                ) : null}
-                <div className="space-y-2 border-t pt-4">
-                  <p className="font-medium">Traer cambios sin perder tu trabajo pendiente</p>
-                  <p className="text-sm text-muted-foreground">
-                    Se incluyen todas las vistas de Principal por defecto. Revisar no modifica tu rama; los
-                    conflictos se resuelven antes de confirmar.
-                  </p>
                   <Button
+                    size="sm"
                     variant="outline"
-                    disabled={c.busy || !editable || branch.id === "main" || !!c.previewCommitId}
+                    className="gap-1.5 text-xs"
+                    disabled={c.busy}
                     onClick={() =>
                       void run(async () => {
                         const main = s.branches.find(b => b.id === "main")!;
@@ -533,57 +407,362 @@ export function BranchControl() {
                         );
                       })
                     }
-                    className="gap-2"
                   >
-                    <ArrowDownToLine className="h-4 w-4" aria-hidden="true" />
-                    Traer cambios de Principal
+                    <ArrowDownToLine className="h-3.5 w-3.5" aria-hidden="true" />
+                    Traer cambios
                   </Button>
-                </div>
+                ) : null}
+              </div>
+
+              {inlinePanel === "save" ? (
                 <form
-                  className="space-y-2 border-t pt-4"
+                  className="space-y-2 rounded-md border bg-muted/20 p-2.5"
                   onSubmit={e => {
                     e.preventDefault();
                     void run(async () => {
-                      const id = crypto.randomUUID();
-                      await perform({
-                        type: "branch",
-                        id: crypto.randomUUID(),
-                        branchId: id,
-                        name: branchName,
-                        fromCommit: c.previewCommitId ?? chosen.id,
-                      });
-                      setBranchName("");
-                      await c.selectBranch(id);
+                      await perform(
+                        {
+                          type: "commit",
+                          id: crypto.randomUUID(),
+                          branchId: branch.id,
+                          scopes,
+                          message,
+                        },
+                        undefined,
+                        "Versión guardada.",
+                      );
+                      setMessage("");
+                      setProposeSelection(undefined);
+                      setInlinePanel("none");
                     });
                   }}
                 >
-                  <Label htmlFor="new-branch">Crear rama desde «{chosen.message}»</Label>
-                  <div className="flex flex-wrap gap-2">
-                    <Input
-                      className="min-w-48 flex-1"
-                      id="new-branch"
-                      value={branchName}
-                      onChange={e => setBranchName(e.target.value)}
-                      placeholder="Nombre de la rama"
-                      maxLength={80}
-                      required
-                    />
-                    <Button
-                      type="submit"
-                      variant="outline"
-                      disabled={c.busy || w.actor.role !== "editor" || !branchName.trim()}
-                    >
-                      Crear rama
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Parte de la versión elegida. Los cambios todavía sin versión permanecen en la rama actual.
-                  </p>
+                  <Label htmlFor="version-message" className="text-xs">
+                    Nombre corto del cambio
+                  </Label>
+                  <Input
+                    id="version-message"
+                    autoFocus
+                    value={message}
+                    onChange={e => setMessage(e.target.value)}
+                    placeholder="Ej: Ajustar urgencias"
+                    maxLength={500}
+                    className="h-8 text-xs"
+                    required
+                  />
+                  {options.length > 1 ? (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer text-muted-foreground">
+                        Vistas incluidas ({scopes.length}/{options.length})
+                      </summary>
+                      <div className="pt-2">
+                        <ScopeSelection options={options} selected={scopes} onChange={setScopes} />
+                      </div>
+                    </details>
+                  ) : null}
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="h-8 w-full text-xs"
+                    disabled={c.busy || !scopes.length || !message.trim()}
+                  >
+                    Guardar
+                  </Button>
                 </form>
-              </>
+              ) : null}
+
+              {branch.id !== "main" ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant={inlinePanel === "propose" ? "secondary" : "outline"}
+                    className="w-full gap-1.5 text-xs"
+                    disabled={c.busy || head.kind === "initial" || w.pending > 0}
+                    title={head.kind === "initial" ? "Guarda una versión antes de enviar" : undefined}
+                    onClick={() => setInlinePanel(prev => (prev === "propose" ? "none" : "propose"))}
+                  >
+                    <GitPullRequest className="h-3.5 w-3.5" aria-hidden="true" />
+                    {owner ? "Fusionar rama en Principal" : "Enviar al anfitrión para fusionar"}
+                  </Button>
+                  {head.kind === "initial" ? (
+                    <p className="text-2xs text-muted-foreground">
+                      Guarda una versión cuando quieras enviarla a Principal.
+                    </p>
+                  ) : null}
+                  {inlinePanel === "propose" && head.kind !== "initial" ? (
+                    <div className="space-y-2 rounded-md border bg-muted/20 p-2.5 text-xs">
+                      <p className="truncate">
+                        Versión: <strong>{head.message}</strong>
+                      </p>
+                      {proposeOptions.length > 1 ? (
+                        <details>
+                          <summary className="cursor-pointer text-muted-foreground">
+                            Vistas a enviar ({proposeScopes.length}/{proposeOptions.length})
+                          </summary>
+                          <div className="pt-2">
+                            <ScopeSelection
+                              options={proposeOptions}
+                              selected={proposeScopes}
+                              onChange={next => setProposeSelection({ commitId: head.id, scopes: next })}
+                            />
+                          </div>
+                        </details>
+                      ) : null}
+                      <Button
+                        size="sm"
+                        className="h-8 w-full gap-1.5 text-xs"
+                        disabled={c.busy || !proposeScopes.length || w.pending > 0}
+                        onClick={() =>
+                          void run(async () => {
+                            const proposalId = crypto.randomUUID();
+                            await perform(
+                              {
+                                type: "propose",
+                                id: proposalId,
+                                branchId: branch.id,
+                                targetId: "main",
+                                commitId: head.id,
+                                scopes: proposeScopes,
+                                message: head.message,
+                              },
+                              undefined,
+                              owner ? "Lista para revisar y fusionar." : "Solicitud enviada al anfitrión.",
+                            );
+                            setInlinePanel("none");
+                            if (owner) {
+                              setDismissedAlerts(prev => [...new Set([...prev, proposalId])]);
+                              await startReview("main", head.id, proposeScopes, proposalId);
+                            }
+                          })
+                        }
+                      >
+                        <GitPullRequest className="h-3.5 w-3.5" aria-hidden="true" />
+                        {owner ? "Revisar y fusionar ahora" : "Enviar solicitud"}
+                      </Button>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-1.5 border-t pt-2.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 gap-1.5 px-2.5 text-xs"
+              onClick={() => openSection("history")}
+            >
+              <History className="h-3.5 w-3.5" aria-hidden="true" />
+              Historial
+            </Button>
+            {canSeeRequests ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 gap-1.5 px-2.5 text-xs"
+                onClick={() => openSection("requests")}
+              >
+                <GitPullRequest className="h-3.5 w-3.5" aria-hidden="true" />
+                Solicitudes{reviewableProposals.length ? ` (${reviewableProposals.length})` : ""}
+              </Button>
+            ) : null}
+            {owner ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 gap-1.5 px-2.5 text-xs"
+                onClick={() => openSection("permissions")}
+              >
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                Permisos
+              </Button>
+            ) : null}
+          </div>
+
+          {w.recoveries.length ? (
+            <div className="flex items-center justify-between gap-2 border-t pt-2 text-xs">
+              <span className="text-muted-foreground">Respaldo disponible ({w.recoveries.length})</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => {
+                  const first = w.recoveries.find(r => r.snapshot);
+                  if (!first?.snapshot) return;
+                  downloadBoardJson(
+                    packBoard(
+                      first.snapshot.content,
+                      {
+                        customViews: first.snapshot.customViews,
+                        activeViewId: "design",
+                        injectedViewIds: [],
+                      },
+                      first.snapshot,
+                    ),
+                    "trabajo-recuperado.json",
+                  );
+                }}
+              >
+                Descargar
+              </Button>
+            </div>
+          ) : null}
+
+          {localError || c.error ? (
+            <p role="alert" className="text-xs text-destructive">
+              {localError || c.error}
+            </p>
+          ) : null}
+          {notice ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {notice}
+            </p>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+
+      {unacknowledgedProposals.length > 0 && !dialogOpen ? (
+        <aside
+          role="status"
+          aria-live="polite"
+          data-merge-alert=""
+          className="fixed right-4 bottom-24 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-primary/40 bg-popover p-3 text-popover-foreground shadow-lg"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <GitPullRequest className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+              <p className="truncate text-sm font-semibold">
+                {unacknowledgedProposals.length === 1
+                  ? "Solicitud para fusionar"
+                  : `${unacknowledgedProposals.length} solicitudes para fusionar`}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0"
+              aria-label="Cerrar alerta de fusión"
+              title="Cerrar alerta"
+              onClick={() =>
+                setDismissedAlerts(prev => [...new Set([...prev, ...unacknowledgedProposals.map(p => p.id)])])
+              }
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </Button>
+          </div>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {unacknowledgedProposals[0].author.name}: «{unacknowledgedProposals[0].message}»
+          </p>
+          <div className="mt-2.5 flex justify-end">
+            <Button
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
+              disabled={c.busy}
+              onClick={() => openProposalReview(unacknowledgedProposals[0].id)}
+            >
+              <GitPullRequest className="h-3.5 w-3.5" aria-hidden="true" />
+              Revisar y fusionar
+            </Button>
+          </div>
+        </aside>
+      ) : null}
+
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={next => {
+          setDialogOpen(next);
+          if (!next) setReview(undefined);
+        }}
+      >
+        <DialogContent className="flex max-h-[88vh] w-[calc(100vw-2rem)] max-w-4xl flex-col overflow-hidden">
+          <DialogHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2 pr-6">
+              <DialogTitle>
+                {section === "review"
+                  ? "Revisar cambios"
+                  : section === "requests"
+                    ? "Solicitudes de fusión"
+                    : section === "permissions"
+                      ? "Permisos de ramas"
+                      : `Historial · ${branch.name}`}
+              </DialogTitle>
+              <Badge variant={owner ? "default" : w.actor.role === "viewer" ? "outline" : "secondary"}>
+                {roleLabel}
+              </Badge>
+            </div>
+            <DialogDescription className="sr-only">
+              Gestión de versiones y revisiones de la rama {branch.name}.
+            </DialogDescription>
+          </DialogHeader>
+
+          {section !== "review" && hasExtraModalTabs ? (
+            <nav className="flex flex-wrap gap-1.5 border-b pb-2.5" aria-label="Secciones">
+              <Button
+                size="sm"
+                variant={section === "history" ? "secondary" : "ghost"}
+                aria-pressed={section === "history"}
+                onClick={() => {
+                  setSection("history");
+                  setReview(undefined);
+                }}
+              >
+                Historial
+              </Button>
+              {canSeeRequests ? (
+                <Button
+                  size="sm"
+                  variant={section === "requests" ? "secondary" : "ghost"}
+                  aria-pressed={section === "requests"}
+                  onClick={() => {
+                    setSection("requests");
+                    setReview(undefined);
+                  }}
+                >
+                  Solicitudes{reviewableProposals.length ? ` (${reviewableProposals.length})` : ""}
+                </Button>
+              ) : null}
+              {owner ? (
+                <Button
+                  size="sm"
+                  variant={section === "permissions" ? "secondary" : "ghost"}
+                  aria-pressed={section === "permissions"}
+                  onClick={() => {
+                    setSection("permissions");
+                    setReview(undefined);
+                  }}
+                >
+                  Permisos
+                </Button>
+              ) : null}
+            </nav>
+          ) : null}
+
+          <div className="space-y-4 overflow-y-auto px-1 pb-2">
+            {c.previewCommitId ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted p-2.5">
+                <p className="text-xs">
+                  <strong>Viendo versión anterior:</strong>{" "}
+                  {s.commits.find(v => v.id === c.previewCommitId)?.message}
+                </p>
+                <Button size="sm" className="h-7 text-xs" onClick={() => void run(() => c.previewVersion())}>
+                  Volver al trabajo actual
+                </Button>
+              </div>
+            ) : null}
+            {localError || c.error ? (
+              <p role="alert" className="rounded-md border border-destructive p-2.5 text-xs text-destructive">
+                {localError || c.error}
+              </p>
+            ) : null}
+            {notice ? (
+              <p role="status" className="rounded-md border p-2.5 text-xs">
+                {notice}
+              </p>
             ) : null}
 
-            {tab === "history" ? (
+            {section === "history" && !review ? (
               <>
                 <CommitTree
                   commits={s.commits}
@@ -591,54 +770,45 @@ export function BranchControl() {
                   selected={c.previewCommitId ?? chosen.id}
                   choose={id => void run(() => chooseVersion(id))}
                 />
-                <div className="space-y-2">
-                  <Label htmlFor="history-time">Ver la última versión guardada hasta una fecha</Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Label htmlFor="history-time" className="text-xs text-muted-foreground">
+                    Buscar por fecha:
+                  </Label>
                   <Input
                     id="history-time"
                     type="datetime-local"
+                    className="h-8 w-auto text-xs"
                     onChange={e => {
                       if (!e.target.value) return;
                       const v = versionAt(s, branch.id, new Date(e.target.value).toISOString());
                       if (v) void run(() => chooseVersion(v.id));
-                      else setNotice("No hay una versión guardada anterior a esa fecha.");
+                      else setNotice("No hay versiones anteriores a esa fecha.");
                     }}
                   />
                 </div>
-                <div className="max-h-64 overflow-auto rounded-md border">
-                  <table className="w-full text-left text-sm">
+                <div className="max-h-56 overflow-auto rounded-md border">
+                  <table className="w-full text-left text-xs">
                     <thead className="sticky top-0 bg-background">
                       <tr>
                         <th className="p-2">Versión</th>
-                        <th className="p-2">Rama / persona</th>
+                        <th className="p-2">Rama / autor</th>
                         <th className="p-2">Fecha</th>
-                        <th className="p-2">Consultar</th>
+                        <th className="p-2">Acción</th>
                       </tr>
                     </thead>
                     <tbody>
                       {[...s.commits].reverse().map(v => (
                         <tr key={v.id} className={chosen.id === v.id ? "border-t bg-muted" : "border-t"}>
-                          <td className="p-2">
-                            {v.message}
-                            <span className="block text-xs text-muted-foreground">
-                              {v.scopes
-                                .map(
-                                  id =>
-                                    scopeOptions(v.snapshot).find(o => o.id === id)?.name ??
-                                    "Vista eliminada",
-                                )
-                                .join(", ")}
-                            </span>
+                          <td className="p-2 font-medium">{v.message}</td>
+                          <td className="p-2 text-muted-foreground">
+                            {s.branches.find(b => b.id === v.branchId)?.name} · {v.author.name}
                           </td>
-                          <td className="p-2">
-                            {s.branches.find(b => b.id === v.branchId)?.name}
-                            <br />
-                            {v.author.name}
-                          </td>
-                          <td className="p-2">{formatBranchDate(v.at)}</td>
+                          <td className="p-2 text-muted-foreground">{formatBranchDate(v.at)}</td>
                           <td className="p-2">
                             <Button
                               size="sm"
                               variant="ghost"
+                              className="h-7 px-2 text-xs"
                               aria-label={`Ver ${v.message}`}
                               onClick={() => {
                                 setSelection({ branch: branch.id, scopes: v.scopes });
@@ -653,137 +823,140 @@ export function BranchControl() {
                     </tbody>
                   </table>
                 </div>
-                <ScopeSelection options={options} selected={scopes} onChange={setScopes} />
+                {options.length > 1 ? (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      Vistas seleccionadas ({scopes.length}/{options.length})
+                    </summary>
+                    <div className="pt-2">
+                      <ScopeSelection options={options} selected={scopes} onChange={setScopes} />
+                    </div>
+                  </details>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Button
+                    size="sm"
                     variant="outline"
                     disabled={c.busy || !scopes.length}
                     onClick={() =>
                       void run(() => startReview(branch.id, chosen.id, scopes, undefined, {}, "compare"))
                     }
                   >
-                    Comparar con el trabajo actual
+                    Comparar con actual
                   </Button>
-                  <Button
-                    variant="outline"
-                    disabled={
-                      c.busy ||
-                      !scopes.length ||
-                      (branch.id === "main" ? !canManage(s, w.actor, "restoreMain", at) : !editable)
-                    }
-                    onClick={() =>
-                      void run(() => startReview(branch.id, chosen.id, scopes, undefined, {}, "restore"))
-                    }
-                  >
-                    Restaurar vistas seleccionadas
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setTab("work");
-                      setBranchName(`Desde ${formatBranchDate(chosen.at)}`);
-                    }}
-                  >
-                    Crear rama desde esta versión
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      void run(async () => {
-                        await perform({
-                          type: "propose",
-                          id: crypto.randomUUID(),
-                          branchId: branch.id,
-                          targetId: "main",
-                          commitId: chosen.id,
-                          scopes,
-                          message: chosen.message,
-                        });
-                        setTab("requests");
-                      })
-                    }
-                    disabled={c.busy || branch.id === "main" || !editable || !scopes.length || w.pending > 0}
-                  >
-                    Solicitar incorporación a Principal
-                  </Button>
+                  {canRestoreBranch ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={c.busy || !scopes.length}
+                      onClick={() =>
+                        void run(() => startReview(branch.id, chosen.id, scopes, undefined, {}, "restore"))
+                      }
+                    >
+                      Restaurar versión
+                    </Button>
+                  ) : null}
+                  {canCreateBranch ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setDialogOpen(false);
+                        setBranchName(`Desde ${formatBranchDate(chosen.at)}`);
+                        setInlinePanel("new-branch");
+                        setPopoverOpen(true);
+                      }}
+                    >
+                      Crear rama desde aquí
+                    </Button>
+                  ) : null}
+                  {branch.id !== "main" && editable ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={c.busy || !scopes.length || w.pending > 0 || chosen.kind === "initial"}
+                      onClick={() =>
+                        void run(async () => {
+                          const proposalId = crypto.randomUUID();
+                          await perform(
+                            {
+                              type: "propose",
+                              id: proposalId,
+                              branchId: branch.id,
+                              targetId: "main",
+                              commitId: chosen.id,
+                              scopes,
+                              message: chosen.message,
+                            },
+                            undefined,
+                            owner ? "Lista para fusionar." : "Solicitud enviada al anfitrión.",
+                          );
+                          if (owner) {
+                            setDismissedAlerts(prev => [...new Set([...prev, proposalId])]);
+                            await startReview("main", chosen.id, scopes, proposalId);
+                          } else if (canSeeRequests) {
+                            setSection("requests");
+                          }
+                        })
+                      }
+                    >
+                      {owner ? "Fusionar en Principal" : "Enviar al anfitrión"}
+                    </Button>
+                  ) : null}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Restaurar añade una versión y guarda un punto de recuperación de tu trabajo actual. No
-                  elimina versiones posteriores.
-                </p>
               </>
             ) : null}
 
-            {tab === "requests" ? (
-              <div className="space-y-3">
-                <div>
-                  <h3 className="font-semibold">Solicitudes de fusión (pull requests)</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Revisar muestra lo que enviaron. Aprobar y fusionar incorpora esa versión a Principal;
-                    rechazar deja la rama de origen intacta.
-                  </p>
-                </div>
+            {section === "requests" && canSeeRequests && !review ? (
+              <div className="space-y-2.5">
                 {!s.proposals.length ? (
-                  <p className="text-sm text-muted-foreground">
-                    Todavía no hay solicitudes. Guarda una versión y pulsa Enviar a revisión.
-                  </p>
+                  <p className="text-sm text-muted-foreground">No hay solicitudes pendientes.</p>
                 ) : (
-                  s.proposals.map(p => (
-                    <div key={p.id} className="space-y-2 rounded-md border p-3">
-                      <p className="font-medium">{p.message}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {s.branches.find(b => b.id === p.branchId)?.name} →{" "}
-                        {s.branches.find(b => b.id === p.targetId)?.name} · {p.author.name} ·{" "}
-                        {p.status === "open"
-                          ? "Pendiente de revisión"
-                          : p.status === "merged"
-                            ? "Fusionada"
-                            : "Rechazada"}
-                      </p>
-                      <p className="text-xs">
-                        Versión fijada: {s.commits.find(v => v.id === p.commitId)?.message}. Los borradores
-                        posteriores quedan fuera.
-                      </p>
-                      <p className="text-xs">
-                        Vistas enviadas:{" "}
-                        {p.scopes
-                          .map(
-                            scope =>
-                              scopeOptions(s.commits.find(v => v.id === p.commitId)!.snapshot).find(
-                                o => o.id === scope,
-                              )?.name ?? "Vista eliminada",
-                          )
-                          .join(", ") || "Todas las vistas enviadas ya fueron incorporadas"}
-                        .
-                      </p>
-                      {p.status === "open" ? (
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            disabled={c.busy}
-                            onClick={() =>
-                              void run(() => startReview(p.targetId, p.commitId, p.scopes, p.id))
-                            }
-                          >
-                            Revisar cambios
-                          </Button>
-                          {canManage(s, w.actor, "mergeMain", at, p.id) ? (
+                  s.proposals.map(p => {
+                    const canApproveThis = canManage(s, w.actor, "mergeMain", at, p.id);
+                    if (!owner && !canApproveThis) return null;
+                    return (
+                      <div
+                        key={p.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"
+                      >
+                        <div className="min-w-0 space-y-0.5">
+                          <p className="text-sm font-medium">{p.message}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {s.branches.find(b => b.id === p.branchId)?.name} → Principal · {p.author.name} ·{" "}
+                            {p.status === "open"
+                              ? "Pendiente"
+                              : p.status === "merged"
+                                ? "Fusionada"
+                                : "Rechazada"}
+                          </p>
+                        </div>
+                        {p.status === "open" && canApproveThis ? (
+                          <div className="flex gap-2">
+                            <Button size="sm" disabled={c.busy} onClick={() => openProposalReview(p.id)}>
+                              Revisar y fusionar
+                            </Button>
                             <Button
+                              size="sm"
                               variant="ghost"
                               disabled={c.busy || !c.status?.connected}
                               onClick={() =>
                                 void run(() =>
-                                  perform({ type: "reject", id: crypto.randomUUID(), proposalId: p.id }),
+                                  perform(
+                                    { type: "reject", id: crypto.randomUUID(), proposalId: p.id },
+                                    undefined,
+                                    "Solicitud rechazada.",
+                                  ),
                                 )
                               }
                             >
                               Rechazar
                             </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             ) : null}
@@ -800,55 +973,43 @@ export function BranchControl() {
                 }
                 onConfirm={(action, vector) =>
                   void run(async () => {
-                    await perform(action, vector);
+                    await perform(
+                      action,
+                      vector,
+                      action.type === "merge" ? "Cambios fusionados en Principal." : "Cambios aplicados.",
+                    );
                     setReview(undefined);
                     await c.previewVersion();
+                    setDialogOpen(false);
                   })
                 }
-                onCancel={() => setReview(undefined)}
+                onRejectProposal={proposalId =>
+                  void run(async () => {
+                    await perform(
+                      { type: "reject", id: crypto.randomUUID(), proposalId },
+                      undefined,
+                      "Solicitud rechazada.",
+                    );
+                    setReview(undefined);
+                    setDialogOpen(false);
+                  })
+                }
+                onCancel={() => {
+                  setReview(undefined);
+                  if (section === "review") setDialogOpen(false);
+                }}
               />
             ) : null}
 
-            {tab === "permissions" && owner ? (
+            {section === "permissions" && owner && !review ? (
               <BranchPermissionsPanel
                 history={s}
                 branch={branch}
                 status={c.status}
                 peers={c.peers}
                 busy={c.busy}
-                onPerform={action => void run(() => perform(action))}
+                onPerform={action => void run(() => perform(action, undefined, "Permisos actualizados."))}
               />
-            ) : null}
-            {w.recoveries.length ? (
-              <details className="rounded-md border p-3">
-                <summary className="cursor-pointer font-medium">
-                  Trabajo conservado para recuperación ({w.recoveries.length})
-                </summary>
-                {w.recoveries.map(r => (
-                  <div key={r.id} className="space-y-2 border-t py-2">
-                    <p className="text-sm">{r.error}</p>
-                    {r.snapshot ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          const p = r.snapshot!;
-                          downloadBoardJson(
-                            packBoard(
-                              p.content,
-                              { customViews: p.customViews, activeViewId: "design", injectedViewIds: [] },
-                              p,
-                            ),
-                            "trabajo-recuperado.json",
-                          );
-                        }}
-                      >
-                        Descargar copia conservada
-                      </Button>
-                    ) : null}
-                  </div>
-                ))}
-              </details>
             ) : null}
           </div>
         </DialogContent>
