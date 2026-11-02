@@ -6,7 +6,11 @@ import type { Presence, PresenceInput } from "./presence";
 import type { Choices, DiagramHistory, HistoryAction, HistoryActor, MergePreview } from "./history";
 
 export interface CollaborationWorkspace {
-  history: DiagramHistory; snapshots: Record<string, SharedProject>; vectors: Record<string, string>; actor: HistoryActor; pending: number;
+  history: DiagramHistory;
+  snapshots: Record<string, SharedProject>;
+  vectors: Record<string, string>;
+  actor: HistoryActor;
+  pending: number;
   recoveries: { id: string; branchId?: string; error: string; snapshot?: SharedProject }[];
 }
 
@@ -45,14 +49,24 @@ export interface CollaborationStatus {
   error?: string;
   members?: { id: string; name?: string; role: Role; connected: boolean; revoked: boolean }[];
 }
-export interface RoomOptions { relayUrls?: string[]; externalAddresses?: string[] }
+export interface RoomOptions {
+  relayUrls?: string[];
+  externalAddresses?: string[];
+}
 export type CollaborationCommand =
   | { type: "open"; fileId: string; initial: SharedProject; name?: string }
   | { type: "create"; fileId: string; initial: SharedProject; options: RoomOptions; name?: string }
   | { type: "join"; fileId: string; invitation: string; name?: string }
   | { type: "patch"; fileId: string; before: SharedProject; after: SharedProject; branchId?: string }
   | { type: "history"; fileId: string; action: HistoryAction; name: string; expectedVector?: string }
-  | { type: "history-preview"; fileId: string; branchId: string; commitId: string; scopes: string[]; choices?: Choices }
+  | {
+      type: "history-preview";
+      fileId: string;
+      branchId: string;
+      commitId: string;
+      scopes: string[];
+      choices?: Choices;
+    }
   | { type: "invite"; fileId: string; role: Role }
   | { type: "retry"; fileId: string }
   | { type: "refresh-link"; fileId: string; invitation: string }
@@ -68,5 +82,8 @@ export interface CollaborationResult {
   recovery?: string;
   error?: string;
 }
-export interface CollaborationEvent extends CollaborationResult { fileId: string; presence?: Presence[] }
+export interface CollaborationEvent extends CollaborationResult {
+  fileId: string;
+  presence?: Presence[];
+}
 export type { PresenceInput };
