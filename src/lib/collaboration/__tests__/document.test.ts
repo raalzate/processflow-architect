@@ -445,5 +445,27 @@ describe("durable project document", () => {
     b.receiveRemote(a.update());
     expect(b.snapshot()).toEqual(a.snapshot());
     expect(b.snapshot().agent.artifacts[0].payload.markdown).toContain("Decisión compartida");
+    a.destroy();
+    b.destroy();
+  });
+
+  it("ignores redundant DeleteSet-only updates on idle sync ticks without writing extra frames", () => {
+    const { a, b } = pair();
+    const before = a.snapshot();
+    const after = structuredClone(before);
+    after.content.notas = "Actualizado";
+    a.patch(before, after);
+    b.receiveRemote(a.update(b.vector()));
+
+    const idleDelta = a.update(b.vector());
+    expect(idleDelta.byteLength).toBeGreaterThan(2);
+
+    const onUpdate = vi.fn();
+    b.doc.on("update", onUpdate);
+    b.receiveRemote(idleDelta);
+    expect(onUpdate).not.toHaveBeenCalled();
+
+    a.destroy();
+    b.destroy();
   });
 });

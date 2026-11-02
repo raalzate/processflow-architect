@@ -243,10 +243,11 @@ export class CollaborationEngine {
   ): Capacity {
     const projectBytes = document.update().byteLength;
     const probe = new SharedDocument();
-    // La carga inicial y la proyección local del editor ocurren una sola vez, no una vez por participante.
+    // La carga inicial y la preparación de la réplica candidata ocurren una sola vez, no en cada sincronización.
     probe.receive(document.update());
     probe.snapshot();
     const vector = probe.vector();
+    probe.receiveRemote(document.update(vector));
     const begin = performance.now();
     let mergeMs: number;
     try {

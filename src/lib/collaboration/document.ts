@@ -198,10 +198,21 @@ export class SharedDocument {
   receiveRemote(update: Uint8Array) {
     if (update.byteLength > 32 * 1024 ** 2) throw new Error("Actualización remota inválida: supera 32 MiB.");
     if (update.byteLength === 2 && update[0] === 0 && update[1] === 0) return;
+    const allowed = new Set(["fields-v1", "deleted-v1", "edit-history-v1"]);
     const candidate = (this.candidate ??= new SharedDocument());
+    let mutated = false;
+    const observe = (tr: Y.Transaction) => {
+      if (tr.changed.size > 0 || tr.changedParentTypes.size > 0) mutated = true;
+    };
     try {
       candidate.receive(this.update(candidate.vector()));
-      candidate.receive(update);
+      candidate.doc.on("afterTransaction", observe);
+      try {
+        candidate.receive(update);
+      } finally {
+        candidate.doc.off("afterTransaction", observe);
+      }
+      if (!mutated && ![...candidate.doc.share.keys()].some(name => !allowed.has(name))) return;
       candidate.assertValid();
     } catch {
       candidate.destroy();
