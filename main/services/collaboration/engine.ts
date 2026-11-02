@@ -312,6 +312,7 @@ export class CollaborationEngine {
   }
   private result(room: Room): CollaborationResult {
     this.refreshMembers(room);
+    if (room.stored.owner) room.status.peers = room.seats.count;
     let snapshot: SharedProject | undefined; try { if (!room.quarantined) snapshot = room.document.snapshot(); } catch { /* first connection pending */ }
     return { status: { ...room.status }, snapshot };
   }

@@ -16,6 +16,8 @@ async function run() {
   const alpn = [...Buffer.from("processflow/collaboration/1")];
   const project: SharedProject = { name: "Internet", content: { nombre_proyecto: "Internet", version: "1", fecha_analisis: "", responsables: [], notas: "", transcript: "", read_models: [], agregados: [], big_picture: { descripcion: "", hotspots: [], nodos: [], aristas: [] }, politicas_inter_agregados: [] }, customViews: [], agent: { versions: [], lineages: [], artifacts: [] }, references: [], analysis: {} };
   let guest: Endpoint | undefined;
+  let keepAlive: ReturnType<typeof setInterval> | undefined;
+  let keepAliveTask: Promise<void> | undefined, keepAliveError: unknown;
   try {
     await host.start();
     const created = await host.command({ type: "create", fileId: "host", initial: project, options: {} });
@@ -39,6 +41,16 @@ async function run() {
     const again = await connection.openBi();
     await sendFrame(again, { version: 1, stage: "sync", projectId: ticket.projectId, token: ticket.token, vector: "AA==" });
     assert.equal((await readFrame<{ ok: boolean }>(again)).ok, true);
+    // El cliente crudo de esta prueba también debe mantenerse activo, como los
+    // clientes reales que sincronizan periódicamente mientras entran más personas.
+    keepAlive = setInterval(() => {
+      if (keepAliveTask) return;
+      keepAliveTask = (async () => {
+        const stream = await deadline(connection.openBi());
+        await sendFrame(stream, { version: 1, stage: "sync", projectId: ticket.projectId, token: ticket.token, vector: "AA==" });
+        const result = await deadline(readFrame<{ ok: boolean; error?: string }>(stream)); assert.equal(result.ok, true, result.error);
+      })().catch(error => { keepAliveError = error; }).finally(() => { keepAliveTask = undefined; });
+    }, 1000);
     await local.start();
     const localInvitation = await host.command({ type: "invite", fileId: "host", role: "editor" });
     const joined = await local.command({ type: "join", fileId: "local", invitation: localInvitation.invitation! });
@@ -57,9 +69,11 @@ async function run() {
       assert.equal(result.status?.connected, true, result.status?.error); assert.equal(result.snapshot?.name, "Internet");
     }
     const group = await host.command({ type: "open", fileId: "host", initial: project });
+    assert.equal(keepAliveError, undefined);
+    assert.equal(connection.closeReason(), null, "The raw relay test peer must remain connected while others join");
     assert.equal(group.status?.peers, 6);
     console.log("PASS: five simultaneous guests plus the host; P2P is not limited to two participants");
     connection.close(BigInt(0), []);
-  } finally { for (const peer of others) await peer.close(); await local.close(); await guest?.close(); await host.close(); assert.equal(dirname(resolve(root)), resolve(tmpdir())); rmSync(root, { recursive: true, force: true }); }
+  } finally { if (keepAlive) clearInterval(keepAlive); for (const peer of others) await peer.close(); await local.close(); await guest?.close(); await host.close(); assert.equal(dirname(resolve(root)), resolve(tmpdir())); rmSync(root, { recursive: true, force: true }); }
 }
 run().then(() => process.exit(0)).catch(error => { console.error(error); process.exit(1); });
