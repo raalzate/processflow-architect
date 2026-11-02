@@ -5,7 +5,7 @@ import { randomBytes, randomUUID, createHash, timingSafeEqual } from "node:crypt
 import { freemem, networkInterfaces } from "node:os";
 import { performance } from "node:perf_hooks";
 import { SharedDocument } from "../../../src/lib/collaboration/document";
-import { estimateCapacity, Seats } from "../../../src/lib/collaboration/capacity";
+import { estimateCapacity, Seats, NetworkLoad } from "../../../src/lib/collaboration/capacity";
 import { withStableGraphIds } from "../../../src/lib/collaboration/identity";
 import type { Capacity, CollaborationCommand, CollaborationEvent, CollaborationResult, CollaborationStatus, Role, RoomOptions, SharedProject } from "../../../src/lib/collaboration/types";
 import { Journal, writePrivateJson } from "./journal";
@@ -38,8 +38,11 @@ interface Room {
   revision: number;
   disposed?: boolean;
   syncTask?: Promise<void>;
+  needsSync?: boolean;
   pathWatch?: WatchHandle;
   presence: Map<string, Presence>;
+  networkLoad: NetworkLoad;
+  serviceMs?: number;
   quarantined?: boolean;
 }
 
@@ -56,7 +59,7 @@ export class CollaborationEngine {
   private presenceMonitor?: ReturnType<typeof setInterval>;
   private discovery?: LanDiscovery;
   private monitor?: ReturnType<typeof setInterval>;
-  constructor(private root: string, private event: (event: CollaborationEvent) => void = () => {}, private dependencies: { journal?: (file: string) => Journal } = {}) {
+  constructor(private root: string, private event: (event: CollaborationEvent) => void = () => {}, private dependencies: { journal?: (file: string) => Journal; publicNetwork?: boolean } = {}) {
     mkdirSync(root, { recursive: true });
     const configFile = join(root, "device.json");
     this.config = existsSync(configFile) ? JSON.parse(readFileSync(configFile, "utf8")) as Config : { key: [...randomBytes(32)], rooms: [] };
@@ -76,7 +79,7 @@ export class CollaborationEngine {
     for (const room of this.rooms.values()) if (!room.stored.owner && room.status.saved) this.schedule(room, 0);
     this.monitor = setInterval(() => {
       for (const room of this.rooms.values()) if (room.stored.owner && room.status.saved) {
-        room.status.capacity = this.measure(room.document); room.seats.resize(room.status.capacity.limit); this.emit(room);
+        this.refreshCapacity(room); this.emit(room);
       }
     }, 30_000); this.monitor.unref();
     this.presenceMonitor = setInterval(() => {
@@ -90,9 +93,12 @@ export class CollaborationEngine {
     if (this.endpoint) return this.endpoint;
     if (this.starting) return this.starting;
     this.starting = (async () => {
-      const builder = Endpoint.builder(); builder.applyMinimal(); builder.secretKey(this.config.key); builder.alpns([ALPN]);
+      const builder = Endpoint.builder();
+      if (this.dependencies.publicNetwork === false) builder.applyMinimal(); else builder.applyN0();
+      builder.secretKey(this.config.key); builder.alpns([ALPN]);
       const relays = [...new Set(this.config.rooms.flatMap(r => r.options.relayUrls ?? []))];
-      builder.relayMode(relays.length ? RelayMode.customFromUrls(relays) : RelayMode.disabled());
+      const urls = [...new Set([...(this.dependencies.publicNetwork === false ? [] : RelayMode.defaultMode().relayMap().urls()), ...relays])];
+      builder.relayMode(urls.length ? RelayMode.customFromUrls(urls) : RelayMode.disabled());
       builder.bindAddr(`0.0.0.0:${this.config.port ?? 0}`);
       const endpoint = await builder.bind();
       this.endpoint = endpoint;
@@ -104,12 +110,26 @@ export class CollaborationEngine {
     })();
     try { return await this.starting; } finally { this.starting = undefined; }
   }
-  private measure(document: SharedDocument): Capacity {
+  private measure(document: SharedDocument, load?: NetworkLoad, connections: Connection[] = [], serviceMs = 0): Capacity {
     const projectBytes = document.update().byteLength;
-    const probe = new SharedDocument(); const begin = performance.now();
-    try { probe.receiveRemote(document.update()); probe.snapshot(); }
+    const probe = new SharedDocument();
+    // La carga inicial sucede una vez; no debe contarse como trabajo de cada tick.
+    probe.receive(document.update());
+    const begin = performance.now(); let mergeMs: number;
+    try { probe.receiveRemote(document.update(probe.vector())); probe.snapshot(); mergeMs = performance.now() - begin; }
     finally { probe.destroy(); }
-    return estimateCapacity({ freeMemoryBytes: freemem(), projectBytes, mergeMs: performance.now() - begin });
+    const paths = connections.flatMap(connection => connection.paths().filter(path => path.isSelected).map(path => path.stats));
+    const resources = { freeMemoryBytes: freemem(), projectBytes, mergeMs: Math.max(mergeMs, serviceMs) };
+    const capacity = estimateCapacity({ ...resources, ...load?.budget(paths, Date.now()) });
+    // La ventana inicial de QUIC y su RTT frío no miden la capacidad de subida.
+    // Observarla sirve como diagnóstico; sólo limitar por ella tras tráfico real.
+    if (capacity.networkMeasured && paths.some(path => path.udpTxBytes < 128 * 1024))
+      return { ...capacity, limit: estimateCapacity(resources).limit, reason: "Estimación de memoria y sincronización; transporte observado todavía en calibración con tráfico real." };
+    return capacity;
+  }
+  private refreshCapacity(room: Room) {
+    room.status.capacity = this.measure(room.document, room.networkLoad, [...room.clients.values()], room.serviceMs);
+    room.seats.resize(room.status.capacity.limit);
   }
   private load(stored: StoredRoom, initial?: SharedProject): Room {
     const found = this.rooms.get(stored.fileId); if (found) return found;
@@ -119,13 +139,14 @@ export class CollaborationEngine {
     try { for (const update of journal.updates) document.receive(update); }
     catch (error) { journal.close(); document.destroy(); throw error; }
     const room: Room = {
-      stored, document, journal, clients: new Map(), failures: 0, seats: new Seats(1), revision: 0, presence: new Map(),
+      stored, document, journal, clients: new Map(), failures: 0, seats: new Seats(1), revision: 0, presence: new Map(), networkLoad: new NetworkLoad(),
       status: { projectId: stored.projectId, fileId: stored.fileId, owner: stored.owner, role: stored.role, connected: stored.owner, state: stored.owner ? "local" : "offline", route: "none", peers: 1, pendingEdges: 0, saved: true, initialized: false,
         capacity: estimateCapacity({ freeMemoryBytes: freemem(), projectBytes: 0, mergeMs: 1 }) },
     };
     document.doc.on("update", (update: Uint8Array) => {
+      if (room.status.initialized) room.networkLoad.record(update.byteLength * 1.4, Date.now());
       room.status.saved = false;
-      try { journal.append(update); room.status.saved = true; room.revision++; }
+      try { journal.append(update); room.status.saved = true; room.revision++; if (room.stored.owner) this.notifyClients(room); }
       catch (error) { room.status.error = `No se pudo guardar: ${String(error)}`; room.status.state = "error"; this.emit(room); throw error; }
     });
     // Register before seeding so a failed first fsync still has a recoverable
@@ -158,10 +179,15 @@ export class CollaborationEngine {
       try { connection.sendDatagram([...bytes]); } catch { /* Latest presence replaces a dropped datagram. */ }
     }
   }
+  private notifyClients(room: Room) {
+    const bytes = [...Buffer.from(JSON.stringify({ kind: "processflow-changed/1" }))];
+    for (const connection of room.clients.values()) try { connection.sendDatagram(bytes); } catch { /* La consulta periódica recupera un aviso perdido. */ }
+  }
   presence(fileId: string, raw: unknown) {
     const room = this.rooms.get(fileId), ownId = this.endpoint?.id().toString();
     if (!room || room.disposed || !ownId) return;
     const presence = sanitizePresence(raw, ownId, Date.now()); if (!presence) return;
+    room.networkLoad.record(Buffer.byteLength(JSON.stringify(presence)), Date.now());
     if (presence.sessionId) presence.id = `${ownId}:${presence.sessionId}`;
     // Keep datagrams small even with a large selection or multibyte names.
     presence.selectedIds = presence.selectedIds.slice(0, 5); presence.moving = presence.moving?.slice(0, 2);
@@ -174,9 +200,12 @@ export class CollaborationEngine {
       while (!room.disposed && !this.closed) {
         const bytes = await connection.readDatagram(); if (bytes.length > 1100) continue;
         if (serving && room.clients.get(member) !== connection) break;
-        const raw = JSON.parse(Buffer.from(bytes).toString("utf8")) as Presence;
+        const raw = JSON.parse(Buffer.from(bytes).toString("utf8")) as Presence & { kind?: string };
+        // Sólo el anfitrión ya autenticado puede avisar de un estado persistido.
+        if (!serving && raw.kind === "processflow-changed/1") { room.needsSync = true; this.schedule(room, 40); continue; }
         const presence = sanitizePresence(raw, serving ? member : raw.id, Date.now());
         if (!presence || typeof presence.id !== "string" || presence.id.length > 140) continue;
+        if (serving) room.networkLoad.record(bytes.length, Date.now());
         if (serving && presence.sessionId) presence.id = `${member}:${presence.sessionId}`;
         if (!room.presence.has(presence.id) && [...room.presence.keys()].filter(id => id === member || id.startsWith(`${member}:`)).length >= 64) continue;
         room.presence.set(presence.id, presence); this.emitPresence(room);
@@ -205,7 +234,8 @@ export class CollaborationEngine {
         const endpoint = await this.endpointReady();
         for (const url of options.relayUrls ?? []) await endpoint.insertRelay({ url });
         for (const addr of options.externalAddresses ?? []) await endpoint.addExternalAddr(addr);
-        if (options.relayUrls?.length) await deadline(endpoint.online());
+        // La falta de Internet no debe impedir crear/usar una sala por LAN.
+        if (this.dependencies.publicNetwork !== false || options.relayUrls?.length) await deadline(endpoint.online(), 8000).catch(() => {});
         room.status.state = "online"; this.emit(room, true); return this.result(room);
       }
       if (command.type === "join") {
@@ -223,12 +253,12 @@ export class CollaborationEngine {
         if (room.stored.role !== "editor") throw new Error("Este vínculo permite lectura. Crea una copia para editar.");
         if (!room.status.saved) throw new Error("El guardado está detenido. Exporta la recuperación antes de continuar.");
         room.document.patch(command.before, this.migrate(command.after));
-        this.emit(room, true); if (!room.stored.owner) this.schedule(room, 0);
+        this.emit(room, true); if (!room.stored.owner) { room.needsSync = true; this.schedule(room, 0); }
       } else if (command.type === "invite") {
         if (!room.stored.owner) throw new Error("Solo el anfitrión puede crear invitaciones.");
         if (command.role !== "editor" && command.role !== "viewer") throw new Error("Rol inválido.");
         const endpoint = await this.endpointReady();
-        if (room.stored.options.relayUrls?.length) await deadline(endpoint.online());
+        if (this.dependencies.publicNetwork !== false || room.stored.options.relayUrls?.length) await deadline(endpoint.online(), 8000).catch(() => {});
         const token = randomBytes(32).toString("base64url");
         room.stored.grants[hash(token)] = { hash: hash(token), role: command.role }; this.saveConfig();
         const invitation: Invitation = { format: "pf-room/1", projectId: room.stored.projectId, token, role: command.role, host: EndpointTicket.fromAddr(endpoint.addr()).toString(), relays: room.stored.options.relayUrls ?? [] };
@@ -333,7 +363,8 @@ export class CollaborationEngine {
           if ((!active && (request.stage !== "hello" || request.update)) || (active && active !== room)) throw new Error("Negociación de sala inválida.");
           const tokenHash = hash(request.token), grant = room.stored.grants[tokenHash];
           if (!grant || grant.revoked || !timingSafeEqual(Buffer.from(grant.hash), Buffer.from(tokenHash)) || (grant.member && grant.member !== member)) throw new Error("Invitación inválida, revocada o ya utilizada.");
-          if (!room.seats.enter(member)) throw new Error("Sala llena según la capacidad del anfitrión. Tu copia local se conserva.");
+          if (!active) this.refreshCapacity(room);
+          if (!room.seats.enter(member)) throw new Error("Sala llena según la capacidad del anfitrión y la conexión. Tu copia local se conserva; se reintentará automáticamente.");
           if (!grant.member) { grant.member = member; this.saveConfig(); }
           const oldConnection = room.clients.get(member); if (oldConnection && oldConnection !== connection) oldConnection.close(BigInt(0), []);
           room.clients.set(member, connection);
@@ -345,11 +376,15 @@ export class CollaborationEngine {
           active = room;
           if (request.update && grant.role !== "editor") throw new Error("El vínculo permite solo lectura.");
           const before = room.revision;
+          const serviceStart = performance.now();
           if (!room.status.saved) throw new Error("El guardado está detenido; exporta la recuperación y reinicia después de corregir el disco.");
           if (request.update) room.document.receiveRemote(decode(request.update));
           if (!room.status.saved) throw new Error("El anfitrión no pudo guardar; vuelve a intentar después.");
           room.status.lastSynced = new Date().toISOString(); room.status.state = "online";
-          await sendFrame(stream, { ok: true, update: encode(room.document.update(decode(request.vector))), vector: encode(room.document.vector()), capacity: room.status.capacity, peers: room.seats.count } satisfies Response);
+          const response = { ok: true, update: encode(room.document.update(decode(request.vector))), vector: encode(room.document.vector()), capacity: room.status.capacity, peers: room.seats.count } satisfies Response;
+          const serviceMs = performance.now() - serviceStart;
+          if (request.stage === "sync") room.serviceMs = room.serviceMs === undefined ? serviceMs : room.serviceMs * .8 + serviceMs * .2;
+          await sendFrame(stream, response);
           this.emit(room, before !== room.revision);
         } catch (error) {
           await sendFrame(stream, { ok: false, error: error instanceof Error ? error.message : String(error) } satisfies Response);
@@ -363,7 +398,7 @@ export class CollaborationEngine {
   private schedule(room: Room, delay?: number) {
     if (this.closed || room.disposed || room.stored.owner) return;
     if (room.timer) clearTimeout(room.timer);
-    room.timer = setTimeout(() => { room.timer = undefined; void this.sync(room).finally(() => this.schedule(room)); }, delay ?? (room.failures ? Math.min(30_000, 1000 * 2 ** Math.min(room.failures, 5)) : 700));
+    room.timer = setTimeout(() => { room.timer = undefined; void this.sync(room).finally(() => this.schedule(room)); }, delay ?? (room.failures ? Math.min(30_000, 1000 * 2 ** Math.min(room.failures, 5)) : room.needsSync ? 40 : 700));
     room.timer.unref();
   }
   private async connect(room: Room): Promise<Connection> {
@@ -381,7 +416,8 @@ export class CollaborationEngine {
   private sync(room: Room): Promise<void> {
     if (room.disposed || this.closed) return Promise.resolve();
     if (room.syncTask) return room.syncTask;
-    room.syncTask = this.performSync(room).finally(() => { room.syncTask = undefined; });
+    room.needsSync = false;
+    room.syncTask = this.performSync(room).finally(() => { room.syncTask = undefined; if (room.needsSync) this.schedule(room, 40); });
     return room.syncTask;
   }
   private updateRoute(room: Room, paths: PathSnapshot[]) {

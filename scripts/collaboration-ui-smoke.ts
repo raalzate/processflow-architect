@@ -247,6 +247,7 @@ async function run() {
     await fill(b, "#collaboration-name", "Luis"); await fill(b, "#collaboration-invitation", invitation);
     await clickText(b, "Vincular una copia y unirme"); await waitText(b, "Puedes editar este proyecto."); await closePanel(b); await waitText(b, "Componente A");
     console.log("PASS: create and join through the actual Electron interface");
+    assert.equal(await b.evaluate(() => document.querySelector('svg[data-skin]')?.textContent?.includes("Agregado Principal")), false, "Joining must not seed a default container into the shared canvas");
     await moveCursor(a, 250, 150); await moveCursor(b, 500, 230);
     await a.waitForFunction(() => [...document.querySelectorAll("svg text")].some(t => t.textContent?.includes("Luis")), { timeout: 10_000, polling: 100 });
     await b.waitForFunction(() => [...document.querySelectorAll("svg text")].some(t => t.textContent?.includes("Ana")), { timeout: 10_000, polling: 100 });

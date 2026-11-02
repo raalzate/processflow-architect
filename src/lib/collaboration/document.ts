@@ -32,6 +32,7 @@ export class SharedDocument {
   private tombstones = this.doc.getMap<boolean>("deleted-v1");
   private audit = this.doc.getMap<{ path: string; previous?: Cell; value?: Cell }>("edit-history-v1");
   private sequence = 0;
+  private candidate?: SharedDocument;
   private history = new Y.UndoManager([this.fields, this.tombstones], { trackedOrigins: new Set([LOCAL]), captureTimeout: 0 });
 
   /** before is the caller's observed projection, not the latest remote state. */
@@ -102,11 +103,11 @@ export class SharedDocument {
   /** Network changes are checked on a candidate before any durable live update. */
   receiveRemote(update: Uint8Array) {
     if (update.byteLength > 32 * 1024 ** 2) throw new Error("Actualización remota inválida: supera 32 MiB.");
-    const candidate = new SharedDocument();
+    if (update.byteLength === 2 && update[0] === 0 && update[1] === 0) return;
+    const candidate = this.candidate ??= new SharedDocument();
     try {
-      candidate.receive(this.update()); candidate.receive(update); candidate.assertValid();
-    } catch { throw new Error("Documento remoto inválido; se conserva la copia anterior."); }
-    finally { candidate.destroy(); }
+      candidate.receive(this.update(candidate.vector())); candidate.receive(update); candidate.assertValid();
+    } catch { candidate.destroy(); this.candidate = undefined; throw new Error("Documento remoto inválido; se conserva la copia anterior."); }
     this.receive(update);
   }
   assertValid() {
@@ -120,5 +121,5 @@ export class SharedDocument {
   undo() { this.history.undo(); }
   redo() { this.history.redo(); }
   clearUndo() { this.history.clear(); }
-  destroy() { this.history.destroy(); this.doc.destroy(); }
+  destroy() { this.candidate?.destroy(); this.candidate = undefined; this.history.destroy(); this.doc.destroy(); }
 }

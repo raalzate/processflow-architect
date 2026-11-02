@@ -3842,7 +3842,7 @@ export const ComponentDesigner: React.FC<{
       }
     }
     // Lienzo nuevo y vacío: sembrar un contenedor inicial de la notación activa.
-    if (n.size === 0 && seedContainerType) {
+    if (n.size === 0 && seedContainerType && !sharedProject && !collaboration?.busy) {
       const seedName = `${seedContainerType} Principal`;
       const id = `agg-${seedName}`;
       n.set(id, {

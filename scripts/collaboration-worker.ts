@@ -4,7 +4,7 @@ import type { PresenceInput } from "../src/lib/collaboration/presence";
 import { Journal } from "../main/services/collaboration/journal";
 
 let failWrites = false;
-const engine = new CollaborationEngine(process.argv[2], event => process.send?.({ event }), { journal: file => {
+const engine = new CollaborationEngine(process.argv[2], event => process.send?.({ event }), { publicNetwork: false, journal: file => {
   const journal = new Journal(file), append = journal.append.bind(journal);
   journal.append = update => { if (failWrites) throw new Error("Fallo de disco simulado"); append(update); }; return journal;
 } });

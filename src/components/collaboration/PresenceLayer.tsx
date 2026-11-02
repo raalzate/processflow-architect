@@ -25,8 +25,8 @@ export function PresenceLayer({ peers, viewId, nodes, links, zoom }: { peers: Pr
       {/* Interpolar los paquetes evita saltos entre muestras de red a 25 Hz. */}
       {peer.pointer ? <g data-presence-pointer="" style={{ transform: `translate(${peer.pointer.x}px, ${peer.pointer.y}px) scale(${1 / zoom})`, transition: "transform 80ms linear" }}>
         <path d="M0 0 L0 19 L5 14 L9 23 L13 21 L9 12 L17 12 Z" fill={peer.color} stroke="white" strokeWidth={1.5} />
-        <rect x={15} y={18} width={Math.min(270, (peer.name.length + 7) * 7 + 16)} height={24} rx={4} fill={peer.color} />
-        <text x={23} y={34} fill="white" fontSize={12} fontWeight={600}>{peer.name.slice(0, 28)} · {peer.id.slice(0, 4)}</text>
+        <rect x={15} y={18} width={Math.min(peer.name.length, 28) * 7 + 16} height={24} rx={4} fill={peer.color} />
+        <text x={23} y={34} fill="white" fontSize={12} fontWeight={600}>{peer.name.slice(0, 28)}</text>
       </g> : null}
     </g>)}
   </g>;

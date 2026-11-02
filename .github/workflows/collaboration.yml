@@ -43,3 +43,20 @@ jobs:
           relay_pid=$!
           trap 'kill "$relay_pid"' EXIT
           npx tsx scripts/collaboration-relay-smoke.ts 'http://[::1]:3340'
+          # Proceso dedicado sin UDP: asegura relay sostenido, no un P2P local camuflado.
+          sudo useradd --system --no-create-home pf-relay-test
+          test_uid=$(id -u pf-relay-test)
+          sudo iptables -I OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP
+          sudo ip6tables -I OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP
+          # Dos tramos de relay de 30 ms cada uno, con variación, en un runner efímero.
+          sudo tc qdisc add dev lo root netem delay 30ms 5ms rate 20mbit
+          trap 'sudo tc qdisc del dev lo root; sudo iptables -D OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP; sudo ip6tables -D OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP; kill "$relay_pid"' EXIT
+          sudo install -d -m 0777 "$RUNNER_TEMP/pf-load-results"
+          sudo -u pf-relay-test env PATH="$PATH" node --import tsx scripts/collaboration-load.ts "$RUNNER_TEMP/pf-load-results/relay.json" 20 'http://[::1]:3340'
+      - name: Resultados de carga por relay
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relay-load
+          path: ${{ runner.temp }}/pf-load-results/*.json
+          if-no-files-found: warn

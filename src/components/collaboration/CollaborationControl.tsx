@@ -15,7 +15,7 @@ import type { Role } from "@/lib/collaboration/types";
 export function CollaborationControl() {
   const collaboration = useCollaboration(); const { currentFileId } = useGraphContext();
   const [invitation, setInvitation] = useState(""), [generated, setGenerated] = useState("");
-  const [relay, setRelay] = useState(""), [address, setAddress] = useState(""), [role, setRole] = useState<Role>("editor");
+  const [role, setRole] = useState<Role>("editor");
   const [notice, setNotice] = useState("");
   if (!collaboration?.available) return null;
   const { status, busy, error } = collaboration;
@@ -47,12 +47,12 @@ export function CollaborationControl() {
           <>
             <div className="space-y-2 text-sm" role="status" aria-live="polite">
               <p>{status.owner ? "Estás alojando el proyecto compartido." : status.role === "viewer" ? "Tienes acceso de lectura." : "Puedes editar este proyecto."}</p>
-              <p className="tabular-nums">{status.peers} de {status.capacity.limit} participantes estimados</p>
+              <p className="tabular-nums">{status.peers > status.capacity.limit ? `${status.peers} personas conectadas; nuevas entradas en pausa (cupo estimado: ${status.capacity.limit})` : `${status.peers} de ${status.capacity.limit} participantes estimados, incluido el anfitrión`}</p>
               <p className="text-muted-foreground">{status.capacity.reason}</p>
-              <p>{status.route === "lan" ? "Conectado por la red local" : status.route === "direct" ? "Conexión directa" : status.route === "relay" ? "Conectado mediante tu intermediario" : status.owner ? status.peers > 1 ? `${status.peers - 1} personas conectadas` : "Esperando a otras personas" : "Los cambios se intercambiarán al reconectar"}</p>
+              <p>{status.route === "lan" ? "Conectado por la red local" : status.route === "direct" ? "Conexión directa" : status.route === "relay" ? "Conectado mediante respaldo automático cifrado" : status.owner ? status.peers > 1 ? `${status.peers - 1} personas conectadas` : "Esperando a otras personas" : "Los cambios se intercambiarán al reconectar"}</p>
               <p>{status.saved && !collaboration.pending ? "Copia local guardada" : "Guardando cambios…"}</p>
               {status.initialized === false ? <p>Esperando la primera copia del proyecto. Podrás editar cuando llegue.</p> : null}
-              {collaboration.peers.map(peer => <p key={peer.id} className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: peer.color }} />{peer.name} · {peer.id.slice(0, 4)}</p>)}
+              {collaboration.peers.map(peer => <p key={peer.id} className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: peer.color }} />{peer.name}</p>)}
               {status.lastSynced ? <p className="text-muted-foreground">Último intercambio: {new Date(status.lastSynced).toLocaleString()}</p> : null}
               {status.pendingEdges ? <p>{status.pendingEdges} conexiones esperan componentes pendientes.</p> : null}
             </div>
@@ -76,18 +76,14 @@ export function CollaborationControl() {
             {status.owner && status.members?.length ? <details className="border-t pt-3 text-sm"><summary className="cursor-pointer font-medium">Personas con acceso</summary><div className="space-y-2 pt-3">
               {status.members.map(member => <div key={member.id} className="flex items-center justify-between gap-3"><span>{collaboration.peers.find(p => p.id === member.id || p.id.startsWith(`${member.id}:`))?.name ?? member.id.slice(0, 8)} · {member.revoked ? "Revocado" : member.role === "viewer" ? "Lectura" : "Edición"}</span><Button size="sm" variant="outline" disabled={busy || member.revoked} onClick={() => run(async () => { await collaboration.revoke(member.id); })}>Revocar</Button></div>)}
             </div></details> : null}
-            {!status.owner ? <details className="border-t pt-3 text-sm"><summary className="cursor-pointer font-medium">El anfitrión cambió de red</summary><div className="space-y-2 pt-3"><p className="text-muted-foreground">La red local se detecta automáticamente. Si necesitas actualizar la dirección por Internet, pega una invitación nueva del mismo anfitrión. Tu vínculo y tu trabajo se conservan.</p><Label htmlFor="collaboration-refresh">Invitación con la dirección actual</Label><Textarea id="collaboration-refresh" value={invitation} onChange={e => setInvitation(e.target.value)} /><Button variant="outline" disabled={busy || !invitation.trim()} onClick={() => run(async () => { await collaboration.refreshLink(invitation.trim()); setInvitation(""); })}>Actualizar dirección</Button></div></details> : null}
           </>
         ) : (
           <>
             <div className="space-y-3">
-              <Button className="w-full" disabled={busy || !currentFileId} onClick={() => run(async () => { await collaboration.create({ relayUrls: relay.trim() ? [relay.trim()] : [], externalAddresses: address.trim() ? [address.trim()] : [] }); })}>{busy ? "Preparando…" : "Vincular este proyecto y ser anfitrión"}</Button>
+              <Button className="w-full" disabled={busy || !currentFileId} onClick={() => run(async () => { await collaboration.create({}); })}>{busy ? "Preparando…" : "Vincular este proyecto y ser anfitrión"}</Button>
               {!currentFileId ? <p className="text-sm text-muted-foreground">Crea un proyecto para alojarlo o pega una invitación para unirte.</p> : null}
-              <details className="text-sm"><summary className="cursor-pointer font-medium">Conectar desde otras redes</summary><div className="space-y-2 pt-3">
-                <Label htmlFor="collaboration-relay">Intermediario propio (opcional)</Label><Input id="collaboration-relay" value={relay} onChange={e => setRelay(e.target.value)} placeholder="https://relay.ejemplo.com" />
-                <Label htmlFor="collaboration-address">Dirección pública directa (opcional)</Label><Input id="collaboration-address" value={address} onChange={e => setAddress(e.target.value)} placeholder="IP:puerto UDP" />
-                <p className="text-muted-foreground">Primero se intenta la red local y la conexión directa. Un intermediario propio permite atravesar redes que las bloquean. El software es gratuito; el dispositivo y la conexión los aportas tú.</p>
-              </div></details>
+              <p className="text-sm text-muted-foreground">Comparte la invitación y listo. La conexión elige la red local, una ruta directa o un respaldo cifrado gratuito automáticamente, sin configurar servidores ni puertos.</p>
+              <p className="text-xs text-muted-foreground">El respaldo gratuito es compartido y tiene disponibilidad y tráfico variables. El cupo se ajusta según el anfitrión y las conexiones observadas.</p>
             </div>
             <form className="space-y-2 border-t pt-3" onSubmit={event => { event.preventDefault(); run(async () => { await collaboration.join(invitation.trim()); setInvitation(""); }); }}>
               <Label htmlFor="collaboration-invitation">Invitación de otra persona</Label>

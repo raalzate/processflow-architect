@@ -9,8 +9,8 @@ parte del documento compartido.
 ## Uso
 
 1. Abre un proyecto y pulsa **Colaborar**. Elige el nombre que verán los demás.
-2. Pulsa **Vincular este proyecto y ser anfitrión**. Para redes diferentes puedes
-   configurar antes un relay propio o una dirección pública UDP conocida.
+2. Pulsa **Vincular este proyecto y ser anfitrión**. La conexión se configura sola:
+   no se introducen IP, puertos, servidores ni credenciales de un proveedor.
 3. Genera una invitación con permiso de edición o lectura. Cada invitación se
    vincula al primer equipo que la usa; genera otra para la siguiente persona.
 4. La otra persona pega la invitación en **Colaborar → Vincular una copia y unirme**.
@@ -18,7 +18,7 @@ parte del documento compartido.
 5. El vínculo se recuerda al cerrar. Al abrir otro día se intercambian los cambios
    pendientes en ambos sentidos. El anfitrión debe tener su aplicación abierta.
 
-Los punteros muestran nombre, color e identidad abreviada. También se muestran las
+Los punteros muestran sólo el nombre y color de cada persona. También se muestran las
 selecciones, una vista previa del arrastre y la flecha que otra persona está
 trazando para conectar componentes. El movimiento se interpola entre paquetes.
 La flecha parte del puerto seleccionado, con la misma geometría que el componente
@@ -69,8 +69,8 @@ arranque con el tablero indicado. No sincroniza carpetas de datos por Dropbox/Gi
 
 ## Redes distintas
 
-El servicio usa [Iroh](https://github.com/n0-computer/iroh) con el preset mínimo:
-no configura relays públicos ni descubrimiento de proveedores. El binding
+El servicio usa [Iroh](https://github.com/n0-computer/iroh) con el preset público n0:
+descubrimiento por identidad y respaldo de relays gratuitos ya configurados. El binding
 [iroh-js](https://github.com/n0-computer/iroh-ffi) funciona mediante N-API.
 
 Orden de conexión:
@@ -78,8 +78,9 @@ Orden de conexión:
 1. Direcciones LAN, incluyendo descubrimiento multicast local del mismo
    identificador permanente del anfitrión.
 2. Direcciones directas conocidas y los mecanismos de conexión de Iroh.
-3. Los relays propios que configure el usuario, con cifrado QUIC de extremo a
-   extremo entre los equipos. Iroh puede mejorar la ruta a directa cuando exista.
+3. Los relays públicos gratuitos de Iroh, con cifrado QUIC de extremo a extremo.
+   Iroh puede mejorar la ruta a directa cuando exista. Las configuraciones antiguas
+   de relay propio se conservan como rutas adicionales, sin exigirlas al usuario.
 
 Una sala admite simultáneamente personas por LAN, conexión directa de Internet
 y relay: la ruta se decide por conexión, no para toda la sala. Iroh intenta
@@ -89,32 +90,41 @@ hace un sondeo intensivo desde la interfaz. La ruta LAN se reconoce con la
 máscara real de la interfaz. Véase la [explicación de Iroh sobre las rutas](https://www.iroh.computer/blog/iroh-on-QUIC-multipath).
 
 El descubrimiento LAN es opcional: algunas redes bloquean multicast o aíslan los
-clientes Wi-Fi. Si cambia la dirección de Internet y no hay relay disponible, una
-persona ya vinculada puede pegar una invitación nueva en **El anfitrión cambió de
-red → Actualizar dirección**. Se exige el mismo proyecto y la misma identidad del
-anfitrión; se conserva su permiso anterior y su trabajo pendiente.
+clientes Wi-Fi. Iroh mantiene el descubrimiento por identidad y puede recuperar la
+dirección tras un cambio de red sin pedir una IP al usuario. Las copias vinculadas
+reintentan automáticamente y conservan sus cambios mientras no exista una ruta.
 
 No se puede garantizar conectividad en absolutamente todas las redes. Si una red
-bloquea tanto las rutas directas como el relay configurado, deberá permitir una
+bloquea tanto las rutas directas como el respaldo público, deberá permitir una
 ruta. CGNAT, aislamiento Wi-Fi, ancho de banda y cortafuegos son límites reales.
 
 El software no exige una suscripción ni establece una cuota comercial de usuarios.
-El equipo anfitrión, el relay si hace falta, electricidad y conexión son recursos
-aportados por los participantes. Véase [relay propio](../deploy/collaboration/README.md).
+Los [relays públicos](https://www.iroh.computer/services/hosting) no requieren cuenta
+ni pago, pero tienen tráfico variable, no garantizan disponibilidad y se recomiendan
+para desarrollo y pruebas. No son un servicio ilimitado ni alojan los documentos.
+El equipo anfitrión y su conexión los aportan los participantes. Para una operación
+con infraestructura controlada sigue disponible [relay propio](../deploy/collaboration/README.md).
 
 ## Capacidad y permisos
 
 Al crear la sala se mide el tamaño real del documento y el tiempo de cargar y
 proyectar una réplica, y se reserva un presupuesto de memoria y procesamiento.
+El presupuesto de CPU distingue la carga inicial del trabajo recurrente y se ajusta
+con el tiempo observado de servicio de las sincronizaciones siguientes.
 La estimación incluye al anfitrión. La admisión reserva el cupo de forma síncrona;
 una reconexión de la misma identidad no ocupa dos plazas. Las membresías se
 recuerdan, mientras que los cupos corresponden a conexiones activas.
 
-La capacidad se vuelve a evaluar durante la sesión. Una bajada detiene nuevas
-admisiones, sin expulsar a quienes ya trabajan. La interfaz indica que la subida
-no está medida: esta versión no convierte las características del hardware en una
-garantía de rendimiento de la red. No hay una prueba de carga que certifique el
-número estimado con cientos de participantes reales.
+La capacidad se vuelve a evaluar durante la sesión y antes de admitir una nueva
+identidad. Una bajada detiene nuevas admisiones, sin expulsar a quienes ya trabajan.
+Se observa la ventana de envío y RTT de las rutas seleccionadas, junto con los bytes
+de ediciones y presencia de los últimos cinco segundos. Una LAN rápida no oculta
+una ruta lenta. La ventana inicial de QUIC no se usa como límite de subida: mientras
+las rutas no acumulen tráfico suficiente se muestra una estimación en calibración.
+Tras calibrar, se reserva margen de red y se aplica el menor presupuesto de memoria,
+procesamiento y transporte. El anfitrión cuenta una sola vez, fuera de las plazas
+que consumen subida. No se ejecuta un test de velocidad ni se garantiza un máximo
+exacto, y no hay una prueba de carga con cientos de participantes reales.
 
 Las invitaciones son credenciales privadas. El anfitrión puede revocar equipos.
 Los lectores reciben cambios y presencia, pero no pueden publicar ediciones; el
@@ -122,6 +132,13 @@ servidor comprueba el permiso, además de los controles de la interfaz. Solo se
 admiten transferencias grandes después de una negociación autenticada pequeña.
 
 ## Cambios concurrentes y recuperación
+
+El anfitrión avisa por el canal cifrado después de guardar un cambio. Los demás
+programan una sincronización agrupada a 40 ms; si el aviso se pierde, la consulta
+periódica sigue recuperando los cambios. Un aviso durante una sincronización deja
+trabajo pendiente, sin lanzar conexiones paralelas. Las actualizaciones vacías
+no clonan todo el documento y la validación reutiliza una réplica candidata;
+una actualización inválida descarta esa candidata sin alterar el estado válido.
 
 El documento usa [Yjs](https://github.com/yjs/yjs). Contenedores, componentes,
 relaciones y colecciones con identificadores se representan por identidad estable;
@@ -202,6 +219,10 @@ npm run typecheck
 npm test
 npm run test:collaboration
 npm run gate
+# Internet real, fuera del gate de pruebas offline:
+npx tsx scripts/collaboration-internet-smoke.ts
+# Carga local P2P: varios perfiles nativos y 100 componentes, sin red pública:
+npx tsx scripts/collaboration-load.ts ../p2p-load.json 40
 # Con un relay propio local ya ejecutándose:
 npx tsx scripts/collaboration-relay-smoke.ts http://[::1]:3340
 ```
@@ -215,8 +236,14 @@ Esos puertos se habilitan solo al lanzar las instancias de prueba, no en la app
 normal. `PROCESSFLOW_COLLAB_DATA` permite aislar los perfiles de prueba. La preview
 tiene además nombre, appId, carpeta de datos y destino de actualizaciones propios.
 
-Límites verificados: pruebas locales de Windows, procesos separados y relay propio
-local. La prueba del relay también comprueba rutas simultáneas distintas y mejora
+Límites verificados: pruebas locales de Windows, procesos separados, relay propio
+local y conexión autenticada por un relay público sin direcciones directas ni
+descubrimiento en el cliente de prueba. La prueba de Internet combina un participante
+inicialmente por relay y otros por LAN, hasta seis participantes contando el anfitrión.
+El job `relay` de CI ejecuta además carga sostenida con UDP bloqueado para un usuario
+de prueba, relay propio y demora de red controlada en el loopback del runner efímero;
+exige que todas las rutas sigan siendo relay y publica los resultados en `relay-load`.
+La prueba del relay propio también comprueba rutas simultáneas distintas y mejora
 a directa conservando la conexión. La prueba del editor utiliza ventanas nativas
 y mide posiciones intermedias del puntero, arrastre y flecha en construcción.
 Comprueba el puerto de origen con componentes sin dimensiones persistidas y que

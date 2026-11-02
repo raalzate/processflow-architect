@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { SharedDocument } from "../document";
 import type { GraphData } from "../../types";
@@ -21,6 +21,21 @@ function exchange(a: SharedDocument, b: SharedDocument) {
 }
 
 describe("durable project document", () => {
+  it("does not clone or validate a full document for a canonical empty update", () => {
+    const { a } = pair(), spy = vi.spyOn(a, "update");
+    a.receiveRemote(Uint8Array.of(0, 0));
+    expect(spy).not.toHaveBeenCalled();
+    expect(() => a.receiveRemote(Uint8Array.of(0))).toThrow(/inválid/);
+  });
+  it("validates subsequent remote edits using a retained replica and deltas", () => {
+    const { a, b } = pair(); let before = b.snapshot();
+    b.patch(before, { ...before, name: "Primero" }); a.receiveRemote(b.update(a.vector()));
+    const spy = vi.spyOn(a, "update"); before = b.snapshot();
+    b.patch(before, { ...before, name: "Segundo" }); a.receiveRemote(b.update(a.vector()));
+    expect(a.snapshot().name).toBe("Segundo");
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls.every(([vector]) => vector instanceof Uint8Array)).toBe(true);
+  });
   it("merges an offline edge with another person's component edits", () => {
     const { a, b } = pair(); const beforeA = a.snapshot(), beforeB = b.snapshot();
     const nextA = structuredClone(beforeA); nextA.content.agregados[0].aristas.push({ id: "ab", fuente: "a", destino: "b", descripcion: "conecta" });
