@@ -46,8 +46,10 @@ async function run() {
     assert.equal(joined.error, undefined); assert.equal(joined.status?.connected, true); assert.equal(joined.status?.route, "lan");
     assert.equal(joined.snapshot?.name, "Internet");
     const mixed = await host.command({ type: "open", fileId: "host", initial: project });
-    assert.equal(mixed.status?.peers, 3); assert.equal(mixed.status?.capacity.networkMeasured, true);
-    console.log("PASS: LAN and public-relay participants share one room concurrently; network capacity is observed");
+    assert.equal(mixed.status?.peers, 3);
+    // Una ruta LAN recién migrada puede informar RTT=0; inventar velocidad sería incorrecto.
+    assert.ok(mixed.status?.capacity.networkMeasured || mixed.status?.capacity.reason.includes("provisional"));
+    console.log("PASS: LAN and public-relay participants share one room; capacity reports either observed transport or honest provisional state");
     for (let index = 0; index < 3; index++) {
       const peer = new CollaborationEngine(join(root, `peer-${index}`), () => {}, { publicNetwork: false }); others.push(peer); await peer.start();
       const invite = await host.command({ type: "invite", fileId: "host", role: "editor" });
