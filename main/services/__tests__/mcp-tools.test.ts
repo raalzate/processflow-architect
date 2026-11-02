@@ -475,7 +475,7 @@ describe("list_skills / install_skill", () => {
   it("instala todos los skills con sus references y no pisa sin overwrite", async () => {
     const { textOf } = toolsFor();
     const primero = await textOf("install_skill", { skill: "all", scope: "project", projectDir, overwrite: false, configure: false });
-    expect(primero).toContain("documento-a-processflow/references/ejemplos.md");
+    expect(primero).toContain(path.join("documento-a-processflow", "references", "ejemplos.md"));
 
     // Cambio intencional (issue #144 · D1): lo que ya está se COMPARA con lo que
     // se generaría, en vez de saltarse en silencio. Igual → "al día".
