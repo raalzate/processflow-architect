@@ -65,8 +65,14 @@ jobs:
           done
           trap 'for directory in scripts main src node_modules; do sudo umount "$test_project/$directory"; done; sudo tc qdisc del dev lo root; sudo iptables -D OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP; sudo ip6tables -D OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP; kill "$relay_pid"' EXIT
           sudo install -d -m 0777 "$RUNNER_TEMP/pf-load-results"
+          sudo install -d -m 0777 "$test_project/results"
           cd "$test_project"
-          sudo -u pf-relay-test env PATH="$PATH" node --import tsx scripts/collaboration-load.ts "$RUNNER_TEMP/pf-load-results/relay.json" 20 'http://[::1]:3340'
+          load_status=0
+          sudo -u pf-relay-test env PATH="$PATH" node --import tsx scripts/collaboration-load.ts "$test_project/results/relay.json" 20 'http://[::1]:3340' || load_status=$?
+          cp "$test_project/results/"*.json "$RUNNER_TEMP/pf-load-results/"
+          # Resumen legible también por la API de checks, sin tokens ni proyectos reales.
+          node -e 'const r=require(process.argv[1]);for(const p of r.phases)console.log("::notice::Relay load: "+JSON.stringify(p))' "$RUNNER_TEMP/pf-load-results/relay.json"
+          exit "$load_status"
       - name: Resultados de carga por relay
         if: always()
         uses: actions/upload-artifact@v7
