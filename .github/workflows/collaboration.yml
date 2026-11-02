@@ -53,8 +53,19 @@ jobs:
           sudo ip6tables -I OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP
           # Dos tramos de relay de 30 ms cada uno, con variación, en un runner efímero.
           sudo tc qdisc add dev lo root netem delay 30ms 5ms rate 20mbit
-          trap 'sudo tc qdisc del dev lo root; sudo iptables -D OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP; sudo ip6tables -D OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP; kill "$relay_pid"' EXIT
+          # Node busca package.json en los ancestros: el usuario aislado no debe
+          # necesitar acceso al home privado del runner ni a sus credenciales Git.
+          test_project=$(mktemp -d /tmp/pf-relay-project-XXXXXX)
+          chmod 755 "$test_project"
+          cp package.json tsconfig.json "$test_project/"
+          for directory in scripts main src node_modules; do
+            mkdir "$test_project/$directory"
+            sudo mount --bind "$GITHUB_WORKSPACE/$directory" "$test_project/$directory"
+            sudo mount -o remount,bind,ro "$test_project/$directory"
+          done
+          trap 'for directory in scripts main src node_modules; do sudo umount "$test_project/$directory"; done; sudo tc qdisc del dev lo root; sudo iptables -D OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP; sudo ip6tables -D OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP; kill "$relay_pid"' EXIT
           sudo install -d -m 0777 "$RUNNER_TEMP/pf-load-results"
+          cd "$test_project"
           sudo -u pf-relay-test env PATH="$PATH" node --import tsx scripts/collaboration-load.ts "$RUNNER_TEMP/pf-load-results/relay.json" 20 'http://[::1]:3340'
       - name: Resultados de carga por relay
         if: always()
