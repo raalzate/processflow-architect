@@ -44,6 +44,10 @@ const FIELD_NAMES: Record<string, string> = {
   title: "Título",
   content: "Contenido",
   markdown: "Contenido",
+  x: "Posición horizontal",
+  y: "Posición vertical",
+  width: "Ancho",
+  height: "Alto",
 };
 
 const IGNORED_LEAF_FIELDS = new Set(["#rank", "x", "y"]);

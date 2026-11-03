@@ -1126,10 +1126,10 @@ interface NodeComponentProps {
    * obligaría a pasarle el diagrama entero.
    */
   fragmentParts?: FragmentPart[];
-  onMouseDown: (e: React.MouseEvent) => void;
-  onResizeMouseDown: (e: React.MouseEvent) => void;
-  onClick: () => void;
-  onDoubleClick: () => void;
+  onMouseDown?: (e: React.MouseEvent) => void;
+  onResizeMouseDown?: (e: React.MouseEvent) => void;
+  onClick: (e: React.MouseEvent) => void;
+  onDoubleClick?: () => void;
   /**
    * Doble clic sobre el TEXTO del nombre o de la descripción (#643): se edita
    * ahí mismo en vez de abrir la ficha. `editandoTexto` dice qué campo muestra
@@ -1224,6 +1224,7 @@ const ConnectPorts: React.FC<{
   /** Para símbolos compactos: acerca los puertos laterales al borde del círculo/rombo. */
   sideInset?: number;
 }> = ({ w, h, connecting, onStartConnect, sideInset = 0 }) => {
+  if (!onStartConnect) return null;
   const ports = [
     { x: w / 2, y: 0 },
     { x: w - sideInset, y: h / 2 },
@@ -1424,7 +1425,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
     if (campo) {
       e.stopPropagation();
       onPedirEdicion!(campo);
-    } else abrirFicha();
+    } else abrirFicha?.();
   };
   /**
    * El editor del campo en curso. El nombre ocupa la franja `hNombre`; la
@@ -1533,7 +1534,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         onMouseLeave={onHoverEnd}
         className={cn(
           editorial ? "group" : "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.08))]",
-          connecting ? "cursor-crosshair" : "cursor-move",
+          connecting ? "cursor-crosshair" : onMouseDown ? "cursor-move" : "cursor-pointer",
           // Marcado para eliminar: atenuado (la insignia roja da el motivo).
           isDeleted && "opacity-60"
         )}
@@ -1744,25 +1745,27 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         )}
         <ChangeStateBadge estado={node.estado_comparativo} x={width - 2} />
         {editorEnLienzo(width, 34)}
-        <g onMouseDown={onResizeMouseDown} className="cursor-nwse-resize">
-          <rect
-            x={width - 12}
-            y={height - 12}
-            width="12"
-            height="12"
-            className="fill-transparent"
-          />
-          <path
-            d={`M${width - 10},${height} L${width},${height - 10}`}
-            className={cn(trazoResalte ?? strokeTipo ?? (editorial ? color.border : "stroke-gray-400 dark:stroke-zinc-500"))}
-            strokeWidth="2"
-          />
-          <path
-            d={`M${width - 6},${height} L${width},${height - 6}`}
-            className={cn(trazoResalte ?? strokeTipo ?? (editorial ? color.border : "stroke-gray-400 dark:stroke-zinc-500"))}
-            strokeWidth="2"
-          />
-        </g>
+        {onResizeMouseDown && (
+          <g onMouseDown={onResizeMouseDown} className="cursor-nwse-resize">
+            <rect
+              x={width - 12}
+              y={height - 12}
+              width="12"
+              height="12"
+              className="fill-transparent"
+            />
+            <path
+              d={`M${width - 10},${height} L${width},${height - 10}`}
+              className={cn(trazoResalte ?? strokeTipo ?? (editorial ? color.border : "stroke-gray-400 dark:stroke-zinc-500"))}
+              strokeWidth="2"
+            />
+            <path
+              d={`M${width - 6},${height} L${width},${height - 6}`}
+              className={cn(trazoResalte ?? strokeTipo ?? (editorial ? color.border : "stroke-gray-400 dark:stroke-zinc-500"))}
+              strokeWidth="2"
+            />
+          </g>
+        )}
         {/* Resalte al pasar por encima mientras se conecta (posible destino). */}
         {connecting && (
           <ContainerShape
@@ -1839,7 +1842,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
         onMouseLeave={onHoverEnd}
         className={cn(
           editorial ? "group" : "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
-          connecting ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing",
+          connecting ? "cursor-crosshair" : onMouseDown ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
           isDeleted && "opacity-60"
         )}
       >
@@ -1931,7 +1934,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       onMouseLeave={onHoverEnd}
       className={cn(
         editorial ? "group" : "group filter-[drop-shadow(0_1px_2px_rgb(0_0_0/0.12))]",
-        connecting ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing",
+        connecting ? "cursor-crosshair" : onMouseDown ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
         // Marcado para eliminar: atenuado (la insignia roja da el motivo).
         isDeleted && "opacity-60"
       )}
@@ -2200,7 +2203,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       {/* Grip de resize del texto libre: deja estirar el ancho para acomodar el
           rótulo en una línea (o varias). Sólo cuando está seleccionado, para no
           ensuciar un rótulo sin caja. #415/#417. */}
-      {shape === "text" && isSelected && (
+      {shape === "text" && isSelected && onResizeMouseDown && (
         <g onMouseDown={onResizeMouseDown} className="cursor-nwse-resize">
           <rect x={nodeW - 12} y={nodeH - 12} width="12" height="12" className="fill-transparent" />
           <path
@@ -2234,7 +2237,7 @@ interface LinkComponentProps {
   /** Arrancar el reordenamiento por arrastre (sólo mensajes de secuencia). */
   onLineMouseDown?: (e: React.MouseEvent) => void;
   onClick: (e: React.MouseEvent) => void;
-  onDoubleClick: () => void;
+  onDoubleClick?: () => void;
   /** Clic derecho sobre el enlace: abre el menú contextual del lienzo. */
   onContextMenu?: (e: React.MouseEvent) => void;
   /** Doble clic sobre la LÍNEA (no la etiqueta): añade un punto de quiebre ahí. */

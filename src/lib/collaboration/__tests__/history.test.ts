@@ -93,6 +93,18 @@ describe("ramas y versiones colaborativas", () => {
     expect(m.project.content.big_picture.nodos![0]).toMatchObject({ x: 50, nombre: "Renombrado" });
     expect(mergeProjects(b, modify(b, "nombre", "Uno"), theirs, ["design"]).conflicts).toHaveLength(1);
   });
+  it("trata movimientos de posición (x/y) en ambas ramas como cambio visual y no como conflicto bloqueante", () => {
+    const b = modify(board(), "x", 362.7659),
+      ours = modify(b, "x", 376.2794),
+      theirs = modify(b, "x", 809.1945);
+    const merged = mergeProjects(b, ours, theirs, ["design"]);
+    expect(merged.conflicts).toEqual([]);
+    expect(merged.project.content.big_picture.nodos![0].x).toBe(809.1945);
+
+    const deletedOurs = structuredClone(b);
+    deletedOurs.content.big_picture.nodos = deletedOurs.content.big_picture.nodos!.slice(1);
+    expect(mergeProjects(b, deletedOurs, theirs, ["design"]).conflicts).toHaveLength(1);
+  });
   it("no pierde una flecha cuando se eliminó su extremo: exige resolver la dependencia", () => {
     const b = board(),
       ours = board(),

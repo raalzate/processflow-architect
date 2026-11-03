@@ -254,6 +254,26 @@ export function versionAt(s: DiagramHistory, branchId: string, at: string) {
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
 }
 
+const GEOMETRY_FIELDS = new Set([
+  "x",
+  "y",
+  "width",
+  "height",
+  "fx",
+  "fy",
+  "vx",
+  "vy",
+  "index",
+  "_initialDragX",
+  "_initialDragY",
+  "sourceAnchor",
+  "targetAnchor",
+  "midpoint",
+  "midpoints",
+  "labelOffset",
+  "geometriaAuto",
+]);
+
 /** Tres vías por identidad de entidad; eliminar frente a editar es conflicto, nunca resurrección implícita. */
 export function mergeProjects(
   base: SharedProject,
@@ -271,6 +291,11 @@ export function mergeProjects(
   const merge = (b: unknown, o: unknown, t: unknown, path: string[]): unknown => {
     if (equalProject(o, t) || equalProject(b, t)) return clone(o);
     if (equalProject(b, o)) return clone(t);
+    if (path.some(s => GEOMETRY_FIELDS.has(s))) {
+      const id = JSON.stringify(path),
+        choice = enRegistro(choices, id) ? choices[id] : undefined;
+      return clone(choice === "ours" ? o : t);
+    }
     if (object(b) && object(o) && object(t)) {
       const result: Record<string, unknown> = Object.create(null);
       for (const k of new Set([...Object.keys(b), ...Object.keys(o), ...Object.keys(t)])) {

@@ -447,6 +447,30 @@ async function run() {
     await text(b, "1 solicitud pendiente para fusionar");
     await click(b, "Revisar y fusionar");
     await text(b, "Revisar incorporación a Principal");
+    await b.waitForFunction(() => document.querySelectorAll("[data-readonly-dashboard]").length === 2, {
+      timeout: 10_000,
+    });
+    const reviewInfo = await b.evaluate(() => {
+      const d = document.querySelector("[data-readonly-dashboard]")!.closest('[role="dialog"]') as HTMLElement;
+      return {
+        panes: [...d.querySelectorAll("[data-readonly-dashboard]")].map(e =>
+          e.getAttribute("data-readonly-dashboard"),
+        ),
+        badges: [...d.querySelectorAll("[data-diff-badge]")].map(e => e.getAttribute("data-diff-badge")),
+        ports: d.querySelectorAll(".cursor-crosshair").length,
+        dialog: { w: d.offsetWidth, h: d.offsetHeight, vw: innerWidth, vh: innerHeight },
+      };
+    });
+    assert.deepEqual(reviewInfo.panes, ["Antes", "Después"]);
+    assert.ok(reviewInfo.badges.includes("modified"), JSON.stringify(reviewInfo.badges));
+    assert.equal(reviewInfo.ports, 0);
+    assert.ok(
+      reviewInfo.dialog.w >= reviewInfo.dialog.vw * 0.9 && reviewInfo.dialog.h >= reviewInfo.dialog.vh * 0.85,
+      JSON.stringify(reviewInfo.dialog),
+    );
+    await wait(300);
+    await b.screenshot({ path: resolve(output, "revision-antes-despues.png") });
+    passed("revisión grande muestra Antes/Después de solo lectura con cambios señalados y sin puertos de edición");
     await click(b, "Aprobar y fusionar");
     await closeDialogs(b);
 

@@ -676,12 +676,24 @@ export function BranchControl() {
           if (!next) setReview(undefined);
         }}
       >
-        <DialogContent className="flex max-h-[88vh] w-[calc(100vw-2rem)] max-w-4xl flex-col overflow-hidden">
-          <DialogHeader>
+        <DialogContent
+          className={
+            review
+              ? "flex h-[calc(100vh-2.5rem)] max-h-[95vh] w-[calc(100vw-2.5rem)] max-w-[96vw] flex-col gap-2.5 overflow-hidden p-4"
+              : "flex max-h-[88vh] w-[calc(100vw-2rem)] max-w-4xl flex-col overflow-hidden"
+          }
+        >
+          <DialogHeader className="shrink-0">
             <div className="flex flex-wrap items-center justify-between gap-2 pr-6">
               <DialogTitle>
-                {section === "review"
-                  ? "Revisar cambios"
+                {review
+                  ? `${
+                      review.mode === "compare"
+                        ? "Comparar versión con"
+                        : review.mode === "restore"
+                          ? "Revisar restauración de"
+                          : "Revisar incorporación a"
+                    } ${s.branches.find(b => b.id === review.branchId)?.name ?? ""}`
                   : section === "requests"
                     ? "Solicitudes de fusión"
                     : section === "permissions"
@@ -697,8 +709,8 @@ export function BranchControl() {
             </DialogDescription>
           </DialogHeader>
 
-          {section !== "review" && hasExtraModalTabs ? (
-            <nav className="flex flex-wrap gap-1.5 border-b pb-2.5" aria-label="Secciones">
+          {!review && section !== "review" && hasExtraModalTabs ? (
+            <nav className="flex shrink-0 flex-wrap gap-1.5 border-b pb-2.5" aria-label="Secciones">
               <Button
                 size="sm"
                 variant={section === "history" ? "secondary" : "ghost"}
@@ -739,8 +751,14 @@ export function BranchControl() {
             </nav>
           ) : null}
 
-          <div className="space-y-4 overflow-y-auto px-1 pb-2">
-            {c.previewCommitId ? (
+          <div
+            className={
+              review
+                ? "flex min-h-0 flex-1 flex-col gap-2 overflow-hidden"
+                : "space-y-4 overflow-y-auto px-1 pb-2"
+            }
+          >
+            {!review && c.previewCommitId ? (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted p-2.5">
                 <p className="text-xs">
                   <strong>Viendo versión anterior:</strong>{" "}
