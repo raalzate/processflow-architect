@@ -143,6 +143,23 @@
     --ed-accent: 14 71% 44%;
     --ed-link: 218 57% 42%;
 
+    /* Skin PLANO del lienzo (spec 026): la lámina técnica oscura. Es oscura en
+       los dos temas —es la estética de la lámina, no la vista de trabajo—, así
+       que se define una sola vez y `.dark` no la toca. Cada categoría es borde,
+       trazo y texto de la píldora: se mide como texto (4,5:1) sobre el fondo
+       en `skin-plano-contrast.test.ts`. */
+    --pl-bg: 228 33% 7%;
+    --pl-grid: 226 18% 20%;
+    --pl-ink: 220 25% 93%;
+    --pl-muted: 220 13% 66%;
+    --pl-frontend: 190 80% 55%;
+    --pl-backend: 152 55% 52%;
+    --pl-datos: 255 85% 76%;
+    --pl-nube: 42 90% 58%;
+    --pl-seguridad: 350 80% 68%;
+    --pl-mensajeria: 25 85% 60%;
+    --pl-externo: 220 12% 66%;
+
     --sidebar-background: 210 20% 96%;
     --sidebar-foreground: 220 15% 20%;
     --sidebar-primary: 218 35% 49%;
@@ -167,6 +184,16 @@
   [data-skin="editorial"] .icono-marca * {
     fill: currentColor !important;
     stroke: none !important;
+  }
+  /* Skin plano (spec 026): el cromo del lienzo pasa a la lámina oscura —fondo,
+     arista por defecto, puntos sin líneas mayores— y todo el texto del
+     diagrama, SVG y HTML del foreignObject, hereda la monoespaciada. */
+  [data-skin="plano"] {
+    --canvas: var(--pl-bg);
+    --canvas-edge: var(--pl-muted);
+    --canvas-grid: var(--pl-grid);
+    --canvas-grid-major: var(--pl-bg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   }
 
   .dark {
