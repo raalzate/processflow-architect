@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CollaborationEngine } from "../engine";
 import { BranchStore } from "../branches";
 import { SharedDocument } from "../../../../src/lib/collaboration/document";
-import type { Seats } from "../../../../src/lib/collaboration/capacity";
+import type { Seats, NetworkLoad } from "../../../../src/lib/collaboration/capacity";
 import type { SharedProject } from "../../../../src/lib/collaboration/types";
 
 const initial: SharedProject = {
@@ -37,6 +37,8 @@ const initial: SharedProject = {
 
 describe("admisión automática multirruta y resolución de campos simultáneos", () => {
   it("admite participantes por red local aunque los cupos de relay estén ocupados", async () => {
+    const now = 1_800_000_000_000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
     const root = mkdtempSync(join(tmpdir(), "pf-multiroute-"));
     const host = new CollaborationEngine(join(root, "host"), undefined, { publicNetwork: false });
     const guest = new CollaborationEngine(join(root, "guest"), undefined, { publicNetwork: false });
@@ -56,24 +58,32 @@ describe("admisión automática multirruta y resolución de campos simultáneos"
       // Simulamos 5 participantes ya conectados por relay con un tope de 5 en relay.
       const internalRooms = (
         host as unknown as {
-          rooms: Map<string, { seats: Seats; clients: Map<string, { paths: () => unknown[] }> }>;
+          rooms: Map<string, { seats: Seats; networkLoad: NetworkLoad; clients: Map<string, { remoteId: () => string; paths: () => unknown[] }> }>;
         }
       ).rooms;
       const hostedRoom = internalRooms.get("host-file")!;
+      let congestionEvents = 0;
       for (let i = 1; i <= 5; i++) {
         const relayId = `relay-peer-${i}`;
         expect(hostedRoom.seats.enter(relayId, "relay")).toBe(true);
         hostedRoom.clients.set(relayId, {
+          remoteId: () => relayId,
           paths: () => [
             {
               isSelected: true,
+              id: relayId,
               isRelay: true,
               remoteAddr: "relay://example",
-              stats: { cwnd: 16_384, rttMs: 100, udpTxBytes: 256 * 1024 },
+              stats: { cwnd: 16_384, rttMs: 100, udpTxBytes: 256 * 1024, congestionEvents },
             },
           ],
         });
       }
+      // El cupo de relay requiere actividad y congestión reciente observadas,
+      // no basta una ventana QUIC antigua después de reposo.
+      hostedRoom.networkLoad.record(1000, now);
+      (host as unknown as { refreshCapacity: (room: unknown) => void }).refreshCapacity(hostedRoom);
+      congestionEvents++;
 
       const invited = await host.command({ type: "invite", fileId: "host-file", role: "editor" });
       expect(invited.error).toBeUndefined();
@@ -104,6 +114,7 @@ describe("admisión automática multirruta y resolución de campos simultáneos"
     } finally {
       await guest.close();
       await host.close();
+      clock.mockRestore();
       rmSync(root, { recursive: true, force: true });
     }
   });

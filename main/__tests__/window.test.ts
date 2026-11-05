@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ focused: null as any, windows: [] as any[], menu: [] as any[] }));
 vi.mock("electron", () => {
   const BrowserWindow = Object.assign(vi.fn(function () {
-    const window = { isDestroyed: vi.fn(() => false), loadURL: vi.fn(), webContents: {
+    const window = { on: vi.fn(), isDestroyed: vi.fn(() => false), loadURL: vi.fn(), webContents: {
       send: vi.fn(), openDevTools: vi.fn(), setWindowOpenHandler: vi.fn(),
       session: { setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn() },
     } }; state.windows.push(window); return window;
