@@ -13,7 +13,7 @@
  * produce `export-canvas.ts`): esta página no sabe de DOM ni de Tailwind.
  */
 
-import type { SkinId } from "../skin";
+import { SKIN_LIST, type SkinId } from "../skin";
 
 export type PresetId = "documento" | "lamina169" | "impresionA4";
 
@@ -191,7 +191,9 @@ export function paginaHtml(o: PaginaOpts): string {
   const { w } = tamanoDe(o.svg);
   const svg = conContratoAccesible(sinTamanoEnLinea(o.svg), slug, o.titulo, descripcion);
   const fecha = o.fecha ?? new Date().toISOString().slice(0, 10);
-  const skin = o.skin === "editorial" ? "editorial" : "canónica";
+  // El nombre sale del registro de skins: con una tercera (plano, spec 026) el
+  // ternario de dos ramas la rotulaba «canónica».
+  const skin = (SKIN_LIST.find((s) => s.id === o.skin) ?? SKIN_LIST[0]).label.toLowerCase();
   return [
     "<!doctype html>",
     `<html lang="es" data-tema="${o.tema}" data-skin="${o.skin}">`,

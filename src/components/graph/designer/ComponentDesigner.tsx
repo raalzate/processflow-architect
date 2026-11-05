@@ -55,7 +55,19 @@ import {
   Plug,
   Newspaper,
 } from "lucide-react";
-import { SKIN_LIST, leerSkin, type SkinId } from "@/lib/skin";
+import {
+  PLANO_CATEGORIES,
+  PLANO_CATEGORY_IDS,
+  PLANO_LEGEND,
+  SKIN_LIST,
+  boundsConLeyenda,
+  categoriaDe,
+  categoriasPresentes,
+  leerSkin,
+  planoLegend,
+  type PlanoCategory,
+  type SkinId,
+} from "@/lib/skin";
 import { AVISO_TAMANO_BYTES, PRESETS, PRESET_LIST, slugDeProyecto, type PresetId } from "@/lib/export/html-page";
 import { cssVarsDePerfil, perfilVigente } from "@/lib/brand/profile";
 import { CATEGORIAS, buscarIconos, iconoDeCatalogo, iconoPorTecnologia } from "@/lib/icons/catalog";
@@ -267,6 +279,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -1900,6 +1914,37 @@ const EditNodeDialog: React.FC<{
               setDraft((d) => (d ? { ...d, icono } : d));
             }}
           />
+          {/* Categoría en la skin «Plano» (spec 026): un mismo tipo —un
+              Contenedor C4— puede ser front o back, y el tipo solo no lo dice.
+              «Automática» la deduce el registro; los contenedores no la llevan. */}
+          {!isContainerType(draft.tipo_elemento) && (
+            <div>
+              <Label>Categoría en la skin Plano</Label>
+              <Select
+                value={draft.categoria ?? "auto"}
+                onValueChange={(v) => {
+                  tocado("categoria");
+                  setDraft((d) =>
+                    d ? { ...d, categoria: v === "auto" ? undefined : (v as PlanoCategory) } : d
+                  );
+                }}
+              >
+                <SelectTrigger className="mt-1 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">
+                    Automática · {PLANO_CATEGORIES[categoriaDe(notation, draft.tipo_elemento)].label}
+                  </SelectItem>
+                  {PLANO_CATEGORY_IDS.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {PLANO_CATEGORIES[c].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
             </div>
 
             {/* Columna derecha: clasificación y estilo */}
@@ -2263,10 +2308,12 @@ const EditLinkDialog: React.FC<{
   referencia: string;
   /** Notación de la vista: dirige la etiqueta que sugiere la IA. */
   notation: NotationId;
+  /** Skin del lienzo: en «Plano» el trazo por defecto es el escalonado (spec 026). */
+  skin: SkinId;
   onClose: () => void;
   /** Autoguardado: llega el PARCHE (sólo los campos editados) del enlace `id`. */
   onSave: (id: string, cambios: Partial<DesignerLink>) => void;
-}> = ({ link, nodes, referencia, notation, onClose, onSave }) => {
+}> = ({ link, nodes, referencia, notation, skin, onClose, onSave }) => {
   const [draft, setDraft] = useState<DesignerLink | null>(null);
   // ¿Esta arista es un MENSAJE de secuencia? Lo es cuando une dos líneas de
   // vida. Se pregunta por los extremos y no por la notación: en UML conviven
@@ -2434,7 +2481,7 @@ const EditLinkDialog: React.FC<{
                   onClick={() => setDraft((d) => (d ? { ...d, routing: val } : d))}
                   className={cn(
                     "rounded-md border px-4 py-1.5 text-sm",
-                    routingOf(draft, notation) === val
+                    routingOf(draft, notation, skin, { secuencia: esMensajeDeSecuencia }) === val
                       ? "bg-primary text-primary-foreground font-medium"
                       : "bg-muted text-muted-foreground"
                   )}
@@ -2443,7 +2490,7 @@ const EditLinkDialog: React.FC<{
                 </button>
               ))}
             </div>
-            {routingOf(draft, notation) === "curved" && (
+            {routingOf(draft, notation, skin, { secuencia: esMensajeDeSecuencia }) === "curved" && (
               // La comba tenía un solo signo: si el arco tapaba un nodo no había
               // forma de mandarlo al otro lado sin mover los nodos.
               <div className="flex flex-wrap gap-2 pt-1">
@@ -3171,9 +3218,39 @@ export const ComponentDesigner: React.FC<{
   // El mundo del lienzo CRECE con el contenido: con un lado fijo, lo que caía
   // más allá quedaba dibujado pero fuera del área scrolleable y no había forma
   // de llegar al final del diagrama (un BPMN cómodo pasa de 3000 px de ancho).
+  // Leyenda de la skin «Plano» (spec 026): las categorías presentes, debajo del
+  // contenido. Se calcula sobre el mapa que se le pase para servir al render
+  // (estado) y a los exports (ref, el valor del momento).
+  const skinDeMeta: SkinId = meta?.skin ?? "canon";
+  const leyendaDe = useCallback(
+    (ns: Map<string, DesignerNode>) =>
+      skinDeMeta === "plano"
+        ? planoLegend(
+            categoriasPresentes(
+              notationId,
+              Array.from(ns.values()).map((n) => ({
+                tipo: n.tipo_elemento,
+                categoria: n.categoria,
+                contenedor: isContainerType(n.tipo_elemento),
+              }))
+            ),
+            computeContentBounds(ns, notationId)
+          )
+        : null,
+    [skinDeMeta, notationId]
+  );
+  const leyendaPlano = useMemo(() => leyendaDe(nodes), [leyendaDe, nodes]);
+  /**
+   * Encuadre de la LÁMINA: el contenido más la leyenda en «Plano». Lo usan el
+   * ajuste a contenido y los exports, para que la leyenda salga (FR-014).
+   */
+  const boundsDeLamina = useCallback(
+    () => boundsConLeyenda(computeContentBounds(nodesRef.current, notationId), leyendaDe(nodesRef.current)),
+    [leyendaDe, notationId]
+  );
   const world = useMemo(
-    () => canvasWorldSize(computeContentBounds(nodes, notationId), CANVAS_SIZE),
-    [nodes, notationId]
+    () => canvasWorldSize(boundsConLeyenda(computeContentBounds(nodes, notationId), leyendaPlano), CANVAS_SIZE),
+    [nodes, notationId, leyendaPlano]
   );
   // Con la ficha abierta tapando la derecha, el lienzo deja scroll extra de ese
   // lado (#643): si no, lo que cae bajo la ficha no se puede traer a la vista.
@@ -3252,7 +3329,7 @@ export const ComponentDesigner: React.FC<{
   // Sin nodos, vuelve al 100%. Es la acción del botón "Ajustar a contenido".
   const fitToContent = useCallback((opts: { maxZoom?: number } = {}) => {
     const wrapper = canvasWrapperRef.current;
-    const bounds = computeContentBounds(nodesRef.current, notationId);
+    const bounds = boundsDeLamina();
     if (!wrapper || !bounds) {
       zoomReset();
       return;
@@ -3274,7 +3351,7 @@ export const ComponentDesigner: React.FC<{
       wrapper.scrollTop = (bounds.minY - PAD) * z;
       syncViewport();
     });
-  }, [zoomReset, syncViewport, notationId]);
+  }, [zoomReset, syncViewport, notationId, boundsDeLamina]);
 
   // `revision` se incrementa sólo en puntos de commit (no en cada frame de
   // arrastre), para disparar el autoguardado una vez por cambio efectivo.
@@ -4253,7 +4330,7 @@ export const ComponentDesigner: React.FC<{
           return;
         }
         if (ep.kind === "label") {
-          const geo = linkGeometry(link, nodesRef.current, notationId);
+          const geo = linkGeometry(link, nodesRef.current, notationId, skinDeMeta);
           if (!geo) return;
           setLinks((prev) => {
             const l = new Map(prev);
@@ -4363,7 +4440,7 @@ export const ComponentDesigner: React.FC<{
         });
       }
     },
-    [draggingInfo, notationId]
+    [draggingInfo, notationId, skinDeMeta]
   );
 
   const handleCanvasMouseUp = useCallback(() => {
@@ -4569,7 +4646,14 @@ export const ComponentDesigner: React.FC<{
     (e: React.MouseEvent, linkId: string) => {
       e.stopPropagation();
       const link = linksRef.current.get(linkId);
-      if (!link || routingOf(link, notationId) !== "orthogonal" || !svgRef.current) return;
+      if (!link || !svgRef.current) return;
+      // En «Plano» lo escalonado es el default (spec 026); un mensaje de
+      // secuencia sigue siendo recto aunque la skin lo sea.
+      const secuencia = [link.sourceId, link.targetId].some((id) => {
+        const n = nodesRef.current.get(id);
+        return !!n && isLifelineContainer(n.tipo_elemento);
+      });
+      if (routingOf(link, notationId, skinDeMeta, { secuencia }) !== "orthogonal") return;
       const ep = linkEndpoints(link, nodesRef.current);
       if (!ep) return;
       const p = toSvgPoint(e.clientX, e.clientY);
@@ -4602,7 +4686,7 @@ export const ComponentDesigner: React.FC<{
         return l;
       });
     },
-    [updateLinks, notationId]
+    [updateLinks, notationId, skinDeMeta]
   );
 
   // Quita un punto de quiebre por índice (doble clic en su manija).
@@ -4869,14 +4953,19 @@ export const ComponentDesigner: React.FC<{
   // llevar el diagrama a una presentación o documento.
   const handleExportSvg = useCallback(() => {
     if (!svgRef.current) return;
-    const bounds = computeContentBounds(nodesRef.current, notationId);
+    const bounds = boundsDeLamina();
     const base = (meta?.nombre_proyecto || "diagrama").replace(/[^\w.-]+/g, "_");
-    // En editorial el fondo es el papel de la skin (spec 022/024); en canónica
-    // sigue blanco, como siempre.
-    const fondo = skinActiva === "editorial" ? colorDeToken(svgRef.current, "--ed-paper") : undefined;
+    // En editorial el fondo es el papel de la skin (spec 022/024) y en plano la
+    // lámina oscura (spec 026); en canónica sigue blanco, como siempre.
+    const fondo =
+      skinActiva === "editorial"
+        ? colorDeToken(svgRef.current, "--ed-paper")
+        : skinActiva === "plano"
+          ? colorDeToken(svgRef.current, "--pl-bg")
+          : undefined;
     exportCanvasSvg(svgRef.current, bounds, `${base}.svg`, fondo);
     toast({ title: "Diagrama exportado", description: "Se descargó un SVG del lienzo." });
-  }, [meta, toast, notationId, skinActiva]);
+  }, [meta, toast, boundsDeLamina, skinActiva]);
 
   // Exporta una página HTML autocontenida (spec 024): título, descripción y el
   // diagrama con su contrato accesible, en el preset del destino. Si la
@@ -4884,7 +4973,7 @@ export const ComponentDesigner: React.FC<{
   const handleExportHtml = useCallback(
     (preset: PresetId) => {
       if (!svgRef.current) return;
-      const bounds = computeContentBounds(nodesRef.current, notationId);
+      const bounds = boundsDeLamina();
       if (!bounds) {
         toast({ variant: "destructive", title: "Nada que exportar", description: "El lienzo está vacío." });
         return;
@@ -4915,7 +5004,7 @@ export const ComponentDesigner: React.FC<{
             : "Se abre con doble clic, sin la app ni conexión.",
       });
     },
-    [activeNotation.label, meta, notationId, skinActiva, toast]
+    [activeNotation.label, meta, boundsDeLamina, skinActiva, toast]
   );
 
   // Exporta un PNG rasterizando la página en el proceso main (capturePage): así
@@ -4928,7 +5017,7 @@ export const ComponentDesigner: React.FC<{
     const api = hostBridge();
     const wrapper = canvasWrapperRef.current;
     if (!api?.captureCanvas || !wrapper) throw new Error("Sólo en la app de escritorio.");
-    const bounds = computeContentBounds(nodesRef.current, notationId);
+    const bounds = boundsDeLamina();
     if (!bounds) throw new Error("El lienzo está vacío.");
     // Vista actual: se restaura al terminar. Capturar no debería dejar al
     // usuario en otro zoom/scroll del que tenía.
@@ -4958,7 +5047,7 @@ export const ComponentDesigner: React.FC<{
         syncViewport();
       });
     }
-  }, [fitToContent, notationId, zoom, syncViewport]);
+  }, [fitToContent, boundsDeLamina, zoom, syncViewport]);
 
   const handleExportPng = useCallback(async () => {
     try {
@@ -5296,18 +5385,33 @@ export const ComponentDesigner: React.FC<{
             recommend={recommendStrategy}
           />
 
-          {/* Skin del proyecto (spec 022): canónica para trabajar, editorial para
-              presentar. Es un conmutador y no un menú: hay dos. */}
-          <IconAction
-            variant={skinActiva === "editorial" ? "secondary" : "outline"}
-            onClick={() => setViewSkin(skinActiva === "editorial" ? "canon" : "editorial")}
-            label={
-              skinActiva === "editorial"
-                ? `Skin editorial activa${perfilDeMarca ? ` · Marca: ${perfilDeMarca.nombre}` : " · tokens de la skin"}: volver a la canónica (colores por tipo)`
-                : "Skin editorial: tinta sobre papel, acento sólo en los hotspots"
-            }
-            icon={<Newspaper className="h-4 w-4" />}
-          />
+          {/* Skin del proyecto (spec 022 · 026): canónica para trabajar,
+              editorial o plano para presentar. Con tres opciones el conmutador
+              pasó a menú: alternar entre tres a ciegas obliga a adivinar. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconAction
+                variant={skinActiva === "canon" ? "outline" : "secondary"}
+                label={
+                  skinActiva === "editorial"
+                    ? `Skin editorial activa${perfilDeMarca ? ` · Marca: ${perfilDeMarca.nombre}` : " · tokens de la skin"}`
+                    : `Skin ${SKIN_LIST.find((x) => x.id === skinActiva)?.label.toLowerCase() ?? skinActiva}: cambiar el estilo del lienzo`
+                }
+                icon={<Newspaper className="h-4 w-4" />}
+              />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-72">
+              <DropdownMenuLabel>Skin del lienzo</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={skinActiva} onValueChange={(v) => setViewSkin(leerSkin(v))}>
+                {SKIN_LIST.map((x) => (
+                  <DropdownMenuRadioItem key={x.id} value={x.id} className="flex-col items-start gap-0.5">
+                    <span className="font-medium">{x.label}</span>
+                    <span className="text-xs text-muted-foreground">{x.description}</span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <div className="w-px h-6 bg-border mx-1" />
 
@@ -5610,7 +5714,7 @@ export const ComponentDesigner: React.FC<{
             // en editorial el fondo es el papel de la skin.
             data-skin={skinActiva}
             style={estiloDeMarca}
-            className={skinActiva === "editorial" ? "bg-ed-paper" : "bg-canvas"}
+            className={skinActiva === "editorial" ? "bg-ed-paper" : skinActiva === "plano" ? "bg-pl-bg" : "bg-canvas"}
           >
             <defs>
               {/* Cuadrícula estilo lienzo de diseño (Figma/Miro): puntos finos por
@@ -5693,6 +5797,25 @@ export const ComponentDesigner: React.FC<{
                   })
                 )
               )}
+              {/* Puntas de «Plano» (spec 026): una por categoría, del color del
+                  trazo. Sólo existen con la skin activa. */}
+              {skinActiva === "plano" &&
+                PLANO_CATEGORY_IDS.map((c) =>
+                  (["end", "start"] as const).map((punta) => (
+                    <marker
+                      key={`pl-${c}-${punta}`}
+                      id={`arrow-${punta}-pl-${c}`}
+                      viewBox="0 -5 10 10"
+                      refX="10"
+                      refY="0"
+                      markerWidth="6"
+                      markerHeight="6"
+                      orient={punta === "end" ? "auto" : "auto-start-reverse"}
+                    >
+                      <path d="M0,-5L10,0L0,5" className={PLANO_CATEGORIES[c].fill} />
+                    </marker>
+                  ))
+                )}
             </defs>
 
             {/* Fondo con cuadrícula. pointerEvents none → los clics en vacío llegan
@@ -5857,6 +5980,40 @@ export const ComponentDesigner: React.FC<{
                   />
                 ))}
             </g>
+
+            {/* Leyenda de «Plano» (spec 026): dentro del SVG para que salga en el
+                SVG, el PNG y el HTML; debajo del contenido, sólo lo presente. */}
+            {leyendaPlano && (
+              <g
+                transform={`translate(${leyendaPlano.x},${leyendaPlano.y})`}
+                pointerEvents="none"
+                aria-label="Leyenda de categorías"
+              >
+                <text y={PLANO_LEGEND.titulo - 4} fill="currentColor" className="text-pl-ink text-sm font-bold">
+                  Leyenda
+                </text>
+                {leyendaPlano.items.map((it) => (
+                  <g key={it.id} transform={`translate(${it.x - leyendaPlano.x},${PLANO_LEGEND.titulo + 8})`}>
+                    <rect
+                      width={PLANO_LEGEND.muestra}
+                      height={PLANO_LEGEND.muestra * 0.8}
+                      rx={3}
+                      className={cn(PLANO_CATEGORIES[it.id].bg, PLANO_CATEGORIES[it.id].border)}
+                      strokeWidth={1.5}
+                    />
+                    <text
+                      x={PLANO_LEGEND.muestra + 8}
+                      y={PLANO_LEGEND.muestra * 0.4}
+                      dominantBaseline="middle"
+                      fill="currentColor"
+                      className="text-pl-ink text-xs"
+                    >
+                      {it.label}
+                    </text>
+                  </g>
+                ))}
+              </g>
+            )}
 
             {/* Marco de selección (rectángulo al arrastrar sobre el vacío) */}
             {marquee && (
@@ -6024,6 +6181,7 @@ export const ComponentDesigner: React.FC<{
         nodes={nodes}
         referencia={referenceText}
         notation={notationId}
+        skin={skinActiva}
         onClose={() => setEditingLink(null)}
         onSave={(id, cambios) =>
           updateLinks((prev) => {

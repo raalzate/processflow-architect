@@ -76,6 +76,12 @@ describe("paginaHtml", () => {
     expect(PRESET_LIST.map((p) => p.id)).toEqual(["documento", "lamina169", "impresionA4"]);
   });
 
+  it("rotula la skin plano por su nombre (spec 026)", () => {
+    const html = paginaHtml({ titulo: "P", notacion: "C4 (Arquitectura)", skin: "plano", tema: "light", preset: "documento", svg: SVG });
+    expect(html).toContain('data-skin="plano"');
+    expect(html).toContain("· skin plano</p>");
+  });
+
   it("acepta colores propios (perfil de marca) en vez de los de la skin", () => {
     const html = paginaHtml({ titulo: "P", notacion: "UML", skin: "editorial", tema: "light", preset: "documento", svg: SVG, colores: { papel: "#fffaf0", tinta: "#111", atenuado: "#555", regla: "#ddd" } });
     expect(html).toContain("--papel:#fffaf0;--tinta:#111");

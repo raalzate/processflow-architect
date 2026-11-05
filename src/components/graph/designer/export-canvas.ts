@@ -167,13 +167,16 @@ export function exportCanvasHtml(
   bounds: ContentBounds | null,
   opts: Omit<PaginaOpts, "svg" | "colores"> & { filename: string }
 ): { fallas: string[]; bytes: number } {
-  const editorial = opts.skin === "editorial";
-  const colores: ColoresDePagina | undefined = editorial
+  // La página viste los tokens de la skin: el papel editorial, o la lámina
+  // oscura de «Plano» (spec 026), que es oscura aunque la app esté en claro.
+  const prefijo = opts.skin === "editorial" ? "ed" : opts.skin === "plano" ? "pl" : null;
+  const base = COLORES_POR_DEFECTO[opts.skin === "plano" ? "dark" : opts.tema];
+  const colores: ColoresDePagina | undefined = prefijo
     ? {
-        papel: colorDeToken(svg, "--ed-paper") ?? COLORES_POR_DEFECTO[opts.tema].papel,
-        tinta: colorDeToken(svg, "--ed-ink") ?? COLORES_POR_DEFECTO[opts.tema].tinta,
-        atenuado: colorDeToken(svg, "--ed-muted") ?? COLORES_POR_DEFECTO[opts.tema].atenuado,
-        regla: COLORES_POR_DEFECTO[opts.tema].regla,
+        papel: colorDeToken(svg, prefijo === "ed" ? "--ed-paper" : "--pl-bg") ?? base.papel,
+        tinta: colorDeToken(svg, `--${prefijo}-ink`) ?? base.tinta,
+        atenuado: colorDeToken(svg, `--${prefijo}-muted`) ?? base.atenuado,
+        regla: base.regla,
       }
     : undefined;
   const fondo = colores?.papel;

@@ -20,6 +20,7 @@ import {
   type ShapeKind,
 } from "@/lib/notations";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
+import { SKIN_DEFAULT, routingParaSkin, type SkinId } from "@/lib/skin";
 import { SECUENCIA_LAYOUT, alturaDeMensaje } from "@/lib/sequence/layout";
 
 /** Tamaño por defecto de un CONTENEDOR recién creado (el usuario lo redimensiona). */
@@ -40,8 +41,12 @@ export const shapeForType = (type: string): ShapeKind =>
  */
 export const routingOf = (
   link: Pick<DesignerLink, "routing">,
-  notation?: NotationId | string
-): "straight" | "curved" | "orthogonal" => link.routing ?? defaultRoutingFor(notation);
+  notation?: NotationId | string,
+  /** Skin del lienzo: en «Plano» lo que no tiene trazo propio va escalonado (spec 026). */
+  skin: SkinId = SKIN_DEFAULT,
+  opts: { secuencia?: boolean } = {}
+): "straight" | "curved" | "orthogonal" =>
+  routingParaSkin(skin, link.routing, defaultRoutingFor(notation), opts);
 
 /**
  * Siluetas que se recortan como una ELIPSE. El recorte no distingue lóbulos ni
@@ -349,7 +354,8 @@ export function flipCurveApex(
 export function linkGeometry(
   link: DesignerLink,
   nodes: Map<string, DesignerNode>,
-  notation?: NotationId
+  notation?: NotationId,
+  skin: SkinId = SKIN_DEFAULT
 ) {
   const ep = linkEndpoints(link, nodes, notation);
   if (!ep) return null;
@@ -378,7 +384,13 @@ export function linkGeometry(
     };
   }
   // Sin trazo propio manda el de la notación (C4 curva; el resto, recta).
-  const routing = routingOf(link, notation);
+  // Un mensaje de secuencia (alguna punta es línea de vida) es un instante: el
+  // escalonado de «Plano» no le aplica.
+  const secuencia = [link.sourceId, link.targetId].some((id) => {
+    const n = nodes.get(id);
+    return !!n && isLifelineContainer(n.tipo_elemento);
+  });
+  const routing = routingOf(link, notation, skin, { secuencia });
   let path: string;
   let labelX = (start.x + end.x) / 2;
   let labelY = (start.y + end.y) / 2;
