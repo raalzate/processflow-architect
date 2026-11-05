@@ -1,6 +1,6 @@
 # Colaboración en un proyecto compartido
 
-Al incorporarse otra persona se habilitan [ramas, versiones e historial visual](collaboration-branches.md).
+Al vincular el proyecto se habilitan [ramas, versiones e historial visual](collaboration-branches.md), aunque el anfitrión esté solo.
 Principal conserva lo aprobado y Trabajo compartido continúa la edición en vivo.
 
 Esta rama conserva el monolito de escritorio por capas. Agrega colaboración al
@@ -257,5 +257,21 @@ y mide posiciones intermedias del puntero, arrastre y flecha en construcción.
 Comprueba el puerto de origen con componentes sin dimensiones persistidas y que
 un doble evento de soltar produzca una sola conexión. La conectividad entre
 proveedores de Internet distintos y las salas grandes necesitan validación adicional en esos entornos.
-Hay límites técnicos de 32 MiB por actualización del registro y 48 MiB por frame de
-transporte; un exceso se informa como error, sin confirmación de guardado.
+Una edición normal tiene un límite de 32 MiB. La copia inicial del anfitrión admite
+64 MiB, el archivo local acumulado 128 MiB y cada frame de transporte 96 MiB. El
+contenido se valida también al recuperar archivos grandes; un exceso se informa
+como error, sin confirmación de guardado.
+
+## Personas, reconexión y conexiones incompletas
+
+La lista de personas incluye a quienes están en otras ramas y muestra su ubicación.
+Las descripciones junto a la rama y las vistas indican quién está trabajando allí;
+los punteros aparecen al coincidir en rama y vista. Al cerrar y abrir la aplicación
+se recupera el vínculo y se reintenta la conexión automáticamente. **Desvincular**
+es una acción distinta: elimina deliberadamente ese vínculo.
+
+**Conexiones incompletas → Revisar** muestra flechas que apuntan a identificadores
+ausentes. Si el componente llega después de una desconexión, la flecha reaparece.
+Si la referencia era incorrecta, se pueden elegir origen y destino existentes o
+retirar la conexión, conservando sus campos en los datos de recuperación. No se
+adivinan extremos ni se borran componentes para quitar un aviso.

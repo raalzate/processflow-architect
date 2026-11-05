@@ -17,6 +17,13 @@ app.setName('Processflow-Architect-Collab');
 app.setPath('userData', process.env.PROCESSFLOW_COLLAB_DATA
   ? path.resolve(process.env.PROCESSFLOW_COLLAB_DATA)
   : path.join(app.getPath('appData'), 'Processflow-Architect-Collab'));
+// Cada perfil sólo puede tener un escritor de sus registros y una identidad de red activa.
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
+app.on('second-instance', () => {
+  const win = BrowserWindow.getAllWindows().find(window => !window.isDestroyed());
+  if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+});
 
 // Schemes privilegiados: registrar AQUÍ (tras los imports, antes de ready) para
 // pisar el registro parcial que hace electron-serve al importarse. Ver main/schemes.ts.
@@ -33,6 +40,7 @@ setupProdLogger();
 
 // 2. Lifecycle de Electron
 app.whenReady().then(() => {
+  if (!primaryInstance) return;
   // Sirve userData/models/litert/<archivo>.litertlm vía litert-model://m/<archivo>.
   const litertDir = path.join(app.getPath('userData'), 'models', 'litert');
   protocol.handle('litert-model', (request) => {

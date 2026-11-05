@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { FieldConflictsNotice } from "@/components/collaboration/FieldConflictsNotice";
+import { PendingConnectionsNotice } from "@/components/collaboration/PendingConnectionsNotice";
 import { hostBridge } from "@/lib/host-bridge";
 import type { PeerRoute, Role } from "@/lib/collaboration/types";
 
@@ -80,6 +81,7 @@ export function CollaborationControl() {
         >
           <Users className="h-4 w-4" aria-hidden="true" />
           <span>{stateLabel}</span>
+          {status ? <Badge variant="outline" aria-label={`${status.peers} personas conectadas`}>{status.peers}</Badge> : null}
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -119,9 +121,9 @@ export function CollaborationControl() {
                     : "Puedes editar este proyecto."}
               </p>
               <p className="tabular-nums">
-                {status.peers > status.capacity.limit
+                {!status.owner && !status.connected ? "Sin conexión con el anfitrión. Tu copia sigue guardada en este dispositivo." : status.peers > status.capacity.limit
                   ? `${status.peers} personas conectadas; nuevas entradas en pausa (cupo estimado: ${status.capacity.limit})`
-                  : `${status.peers} de ${status.capacity.limit} participantes estimados, incluido el anfitrión`}
+                  : `${status.peers} ${status.peers === 1 ? "persona conectada" : "personas conectadas"}, incluido el anfitrión. Cupo estimado: ${status.capacity.limit}.`}
               </p>
               <p className="text-muted-foreground">{status.capacity.reason}</p>
               <p>
@@ -133,7 +135,7 @@ export function CollaborationControl() {
                       ? "Conectado mediante respaldo automático cifrado"
                       : status.owner
                         ? status.peers > 1
-                          ? `${status.peers - 1} personas conectadas${routeBreakdown ? ` (${routeBreakdown})` : ""}`
+                          ? `Conexiones de invitados${routeBreakdown ? `: ${routeBreakdown}` : ": activas"}`
                           : "Esperando a otras personas"
                         : "Los cambios se intercambiarán al reconectar"}
               </p>
@@ -141,20 +143,25 @@ export function CollaborationControl() {
               {status.initialized === false ? (
                 <p>Esperando la primera copia del proyecto. Podrás editar cuando llegue.</p>
               ) : null}
-              {collaboration.peers.map(peer => (
-                <p key={peer.id} className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: peer.color }} />
-                  {peer.name}
-                </p>
-              ))}
+              <section className="space-y-2 rounded-md border p-3" aria-label="Personas conectadas">
+                <h3 className="font-medium">{!status.owner && !status.connected ? "Personas conectadas · Esperando reconexión" : `Personas conectadas (${status.participants?.length ?? status.peers})`}</h3>
+                {(status.participants ?? []).map(person => {
+                  const branchNames = person.branchIds.map(id => collaboration.workspace?.history.branches.find(b => b.id === id)?.name ?? (id === "main" ? "Principal" : id === "shared" ? "Trabajo compartido" : "Otra rama"));
+                  const locations = person.locations?.map(location => {
+                    const branchName = collaboration.workspace?.history.branches.find(b => b.id === location.branchId)?.name ?? "Otra rama";
+                    const viewName = location.viewId === "design" ? "Modelo" : collaboration.workspace?.snapshots[location.branchId]?.customViews.find(v => v.id === location.viewId)?.name ?? "Otra vista";
+                    return `${branchName} · ${viewName}`;
+                  });
+                  return <div key={person.id} className="space-y-1 border-b pb-2 last:border-0 last:pb-0"><p className="flex items-center justify-between gap-2"><span className="font-medium">{person.name}{person.id === collaboration.workspace?.actor.id ? " (tú)" : ""}</span><Badge variant="outline">{person.owner ? "Anfitrión" : person.role === "viewer" ? "Lectura" : "Edición"}</Badge></p><p className="text-xs text-muted-foreground">{locations?.length ? locations.join("; ") : branchNames.length ? branchNames.join(", ") : "Conectado"}</p></div>;
+                })}
+                <p className="text-xs text-muted-foreground">Todos aparecen aquí. Los punteros se ven al coincidir en la misma rama y vista.</p>
+              </section>
               {status.lastSynced ? (
                 <p className="text-muted-foreground">
                   Último intercambio: {new Date(status.lastSynced).toLocaleString()}
                 </p>
               ) : null}
-              {status.pendingEdges ? (
-                <p>{status.pendingEdges} conexiones esperan componentes pendientes.</p>
-              ) : null}
+              <PendingConnectionsNotice />
             </div>
             {!collaboration.workspace && status.role === "editor" && status.discardedEdits?.length ? (
               <FieldConflictsNotice
@@ -207,17 +214,7 @@ export function CollaborationControl() {
                   dispositivo de la primera persona que la use.
                 </p>
               </div>
-            ) : (
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={() => run(collaboration.retry)}
-                className="w-full gap-2"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Reconectar ahora
-              </Button>
-            )}
+            ) : !status.connected ? <p className="text-sm text-muted-foreground">Reconectando automáticamente. Se reintenta cada 5 segundos; no necesitas pulsar ningún botón.</p> : null}
             <Button
               variant="outline"
               disabled={busy}

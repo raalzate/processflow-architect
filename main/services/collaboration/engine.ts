@@ -28,7 +28,7 @@ import type {
 } from "../../../src/lib/collaboration/types";
 import { Journal, writePrivateJson } from "./journal";
 import { deadline, readFrame, sendFrame } from "./wire";
-import { sanitizePresence, livePresence, type Presence } from "../../../src/lib/collaboration/presence";
+import { sanitizePresence, livePresence, presenceIsActivity, type Presence } from "../../../src/lib/collaboration/presence";
 import { packBoard } from "../../../src/lib/board-file";
 import { LanDiscovery } from "./discovery";
 import { isLanPath } from "../../../src/lib/collaboration/network";
@@ -36,6 +36,9 @@ import { encodeProject } from "../../../src/lib/collaboration/graph-codec";
 import { assertEncodedProject, assertJson } from "../../../src/lib/collaboration/validation";
 import { BranchStore, type BranchRequest, type BranchResponse } from "./branches";
 import { canEditBranch, type HistoryActor } from "../../../src/lib/collaboration/history";
+import { RecurringServiceCost, RecentCongestion } from "../../../src/lib/collaboration/session-stability";
+import { participantsForRoom, type Participant } from "../../../src/lib/collaboration/participants";
+import { PresenceChannel } from "./presence-channel";
 
 const ALPN = [...Buffer.from("processflow/collaboration/1")];
 const encode = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
@@ -73,6 +76,7 @@ interface Config {
   rooms: StoredRoom[];
 }
 interface Request {
+  presenceMode?: "stream-v1";
   version: 1;
   stage: "hello" | "sync";
   projectId: string;
@@ -83,6 +87,8 @@ interface Request {
   name?: string;
 }
 interface Response {
+  presenceMode?: "stream-v1";
+  participants?: Participant[];
   ok: boolean;
   error?: string;
   vector?: string;
@@ -110,7 +116,9 @@ interface Room {
   pathWatch?: WatchHandle;
   presence: Map<string, Presence>;
   networkLoad: NetworkLoad;
-  serviceMs?: number;
+  serviceCost: RecurringServiceCost;
+  baseMergeMs?: number;
+  locations: Map<string, Presence>;
   quarantined?: boolean;
   branches?: BranchStore;
   name?: string;
@@ -129,6 +137,8 @@ export class CollaborationEngine {
   private presenceMonitor?: ReturnType<typeof setInterval>;
   private discovery?: LanDiscovery;
   private monitor?: ReturnType<typeof setInterval>;
+  private presenceChannels = new Map<Connection, PresenceChannel>();
+  private congestion = new RecentCongestion();
   constructor(
     private root: string,
     private event: (event: CollaborationEvent) => void = () => {},
@@ -149,6 +159,8 @@ export class CollaborationEngine {
       try {
         this.load(stored);
       } catch (error) {
+        const partial = this.rooms.get(stored.fileId);
+        if (partial) { partial.quarantined = true; partial.status.saved = false; }
         const status: CollaborationStatus = {
           projectId: stored.projectId,
           fileId: stored.fileId,
@@ -168,6 +180,7 @@ export class CollaborationEngine {
       }
     }
     if (this.rooms.size) await this.endpointReady();
+    for (const room of this.rooms.values()) if (room.stored.owner && room.status.saved && room.branches && !room.branches.enabled) room.branches.activate(this.actor(room));
     for (const room of this.rooms.values())
       if (!room.stored.owner && room.status.saved) this.schedule(room, 0);
     this.monitor = setInterval(() => {
@@ -176,7 +189,7 @@ export class CollaborationEngine {
           this.refreshCapacity(room);
           this.emit(room);
         }
-    }, 30_000);
+    }, 5_000);
     this.monitor.unref();
     this.presenceMonitor = setInterval(() => {
       for (const room of this.rooms.values()) {
@@ -185,6 +198,9 @@ export class CollaborationEngine {
           room.presence = new Map(peers.map(p => [p.id, p]));
           this.emitPresence(room);
         }
+        let locationsChanged = false;
+        for (const [id, location] of room.locations) if (Date.now() - location.seenAt > 30_000) { room.locations.delete(id); locationsChanged = true; }
+        if (locationsChanged) this.emit(room);
       }
     }, 1_000);
     this.presenceMonitor.unref();
@@ -193,6 +209,7 @@ export class CollaborationEngine {
     if (this.endpoint) return this.endpoint;
     if (this.starting) return this.starting;
     this.starting = (async () => {
+      const makeBuilder = (port: number) => {
       const builder = Endpoint.builder();
       if (this.dependencies.publicNetwork === false) builder.applyMinimal();
       else builder.applyN0();
@@ -206,8 +223,15 @@ export class CollaborationEngine {
         ]),
       ];
       builder.relayMode(urls.length ? RelayMode.customFromUrls(urls) : RelayMode.disabled());
-      builder.bindAddr(`0.0.0.0:${this.config.port ?? 0}`);
-      const endpoint = await builder.bind();
+      builder.bindAddr(`0.0.0.0:${port}`);
+      return builder;
+      };
+      let endpoint: Endpoint;
+      try { endpoint = await makeBuilder(this.config.port ?? 0).bind(); }
+      catch (error) {
+        if (!this.config.port || !/10048|EADDRINUSE|address already in use|bind sockets/i.test(String(error))) throw error;
+        endpoint = await makeBuilder(0).bind();
+      }
       this.endpoint = endpoint;
       this.discovery = new LanDiscovery(endpoint);
       this.config.port = Number(
@@ -240,22 +264,24 @@ export class CollaborationEngine {
     load?: NetworkLoad,
     connections: Connection[] = [],
     serviceMs = 0,
+    baseMergeMs?: number,
   ): Capacity {
-    const projectBytes = document.update().byteLength;
+    const projectBytes = Buffer.byteLength(JSON.stringify(document.snapshot()));
+    let mergeMs = baseMergeMs;
+    if (mergeMs === undefined) {
     const probe = new SharedDocument();
     // La carga inicial y la preparación de la réplica candidata ocurren una sola vez, no en cada sincronización.
     probe.receive(document.update());
     probe.snapshot();
     const vector = probe.vector();
     probe.receiveRemote(document.update(vector));
-    const begin = performance.now();
-    let mergeMs: number;
     try {
-      probe.receiveRemote(document.update(vector));
-      probe.vector();
-      mergeMs = performance.now() - begin;
+      const samples: number[] = [];
+      for (let i = 0; i < 5; i++) { const begin = performance.now(); probe.receiveRemote(document.update(vector)); probe.vector(); samples.push(performance.now() - begin); }
+      samples.sort((a,b) => a-b); mergeMs = samples[2];
     } finally {
       probe.destroy();
+    }
     }
     const routePaths = connections.flatMap(connection => {
       const allPaths = connection.paths();
@@ -269,7 +295,7 @@ export class CollaborationEngine {
           rttMs: selected.stats.rttMs,
           // La ventana inicial de QUIC y su RTT frío no miden la capacidad de subida;
           // solo limitar cada ruta (P2P o relay) tras observar tráfico real.
-          calibrated: selected.stats.udpTxBytes >= 128 * 1024,
+          calibrated: selected.stats.udpTxBytes >= 128 * 1024 && this.congestion.observe(`${connection.remoteId()}:${selected.id}`, selected.stats.congestionEvents, Date.now()),
         },
       ];
     });
@@ -277,7 +303,7 @@ export class CollaborationEngine {
     return estimateCapacity({
       ...resources,
       routeAware: true,
-      ...load?.routeBudgets(routePaths, Date.now()),
+      ...(load?.hasRecentActivity(Date.now()) ? load.routeBudgets(routePaths, Date.now()) : {}),
     });
   }
   private refreshConnectionRoutes(room: Room) {
@@ -292,9 +318,12 @@ export class CollaborationEngine {
       room.document,
       room.networkLoad,
       [...room.clients.values()],
-      room.serviceMs,
+      room.serviceCost.value(Date.now()) ?? 0,
+      room.baseMergeMs,
     );
-    const extraBytes = room.branches?.bytes() ?? 0;
+    room.baseMergeMs ??= room.status.capacity.mergeMs;
+    // El historial ya reside una vez en el anfitrión; no se replica entero en memoria por invitado.
+    const extraBytes = room.branches?.liveBytes() ?? 0;
     if (extraBytes) {
       room.status.capacity.projectBytes += extraBytes;
       room.status.capacity.limit = Math.max(
@@ -331,6 +360,8 @@ export class CollaborationEngine {
       revision: 0,
       presence: new Map(),
       networkLoad: new NetworkLoad(),
+      serviceCost: new RecurringServiceCost(),
+      locations: new Map(),
       status: {
         projectId: stored.projectId,
         fileId: stored.fileId,
@@ -406,7 +437,7 @@ export class CollaborationEngine {
       ...(includeSnapshot && !room.quarantined
         ? {
             snapshot: room.branches?.enabled ? room.branches.defaultSnapshot() : room.document.snapshot(),
-            workspace: room.branches?.view(this.actor(room)),
+            workspace: room.quarantined ? undefined : room.branches?.view(this.actor(room)),
           }
         : {}),
     });
@@ -419,6 +450,8 @@ export class CollaborationEngine {
     });
   }
   private sendPresence(connection: Connection, presence: Presence) {
+    const channel = this.presenceChannels.get(connection);
+    if (channel) { channel.send(presence.id, presence); return; }
     const bytes = Buffer.from(JSON.stringify(presence));
     if (bytes.length <= 1100 && (connection.maxDatagramSize() ?? 0) >= bytes.length) {
       try {
@@ -430,12 +463,15 @@ export class CollaborationEngine {
   }
   private notifyClients(room: Room) {
     const bytes = [...Buffer.from(JSON.stringify({ kind: "processflow-changed/1" }))];
-    for (const connection of room.clients.values())
+    for (const connection of room.clients.values()) {
+      const channel = this.presenceChannels.get(connection);
+      if (channel) { channel.send("changed", { kind: "processflow-changed/1" }); continue; }
       try {
         connection.sendDatagram(bytes);
       } catch {
         /* La consulta periódica recupera un aviso perdido. */
       }
+    }
   }
   presence(fileId: string, raw: unknown) {
     const room = this.rooms.get(fileId),
@@ -444,12 +480,14 @@ export class CollaborationEngine {
     const presence = sanitizePresence(raw, ownId, Date.now());
     if (!presence) return;
     room.name = presence.name;
-    room.networkLoad.record(Buffer.byteLength(JSON.stringify(presence)), Date.now());
     if (presence.sessionId) presence.id = `${ownId}:${presence.sessionId}`;
+    if (!room.locations.has(presence.id) && [...room.locations.keys()].filter(id => id === ownId || id.startsWith(`${ownId}:`)).length >= 64) return;
     // Keep datagrams small even with a large selection or multibyte names.
     presence.selectedIds = presence.selectedIds.slice(0, 5);
     presence.moving = presence.moving?.slice(0, 2);
-    room.presence.set(presence.id, presence);
+    if (presenceIsActivity(room.locations.get(presence.id), presence)) room.networkLoad.record(Buffer.byteLength(JSON.stringify(presence)), Date.now());
+    if (presence.leaving) { room.presence.delete(presence.id); room.locations.delete(presence.id); }
+    else { room.presence.set(presence.id, presence); room.locations.set(presence.id, presence); }
     this.emitPresence(room);
     if (room.stored.owner)
       for (const connection of room.clients.values()) this.sendPresence(connection, presence);
@@ -461,31 +499,39 @@ export class CollaborationEngine {
         const bytes = await connection.readDatagram();
         if (bytes.length > 1100) continue;
         if (serving && room.clients.get(member) !== connection) break;
-        const raw = JSON.parse(Buffer.from(bytes).toString("utf8")) as Presence & { kind?: string };
+        let raw: unknown; try { raw = JSON.parse(Buffer.from(bytes).toString("utf8")); } catch { continue; }
+        this.acceptPresence(connection, room, member, serving, raw);
+      }
+    } catch { /* El stream fiable permanece activo si fallan los datagramas. */ }
+  }
+  private acceptPresence(connection: Connection, room: Room, member: string, serving: boolean, value: unknown) {
+        if (!value || typeof value !== "object" || room.disposed || (serving && room.clients.get(member) !== connection)) return;
+        const raw = value as Presence & { kind?: string };
         // Sólo el anfitrión ya autenticado puede avisar de un estado persistido.
         if (!serving && raw.kind === "processflow-changed/1") {
           room.needsSync = true;
           this.schedule(room, 40);
-          continue;
+          return;
         }
         const presence = sanitizePresence(raw, serving ? member : raw.id, Date.now());
-        if (!presence || typeof presence.id !== "string" || presence.id.length > 140) continue;
-        if (serving) room.networkLoad.record(bytes.length, Date.now());
+        if (!presence || typeof presence.id !== "string" || presence.id.length > 140) return;
         if (serving && presence.sessionId) presence.id = `${member}:${presence.sessionId}`;
         if (
-          !room.presence.has(presence.id) &&
-          [...room.presence.keys()].filter(id => id === member || id.startsWith(`${member}:`)).length >= 64
+          !room.locations.has(presence.id) &&
+          [...room.locations.keys()].filter(id => id === member || id.startsWith(`${member}:`)).length >= 64
         )
-          continue;
-        room.presence.set(presence.id, presence);
+          return;
+        if (serving && presenceIsActivity(room.locations.get(presence.id), presence)) room.networkLoad.record(Buffer.byteLength(JSON.stringify(presence)), Date.now());
+        if (presence.leaving) { room.presence.delete(presence.id); room.locations.delete(presence.id); }
+        else { room.presence.set(presence.id, presence); room.locations.set(presence.id, presence); }
         this.emitPresence(room);
         if (serving)
           for (const [id, client] of room.clients) if (id !== member) this.sendPresence(client, presence);
-      }
-    } catch {
-      /* Connection close clears presence through its lease/expiry. */
-    }
   }
+  private enablePresenceStream(connection: Connection, room: Room, member: string, serving: boolean) {
+    if (!this.presenceChannels.has(connection)) this.presenceChannels.set(connection, new PresenceChannel(connection, value => this.acceptPresence(connection, room, member, serving, value)));
+  }
+  private closePresenceStream(connection?: Connection) { if (connection) { this.presenceChannels.get(connection)?.close(); this.presenceChannels.delete(connection); } }
   async command(command: CollaborationCommand): Promise<CollaborationResult> {
     try {
       if (!command || typeof command.fileId !== "string" || command.fileId.length > 200)
@@ -535,6 +581,7 @@ export class CollaborationEngine {
         room = this.load(stored, initial);
         room.name = command.name?.slice(0, 40);
         const endpoint = await this.endpointReady();
+        room.branches!.activate(this.actor(room));
         for (const url of options.relayUrls ?? []) await endpoint.insertRelay({ url });
         for (const addr of options.externalAddresses ?? []) await endpoint.addExternalAddr(addr);
         // La falta de Internet no debe impedir crear/usar una sala por LAN.
@@ -569,6 +616,13 @@ export class CollaborationEngine {
         return this.result(room);
       }
       if (!room) throw new Error("El proyecto todavía no está vinculado.");
+      if (command.type === "repair-connection") {
+        if (!room.status.saved || !room.branches?.enabled) throw new Error("Espera a que se recupere el historial antes de reparar.");
+        room.branches.repairConnection(command.branchId, command.viewId, command.edgeId, this.actor(room), command.sourceId, command.targetId);
+        this.emit(room, true);
+        if (!room.stored.owner) { room.needsSync = true; this.schedule(room, 0); }
+        return this.result(room);
+      }
       if (command.type === "history-preview")
         return {
           ...this.result(room),
@@ -689,7 +743,7 @@ export class CollaborationEngine {
         this.saveConfig();
         const endpoint = await this.endpointReady();
         for (const url of refreshed.relays) await endpoint.insertRelay({ url });
-        room.connection?.close(BigInt(0), []);
+        this.closePresenceStream(room.connection); room.connection?.close(BigInt(0), []);
         await room.syncTask;
         room.connection = undefined;
         await this.sync(room);
@@ -742,7 +796,7 @@ export class CollaborationEngine {
         await room.pathWatch?.stop();
         room.pathWatch = undefined;
         if (room.timer) clearTimeout(room.timer);
-        room.connection?.close(BigInt(0), []);
+        this.closePresenceStream(room.connection); room.connection?.close(BigInt(0), []);
         for (const connection of room.clients.values()) connection.close(BigInt(0), []);
         await room.syncTask;
         room.branches?.close();
@@ -796,10 +850,11 @@ export class CollaborationEngine {
     } catch {
       /* first connection pending */
     }
-    return { status: { ...room.status }, snapshot, workspace: room.branches?.view(this.actor(room)) };
+    return { status: { ...room.status }, snapshot, workspace: room.quarantined ? undefined : room.branches?.view(this.actor(room)) };
   }
   private refreshStatusDetails(room: Room) {
     if (room.stored.owner) room.status.routeCounts = room.seats.countsByRoute();
+    if (room.stored.owner) room.status.participants = participantsForRoom({ ownId: this.endpoint?.id().toString() ?? "host", ownName: room.name ?? "Anfitrión", owner: true, connected: true, members: room.status.members ?? [], locations: [...room.locations.values()] });
     room.status.discardedEdits =
       !room.quarantined && !room.branches?.enabled && room.document.isInitialized()
         ? room.document.discardedEdits()
@@ -978,6 +1033,7 @@ export class CollaborationEngine {
           if (oldConnection && oldConnection !== connection) oldConnection.close(BigInt(0), []);
           room.clients.set(member, connection);
           authenticated();
+          if (request.presenceMode === "stream-v1") this.enablePresenceStream(connection, room, member, true);
           if (!active) {
             clientPathWatch = connection.watchPaths((...args: unknown[]) => {
               const paths = args.find(Array.isArray) as PathSnapshot[] | undefined;
@@ -1018,18 +1074,19 @@ export class CollaborationEngine {
           room.status.lastSynced = new Date().toISOString();
           room.status.state = "online";
           const branches = request.branches ? room.branches!.exchange(request.branches, actor) : undefined;
+          this.refreshMembers(room); this.refreshStatusDetails(room);
           const response = {
             ok: true,
-            update: encode(room.document.update(decode(request.vector))),
+            update: request.branches ? encode(Uint8Array.of(0, 0)) : encode(room.document.update(decode(request.vector))),
             vector: encode(room.document.vector()),
             capacity: room.status.capacity,
             peers: room.seats.count,
+            participants: room.status.participants,
+            presenceMode: request.presenceMode === "stream-v1" ? "stream-v1" : undefined,
             branches,
           } satisfies Response;
           const serviceMs = performance.now() - serviceStart;
-          if (request.stage === "sync")
-            room.serviceMs =
-              room.serviceMs === undefined ? serviceMs : room.serviceMs * 0.8 + serviceMs * 0.2;
+          if (request.stage === "sync") room.serviceCost.record(serviceMs, Date.now());
           await sendFrame(stream, response);
           this.emit(room, before !== room.revision);
         } catch (error) {
@@ -1042,6 +1099,7 @@ export class CollaborationEngine {
         }
       }
     } finally {
+      this.closePresenceStream(connection);
       await clientPathWatch?.stop().catch(() => {});
       if (active && active.clients.get(member) === connection) {
         active.clients.delete(member);
@@ -1049,6 +1107,7 @@ export class CollaborationEngine {
         active.status.routeCounts = active.seats.countsByRoute();
         for (const id of active.presence.keys())
           if (id === member || id.startsWith(`${member}:`)) active.presence.delete(id);
+        for (const id of active.locations.keys()) if (id === member || id.startsWith(`${member}:`)) active.locations.delete(id);
         this.emitPresence(active);
         this.emit(active);
       }
@@ -1064,7 +1123,7 @@ export class CollaborationEngine {
       },
       delay ??
         (room.failures
-          ? Math.min(30_000, 1000 * 2 ** Math.min(room.failures, 5))
+          ? 5_000
           : room.needsSync
             ? 40
             : 700),
@@ -1124,6 +1183,7 @@ export class CollaborationEngine {
       if (!room.status.saved)
         throw new Error("El guardado está detenido. Exporta la recuperación antes de reconectar.");
       if (!room.connection || room.connection.closeReason() !== null) {
+        this.closePresenceStream(room.connection);
         room.status.state = "connecting";
         this.emit(room);
         await room.pathWatch?.stop();
@@ -1148,6 +1208,7 @@ export class CollaborationEngine {
       const stream = await deadline(room.connection.openBi());
       const authenticated = room.remoteVector !== undefined;
       const request: Request = {
+        presenceMode: "stream-v1",
         version: 1,
         stage: authenticated ? "sync" : "hello",
         projectId: room.stored.projectId,
@@ -1162,9 +1223,10 @@ export class CollaborationEngine {
           : {}),
       };
       await deadline(sendFrame(stream, request));
-      const response = await deadline(readFrame<Response>(stream));
+      const response = await deadline(readFrame<Response>(stream), authenticated ? 20_000 : 180_000);
       if (room.disposed || this.closed) return;
       if (!response.ok) throw new Error(response.error ?? "No se pudo sincronizar.");
+      if (response.presenceMode === "stream-v1") this.enablePresenceStream(room.connection, room, room.connection.remoteId().toString(), false);
       const before = room.revision;
       if (!response.branches) room.document.receiveRemote(decode(response.update!));
       if (response.branches) room.branches!.receive(response.branches);
@@ -1176,15 +1238,20 @@ export class CollaborationEngine {
       room.status.lastSynced = new Date().toISOString();
       room.status.capacity = response.capacity!;
       room.status.peers = response.peers!;
+      room.status.participants = response.participants;
       this.updateRoute(room, room.connection.paths());
       this.emit(room, before !== room.revision);
     } catch (error) {
       await room.pathWatch?.stop();
       room.pathWatch = undefined;
       room.failures++;
-      room.connection?.close(BigInt(1), []);
+      this.closePresenceStream(room.connection); room.connection?.close(BigInt(1), []);
       room.connection = undefined;
       room.status.connected = false;
+      room.status.participants = undefined;
+      room.status.peers = 1;
+      room.presence.clear();
+      room.locations.clear();
       room.status.state = "offline";
       room.status.route = "none";
       room.status.error = error instanceof Error ? error.message : String(error);
@@ -1198,6 +1265,7 @@ export class CollaborationEngine {
     if (this.monitor) clearInterval(this.monitor);
     if (this.presenceMonitor) clearInterval(this.presenceMonitor);
     this.discovery?.close();
+    for (const channel of this.presenceChannels.values()) channel.close(); this.presenceChannels.clear();
     for (const room of this.rooms.values()) {
       room.disposed = true;
       if (room.timer) clearTimeout(room.timer);

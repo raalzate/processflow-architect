@@ -7,25 +7,28 @@
  * esperar dos cuadros y capturar un lienzo grande tarda más que leer.
  */
 
-import { BrowserWindow, ipcMain } from "electron";
+import { ipcMain } from "electron";
+import { mcpAppWindow } from "./mcp-app-window";
 import { CAPTURA_TIMEOUT_MS, type CapturaVista } from "../../src/lib/mcp/view-image";
 
 let seq = 0;
 const pendientes = new Map<number, (r: CapturaVista) => void>();
+const origins = new Map<number, number>();
 
 /** Registra el canal de respuesta. Lo llama `registerIpc` una sola vez. */
 export function initAppCaptureBridge(): void {
   ipcMain.on("mcp-app-capture-reply", (_e, payload: { id: number; result: CapturaVista }) => {
-    const resolver = pendientes.get(payload?.id);
+    const resolver = origins.get(payload?.id) === _e.sender.id ? pendientes.get(payload?.id) : undefined;
     if (!resolver) return; // llegó tarde, o la contestó otro lienzo montado
     pendientes.delete(payload.id);
+    origins.delete(payload.id);
     resolver(payload.result);
   });
 }
 
 /** Pide al lienzo abierto una imagen de la vista. Nunca rechaza. */
-export function captureFromApp(): Promise<CapturaVista> {
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+export function captureFromApp(windowId?: number): Promise<CapturaVista> {
+  const win = mcpAppWindow(windowId);
   if (!win) {
     return Promise.resolve({
       ok: false,
@@ -36,6 +39,7 @@ export function captureFromApp(): Promise<CapturaVista> {
   return new Promise<CapturaVista>((resolve) => {
     const timer = setTimeout(() => {
       pendientes.delete(id);
+      origins.delete(id);
       resolve({
         ok: false,
         error:
@@ -46,6 +50,7 @@ export function captureFromApp(): Promise<CapturaVista> {
       clearTimeout(timer);
       resolve(r);
     });
+    origins.set(id, win.webContents.id);
     win.webContents.send("mcp-app-capture", { id });
   });
 }

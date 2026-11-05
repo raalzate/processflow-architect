@@ -107,6 +107,7 @@ export class NetworkLoad {
   private currentUpdateRate(): number {
     return Math.max(16384, ([...this.buckets.values()].reduce((a, b) => a + b, 0) * 2) / 5);
   }
+  hasRecentActivity(now: number): boolean { this.prune(now); return this.buckets.size > 0; }
   budget(
     paths: { cwnd: number; rttMs: number }[],
     now: number,

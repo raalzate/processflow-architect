@@ -187,7 +187,7 @@ export function registerIpcHandlers() {
   // Estado del lienzo publicado por el renderer: lo lee `get_app_state` para que
   // el agente externo no diseñe ni exporte a ciegas. Es `on` (fire-and-forget):
   // publicar no debe bloquear el render.
-  ipcMain.on('mcp-app-state', (_e, state: AppState | null) => setAppState(state));
+  ipcMain.on('mcp-app-state', (_e, state: AppState | null) => setAppState(state, _e.sender.id));
   // Canal de respuesta del renderer para la lectura bajo demanda (artefactos, vistas).
   initAppReadBridge();
   initAppActionBridge();
@@ -196,7 +196,7 @@ export function registerIpcHandlers() {
   // --- Playground MCP (guía /mcp): ejecutar herramientas por transporte en memoria ---
   ipcMain.handle('mcp-playground-list-tools', async () => playgroundListTools());
   ipcMain.handle('mcp-playground-call', async (_e, name: string, args: unknown) =>
-    playgroundCallTool(name, args)
+    playgroundCallTool(name, args, _e.sender.id)
   );
 
   // --- Información del sistema (vista de Configuración) ---

@@ -105,6 +105,8 @@ export interface ElectronAPI {
   mcpOrgDelete?: (slug: string) => Promise<{ ok: boolean; movidos?: string[]; error?: string }>;
   onMcpImportDiagram: (
     callback: (data: {
+      id?: number;
+      expectedContext?: { projectId?: string | null; branchId?: string };
       name: string;
       content: unknown;
       /**
@@ -121,6 +123,7 @@ export interface ElectronAPI {
       target?: { project: string };
     }) => void
   ) => () => void;
+  mcpImportReply?: (id: number, ok: boolean, error?: string) => void;
 
   /**
    * Publica el estado del lienzo (proyecto activo, notación, vistas) para que la
@@ -141,7 +144,7 @@ export interface ElectronAPI {
    * contesta si ocurrió (`src/lib/mcp/app-actions.ts`).
    */
   onMcpAppAction: (
-    handler: (payload: { id: number; request: AppActionRequest }) => void
+    handler: (payload: { id: number; request: AppActionRequest; expectedContext?: { projectId?: string | null; branchId?: string } }) => void
   ) => () => void;
   mcpAppActionReply: (id: number, result: AppActionResult) => void;
 

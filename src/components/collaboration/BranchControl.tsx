@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { History, Save, ArrowDownToLine, ShieldCheck, GitPullRequest, Plus, X } from "lucide-react";
+import { History, Save, ArrowDownToLine, ShieldCheck, GitPullRequest, Plus, X, ArrowLeft } from "lucide-react";
+import { collaboratorsDescription } from "@/lib/collaboration/participants";
 import { useCollaboration } from "@/context/CollaborationContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,20 @@ import { deRegistro } from "@/lib/registro";
 
 type InlinePanel = "none" | "new-branch" | "save" | "propose";
 type ModalSection = "history" | "requests" | "permissions" | "review";
+
+export function CollaborationLocationNotice() {
+  const c = useCollaboration();
+  if (!c?.workspace || !c.status) return null;
+  const branch = c.workspace.history.branches.find(b => b.id === c.branchId);
+  const description = collaboratorsDescription(c.status.participants ?? [], c.workspace.actor.id, c.branchId);
+  return <>
+    {c.previewCommitId ? <section role="status" aria-label="Versión histórica" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/50 bg-primary/10 p-3" data-history-notice="">
+      <div className="min-w-0 text-sm"><p className="font-semibold">Estás viendo una versión anterior · Solo lectura</p><p className="text-xs text-muted-foreground">Tu trabajo en «{branch?.name ?? "tu rama"}» sigue guardado. Vuelve para continuar editando y ver los punteros en vivo.</p></div>
+      <Button className="shrink-0 gap-2" disabled={c.busy} onClick={() => void c.previewVersion()}><ArrowLeft className="h-4 w-4" aria-hidden="true" />Volver a mi rama actual</Button>
+    </section> : null}
+    {description ? <p className="text-xs text-muted-foreground" data-branch-activity="">{description}</p> : null}
+  </>;
+}
 
 export function BranchControl() {
   const c = useCollaboration();
@@ -170,12 +185,6 @@ export function BranchControl() {
 
   return (
     <>
-      {c.previewCommitId ? (
-        <Button variant="secondary" size="sm" onClick={() => void run(() => c.previewVersion())}>
-          Volver al trabajo actual
-        </Button>
-      ) : null}
-
       <Popover
         open={popoverOpen}
         onOpenChange={next => {
@@ -195,6 +204,7 @@ export function BranchControl() {
             data-branch-trigger=""
           >
             <GitPullRequest className="h-4 w-4" aria-hidden="true" />
+            <span className="text-muted-foreground">Rama:</span>
             <span className="max-w-36 truncate">{branch.name}</span>
             {reviewableProposals.length ? (
               <span className="rounded-full bg-primary px-1.5 py-0.5 text-2xs font-semibold text-primary-foreground tabular-nums">
@@ -373,6 +383,7 @@ export function BranchControl() {
           {editable && !c.previewCommitId && branchFieldConflicts.length ? (
             <FieldConflictsNotice
               edits={branchFieldConflicts}
+              automatic={branch.id !== "main"}
               disabled={c.busy}
               onResolve={(editId, keep) => void run(() => c.resolveFieldConflict(editId, keep))}
             />
@@ -765,7 +776,7 @@ export function BranchControl() {
                   {s.commits.find(v => v.id === c.previewCommitId)?.message}
                 </p>
                 <Button size="sm" className="h-7 text-xs" onClick={() => void run(() => c.previewVersion())}>
-                  Volver al trabajo actual
+                  Volver a mi rama actual
                 </Button>
               </div>
             ) : null}

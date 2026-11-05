@@ -5,6 +5,7 @@ import { isDev, appServe } from './config';
 import { titleBarOptions } from '../src/lib/window-chrome';
 import { DESIGNER_MENU, type DesignerMenuItem } from '../src/lib/designer-actions';
 import { permisoPermitido } from './services/security';
+import { setAppTarget } from './services/mcp-app-state';
 
 export function createMainWindow(fileId?: string) {
     const win = new BrowserWindow({
@@ -28,6 +29,7 @@ export function createMainWindow(fileId?: string) {
             nodeIntegration: false,
         },
     });
+    win.on('focus', () => setAppTarget(win.webContents.id));
 
     // Antes se concedía TODO lo que pidiera la página (cámara, micrófono,
     // ubicación…). Sólo el portapapeles, y sólo para la propia app.

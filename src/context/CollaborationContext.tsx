@@ -63,6 +63,7 @@ interface CollaborationContextValue {
   revoke: (memberId: string) => Promise<void>;
   refreshLink: (invitation: string) => Promise<void>;
   resolveFieldConflict: (editId: string, keep: "current" | "discarded") => Promise<void>;
+  repairConnection: (viewId: string, edgeId: string, sourceId?: string, targetId?: string) => Promise<void>;
 }
 const CollaborationContext = createContext<CollaborationContextValue | undefined>(undefined);
 export function useCollaboration() {
@@ -86,6 +87,8 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
     [peers, setPeers] = useState<Presence[]>([]);
   const [displayName, setDisplayNameState] = useState("Participante");
   const [sessionId] = useState(() => crypto.randomUUID());
+  const latestPresence = useRef<Omit<PresenceInput, "name"> | undefined>(undefined);
+  const lastPublishedPresence = useRef<{ fileId: string; value: PresenceInput } | undefined>(undefined);
   const queues = useRef(new Map<string, Projection<SharedProject>>());
   const binding = useRef<
     | {
@@ -143,7 +146,7 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
     selectionFile.current = graph.currentFileId;
     binding.current?.projection.detach();
     binding.current = undefined;
-    setBranchId("shared");
+    try { setBranchId(localStorage.getItem(`collaboration-branch:${graph.currentFileId}`) || "shared"); } catch { setBranchId("shared"); }
     setPreviewCommitId(undefined);
     setWorkspace(undefined);
     setStatus(undefined);
@@ -210,8 +213,8 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
     }
   }, []);
   useEffect(() => {
-    if (status) graph.setSharedReadOnly(status.fileId, readOnly);
-  }, [status?.fileId, readOnly, graph.setSharedReadOnly]);
+    if (status) graph.setSharedReadOnly(status.fileId, readOnly, readOnly || (!status.owner && branchId === "main"));
+  }, [status?.fileId, status?.owner, branchId, readOnly, graph.setSharedReadOnly]);
   useEffect(() => {
     const host = hostBridge(),
       id = graph.currentFileId;
@@ -368,6 +371,7 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
   const publishPresence = useCallback(
     (presence: Omit<PresenceInput, "name">) => {
       const id = graph.currentFileId;
+      latestPresence.current = { ...presence, branchId: current.current.branchId };
       if (id && current.current.status && !current.current.previewCommitId)
         hostBridge()?.collaborationPresence?.(id, {
           ...presence,
@@ -378,6 +382,28 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
     },
     [graph.currentFileId, sessionId],
   );
+  useEffect(() => {
+    const depart = () => {
+      const previous = lastPublishedPresence.current;
+      if (previous) hostBridge()?.collaborationPresence?.(previous.fileId, { ...previous.value, pointer: null, selectedIds: [], moving: [], connecting: undefined, leaving: true });
+      lastPublishedPresence.current = undefined;
+    };
+    window.addEventListener("beforeunload", depart);
+    return () => { window.removeEventListener("beforeunload", depart); depart(); };
+  }, [graph.currentFileId]);
+  useEffect(() => {
+    if (!status) return;
+    const publish = () => {
+      const active = current.current; if (!active.status || active.previewCommitId || !active.graph.currentFileId) return;
+      const viewId = active.views.activeView?.id ?? "design", previous = latestPresence.current;
+      const sameView = previous?.viewId === viewId && previous?.branchId === active.branchId;
+      const presence = sameView ? previous : { viewId, pointer: null, selectedIds: [] };
+      const value = { ...presence, viewId, branchId: active.branchId, name: active.displayName, sessionId };
+      lastPublishedPresence.current = { fileId: active.graph.currentFileId, value };
+      hostBridge()?.collaborationPresence?.(active.graph.currentFileId, value);
+    };
+    publish(); const timer = setInterval(publish, 2500); return () => clearInterval(timer);
+  }, [status?.fileId, branchId, views.activeView?.id, previewCommitId, sessionId]);
   const value: CollaborationContextValue = {
     workspace,
     branchId,
@@ -387,6 +413,7 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
       await queues.current.get(current.current.graph.currentFileId!)?.settled();
       setPreviewCommitId(undefined);
       setBranchId(id);
+      try { localStorage.setItem(`collaboration-branch:${current.current.graph.currentFileId}`, id); } catch { /* preferencia local */ }
     },
     previewVersion: async id => {
       await queues.current.get(current.current.graph.currentFileId!)?.settled();
@@ -492,6 +519,7 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
         branchId: current.current.branchId,
       });
     },
+    repairConnection: async (viewId, edgeId, sourceId, targetId) => { await run({ type: "repair-connection", fileId: current.current.graph.currentFileId!, branchId: current.current.branchId, viewId, edgeId, sourceId, targetId }); },
   };
   return <CollaborationContext.Provider value={value}>{children}</CollaborationContext.Provider>;
 }

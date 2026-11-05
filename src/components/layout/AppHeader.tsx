@@ -1,6 +1,6 @@
 "use client";
 import { CollaborationControl } from "@/components/collaboration/CollaborationControl";
-import { BranchControl } from "@/components/collaboration/BranchControl";
+import { BranchControl, CollaborationLocationNotice } from "@/components/collaboration/BranchControl";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
@@ -501,7 +501,7 @@ const FileManagement: React.FC<
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="contents">
       {/* El nombre del proyecto también en la barra de título: es donde el sistema
           operativo lo espera, y le da anclaje a la franja. */}
       <EnLaBarraDeTitulo slot={TITLEBAR_TITLE_SLOT}>
@@ -604,7 +604,7 @@ const FileManagement: React.FC<
           disabled={visibles.length === 0}
         >
           <SelectTrigger
-            className="w-[280px] md:w-[320px]"
+            className="min-w-40 max-w-80 flex-1 basis-48"
             onDoubleClick={startRename}
             // El nombre se recorta con «…» en el trigger: el title lo da entero.
             title={currentName ? `${currentName} — doble clic para renombrar` : "Seleccionar proyecto"}
@@ -1144,7 +1144,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
           )}
         </div>
       </div>
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t pt-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 border-t pt-3" data-project-toolbar="">
         {/* Proyecto, ramas y colaboración comparten una sola franja compacta. */}
         {mounted ? (
           <FileManagement {...fileManagementProps} />
@@ -1152,11 +1152,10 @@ const AppHeader: React.FC<AppHeaderProps> = ({
           // Esqueleto para el FileManagement
           <div className="w-[320px] h-10 bg-muted rounded-md" />
         )}
-        <div className="flex flex-wrap items-center gap-2">
-          <BranchControl />
-          <CollaborationControl />
-        </div>
+        <BranchControl />
+        <CollaborationControl />
       </div>
+      <CollaborationLocationNotice />
     </header>
   );
 };

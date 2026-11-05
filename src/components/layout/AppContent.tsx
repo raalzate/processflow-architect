@@ -51,6 +51,8 @@ import { DEFAULT_NOTATION_ID, type NotationId } from "@/lib/notations";
 import { useViews } from "@/context/ViewsContext";
 import { ComponentDesigner } from "@/components/graph/designer/ComponentDesigner";
 import { ViewsTabBar } from "@/components/views/ViewsTabBar";
+import { assertAiHistoryAction } from "@/lib/mcp/collaboration-actions";
+import { canEditBranch, scopeOptions } from "@/lib/collaboration/history";
 import { CustomViewRenderer } from "@/components/views/CustomViewRenderer";
 import { MermaidViewRenderer } from "@/components/mermaid/MermaidViewRenderer";
 import { webgpuAvailable } from "@/lib/ai/litert-engine";
@@ -63,6 +65,8 @@ import { publicarEstadoCli } from "@/lib/agent-cli/capability";
 import { harnessOf, loadAiSettings } from "@/lib/ai/remote-settings";
 import { CommandPalette } from "@/components/CommandPalette";
 import { capacidadesHost, hostBridge } from "@/lib/host-bridge";
+import { useCollaboration } from "@/context/CollaborationContext";
+import { aiBranchPolicy } from "@/lib/mcp/branch-policy";
 
 // --- 1. Wrapper para el Header ---
 // Este componente solo se volverá a renderizar si las props
@@ -113,6 +117,7 @@ const MemoizedAppHeader = React.memo(() => {
 //    `get_app_state` lo sirva al agente: sin esa ingesta previa, el agente
 //    exporta a ciegas y duplica o pisa el trabajo del humano.
 const McpImportBridge = () => {
+  const collaboration = useCollaboration();
   const {
     handleCreateProjectFromContent,
     handleDesignUpdate,
@@ -125,10 +130,20 @@ const McpImportBridge = () => {
     handleRenameProject,
     handleFileDelete,
     setFileOrg,
+    sharedReadOnly,
   } = useGraphContext();
   const { createView, views, activeView, updateViewGraph, setViewNotation, setActiveView, deleteView, renameView, focus } =
     useViews();
   const { toast } = useToast();
+  const status = collaboration?.status;
+  const liveCollaboration = React.useRef(collaboration);
+  liveCollaboration.current = collaboration;
+  const branchName = collaboration?.workspace?.history.branches.find(b => b.id === collaboration.branchId)?.name;
+  const aiContext = React.useMemo(() => status ? { branchId: collaboration?.branchId ?? "shared", branchName, owner: status.owner, role: status.role, canEdit: !sharedReadOnly && !collaboration?.readOnly, saved: status.saved, initialized: status.initialized, preview: !!collaboration?.previewCommitId } : undefined, [status?.owner, status?.role, status?.saved, status?.initialized, collaboration?.branchId, branchName, collaboration?.readOnly, collaboration?.previewCommitId, sharedReadOnly]);
+  const assertAiEdit = (expected?: { projectId?: string | null; branchId?: string }) => {
+    if (expected && ((expected.projectId !== undefined && expected.projectId !== currentFileId) || (expected.branchId !== undefined && expected.branchId !== collaboration?.branchId))) throw new Error("La ventana cambió de proyecto o rama. Consulta get_app_state y vuelve a intentar.");
+    const policy = aiBranchPolicy(aiContext); if (!policy.allowed) throw new Error(policy.error);
+  };
 
   useEffect(() => {
     const electron = hostBridge();
@@ -136,6 +151,8 @@ const McpImportBridge = () => {
     electron.mcpPublishAppState(
       describeAppState({
         graph: graphData,
+        projectId: currentFileId,
+        collaboration: aiContext,
         views,
         savedFiles,
         viewsLimit: MAX_CUSTOM_VIEWS,
@@ -149,7 +166,7 @@ const McpImportBridge = () => {
         projectOrg: savedFiles.find((f) => f.id === currentFileId)?.orgId ?? null,
       })
     );
-  }, [graphData, views, savedFiles, orgFilter, focus, currentFileId]);
+  }, [graphData, views, savedFiles, orgFilter, focus, currentFileId, aiContext]);
 
   // Lectura bajo demanda (`list_artifacts`, `get_artifact`, `list_views`,
   // `get_view`): el main pregunta y este efecto contesta. El proyecto activo sale
@@ -273,6 +290,10 @@ const McpImportBridge = () => {
               error: `No encontré el proyecto "${target}" en la app (¿se renombró o se borró?). No se creó ninguna copia: exportá con mode="new" si querés uno aparte.`,
             });
           }
+          if (destino.id !== currentFileId) {
+            const bound = await electron.collaborationCommand?.({ type: "open", fileId: destino.id, initial: { name: destino.name, content: destino.content, customViews: [], references: [], agent: { versions: [], artifacts: [], lineages: [] }, analysis: {} } });
+            if (bound?.status) throw new Error("Abre ese proyecto compartido y selecciona su rama antes de editarlo con IA.");
+          }
           const base = destino.id === currentFileId ? graphData ?? destino.content : destino.content;
           const { graph: fusion, resumen } = mergeProjectGraph(base, graph);
           handleDesignUpdate(destino.id, fusion);
@@ -299,6 +320,11 @@ const McpImportBridge = () => {
       const orgs = ((await electron.mcpOrgsStatus?.())?.orgs ?? []).map((o) => o.slug);
       const plan = planProjectAction(request, savedFiles, orgs);
       if (!plan.ok) return responder({ ok: false, error: plan.error });
+      if (plan.id !== currentFileId) {
+        const target = savedFiles.find(f => f.id === plan.id)!;
+        const bound = await electron.collaborationCommand?.({ type: "open", fileId: target.id, initial: { name: target.name, content: target.content, customViews: [], references: [], agent: { versions: [], artifacts: [], lineages: [] }, analysis: {} } });
+        if (bound?.status) throw new Error("Abre ese proyecto compartido y selecciona su rama antes de modificarlo con IA.");
+      }
       const visible = nombreVisible(plan.name);
       if (request.kind === "move-project") {
         setFileOrg(plan.id, plan.org ?? null);
@@ -315,8 +341,58 @@ const McpImportBridge = () => {
       return responder({ ok: true, message: mensajeEliminado(plan.name, org) });
     };
 
-    const off = electron.onMcpAppAction(({ id, request }) => {
+    const off = electron.onMcpAppAction(({ id, request, expectedContext }) => {
       try {
+        if (request.kind === "collaboration") {
+          const collaboration = liveCollaboration.current;
+          const reply = (result: AppActionResult) => electron.mcpAppActionReply?.(id, result);
+          void (async () => {
+            if (!collaboration?.workspace || !collaboration.status || !currentFileId) throw new Error("Abre un proyecto vinculado para gestionar ramas y versiones.");
+            if (expectedContext && (expectedContext.projectId !== currentFileId || expectedContext.branchId !== collaboration.branchId)) throw new Error("La ventana cambió de proyecto o rama. Consulta el estado y reintenta.");
+            const w = collaboration.workspace, history = w.history;
+            if (request.command === "inspect") return reply({ ok: true, message: "Ramas, versiones, solicitudes y alternativas de edición.", data: {
+              branchId: collaboration.branchId, previewCommitId: collaboration.previewCommitId, actor: w.actor,
+              branches: history.branches, commits: history.commits.map(({ snapshot: _snapshot, ...commit }) => commit), proposals: history.proposals, permissions: history.permissions,
+              scopes: scopeOptions(...Object.values(w.snapshots)), vectors: w.vectors, participants: collaboration.status.participants,
+              discardedEdits: w.discardedEdits, automaticResolution: collaboration.branchId !== "main",
+              pendingConnections: w.pendingConnections,
+              ...(request.commitId ? { snapshot: history.commits.find(c => c.id === request.commitId)?.snapshot } : {}),
+            } });
+            if (request.command === "return") { await collaboration.previewVersion(); return reply({ ok: true, message: "De vuelta en tu rama actual." }); }
+            if (request.command === "switch") {
+              if (!history.branches.some(b => b.id === request.branchId)) throw new Error("Indica el branchId de una rama existente.");
+              await collaboration.selectBranch(request.branchId!); return reply({ ok: true, message: "Rama seleccionada. Consulta get_app_state antes de editar." });
+            }
+            if (request.command === "preview") {
+              if (!history.commits.some(c => c.id === request.commitId)) throw new Error("Indica el commitId de una versión existente.");
+              await collaboration.previewVersion(request.commitId); return reply({ ok: true, message: "Versión histórica abierta en solo lectura. Usa return para volver." });
+            }
+            if (request.command === "preview-merge") {
+              if (!request.branchId || !request.commitId || !request.scopes?.length) throw new Error("Indica branchId, commitId y scopes para comparar.");
+              const result = await collaboration.previewMerge(request.branchId, request.commitId, request.scopes, request.choices);
+              return reply({ ok: true, message: "Vista previa; todavía no se aplicaron cambios.", data: result.preview });
+            }
+            if (!collaboration.status.saved || !collaboration.status.initialized || collaboration.previewCommitId) throw new Error("Vuelve al trabajo actual y espera a que termine el guardado antes de modificar el historial.");
+            if (request.command === "repair-connection") {
+              assertAiEdit(expectedContext);
+              if (!request.viewId || !request.edgeId) throw new Error("Indica viewId y edgeId de una conexión incompleta.");
+              await collaboration.repairConnection(request.viewId, request.edgeId, request.sourceId, request.targetId);
+            } else if (request.command === "resolve-field") {
+              assertAiEdit(expectedContext);
+              if (!request.editId || !request.keep) throw new Error("Indica editId y keep (current o discarded).");
+              await collaboration.resolveFieldConflict(request.editId, request.keep);
+            } else {
+              if (!request.action) throw new Error("Indica action con la operación de historial.");
+              const action = assertAiHistoryAction(request.action, history, w.actor);
+              const target = "branchId" in action ? action.branchId : undefined;
+              if (target && action.type !== "branch" && !canEditBranch(history, target, w.actor, new Date().toISOString())) throw new Error("No tienes permiso para modificar esa rama.");
+              await collaboration.historyAction(action, request.expectedVector);
+            }
+            return reply({ ok: true, message: "Operación aplicada. Consulta inspect para ver el historial actualizado." });
+          })().catch((error: unknown) => reply({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+          return;
+        }
+        if (!(request.kind === "export-project" && request.mode === "new")) assertAiEdit(expectedContext);
         if (esAccionDeProyecto(request)) {
           void atenderProyecto(id, request).catch((e: any) =>
             electron.mcpAppActionReply?.(id, { ok: false, error: e?.message ?? "Error inesperado en la app." })
@@ -449,14 +525,17 @@ const McpImportBridge = () => {
     handleRenameProject,
     handleFileDelete,
     setFileOrg,
+    aiContext,
   ]);
 
   useEffect(() => {
     const electron = hostBridge();
     if (!electron?.onMcpImportDiagram) return;
 
-    const off = electron.onMcpImportDiagram(({ name, content, view, mermaid, target }) => {
+    const off = electron.onMcpImportDiagram(({ name, content, view, mermaid, target, id: deliveryId, expectedContext }) => {
+      let successful = false, failure: string | undefined;
       try {
+        if (view || mermaid || target) assertAiEdit(expectedContext);
         if (mermaid) {
           // Vista Mermaid: content es el código. Requiere proyecto activo.
           if (!currentFileId) {
@@ -478,6 +557,7 @@ const McpImportBridge = () => {
             title: "Diagrama Mermaid recibido por MCP",
             description: `"${name}" se añadió como pestaña del proyecto activo.`,
           });
+          successful = true;
           return;
         }
         if (view) {
@@ -489,6 +569,7 @@ const McpImportBridge = () => {
               title: "Vista recibida sin proyecto activo",
               description: `"${name}" se cargó como proyecto nuevo porque no había ninguno abierto.`,
             });
+            successful = true;
             return;
           }
           // `replace` ⇒ actualizar la pestaña que ya se llama así: entregar dos
@@ -543,6 +624,7 @@ const McpImportBridge = () => {
               ? `"${name}" se actualizó conservando la posición de los elementos que ya estaban.${extra}`
               : `"${name}" se añadió como pestaña del proyecto activo.${extra}`,
           });
+          successful = true;
           return;
         }
         if (target?.project) {
@@ -557,6 +639,7 @@ const McpImportBridge = () => {
               ? savedFiles.find((f) => f.id === currentFileId)
               : undefined);
           if (destino) {
+            if (destino.id !== currentFileId) throw new Error("Selecciona el proyecto y su rama antes de actualizarlo desde esta ventana.");
             const base = destino.id === currentFileId ? graphData ?? destino.content : destino.content;
             const { graph, resumen } = mergeProjectGraph(base, content as GraphData);
             handleDesignUpdate(destino.id, graph);
@@ -565,6 +648,7 @@ const McpImportBridge = () => {
               title: `Proyecto "${target.project}" actualizado por MCP`,
               description: `${resumen.agregados} nuevos · ${resumen.conservados} conservados · ${resumen.quitados} que ya no están en el diseño.`,
             });
+            successful = true;
             return;
           }
           // El proyecto se renombró o se borró entre la resolución y la entrega.
@@ -574,6 +658,7 @@ const McpImportBridge = () => {
             title: `No encontré el proyecto "${target.project}"`,
             description: `"${name}" se cargó como proyecto nuevo para no perder el diseño.`,
           });
+          successful = true;
           return;
         }
         handleCreateProjectFromContent(name, content as GraphData);
@@ -581,13 +666,15 @@ const McpImportBridge = () => {
           title: "Diagrama recibido por MCP",
           description: `"${name}" llegó desde tu agente (Claude Code) y se cargó en el lienzo.`,
         });
+        successful = true;
       } catch (e: any) {
+        failure = e?.message ?? "La rama no aceptó el cambio.";
         toast({
           variant: "destructive",
           title: "No se pudo cargar el diagrama del MCP",
           description: e?.message,
         });
-      }
+      } finally { if (deliveryId !== undefined) electron.mcpImportReply?.(deliveryId, successful, failure ?? (successful ? undefined : "La vista no pudo actualizarse. Consulta el proyecto y la rama activos.")); }
     });
 
     // Auto-arranque: respeta la preferencia persistida en Ajustes.
@@ -608,6 +695,7 @@ const McpImportBridge = () => {
     graphData,
     savedFiles,
     toast,
+    aiContext,
   ]);
 
   return null;

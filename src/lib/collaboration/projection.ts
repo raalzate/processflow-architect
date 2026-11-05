@@ -9,6 +9,7 @@ export class Projection<T> {
   private pending = 0;
   private queue: Promise<void> = Promise.resolve();
   private detached = false;
+  private queued?: { before: T; after: T };
   constructor(
     private read: () => T | undefined,
     private apply: (snapshot: T) => void,
@@ -40,10 +41,15 @@ export class Projection<T> {
     if (this.observed === undefined || same(snapshot, this.observed)) return;
     const before = this.observed;
     this.observed = snapshot;
+    // Mientras el IPC/guardado está ocupado, el siguiente envío conserva el
+    // primer estado observado y el último borrador: no escribe cien copias completas.
+    if (this.queued) { this.queued.after = snapshot; return; }
+    this.queued = { before, after: snapshot };
     this.pendingChanged(++this.pending);
     this.queue = this.queue
       .then(async () => {
-        const merged = await this.send(before, snapshot);
+        const batch = this.queued!; this.queued = undefined;
+        const merged = await this.send(batch.before, batch.after);
         if (merged !== undefined) this.deferred = merged;
       })
       .catch(error => this.error(error))

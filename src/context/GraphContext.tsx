@@ -36,7 +36,8 @@ export interface GraphContextType {
   sharedStorageScope?: string;
   setSharedStorageScope?: (scope?: string, canonical?: SharedProject) => void;
   sharedReadOnly: boolean;
-  setSharedReadOnly: (fileId: string, value: boolean) => void;
+  sharedAiReadOnly?: boolean;
+  setSharedReadOnly: (fileId: string, value: boolean, aiReadOnly?: boolean) => void;
   /** Apply a merged shared file while retaining this device's local identity/org. */
   applySharedFile: (fileId: string, shared: Pick<SavedFile, "name" | "content" | "driversResult" | "constraintsResult" | "roadmapResult" | "proposalResult">) => void;
   // Estado de Datos

@@ -13,13 +13,15 @@ export function FieldConflictsNotice({
   edits,
   disabled,
   onResolve,
+  automatic = false,
 }: {
   edits?: DiscardedFieldEdit[];
   disabled?: boolean;
   onResolve: (editId: string, keep: "current" | "discarded") => void;
+  automatic?: boolean;
 }) {
   if (!edits?.length) return null;
-  return (
+  const content = (
     <section
       className="space-y-3 rounded-md border border-primary/40 bg-muted/30 p-3"
       role="status"
@@ -28,13 +30,12 @@ export function FieldConflictsNotice({
     >
       <div className="space-y-1">
         <p className="text-sm font-semibold">
-          {edits.length === 1
+          {automatic ? `${edits.length} ${edits.length === 1 ? "edición simultánea resuelta" : "ediciones simultáneas resueltas"} automáticamente` : edits.length === 1
             ? "Dos personas editaron el mismo campo a la vez"
             : `Ediciones simultáneas detectadas en ${edits.length} campos`}
         </p>
         <p className="text-xs text-muted-foreground">
-          La sincronización eligió un valor automáticamente, pero conservó la otra edición para que elijas
-          cuál dejar.
+          {automatic ? "La rama ya usa el resultado sincronizado. Puedes seguir trabajando; la otra edición queda disponible para revisarla o pedir ayuda al chat." : "La sincronización eligió un valor automáticamente, pero conservó la otra edición para que elijas cuál dejar."}
         </p>
       </div>
       <div className="space-y-2">
@@ -80,4 +81,5 @@ export function FieldConflictsNotice({
       </div>
     </section>
   );
+  return automatic ? <details className="rounded-md border p-2"><summary className="cursor-pointer text-xs text-muted-foreground">{edits.length} cambios resueltos automáticamente · Revisar alternativas</summary><div className="pt-2">{content}</div></details> : content;
 }

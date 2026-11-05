@@ -17,6 +17,7 @@ import React, {
   useRef,
 } from "react";
 import { mergeLocalFiles } from "@/lib/collaboration/local-files";
+import { aiResultStillApplies } from "@/lib/mcp/branch-policy";
 import { useGraphContext } from "@/context/GraphContext";
 import { useViews } from "@/context/ViewsContext";
 import { useToast } from "@/hooks/use-toast";
@@ -229,7 +230,9 @@ export const useAgent = () => {
 };
 
 export function AgentProvider({ children }: { children: React.ReactNode }) {
-  const { currentFileId, graphData, sharedReadOnly, sharedStorageScope } = useGraphContext();
+  const { currentFileId, graphData, sharedReadOnly, sharedAiReadOnly, sharedStorageScope } = useGraphContext();
+  const aiTarget = useRef({ fileId: currentFileId, scope: sharedStorageScope, readOnly: !!(sharedReadOnly || sharedAiReadOnly) });
+  aiTarget.current = { fileId: currentFileId, scope: sharedStorageScope, readOnly: !!(sharedReadOnly || sharedAiReadOnly) };
   const { views, injectedViews, activeView } = useViews();
   const { toast } = useToast();
 
@@ -608,6 +611,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
 
   const sendMessage = useCallback(
     async (text: string, requestedKind?: string) => {
+      const startedTarget = { ...aiTarget.current };
+      if (startedTarget.readOnly) return;
       const trimmed = text.trim();
       // Con un artefacto pedido del menú «+» el texto puede ir vacío: el pedido
       // ya dice qué generar.
@@ -776,6 +781,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
 
         // El ingreso decide linaje y revisión (versioning.ts): si el artefacto
         // ya existía, esto es su vN+1 y la anterior queda en el histórico.
+        if (!aiResultStillApplies(startedTarget, aiTarget.current)) return;
         const incoming = (data.artifacts ?? []) as AgentArtifact[];
         const ingested = ingestArtifacts(
           { lineages, artifacts },
@@ -871,6 +877,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
    */
   const resumeRun = useCallback(
     async (messageId: string, decision: ResumeDecision) => {
+      const startedTarget = { ...aiTarget.current };
+      if (startedTarget.readOnly) return;
       if (busy) return;
       const msg = messages.find((m) => m.id === messageId);
       if (!msg?.run) return;
@@ -959,6 +967,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           },
         });
 
+        if (!aiResultStillApplies(startedTarget, aiTarget.current)) return;
         const ingested = ingestArtifacts(
           { lineages, artifacts },
           (data.artifacts ?? []) as AgentArtifact[],
@@ -1046,10 +1055,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     attachments,
     agentId,
     setAgentId,
-    sendMessage: async (...args) => { if (!sharedReadOnly) await sendMessage(...args); },
-    answerBuilderQuestion: async (...args) => { if (!sharedReadOnly) await answerBuilderQuestion(...args); },
-    resumeRun: async (...args) => { if (!sharedReadOnly) await resumeRun(...args); },
-    retryWithWiderWindow: async (...args) => { if (!sharedReadOnly) await retryWithWiderWindow(...args); },
+    sendMessage: async (...args) => { if (!sharedReadOnly && !sharedAiReadOnly) await sendMessage(...args); else toast({ title: "La IA no puede editar esta rama", description: "Cambia a una rama de trabajo. Solo el anfitrión puede usar IA para modificar Principal." }); },
+    answerBuilderQuestion: async (...args) => { if (!sharedReadOnly && !sharedAiReadOnly) await answerBuilderQuestion(...args); },
+    resumeRun: async (...args) => { if (!sharedReadOnly && !sharedAiReadOnly) await resumeRun(...args); },
+    retryWithWiderWindow: async (...args) => { if (!sharedReadOnly && !sharedAiReadOnly) await retryWithWiderWindow(...args); },
     cancelRun,
     historyOf,
     restoreArtifactRevision: (...args) => { if (!sharedReadOnly) restoreArtifactRevision(...args); },

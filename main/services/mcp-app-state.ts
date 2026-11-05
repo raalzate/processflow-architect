@@ -14,13 +14,19 @@
 import type { AppState } from "../../src/lib/mcp/app-state";
 
 let current: AppState | null = null;
+const windows = new Map<number, AppState | null>();
+let targetId: number | undefined;
+export function setAppTarget(id: number) { targetId = id; }
+export function getAppTarget() { return targetId; }
 
 /** Guarda el retrato publicado por el renderer. */
-export function setAppState(state: AppState | null): void {
+export function setAppState(state: AppState | null, windowId?: number): void {
+  if (windowId !== undefined) { windows.set(windowId, state); targetId ??= windowId; if (windowId !== targetId) return; }
   current = state;
 }
 
 /** Último retrato conocido (null si la app nunca publicó: modo stdio o app cerrada). */
-export function getAppState(): AppState | null {
-  return current;
+export function getAppState(windowId?: number): AppState | null {
+  const id = windowId ?? targetId;
+  return id !== undefined ? windows.get(id) ?? null : current;
 }

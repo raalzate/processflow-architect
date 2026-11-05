@@ -4,6 +4,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { IconAction } from "@/components/ui/icon-action";
 import { accion } from "@/lib/action-labels";
 import { useViews } from "@/context/ViewsContext";
+import { useCollaboration } from "@/context/CollaborationContext";
+import { collaboratorsDescription } from "@/lib/collaboration/participants";
 import { cn } from "@/lib/utils";
 import { MAX_CUSTOM_VIEWS, type DesignView } from "@/lib/views-types";
 import { NOTATION_LIST, getNotation, notationBadgeClass } from "@/lib/notations";
@@ -166,6 +168,7 @@ function SubViewItems({
 }
 
 export function ViewsTabBar() {
+  const collaboration = useCollaboration();
   const {
     views,
     activeViewId,
@@ -238,7 +241,10 @@ export function ViewsTabBar() {
     setEditingId(null);
   };
 
+  const activity = (viewId: string) => collaboration?.previewCommitId ? "" : collaboratorsDescription(collaboration?.status?.participants ?? [], collaboration?.workspace?.actor.id, collaboration?.branchId ?? "shared", viewId);
   return (
+    <div className="min-w-0">
+    {activity(activeViewId) ? <p className="border-t bg-card px-3 py-1.5 text-xs text-muted-foreground" data-view-activity="">{activity(activeViewId)}</p> : null}
     <div className="relative flex items-center gap-2 border-t bg-card/80 px-2 py-1.5 backdrop-blur-sm">
       {/* Degradados: dicen que la tira sigue, sin mostrar un corte seco. */}
       <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-linear-to-r from-card to-transparent" />
@@ -296,9 +302,10 @@ export function ViewsTabBar() {
                 className="flex items-center gap-1.5 pr-1"
                 onClick={() => setActiveView(v.id)}
                 onDoubleClick={() => !v.builtin && startRename(v)}
-                title={v.builtin ? v.name : "Doble clic para renombrar"}
+                title={[v.name, activity(v.id), !v.builtin ? "Doble clic para renombrar" : ""].filter(Boolean).join(" · ")}
               >
                 <ViewIcon view={v} className={cn("h-3.5 w-3.5", active && "text-primary")} />
+                {activity(v.id) ? <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label={activity(v.id)} /> : null}
                 {editing ? (
                   <input
                     ref={editRef}
@@ -506,6 +513,7 @@ export function ViewsTabBar() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
     </div>
   );
 }

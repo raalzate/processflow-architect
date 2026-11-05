@@ -74,6 +74,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('mcp-org-delete', slug),
   onMcpImportDiagram: (
     callback: (data: {
+      id?: number;
+      expectedContext?: { projectId?: string | null; branchId?: string };
       name: string;
       content: any;
       view?: { notation?: string; replace?: boolean };
@@ -85,13 +87,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('mcp-import-diagram', listener);
     return () => ipcRenderer.removeListener('mcp-import-diagram', listener);
   },
+  mcpImportReply: (id: number, ok: boolean, error?: string) => ipcRenderer.send('mcp-import-reply', { id, ok, error }),
 
   // Lectura bajo demanda: el main pide contenido (artefactos, vistas, otro
   // proyecto) y el renderer contesta por el canal de respuesta con el mismo id.
   // Acciones sobre el proyecto pedidas por MCP (borrar/renombrar una vista): el
   // main pide, el renderer aplica y contesta por el canal de respuesta.
   onMcpAppAction: (
-    handler: (payload: { id: number; request: any }) => void
+    handler: (payload: { id: number; request: any; expectedContext?: { projectId?: string | null; branchId?: string } }) => void
   ) => {
     const listener = (_e: any, payload: any) => handler(payload);
     ipcRenderer.on('mcp-app-action', listener);

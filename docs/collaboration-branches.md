@@ -1,10 +1,27 @@
 # Ramas y versiones desde la pantalla
 
-Un proyecto individual conserva el flujo habitual. Cuando se incorpora otro dispositivo
-se guarda una versión inicial y se habilitan permanentemente las ramas. La cantidad de
-ventanas abiertas por una persona no activa el modo por sí sola.
+Un proyecto individual conserva el flujo habitual. Al vincularlo como proyecto compartido
+se guarda una versión inicial y se habilitan permanentemente las ramas. El anfitrión
+puede consultarlas aunque sea la única persona conectada.
 
 ## Qué aparece en la pantalla
+
+Al consultar una versión anterior, un aviso visible indica **Solo lectura** y permite
+**Volver a mi rama actual**. El borrador se conserva. Las descripciones de rama y vista
+muestran a los compañeros que trabajan allí, incluyendo varias ventanas de una misma persona.
+
+En ramas de trabajo las ediciones simultáneas ya usan el resultado automático del CRDT.
+**Revisar alternativas** permite recuperar el otro valor sin interrumpir la edición.
+Principal mantiene la revisión explícita de alternativas.
+
+El chat del proyecto usa `manage_collaboration` para consultar ramas, versiones,
+solicitudes, participantes, alternativas y conexiones incompletas; también para cambiar
+de rama, guardar versiones, comparar, traer cambios, enviar a revisión, integrar y restaurar.
+Solo el anfitrión puede usar IA para modificar Principal, aunque otra persona tenga permisos
+de edición humana. El chat limitado a una caja no puede cambiar ramas ni el historial.
+La reparación de conexiones usa `command=repair-connection`, `viewId`, `edgeId` y los
+identificadores `sourceId`/`targetId`. Omitir ambos extremos retira la conexión conservando
+los campos para recuperación. Deben elegirse extremos existentes en esa vista.
 
 Cuando hay ramas activas, aparece en la cabecera un botón compacto con el icono de fusión
 y el nombre de la rama activa junto a **Proyecto vinculado**, sin ocupar espacio sobre el

@@ -52,7 +52,11 @@ interface GraphDataProviderProps {
 export function GraphDataProvider({ children }: GraphDataProviderProps) {
   const [sharedStorageScope, updateSharedStorageScope] = useState<string>();
   const [readOnlyFiles, setReadOnlyFiles] = useState<Record<string, boolean>>({});
-  const setSharedReadOnly = useCallback((fileId: string, value: boolean) => setReadOnlyFiles(previous => previous[fileId] === value ? previous : { ...previous, [fileId]: value }), []);
+  const [aiReadOnlyFiles, setAiReadOnlyFiles] = useState<Record<string, boolean>>({});
+  const setSharedReadOnly = useCallback((fileId: string, value: boolean, aiReadOnly = value) => {
+    setReadOnlyFiles(previous => previous[fileId] === value ? previous : { ...previous, [fileId]: value });
+    setAiReadOnlyFiles(previous => previous[fileId] === aiReadOnly ? previous : { ...previous, [fileId]: aiReadOnly });
+  }, []);
   // --- Core Hooks & Refs ---
   const { toast } = useToast();
   const router = useRouter();
@@ -390,6 +394,7 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     sharedStorageScope,
     setSharedStorageScope,
     sharedReadOnly: !!(currentFileId && readOnlyFiles[currentFileId]),
+    sharedAiReadOnly: !!(currentFileId && aiReadOnlyFiles[currentFileId]),
     setSharedReadOnly,
     applySharedFile,
     // Datos del Grafo

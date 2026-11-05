@@ -19,7 +19,7 @@
 
 import http from "node:http";
 import path from "node:path";
-import { app, BrowserWindow } from "electron";
+import { app } from "electron";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerProcessflowTools } from "./mcp-tools";
@@ -27,6 +27,8 @@ import { getAppState } from "./mcp-app-state";
 import { readFromApp } from "./mcp-app-read";
 import { captureFromApp } from "./mcp-app-capture";
 import { actOnApp } from "./mcp-app-action";
+import { mcpAppWindow } from "./mcp-app-window";
+import { deliverMcpDiagram } from "./mcp-app-delivery";
 import {
   isValidOrgSlug,
   orgSlug,
@@ -38,8 +40,6 @@ import {
 import { hostPermitido } from "../../src/lib/mcp/host-guard";
 import { alcanceDeUrl } from "../../src/lib/mcp/focus-scope";
 import { promises as fsp } from "node:fs";
-import type { GraphData } from "../../src/lib/types";
-import type { NotationId } from "../../src/lib/notations";
 
 export const MCP_DEFAULT_PORT = 7331;
 
@@ -51,49 +51,9 @@ function appWorkspace(): string {
   return path.join(app.getPath("userData"), "mcp-workspace");
 }
 
-/** Entrega un diagrama exportado al renderer para cargarlo en el lienzo. */
-async function exportToApp(
-  name: string,
-  graph: GraphData,
-  target?: { project: string }
-): Promise<boolean> {
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-  if (!win) return false;
-  // `target` presente ⇒ ACTUALIZAR ese proyecto; ausente ⇒ proyecto nuevo.
-  win.webContents.send("mcp-import-diagram", { name, content: graph, target });
-  // Traer la app al frente para que el usuario vea el diagrama llegar.
-  if (win.isMinimized()) win.restore();
-  win.focus();
-  return true;
-}
-
-/** Entrega un diagrama al renderer como VISTA custom del proyecto activo. */
-async function exportViewToApp(
-  name: string,
-  graph: GraphData,
-  notation: NotationId,
-  replace?: boolean
-): Promise<boolean> {
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-  if (!win) return false;
-  win.webContents.send("mcp-import-diagram", { name, content: graph, view: { notation, replace } });
-  if (win.isMinimized()) win.restore();
-  win.focus();
-  return true;
-}
-
-/** Entrega código Mermaid al renderer como VISTA Mermaid del proyecto activo. */
-async function exportMermaidToApp(name: string, code: string): Promise<boolean> {
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-  if (!win) return false;
-  win.webContents.send("mcp-import-diagram", { name, content: code, mermaid: true });
-  if (win.isMinimized()) win.restore();
-  win.focus();
-  return true;
-}
-
 /** Construye un servidor MCP con las herramientas registradas (uno por petición). */
 function buildMcpServer(focusScope: string | null = null): McpServer {
+  const windowId = mcpAppWindow()?.webContents.id;
   const server = new McpServer({ name: "processflow-architect", version: "0.1.0" });
   registerProcessflowTools(server, {
     // #462: con `?focus=<id>` (el chat de la ficha) sólo se escribe ESA caja.
@@ -104,13 +64,13 @@ function buildMcpServer(focusScope: string | null = null): McpServer {
     defaultDiagramId: process.env.PROCESSFLOW_DIAGRAM || undefined,
     defaultProject: process.env.PROCESSFLOW_PROJECT || undefined,
     defaultOrg: process.env.PROCESSFLOW_ORG || undefined,
-    exportToApp,
-    exportViewToApp,
-    exportMermaidToApp,
-    getAppState,
-    readApp: readFromApp,
-    captureApp: captureFromApp,
-    actOnApp,
+    exportToApp: (name, graph, target) => deliverMcpDiagram({ name, content: graph, target }, windowId),
+    exportViewToApp: (name, graph, notation, replace) => deliverMcpDiagram({ name, content: graph, view: { notation, replace } }, windowId),
+    exportMermaidToApp: (name, code) => deliverMcpDiagram({ name, content: code, mermaid: true }, windowId),
+    getAppState: () => getAppState(windowId),
+    readApp: request => readFromApp(request, windowId),
+    captureApp: () => captureFromApp(windowId),
+    actOnApp: (request, options) => actOnApp(request, { ...options, windowId }),
     // El skill que instale el agente debe describir ESTE transporte, no el del repo.
     transport: "http",
     serverUrl: () => `http://127.0.0.1:${currentPort}/mcp`,

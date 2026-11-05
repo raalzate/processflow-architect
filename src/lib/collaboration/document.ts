@@ -5,6 +5,7 @@ import type { SharedProject } from "./types";
 import { assertCell, assertEncodedProject, assertJson } from "./validation";
 
 type Path = string[];
+export interface PendingConnection { id: string; viewId: string; sourceId: string; targetId: string; description: string }
 type Cell = { kind: "object" | "list" } | { kind: "value"; value: unknown };
 const LOCAL = "local-project-edit";
 const key = (path: Path) => JSON.stringify(path);
@@ -38,6 +39,9 @@ export class SharedDocument {
   private tombstones = this.doc.getMap<boolean>("deleted-v1");
   private audit = this.doc.getMap<{ path: string; previous?: Cell; value?: Cell }>("edit-history-v1");
   private sequence = 0;
+  private materialized: unknown;
+  private materializedReady = false;
+  constructor() { this.doc.on("afterTransaction", () => { this.materializedReady = false; }); }
   private candidate?: SharedDocument;
   private history = new Y.UndoManager([this.fields, this.tombstones], {
     trackedOrigins: new Set([LOCAL]),
@@ -83,6 +87,7 @@ export class SharedDocument {
   }
 
   private materialize(): unknown {
+    if (this.materializedReady) return this.materialized;
     const children = new Map<string, string[]>();
     for (const pathKey of this.fields.keys()) {
       const path = JSON.parse(pathKey) as Path;
@@ -117,16 +122,43 @@ export class SharedDocument {
       }
       return result;
     };
-    return build([]);
+    this.materialized = build([]); this.materializedReady = true;
+    return this.materialized;
   }
   snapshot(): SharedProject {
-    return decodeProject(this.materialize() as ReturnType<typeof encodeProject>).project;
+    return structuredClone(decodeProject(this.materialize() as ReturnType<typeof encodeProject>).project);
   }
   isInitialized(): boolean {
     return this.fields.get("[]")?.kind === "object" && this.fields.get('["content"]')?.kind === "object";
   }
   pendingEdges(): number {
     return decodeProject(this.materialize() as ReturnType<typeof encodeProject>).pending;
+  }
+  private encodedGraphs() {
+    const encoded = this.materialize() as ReturnType<typeof encodeProject>;
+    return [{ viewId: "design", path: ["content"], graph: encoded.content }, ...encoded.customViews.filter(v => v.graph).map(v => ({ viewId: v.id, path: ["customViews", `@${v.id}`, "graph"], graph: v.graph as ReturnType<typeof encodeProject>["content"] }))];
+  }
+  pendingConnections(): PendingConnection[] {
+    return this.encodedGraphs().flatMap(({ viewId, graph }) => {
+      const known = new Set([...graph.nodes.map(n => n.id), ...graph.containers.map(c => c.id)]);
+      return graph.edges.filter(e => !known.has(e.fuente) || !known.has(e.destino)).map(e => ({ id: e.id, viewId, sourceId: e.fuente, targetId: e.destino, description: e.descripcion ?? "" }));
+    });
+  }
+  /** La corrección es explícita. Retirar conserva campos y auditoría para recuperación. */
+  repairConnection(viewId: string, edgeId: string, sourceId?: string, targetId?: string) {
+    const entry = this.encodedGraphs().find(g => g.viewId === viewId);
+    if (!entry || !this.pendingConnections().some(e => e.viewId === viewId && e.id === edgeId)) throw new Error("La conexión ya no está incompleta. Actualiza la lista.");
+    const path = [...entry.path, "edges", `@${edgeId}`];
+    const known = new Set([...entry.graph.nodes.map(n => n.id), ...entry.graph.containers.map(c => c.id)]);
+    if ((sourceId || targetId) && (!sourceId || !targetId || !known.has(sourceId) || !known.has(targetId))) throw new Error("Selecciona dos componentes existentes de esta vista.");
+    this.doc.transact(() => {
+      if (!sourceId && !targetId) { this.tombstones.set(key(path), true); return; }
+      for (const [field, value] of [["fuente", sourceId], ["destino", targetId]] as const) {
+        const pathKey = key([...path, field]), cell: Cell = { kind: "value", value };
+        this.audit.set(`${this.doc.clientID}:${this.sequence++}`, { path: pathKey, previous: this.fields.get(pathKey), value: cell });
+        this.fields.set(pathKey, cell);
+      }
+    }, LOCAL);
   }
   deleted(): string[] {
     return [...this.tombstones.keys()].filter(k => this.tombstones.get(k));
@@ -195,9 +227,9 @@ export class SharedDocument {
     Y.applyUpdate(this.doc, update, "remote");
   }
   /** Network changes are checked on a candidate before any durable live update. */
-  receiveRemote(update: Uint8Array) {
-    if (update.byteLength > 32 * 1024 ** 2) throw new Error("Actualización remota inválida: supera 32 MiB.");
-    if (update.byteLength === 2 && update[0] === 0 && update[1] === 0) return;
+  receiveRemote(update: Uint8Array, maximumBytes = 32 * 1024 ** 2) {
+    if (update.byteLength > maximumBytes) throw new Error(`Actualización remota inválida: supera ${maximumBytes / 1024 ** 2} MiB.`);
+    if (update.byteLength === 2 && update[0] === 0 && update[1] === 0) return false;
     const allowed = new Set(["fields-v1", "deleted-v1", "edit-history-v1"]);
     const candidate = (this.candidate ??= new SharedDocument());
     let mutated = false;
@@ -212,7 +244,7 @@ export class SharedDocument {
       } finally {
         candidate.doc.off("afterTransaction", observe);
       }
-      if (!mutated && ![...candidate.doc.share.keys()].some(name => !allowed.has(name))) return;
+      if (!mutated && ![...candidate.doc.share.keys()].some(name => !allowed.has(name))) return false;
       candidate.assertValid();
     } catch {
       candidate.destroy();
@@ -220,7 +252,10 @@ export class SharedDocument {
       throw new Error("Documento remoto inválido; se conserva la copia anterior.");
     }
     this.receive(update);
+    return true;
   }
+  /** Un archivo local completo acumula deltas; no es una única edición de red. Conserva la validación estructural. */
+  receiveArchive(update: Uint8Array) { this.receiveRemote(update, 128 * 1024 ** 2); }
   assertValid() {
     const allowed = new Set(["fields-v1", "deleted-v1", "edit-history-v1"]);
     if (

@@ -62,6 +62,7 @@ export const BUILDER_TOOLS = {
     "add_view_edge",
     "update_view_edge",
     "set_view_graph",
+    "manage_collaboration",
   ],
   /** Limpiar: lo que quita trabajo hecho. Todo esto pasa por confirmación humana. */
   limpiar: [

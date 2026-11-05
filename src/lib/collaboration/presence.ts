@@ -1,4 +1,5 @@
 export interface PresenceInput {
+  leaving?: boolean;
   branchId?: string;
   name: string;
   viewId: string;
@@ -12,6 +13,11 @@ export interface Presence extends PresenceInput {
   id: string;
   color: string;
   seenAt: number;
+}
+/** Los latidos renuevan la ubicación pero no son una medición de carga de edición. */
+export function presenceIsActivity(previous: Presence | undefined, next: Presence): boolean {
+  const activity = (p: Presence) => [p.branchId ?? "shared", p.viewId, p.pointer, p.selectedIds, p.moving ?? [], p.connecting];
+  return !previous || JSON.stringify(activity(previous)) !== JSON.stringify(activity(next));
 }
 const COLORS = ["#be123c", "#1d4ed8", "#15803d", "#7e22ce", "#9a3412", "#0e7490", "#a21caf", "#4338ca"];
 export function presenceColor(id: string): string {
@@ -54,6 +60,7 @@ export function sanitizePresence(raw: unknown, id: string, now: number): Presenc
       : undefined;
   return {
     id,
+    ...(input.leaving === true ? { leaving: true } : {}),
     color: presenceColor(id),
     seenAt: now,
     name:

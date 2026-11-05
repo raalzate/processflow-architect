@@ -379,16 +379,21 @@ function huella(call: BuilderCall): string {
  * para recordárselo al modelo. Sólo cuenta si NO hubo escrituras después: si el
  * modelo cambió entre medio, releer es legítimo (#326).
  */
+const collaborationEffect = (call: BuilderCall) => call.tool !== "manage_collaboration" ? undefined : ["history", "repair-connection", "resolve-field"].includes(String(call.args.command)) ? "write" : ["switch", "preview", "return"].includes(String(call.args.command)) ? "context" : "read";
+const writes = (call: BuilderCall) => ESCRIBEN.has(call.tool) || collaborationEffect(call) === "write";
+const progresses = (call: BuilderCall) => writes(call) || collaborationEffect(call) === "context";
+
 export function relecturaEsteril(state: BuilderRunState, call: BuilderCall): string | undefined {
+  if (call.tool === "manage_collaboration") return undefined;
   const h = huella(call);
   const idx = state.pasos.findIndex((p) => p.ok && huella({ tool: p.tool, args: p.args }) === h);
   if (idx < 0) return undefined;
-  const escribióDespués = state.pasos.slice(idx + 1).some((p) => p.ok && ESCRIBEN.has(p.tool));
+  const escribióDespués = state.pasos.slice(idx + 1).some((p) => p.ok && progresses(p));
   return escribióDespués ? undefined : state.pasos[idx].texto;
 }
 
 export function yaEjecutada(state: BuilderRunState, call: BuilderCall): boolean {
-  if (REPETIBLES.has(call.tool)) return false;
+  if (REPETIBLES.has(call.tool) || (call.tool === "manage_collaboration" && collaborationEffect(call) !== "write")) return false;
   const h = huella(call);
   if (state.pasos.some((p) => p.ok && huella({ tool: p.tool, args: p.args }) === h)) return true;
   // Por identidad: la misma caja con otro detalle sigue siendo la misma caja.
@@ -465,10 +470,10 @@ export function applyObservation(
     // Un cambio se anota cuando la herramienta VOLVIÓ bien: lo contrario es
     // prometerle al humano un cambio que el MCP rechazó.
     cambios:
-      obs.ok && !opts.neutra && ESCRIBEN.has(call.tool)
+      obs.ok && !opts.neutra && writes(call)
         ? [
             ...state.cambios,
-            { texto: frase(call, state.diagrama?.nombre), lienzo: TOCAN_EL_LIENZO.has(call.tool) },
+            { texto: call.tool === "manage_collaboration" ? obs.texto : frase(call, state.diagrama?.nombre), lienzo: TOCAN_EL_LIENZO.has(call.tool) || call.tool === "manage_collaboration" },
           ]
         : state.cambios,
     // El presupuesto mide TRABAJO: un turno que no llegó a tocar el modelo no lo
@@ -484,7 +489,7 @@ export function applyObservation(
     // fallos, que sí cuenta desde la segunda vez (#328).
     sinProgreso: opts.neutra
       ? state.sinProgreso
-      : obs.ok && ESCRIBEN.has(call.tool)
+      : obs.ok && progresses(call)
         ? 0
         : state.sinProgreso + 1,
     diagrama: (obs.ok && !opts.neutra && diagramaDe(call, obs.texto)) || state.diagrama,

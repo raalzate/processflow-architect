@@ -4,9 +4,12 @@ import type { ArtifactVersion, ArtifactLineage, Artifact } from "../agent-types"
 import type { ReferenceDoc } from "../reference-context";
 import type { Presence, PresenceInput } from "./presence";
 import type { DiscardedFieldEdit } from "./field-conflicts";
+import type { Participant } from "./participants";
+import type { PendingConnection } from "./document";
 import type { Choices, DiagramHistory, HistoryAction, HistoryActor, MergePreview } from "./history";
 
 export interface CollaborationWorkspace {
+  pendingConnections?: Record<string, PendingConnection[]>;
   history: DiagramHistory;
   snapshots: Record<string, SharedProject>;
   vectors: Record<string, string>;
@@ -38,6 +41,7 @@ export interface Capacity {
   reason: string;
 }
 export interface CollaborationStatus {
+  participants?: Participant[];
   projectId: string;
   fileId: string;
   owner: boolean;
@@ -61,6 +65,7 @@ export interface RoomOptions {
   externalAddresses?: string[];
 }
 export type CollaborationCommand =
+  | { type: "repair-connection"; fileId: string; branchId: string; viewId: string; edgeId: string; sourceId?: string; targetId?: string }
   | { type: "open"; fileId: string; initial: SharedProject; name?: string }
   | { type: "create"; fileId: string; initial: SharedProject; options: RoomOptions; name?: string }
   | { type: "join"; fileId: string; invitation: string; name?: string }

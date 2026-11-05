@@ -21,6 +21,7 @@ import type { ViewEdit } from "./view-edit";
 import { plano } from "./tipo-notacion";
 import type { ProjectActionRequest } from "./proyectos";
 import type { GraphData } from "../types";
+import type { CollaborationAppRequest } from "./collaboration-actions";
 
 /**
  * Una edición del grafo de una vista (feature 015, T3 #341). `view` es opcional
@@ -63,6 +64,7 @@ export interface CreateSubviewRequest {
 }
 
 export type AppActionRequest =
+  | CollaborationAppRequest
   | { kind: "delete-view"; name: string }
   | { kind: "rename-view"; name: string; newName: string }
   | CreateSubviewRequest
@@ -78,9 +80,9 @@ export const esAccionDeProyecto = (r: AppActionRequest): r is ProjectActionReque
 
 /** true → la petición edita el grafo de una vista (y no la vista como pestaña ni un proyecto). */
 export const esEdicionDeVista = (r: AppActionRequest): r is ViewEditRequest =>
-  r.kind !== "delete-view" && r.kind !== "rename-view" && r.kind !== "create-subview" && !esAccionDeProyecto(r);
+  r.kind !== "collaboration" && r.kind !== "delete-view" && r.kind !== "rename-view" && r.kind !== "create-subview" && !esAccionDeProyecto(r);
 
-export type AppActionResult = { ok: true; message: string } | { ok: false; error: string };
+export type AppActionResult = { ok: true; message: string; data?: unknown } | { ok: false; error: string };
 
 /** Vista tal como la conoce el renderer para resolver una acción. */
 export interface VistaConocida {

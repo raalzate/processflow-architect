@@ -14,6 +14,7 @@
  */
 
 import { z } from "zod";
+import { parseHistoryAction } from "../../src/lib/collaboration/history-validation";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -610,6 +611,25 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
   }
 
   // -- 1. Contexto: notaciones ------------------------------------------------
+  server.registerTool("manage_collaboration", {
+    title: "Ramas, versiones y trabajo compartido",
+    description: "Gestiona el proyecto vinculado de la ventana actual. Primero command=inspect: devuelve ramas, árbol de versiones, solicitudes de revisión, permisos, personas y alternativas resueltas automáticamente. switch cambia de rama; preview abre commitId en solo lectura; return vuelve al trabajo actual. history aplica action: branch (branchId,name,fromCommit), commit (branchId,scopes,message), propose (branchId,targetId,commitId,scopes,message), pull (branchId,commitId,scopes,expectedHead,choices), merge (proposalId,expectedHead,choices), restore (branchId,commitId,scopes), reject (proposalId), permission (memberId,permission) o editors (branchId,editors). Cada action requiere id único; el motor conserva cambios locales al traer versiones y rechaza conflictos no resueltos. Obtén expectedVector con inspect para operaciones que escriben borradores. preview-merge compara branchId,commitId,scopes,choices antes de integrar. resolve-field requiere editId y keep=current|discarded. La IA invitada puede leer Principal y enviar propuestas pero solo el anfitrión puede modificarla, incluso si tiene permisos humanos delegados. No cambia de proyecto ni de ventana automáticamente.",
+    inputSchema: {
+      command: z.enum(["inspect", "switch", "preview", "return", "history", "preview-merge", "resolve-field", "repair-connection"]),
+      viewId: z.string().optional(), edgeId: z.string().optional(), sourceId: z.string().optional(), targetId: z.string().optional(),
+      branchId: z.string().optional(), commitId: z.string().optional(),
+      action: z.record(z.string(), z.unknown()).optional(), scopes: z.array(z.string()).optional(),
+      choices: z.record(z.string(), z.enum(["ours", "theirs"])).optional(), expectedVector: z.string().optional(),
+      editId: z.string().optional(), keep: z.enum(["current", "discarded"]).optional(),
+    },
+  }, async ({ command, action, ...params }) => {
+    if (opts.focusScope && command !== "inspect") return fail("Este chat de una caja no puede cambiar ramas ni modificar el historial. Usa el chat del proyecto para hacerlo.");
+    if (!opts.actOnApp) return fail("La gestión de ramas requiere la aplicación de escritorio conectada.");
+    try {
+      const result = await opts.actOnApp({ kind: "collaboration", command, ...params, ...(action ? { action: parseHistoryAction(action) } : {}) }, { timeoutMs: 15_000 });
+      return result.ok ? text(result.message + (result.data === undefined ? "" : `\n${JSON.stringify(result.data)}`)) : fail(result.error);
+    } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+  });
 
   server.registerTool(
     "list_notations",

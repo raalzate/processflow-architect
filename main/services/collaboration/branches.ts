@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { SharedDocument } from "../../../src/lib/collaboration/document";
 import {
   canEditBranch,
@@ -39,6 +39,7 @@ export interface BranchRecovery {
   snapshot?: SharedProject;
 }
 export interface WorkspaceView {
+  pendingConnections: Record<string, ReturnType<SharedDocument["pendingConnections"]>>;
   history: DiagramHistory;
   snapshots: Record<string, SharedProject>;
   vectors: Record<string, string>;
@@ -77,8 +78,17 @@ export class BranchStore {
   private recoveries: BranchRecovery[] = [];
   private remoteVectors: Record<string, string> = {};
   private committing = false;
+  private received = new WeakMap<SharedDocument, Set<string>>();
+  private spares = new Map<string, SharedDocument>();
+  private source = new WeakMap<SharedDocument, SharedDocument>();
+  private hasDelta(doc: SharedDocument, raw: string) { return this.received.get(doc)?.has(createHash("sha256").update(raw).digest("hex")) ?? false; }
+  private rememberDelta(doc: SharedDocument, raw: string) {
+    const seen = this.received.get(doc) ?? new Set<string>();
+    if (seen.size >= 128) seen.delete(seen.values().next().value!);
+    seen.add(createHash("sha256").update(raw).digest("hex")); this.received.set(doc, seen);
+  }
   private sharedChanged = () => {
-    if (this.history && !this.committing) {
+    if (this.history && !this.committing && this.documents.get("shared") === this.shared) {
       this.persist();
       this.changed();
     }
@@ -104,7 +114,7 @@ export class BranchStore {
       this.remoteVectors = saved.remoteVectors;
       for (const [id, update] of Object.entries(saved.documents)) {
         const doc = id === "shared" ? shared : new SharedDocument();
-        doc.receiveRemote(decode(update));
+        doc.receiveArchive(decode(update));
         this.documents.set(id, doc);
       }
     }
@@ -150,11 +160,15 @@ export class BranchStore {
     writePrivateJson(this.file, this.pack(history, docs, pending));
     this.committing = true;
     try {
-      for (const [id, previous] of this.documents)
-        if (id !== "shared" && docs.get(id) !== previous) previous.destroy();
-      const previousShared = this.documents.get("shared");
-      if (previousShared && previousShared !== this.shared && docs.get("shared") !== previousShared)
-        previousShared.destroy();
+      for (const [id, previous] of this.documents) if (docs.get(id) !== previous) {
+        const next = docs.get(id);
+        this.spares.get(id)?.destroy(); this.spares.delete(id);
+        // Sólo se recicla una réplica cuyo estado completo forma parte de la nueva.
+        // Una copia autoritativa que rechazó cambios nunca hereda la candidata anterior.
+        if (previous !== this.shared && next && this.source.get(next) === previous) {
+          previous.clearUndo(); this.spares.set(id, previous);
+        } else if (previous !== this.shared) previous.destroy();
+      }
       this.history = history;
       this.documents = docs;
       this.pending = pending;
@@ -169,6 +183,7 @@ export class BranchStore {
     return this.history
       ? {
           history: this.history,
+          pendingConnections: Object.fromEntries([...this.documents].map(([id, d]) => [id, d.pendingConnections()])),
           snapshots: this.snapshots(),
           vectors: this.vectors(),
           actor,
@@ -188,9 +203,10 @@ export class BranchStore {
     return Object.fromEntries([...this.documents].map(([id, d]) => [id, encode(d.vector())]));
   }
   private cloneDoc(id: string) {
-    const doc = new SharedDocument(),
+    const doc = this.spares.get(id) ?? new SharedDocument(),
       original = this.documents.get(id);
-    if (original) doc.receive(original.update());
+    this.spares.delete(id);
+    if (original) { doc.receive(original.update(doc.vector())); this.source.set(doc, original); }
     return doc;
   }
   patch(id: string, before: SharedProject, after: SharedProject, actor: HistoryActor) {
@@ -208,6 +224,14 @@ export class BranchStore {
     }
     this.changed();
   }
+  repairConnection(id: string, viewId: string, edgeId: string, actor: HistoryActor, sourceId?: string, targetId?: string) {
+    if (!this.history || !canEditBranch(this.history, id, actor, new Date().toISOString())) throw new Error("No tienes permiso para editar esta rama.");
+    const doc = this.cloneDoc(id);
+    try { doc.repairConnection(viewId, edgeId, sourceId, targetId); this.transaction(this.history, new Map([...this.documents, [id, doc]]), this.pending); }
+    catch (error) { if (this.documents.get(id) !== doc) doc.destroy(); throw error; }
+    this.changed();
+  }
+  liveBytes() { return [...this.documents.values()].reduce((bytes, d) => bytes + Buffer.byteLength(JSON.stringify(d.snapshot())), 0); }
   resolveFieldConflict(id: string, editId: string, keep: "current" | "discarded", actor: HistoryActor) {
     if (!this.history || !canEditBranch(this.history, id, actor, new Date().toISOString()))
       throw new Error("No tienes permiso para editar esta rama.");
@@ -341,9 +365,11 @@ export class BranchStore {
         rejected.push(id);
         return;
       }
+      if (this.hasDelta(current, raw)) return;
       const doc = this.cloneDoc(id);
       try {
-        doc.receiveRemote(decode(raw));
+        if (!doc.receiveRemote(decode(raw))) { this.rememberDelta(current, raw); this.spares.set(id, doc); return; }
+        this.rememberDelta(doc, raw);
         this.transaction(this.history!, new Map([...this.documents, [id, doc]]), this.pending);
       } catch (error) {
         doc.destroy();
@@ -390,12 +416,16 @@ export class BranchStore {
     )
       return;
     const docs = new Map(this.documents);
+    let documentsChanged = false;
     for (const [id, raw] of Object.entries(response.updates)) {
       const denied = response.rejected.includes(id),
         previous = this.documents.get(id);
-      const doc = new SharedDocument();
-      if (previous && !denied) doc.receive(previous.update());
-      doc.receiveRemote(decode(raw));
+      if (previous && !denied && this.hasDelta(previous, raw)) continue;
+      const doc = previous && !denied ? this.cloneDoc(id) : new SharedDocument();
+      // El anfitrión autenticado puede enviar la copia inicial completa, mayor que una edición.
+      const mutated = doc.receiveRemote(decode(raw), 64 * 1024 ** 2);
+      if (previous && !denied && !mutated) { this.rememberDelta(previous, raw); this.spares.set(id, doc); continue; }
+      this.rememberDelta(doc, raw); documentsChanged = true;
       if (denied && previous && encode(previous.update()) !== encode(doc.update()))
         this.recoveries.push({
           id: randomUUID(),
@@ -418,7 +448,9 @@ export class BranchStore {
           snapshot: branchId ? (this.documents.get(branchId)?.snapshot() ?? op?.drafts[branchId]) : undefined,
         });
       }
+    const sameVectors = JSON.stringify(this.remoteVectors) === JSON.stringify(response.vectors);
     this.remoteVectors = response.vectors;
+    if (!documentsChanged && !response.history && !response.receipts.length && !response.rejected.length && sameVectors) return;
     // Cada respuesta autoritativa trae su revisión; pendientes siguen guardados y se reintentan.
     let visible = history;
     for (const op of pending)
@@ -437,6 +469,7 @@ export class BranchStore {
     this.changed();
   }
   close() {
+    for (const doc of this.spares.values()) doc.destroy(); this.spares.clear();
     this.shared.doc.off("update", this.sharedChanged);
     for (const doc of this.documents.values()) if (doc !== this.shared) doc.destroy();
   }
