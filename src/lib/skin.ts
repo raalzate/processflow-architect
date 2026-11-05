@@ -311,3 +311,31 @@ export function planoLegend(
     items,
   };
 }
+
+/**
+ * Categorías presentes en un diagrama: las de sus elementos sueltos. Un
+ * contenedor es un marco, no una pieza, y no entra en la leyenda.
+ */
+export function categoriasPresentes(
+  notation: NotationId | string | undefined,
+  elementos: Iterable<{ tipo: string; categoria?: unknown; contenedor: boolean }>
+): Set<PlanoCategory> {
+  const out = new Set<PlanoCategory>();
+  for (const e of elementos) if (!e.contenedor) out.add(categoriaDe(notation, e.tipo, e.categoria));
+  return out;
+}
+
+/**
+ * Encuadre de la lámina: el del contenido más la leyenda debajo. Es lo que
+ * recortan los exports para que la leyenda salga (FR-014). Sin leyenda, el
+ * mismo encuadre.
+ */
+export function boundsConLeyenda<B extends { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number }>(
+  bounds: B | null,
+  leyenda: PlanoLegendLayout | null
+): B | null {
+  if (!bounds || !leyenda) return bounds;
+  const maxX = Math.max(bounds.maxX, leyenda.x + leyenda.width);
+  const maxY = Math.max(bounds.maxY, leyenda.y + leyenda.height);
+  return { ...bounds, maxX, maxY, width: maxX - bounds.minX, height: maxY - bounds.minY };
+}

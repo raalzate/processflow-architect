@@ -155,6 +155,25 @@ describe("canvasToGraphData", () => {
     expect(graphDataToCanvas({ ...g, big_picture: { ...g.big_picture, nodos: [{ ...g.big_picture.nodos[0], icono: "  " }] } }).nodes.get("n2")?.icono).toBeUndefined();
   });
 
+  it("la categoría fijada para «Plano» (spec 026) va y vuelve; lo inválido o ausente no viaja", () => {
+    const nodes = new Map<string, DesignerNode>([
+      ["n1", { id: "n1", nombre: "Web", tipo_elemento: "Comando", estado_comparativo: "nuevo", categoria: "frontend", x: 0, y: 0 } as DesignerNode],
+      ["n2", { id: "n2", nombre: "Api", tipo_elemento: "Comando", estado_comparativo: "nuevo", x: 300, y: 0 } as DesignerNode],
+    ]);
+    const g = canvasToGraphData(nodes, new Map(), BASE);
+    const web = g.big_picture.nodos.find((n) => n.id === "n1")!;
+    const api = g.big_picture.nodos.find((n) => n.id === "n2")!;
+    expect(web.categoria).toBe("frontend");
+    expect("categoria" in api).toBe(false);
+    expect(graphDataToCanvas(g).nodes.get("n1")?.categoria).toBe("frontend");
+    const rara = { ...g, big_picture: { ...g.big_picture, nodos: [{ ...web, categoria: "rara" as never }] } };
+    expect(graphDataToCanvas(rara).nodes.get("n1")?.categoria).toBeUndefined();
+  });
+
+  it("preserva la skin plano del proyecto (spec 026)", () => {
+    expect(canvasToGraphData(new Map(), new Map(), { ...BASE, skin: "plano" }).skin).toBe("plano");
+  });
+
   it("preserva la skin del proyecto (spec 022) y no la inventa cuando falta", () => {
     expect(canvasToGraphData(new Map(), new Map(), { ...BASE, skin: "editorial" }).skin).toBe("editorial");
     expect(canvasToGraphData(new Map(), new Map(), BASE).skin).toBeUndefined();

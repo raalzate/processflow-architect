@@ -145,7 +145,7 @@
 
     /* Skin PLANO del lienzo (spec 026): la lámina técnica oscura. Es oscura en
        los dos temas —es la estética de la lámina, no la vista de trabajo—, así
-       que se define una sola vez y `.dark` no la toca. Cada categoría es borde,
+       que el tema oscuro repite estos mismos valores. Cada categoría es borde,
        trazo y texto de la píldora: se mide como texto (4,5:1) sobre el fondo
        en `skin-plano-contrast.test.ts`. */
     --pl-bg: 228 33% 7%;
@@ -282,6 +282,20 @@
     --ed-rule-solid: 224 8% 50%;
     --ed-accent: 19 83% 65%;
     --ed-link: 216 63% 66%;
+
+    /* Skin plano (spec 026): idéntica al tema claro —la lámina siempre es
+       oscura—. Se repite porque todo token mapeado vive en los dos temas. */
+    --pl-bg: 228 33% 7%;
+    --pl-grid: 226 18% 20%;
+    --pl-ink: 220 25% 93%;
+    --pl-muted: 220 13% 66%;
+    --pl-frontend: 190 80% 55%;
+    --pl-backend: 152 55% 52%;
+    --pl-datos: 255 85% 76%;
+    --pl-nube: 42 90% 58%;
+    --pl-seguridad: 350 80% 68%;
+    --pl-mensajeria: 25 85% 60%;
+    --pl-externo: 220 12% 66%;
 
     /* Barra lateral: `tailwind.config.ts` mapea estas variables desde siempre,
        pero nadie las definía y `bg-sidebar` resolvía a un hsl() inválido. */

@@ -13,7 +13,9 @@ import {
   PLANO_CONTAINER,
   PLANO_TOKENS,
   SKIN_LIST,
+  boundsConLeyenda,
   categoriaDe,
+  categoriasPresentes,
   edgeTreatment,
   leerCategoria,
   leerSkin,
@@ -107,8 +109,8 @@ describe("tratamiento de nodo y arista en plano (FR-009, FR-015)", () => {
         { tipo: db, focal: false },
       ])
     ).toBe(PLANO_CATEGORIES.backend.edge);
-    expect(planoEdgeCategory("c4", { tipo: db, focal: false })).toBe("datos");
-    expect(planoEdgeCategory("c4", { tipo: sis, focal: false, categoria: "nube" })).toBe("nube");
+    expect(planoEdgeCategory("c4", { tipo: db })).toBe("datos");
+    expect(planoEdgeCategory("c4", { tipo: sis, categoria: "nube" })).toBe("nube");
   });
 
   it("canónica y editorial no se enteran de la categoría", () => {
@@ -149,6 +151,32 @@ describe("leyenda (FR-013)", () => {
     }
   });
 
+  it("las categorías presentes salen de los elementos sueltos, no de los contenedores", () => {
+    const sis = typesWithRole("c4", "system")[0];
+    const db = typesWithRole("c4", "datastore")[0];
+    const set = categoriasPresentes("c4", [
+      { tipo: sis, contenedor: false },
+      { tipo: db, contenedor: false },
+      { tipo: sis, contenedor: false, categoria: "frontend" },
+      { tipo: db, contenedor: true },
+    ]);
+    expect([...set].sort()).toEqual(["backend", "datos", "frontend"]);
+  });
+
+  it("el encuadre de la lámina incluye la leyenda; sin leyenda no cambia (FR-014)", () => {
+    const l = planoLegend(["backend", "datos", "externo", "seguridad", "nube", "frontend", "mensajeria"], {
+      minX: 0,
+      maxY: 100,
+    });
+    const b = { minX: 0, minY: 0, maxX: 200, maxY: 100, width: 200, height: 100 };
+    const conL = boundsConLeyenda(b, l)!;
+    expect(conL.maxY).toBe(l!.y + l!.height);
+    expect(conL.maxX).toBeGreaterThanOrEqual(l!.x + l!.width);
+    expect(conL.height).toBe(conL.maxY - conL.minY);
+    expect(boundsConLeyenda(b, null)).toBe(b);
+    expect(boundsConLeyenda(null, l)).toBeNull();
+  });
+
   it("sin categorías no hay leyenda", () => {
     expect(planoLegend([], bounds)).toBeNull();
     expect(planoLegend(["backend"], null)).toBeNull();
@@ -174,6 +202,17 @@ describe("tokens de plano (FR-007, FR-016)", () => {
       expect(definidos.has(token), `--pl-${token} no está en :root`).toBe(true);
       expect(config.includes(`var(--pl-${token})`), `--pl-${token} no está en tailwind.config.ts`).toBe(true);
     }
+  });
+
+  it("la lámina es oscura en los dos temas: el bloque oscuro repite los mismos valores (FR-007)", () => {
+    const valores = (selector: string) => {
+      const i = css.indexOf(selector);
+      const bloque = css.slice(i, css.indexOf("\n  }", i));
+      return Object.fromEntries([...bloque.matchAll(/--pl-([a-z0-9-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+    };
+    const claro = valores(":root {");
+    expect(Object.keys(claro).sort()).toEqual([...PLANO_TOKENS].sort());
+    expect(valores(".dark {")).toEqual(claro);
   });
 
   it("el lienzo plano redefine el cromo y usa monoespaciada", () => {

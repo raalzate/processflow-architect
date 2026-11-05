@@ -26,6 +26,7 @@ import { docsParaGuardar, type ElementDoc } from "@/lib/element-docs";
 import { conFuenteSeparada } from "@/lib/source-docs";
 import { estiloParaGuardar, normalizarEstilo, type ElementStyle } from "@/lib/element-style";
 import { normalizarColumnas, type TableColumn } from "@/lib/mer/table-box";
+import { leerCategoria, type PlanoCategory } from "@/lib/skin";
 import {
   isNotationContainer,
   sizeOfType,
@@ -54,6 +55,8 @@ export interface DesignerNode {
   borderColor?: string;
   /** Icono de tecnología del catálogo (spec 025); vale para nodo y contenedor. */
   icono?: string;
+  /** Categoría fijada para la skin «Plano» (spec 026); sólo nodos sueltos. */
+  categoria?: PlanoCategory;
   /**
    * Estilo visual de la caja (tipografía, alineación, colores). Vale igual para
    * un nodo y para un CONTENEDOR: al guardar viaja a `Agregado.estilo`.
@@ -324,6 +327,8 @@ function toDomainNode(n: DesignerNode): Omit<GraphNode, "agregado"> {
     color: n.color,
     borderColor: n.borderColor,
     icono: n.icono,
+    // Sin categoría fijada no viaja el campo: la deduce el tipo al dibujar.
+    ...(n.categoria ? { categoria: n.categoria } : {}),
     estilo: estiloParaGuardar(n.estilo),
     metadata: n.metadata,
     spec: sanitizeSpec(n.spec),
@@ -460,6 +465,8 @@ function hydrateNode(
     color: n.color,
     borderColor: n.borderColor,
     icono: iconoGuardado(n.icono),
+    // Un valor que no es una de las siete categorías se descarta: manda el tipo.
+    categoria: leerCategoria((n as { categoria?: unknown }).categoria),
     estilo: normalizarEstilo((n as { estilo?: unknown }).estilo),
     metadata: normalizarLista(n.metadata),
     spec: sanitizeSpec(n.spec),
