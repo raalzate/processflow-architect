@@ -63,6 +63,33 @@ export function filterByOrg(files: SavedFile[], filtro: OrgFilter): SavedFile[] 
   return files.filter((f) => orgOf(f) === filtro);
 }
 
+/**
+ * Organización con la que nace un proyecto creado en la app (#691). Quien está
+ * mirando una organización y crea un proyecto lo quiere AHÍ: si naciera sin
+ * `orgId`, el propio filtro lo escondería en el mismo instante en que se abre.
+ * «Todas» y «Sin organización» no eligen ninguna, así que no se inventa.
+ */
+export function orgForNewProject(filtro: OrgFilter, explicita?: string | null): string | undefined {
+  // Quien NOMBRA la organización (el MCP) decide, incluso `null` = «ninguna»; sólo
+  // cuando nadie la nombra se toma la que está mirando el humano.
+  if (explicita !== undefined) return explicita?.trim() || undefined;
+  if (filtro === ORG_TODAS || filtro === null) return undefined;
+  return filtro;
+}
+
+/**
+ * Proyectos que ofrece el selector del header: los que deja el filtro MÁS el activo
+ * si el filtro lo dejó afuera (#691). El selector anuncia dónde está parado el
+ * humano; decir «Sin proyectos en X» con un proyecto abierto en el lienzo es mentir
+ * sobre el estado, y hace creer que el trabajo se perdió.
+ */
+export function selectorFiles(files: SavedFile[], filtro: OrgFilter, currentFileId: string | null): SavedFile[] {
+  const visibles = filterByOrg(files, filtro);
+  if (!currentFileId || visibles.some((f) => f.id === currentFileId)) return visibles;
+  const activo = files.find((f) => f.id === currentFileId);
+  return activo ? [...visibles, activo] : visibles;
+}
+
 /** Texto del chip del header. */
 export function orgChipLabel(filtro: OrgFilter, names: Record<string, string> = {}): string {
   if (filtro === ORG_TODAS) return "Todas";

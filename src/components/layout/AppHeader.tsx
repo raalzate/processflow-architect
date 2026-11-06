@@ -93,7 +93,7 @@ import {
   ORG_TODAS,
   SIN_ORG_LABEL,
   groupByOrg,
-  filterByOrg,
+  selectorFiles,
   orgChipLabel,
   emptyOrgHint,
   orgOptions,
@@ -329,7 +329,12 @@ const FileManagement: React.FC<
     () => orgOptions(savedFiles, mcpOrgs.orgs.map((o) => o.slug)),
     [savedFiles, mcpOrgs.orgs]
   );
-  const visibles = useMemo(() => filterByOrg(savedFiles, orgFilter), [savedFiles, orgFilter]);
+  // El activo entra aunque el filtro lo deje afuera (#691): el selector no puede
+  // decir «Sin proyectos en X» con un proyecto abierto en el lienzo.
+  const visibles = useMemo(
+    () => selectorFiles(savedFiles, orgFilter, currentFileId),
+    [savedFiles, orgFilter, currentFileId]
+  );
   const grupos = useMemo(() => groupByOrg(visibles, orgNames), [visibles, orgNames]);
   // El vacío se anuncia CON su salida: un desplegable mudo obliga a adivinar que la
   // culpa es del filtro (misma garantía que «el lienzo nunca queda en blanco»).
