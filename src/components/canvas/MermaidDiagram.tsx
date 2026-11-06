@@ -7,7 +7,7 @@
  * horneados, no los hereda.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { configMermaidParaTema } from "@/lib/mermaid/render-config";
 import type { EffectiveTheme } from "@/lib/theme";
@@ -52,10 +52,15 @@ function useTemaDelDocumento(): EffectiveTheme {
 
 let idCounter = 0;
 
+export async function renderMermaidSvg(code: string, tema = temaDelDocumento()): Promise<string> {
+  const mermaid = await getMermaid(tema);
+  const { svg } = await mermaid.render("mmd-" + ++idCounter, code.trim());
+  return svg;
+}
+
 export function MermaidDiagram({ code }: { code: string }) {
   const [svg, setSvg] = useState<string>("");
   const [error, setError] = useState<string>("");
-  const idRef = useRef(`mmd-${++idCounter}`);
   const tema = useTemaDelDocumento();
 
   useEffect(() => {
@@ -65,8 +70,7 @@ export function MermaidDiagram({ code }: { code: string }) {
     if (!code?.trim()) return;
     (async () => {
       try {
-        const mermaid = await getMermaid(tema);
-        const { svg } = await mermaid.render(idRef.current, code.trim());
+        const svg = await renderMermaidSvg(code, tema);
         if (!cancelled) setSvg(svg);
       } catch (e: any) {
         if (!cancelled) setError(e?.message || "No se pudo renderizar el diagrama.");

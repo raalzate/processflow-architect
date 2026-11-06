@@ -19,6 +19,7 @@ import {
   type DesignerLink,
   type DesignerNode,
 } from "@/components/graph/designer/serialize";
+import { croppedViewBox } from "@/components/graph/designer/export-canvas";
 import { CANVAS_CHROME } from "@/lib/canvas-chrome";
 import type { DiffStatusKind, ElementDiffMark } from "@/lib/collaboration/graph-diff";
 import { EDGE_MARKER_SHAPES } from "@/lib/edge-relations";
@@ -174,6 +175,7 @@ export interface ReadOnlyDiagramDashboardProps {
   graph: GraphData;
   label: string;
   sideLabel: string;
+  exporting?: boolean;
   nodeDiffs?: Map<string, ElementDiffMark>;
   linkDiffs?: Map<string, ElementDiffMark>;
 }
@@ -182,6 +184,7 @@ export function ReadOnlyDiagramDashboard({
   graph,
   label,
   sideLabel,
+  exporting = false,
   nodeDiffs,
   linkDiffs,
 }: ReadOnlyDiagramDashboardProps) {
@@ -457,6 +460,9 @@ export function ReadOnlyDiagramDashboard({
   const vh = Math.max(viewport.h, 240);
   const viewW = vw / cam.zoom;
   const viewH = vh / cam.zoom;
+  const frame = exporting
+    ? bounds ? croppedViewBox(bounds, 40) : { x: 0, y: 0, w: 480, h: 270 }
+    : { x: cam.x, y: cam.y, w: viewW, h: viewH };
 
   const sideDiffCount = (nodeDiffs?.size ?? 0) + (linkDiffs?.size ?? 0);
 
@@ -478,7 +484,7 @@ export function ReadOnlyDiagramDashboard({
       className={cn(
         "relative h-full min-h-[260px] w-full overflow-hidden rounded-lg border select-none",
         skinActiva === "editorial" ? "bg-ed-paper" : "bg-canvas",
-        isPanning ? "cursor-grabbing" : "cursor-grab",
+        exporting ? "min-h-0 rounded-none border-0 [&_[data-dashboard-overlay]]:hidden" : isPanning ? "cursor-grabbing" : "cursor-grab",
       )}
     >
       {/* Cabecera flotante compacta sobre el lienzo: etiqueta Antes/Después y conteo */}
@@ -495,7 +501,7 @@ export function ReadOnlyDiagramDashboard({
         </span>
       </div>
 
-      {nodes.size === 0 ? (
+      {!exporting && nodes.size === 0 ? (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <p className="rounded-md border border-dashed bg-card/90 px-4 py-2 text-xs text-muted-foreground">
             Esta vista no tiene componentes en {sideLabel.toLowerCase()}.
@@ -507,7 +513,7 @@ export function ReadOnlyDiagramDashboard({
         <svg
           width="100%"
           height="100%"
-          viewBox={`${cam.x} ${cam.y} ${viewW} ${viewH}`}
+          viewBox={`${frame.x} ${frame.y} ${frame.w} ${frame.h}`}
           role="img"
           aria-label={label}
           data-skin={skinActiva}
@@ -612,14 +618,14 @@ export function ReadOnlyDiagramDashboard({
             )}
           </defs>
 
-          <rect
+          {!exporting && <rect
             x={cam.x}
             y={cam.y}
             width={viewW}
             height={viewH}
             fill={`url(#${uid}-grid-major)`}
             pointerEvents="none"
-          />
+          />}
 
           {/* Capa 1: Contenedores */}
           <g>

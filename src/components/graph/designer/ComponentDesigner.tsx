@@ -189,6 +189,7 @@ import {
 } from "@/lib/element-docs";
 import { ACCEPTED_REFERENCE_TYPES, extractFileText } from "@/lib/pdf-text";
 import { applyGraphFilters, hasActiveFilters } from "@/lib/graph-filters";
+import { DownloadViewsMenuItem } from "@/components/views/ViewsArchive";
 import { useViews } from "@/context/ViewsContext";
 import { useReference } from "@/context/ReferenceContext";
 import { readMcpPrefs } from "@/lib/mcp-settings";
@@ -5477,23 +5478,25 @@ export const ComponentDesigner: React.FC<{
               </DropdownMenuSub>
 
               <DropdownMenuSub>
-                <DropdownMenuSubTrigger disabled={nodes.size === 0}>
+                <DropdownMenuSubTrigger>
                   <Download className="mr-2 h-4 w-4" /> Exportar
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-56">
-                  <DropdownMenuItem onClick={handleExportSvg}>
+                  <DropdownMenuItem disabled={nodes.size === 0} onClick={handleExportSvg}>
                     SVG · vectorial (calidad infinita)
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExportPng}>
+                  <DropdownMenuItem disabled={nodes.size === 0} onClick={handleExportPng}>
                     PNG · imagen (para pegar en documentos)
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {/* Página autocontenida (spec 024): un preset por destino. */}
                   {PRESET_LIST.map((p) => (
-                    <DropdownMenuItem key={p.id} onClick={() => handleExportHtml(p.id)} title={p.descripcion}>
+                    <DropdownMenuItem key={p.id} disabled={nodes.size === 0} onClick={() => handleExportHtml(p.id)} title={p.descripcion}>
                       HTML · {p.label.toLowerCase()} (página que se abre sola)
                     </DropdownMenuItem>
                   ))}
+                  <DropdownMenuSeparator />
+                  <DownloadViewsMenuItem />
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
 

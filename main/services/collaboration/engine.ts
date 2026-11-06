@@ -13,7 +13,7 @@ import { randomBytes, randomUUID, createHash, timingSafeEqual } from "node:crypt
 import { freemem, networkInterfaces } from "node:os";
 import { performance } from "node:perf_hooks";
 import { SharedDocument } from "../../../src/lib/collaboration/document";
-import { estimateCapacity, Seats, NetworkLoad } from "../../../src/lib/collaboration/capacity";
+import { estimateCapacity, Seats, NetworkLoad, MIN_ROOM_CAPACITY } from "../../../src/lib/collaboration/capacity";
 import { withStableGraphIds } from "../../../src/lib/collaboration/identity";
 import type {
   Capacity,
@@ -327,7 +327,7 @@ export class CollaborationEngine {
     if (extraBytes) {
       room.status.capacity.projectBytes += extraBytes;
       room.status.capacity.limit = Math.max(
-        1,
+        MIN_ROOM_CAPACITY,
         Math.min(room.status.capacity.limit, Math.floor((freemem() * 0.2) / Math.max(1, extraBytes * 6))),
       );
     }

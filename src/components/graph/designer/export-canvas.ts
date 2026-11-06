@@ -79,7 +79,10 @@ export function downloadDataUrl(dataUrl: string, filename: string): void {
  * de su especificación por acá en vez de abrir una segunda ruta de guardado.
  */
 export function downloadText(content: string, filename: string, mime: string): void {
-  const blob = new Blob([content], { type: mime });
+  downloadBlob(new Blob([content], { type: mime }), filename);
+}
+
+export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -101,7 +104,8 @@ export function downloadText(content: string, filename: string, mime: string): v
 export function serializarLienzo(
   svg: SVGSVGElement,
   bounds: ContentBounds | null,
-  fondo = "#ffffff"
+  fondo = "#ffffff",
+  fitCurrentViewBox = false,
 ): string {
   const clone = svg.cloneNode(true) as SVGSVGElement;
   inlineComputedStyles(svg, clone);
@@ -112,6 +116,13 @@ export function serializarLienzo(
     clone.setAttribute("viewBox", `${x} ${y} ${w} ${h}`);
     clone.setAttribute("width", String(w));
     clone.setAttribute("height", String(h));
+  }
+  if (fitCurrentViewBox && !bounds) {
+    const { width, height } = svg.viewBox.baseVal;
+    clone.setAttribute("width", String(width));
+    clone.setAttribute("height", String(height));
+    clone.style.removeProperty("width");
+    clone.style.removeProperty("height");
   }
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");

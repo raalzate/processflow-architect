@@ -1,5 +1,7 @@
 import type { Capacity, PeerRoute } from "./types";
 
+export const MIN_ROOM_CAPACITY = 5; // Incluye al anfitrión.
+
 export interface RoutePathMeasurement {
   route: PeerRoute;
   cwnd: number;
@@ -23,14 +25,14 @@ export function estimateCapacity(input: {
   const memory = Math.floor(Math.max(0, input.freeMemoryBytes * 0.25) / memoryPerPeer);
   // Reserve most of each second for the local editor and background work.
   const cpu = Math.floor(120 / Math.max(0.25, input.mergeMs));
-  const hostLimit = Math.max(1, Math.floor(Math.min(memory, cpu)));
+  const hostLimit = Math.max(MIN_ROOM_CAPACITY, Math.min(memory, cpu));
   const hasUpdateRate =
     typeof input.updateBytesPerSecond === "number" &&
     Number.isFinite(input.updateBytesPerSecond) &&
     input.updateBytesPerSecond > 0;
 
   if (input.routeAware) {
-    const hostGuestMax = Math.max(0, hostLimit - 1);
+    const hostGuestMax = hostLimit - 1;
     const hasDirect =
       hasUpdateRate &&
       typeof input.directUploadBytesPerSecond === "number" &&
@@ -79,7 +81,7 @@ export function estimateCapacity(input: {
   const network = networkMeasured
     ? 1 + Math.floor((input.uploadBytesPerSecond! * 0.5) / input.updateBytesPerSecond!)
     : Infinity;
-  const limit = Math.max(1, Math.floor(Math.min(hostLimit, network)));
+  const limit = Math.max(MIN_ROOM_CAPACITY, Math.min(hostLimit, network));
   return {
     ...input,
     limit,
@@ -182,7 +184,8 @@ export class Seats {
   canEnter(id: string, route: PeerRoute = "direct"): boolean {
     if (this.members.has(id)) return true;
     if (this.count >= this.limit) return false;
-    if (route === "lan") return true;
+    // Los primeros cuatro invitados comparten el cupo base por cualquier ruta.
+    if (this.count < MIN_ROOM_CAPACITY || route === "lan") return true;
     const counts = this.countsByRoute();
     if (route === "direct" && this.directGuestLimit !== undefined && counts.direct >= this.directGuestLimit)
       return false;

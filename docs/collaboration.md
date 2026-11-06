@@ -113,9 +113,10 @@ Al crear la sala se mide el tamaño real del documento y el tiempo de cargar y
 proyectar una réplica, y se reserva un presupuesto de memoria y procesamiento.
 El presupuesto de CPU distingue la carga inicial del trabajo recurrente y se ajusta
 con el tiempo observado de servicio de las sincronizaciones siguientes.
-La estimación incluye al anfitrión. La admisión reserva el cupo de forma síncrona;
-una reconexión de la misma identidad no ocupa dos plazas. Las membresías se
-recuerdan, mientras que los cupos corresponden a conexiones activas.
+El cupo base es de cinco personas, incluido el anfitrión. Los primeros cuatro
+invitados pueden entrar por cualquier ruta. Para abrir plazas adicionales se
+aplican los presupuestos de recursos del anfitrión y de cada ruta. Una reconexión
+de la misma identidad conserva su plaza mientras siga activa.
 
 La capacidad se vuelve a evaluar durante la sesión y antes de admitir una nueva
 identidad. Una bajada detiene nuevas admisiones en la ruta saturada, sin expulsar a
@@ -126,8 +127,8 @@ relay nunca bloquea ni reduce el cupo disponible para quienes entran por LAN o p
 directo, y cuando una conexión por relay mejora a P2P directo en segundo plano libera
 automáticamente su plaza de relay. La ventana inicial de QUIC no se usa como límite de
 subida: mientras las rutas no acumulen tráfico suficiente se muestra una estimación en
-calibración. Tras calibrar, se reserva margen de red por ruta y se respeta el tope de
-memoria y procesamiento del anfitrión. El anfitrión cuenta una sola vez, fuera de las
+calibración. Para las plazas adicionales se reserva margen de red por ruta y se
+respeta el tope de memoria y procesamiento del anfitrión. El anfitrión cuenta una sola vez, fuera de las
 plazas que consumen subida. No se ejecuta un test de velocidad ni se garantiza un máximo
 exacto, y no hay una prueba de carga con cientos de participantes reales.
 

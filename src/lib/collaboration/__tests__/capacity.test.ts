@@ -15,7 +15,7 @@ describe("room capacity", () => {
       uploadBytesPerSecond: 1024 ** 2,
       updateBytesPerSecond: 1024,
     });
-    expect(small.limit).toBeGreaterThanOrEqual(1);
+    expect(small.limit).toBe(5);
     expect(large.limit).toBeGreaterThan(small.limit);
     expect(small.networkMeasured).toBe(false);
     expect(large.networkMeasured).toBe(true);
@@ -44,11 +44,35 @@ describe("room capacity", () => {
       freeMemoryBytes: 8 * 1024 ** 3,
       projectBytes: 1024,
       mergeMs: 1,
-      uploadBytesPerSecond: 65536,
+      uploadBytesPerSecond: 163840,
       updateBytesPerSecond: 16384,
     });
-    expect(capacity.limit).toBe(3);
+    expect(capacity.limit).toBe(6);
   });
+  it("admits the four base guests on any route even when resource budgets are lower", () => {
+    const capacity = estimateCapacity({
+      freeMemoryBytes: 128 * 1024 ** 2,
+      projectBytes: 8 * 1024 ** 2,
+      mergeMs: 100,
+      routeAware: true,
+      directUploadBytesPerSecond: 1024,
+      relayUploadBytesPerSecond: 1024,
+      updateBytesPerSecond: 16384,
+    });
+    expect(capacity.limit).toBe(5);
+
+    for (const route of ["lan", "direct", "relay"] as const) {
+      const seats = new Seats(capacity.limit, capacity);
+      for (let i = 0; i < 4; i++) expect(seats.enter("guest-" + i, route)).toBe(true);
+      expect(seats.count).toBe(5);
+      expect(seats.enter("guest-4", "lan")).toBe(false);
+
+      seats.resize(8, capacity);
+      expect(seats.enter("guest-4", "lan")).toBe(true);
+      if (route !== "lan") expect(seats.enter("guest-5", route)).toBe(false);
+    }
+  });
+
   it("conservatively accounts for the slow Internet path in a mixed room", () => {
     const load = new NetworkLoad();
     const mixed = load.budget(

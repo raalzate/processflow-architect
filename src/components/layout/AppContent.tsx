@@ -51,6 +51,7 @@ import { DEFAULT_NOTATION_ID, type NotationId } from "@/lib/notations";
 import { useViews } from "@/context/ViewsContext";
 import { ComponentDesigner } from "@/components/graph/designer/ComponentDesigner";
 import { ViewsTabBar } from "@/components/views/ViewsTabBar";
+import { ViewsArchiveProvider } from "@/components/views/ViewsArchive";
 import { assertAiHistoryAction } from "@/lib/mcp/collaboration-actions";
 import { canEditBranch, scopeOptions } from "@/lib/collaboration/history";
 import { CustomViewRenderer } from "@/components/views/CustomViewRenderer";
@@ -789,7 +790,7 @@ const WelcomeScreen = () => {
 // porque depende de `filteredNodes`. Esto es correcto y deseado.
 const GraphArea = React.memo(() => {
   const { currentFileId, graphData, handleDesignUpdate, savedFiles, orgOverview } = useGraphContext();
-  const { activeView } = useViews();
+  const { activeView, views } = useViews();
 
   // Elegir organización en el header muestra sus proyectos en tarjetas.
   if (orgOverview) {
@@ -805,36 +806,38 @@ const GraphArea = React.memo(() => {
   const kind = activeView?.kind ?? "design";
 
   return (
-    <div className="relative flex h-full w-full flex-col">
-      {/* Área de la vista activa */}
-      <div className="relative flex-1 overflow-hidden">
-        {kind === "design" && (
-          // overflow-hidden (no -auto): el scroll debe vivir SOLO dentro del canvas
-          // (canvasWrapperRef en ComponentDesigner). Si el wrapper externo scrollea,
-          // arrastra header/toolbar/zoom fuera de vista.
-          <div className="absolute inset-0 overflow-hidden">
-            {/* La vista "Modelo" usa la notación del documento (no el "ddd" fijo):
-                un proyecto BPMN se dibuja con paleta/simbología BPMN aquí mismo. */}
-            <ComponentDesigner
-              notation={activeView?.notation}
-              // La organización del proyecto decide qué perfil de marca viste
-              // la skin editorial (spec 023).
-              orgId={orgOf(savedFiles.find((f) => f.id === currentFileId) ?? {})}
-              onNotationChange={
-                currentFileId && graphData
-                  ? (n) => handleDesignUpdate(currentFileId, { ...graphData, notation: n })
-                  : undefined
-              }
-            />
-          </div>
-        )}
-        {kind === "graph" && activeView && <CustomViewRenderer view={activeView} />}
-        {kind === "mermaid" && activeView && <MermaidViewRenderer view={activeView} />}
-      </div>
+    <ViewsArchiveProvider graph={graphData} views={views}>
+      <div className="relative flex h-full w-full flex-col">
+        {/* Área de la vista activa */}
+        <div className="relative flex-1 overflow-hidden">
+          {kind === "design" && (
+            // overflow-hidden (no -auto): el scroll debe vivir SOLO dentro del canvas
+            // (canvasWrapperRef en ComponentDesigner). Si el wrapper externo scrollea,
+            // arrastra header/toolbar/zoom fuera de vista.
+            <div className="absolute inset-0 overflow-hidden">
+              {/* La vista "Modelo" usa la notación del documento (no el "ddd" fijo):
+                  un proyecto BPMN se dibuja con paleta/simbología BPMN aquí mismo. */}
+              <ComponentDesigner
+                notation={activeView?.notation}
+                // La organización del proyecto decide qué perfil de marca viste
+                // la skin editorial (spec 023).
+                orgId={orgOf(savedFiles.find((f) => f.id === currentFileId) ?? {})}
+                onNotationChange={
+                  currentFileId && graphData
+                    ? (n) => handleDesignUpdate(currentFileId, { ...graphData, notation: n })
+                    : undefined
+                }
+              />
+            </div>
+          )}
+          {kind === "graph" && activeView && <CustomViewRenderer view={activeView} />}
+          {kind === "mermaid" && activeView && <MermaidViewRenderer view={activeView} />}
+        </div>
 
-      {/* Barra de vistas (tabs) abajo */}
-      <ViewsTabBar />
-    </div>
+        {/* Barra de vistas (tabs) abajo */}
+        <ViewsTabBar />
+      </div>
+    </ViewsArchiveProvider>
   );
 });
 

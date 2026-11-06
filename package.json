@@ -1,6 +1,6 @@
 {
   "name": "processflow-architect",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "private": true,
   "license": "Apache-2.0",
   "description": "A comprehensive application designed to model, visualize, and manage process flows within complex architectural environments. It enables users to define end-to-end workflows",
@@ -151,6 +151,9 @@
       "target": "nsis",
       "icon": "assets/icon.ico",
       "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "deleteAppDataOnUninstall": false
     },
     "linux": {
       "target": "AppImage",

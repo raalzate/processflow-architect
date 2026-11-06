@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { DownloadViewsButton } from "@/components/views/ViewsArchive";
 import { IconAction } from "@/components/ui/icon-action";
 import { accion } from "@/lib/action-labels";
 import { useViews } from "@/context/ViewsContext";
@@ -452,6 +453,7 @@ export function ViewsTabBar() {
         </DropdownMenu>
       </div>
 
+      <DownloadViewsButton />
       <span className="shrink-0 border-l pl-2 text-2xs text-muted-foreground">
         Incluye vistas en el chat con <kbd className="rounded-md border bg-muted px-1">@</kbd>
       </span>
