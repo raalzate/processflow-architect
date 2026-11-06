@@ -132,6 +132,10 @@ function checkScopes(scopes: string[], ...projects: SharedProject[]) {
 }
 export function selectScopes(base: SharedProject, next: SharedProject, scopes: string[]): SharedProject {
   checkScopes(scopes, base, next);
+  return copyScopes(base, next, scopes);
+}
+
+function copyScopes(base: SharedProject, next: SharedProject, scopes: string[]): SharedProject {
   const result = clone(base);
   if (scopes.includes("design")) result.content = clone(next.content);
   for (const scope of scopes)
@@ -436,7 +440,8 @@ export function previewIncorporation(
     theirs = findCommit(s, commitId).snapshot;
   let base = clone(draft);
   for (const scope of scopes) {
-    base = selectScopes(base, commonBase(s, branch.head, commitId, scope).snapshot, [scope]);
+    // Una vista nueva puede existir solo en la versión recibida. mergeProjects valida la selección completa.
+    base = copyScopes(base, commonBase(s, branch.head, commitId, scope).snapshot, [scope]);
   }
   return mergeProjects(base, draft, theirs, scopes, choices);
 }

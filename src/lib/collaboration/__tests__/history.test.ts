@@ -8,6 +8,7 @@ import {
   scopeOptions,
   selectScopes,
   commonBase,
+  previewIncorporation,
   versionAt,
 } from "../history";
 import type { HistoryActor, HistoryAction } from "../history";
@@ -167,12 +168,17 @@ describe("ramas y versiones colaborativas", () => {
     expect(canEditBranch(out.state, "backend", guest, stamp.at)).toBe(false);
     expect(canEditBranch(s, "shared", { ...guest, role: "viewer" }, stamp.at)).toBe(false);
   });
-  it("las solicitudes fijan una versión y no toman los borradores posteriores", () => {
+  it("las solicitudes incorporan vistas nuevas de la versión guardada y conservan el trabajo del destino", () => {
     const s = createHistory(board(), host, stamp),
-      draft = modify(board(), "nombre", "Revisado");
+      draft = modify(board(), "nombre", "Revisado"),
+      newView = { ...draft.customViews[0], id: "backend", name: "Backend" },
+      scopes = ["design", "view:backend"],
+      mainDraft = board();
+    mainDraft.customViews[0].mermaidCode = "graph TD; M-->N";
+    draft.customViews.push(newView);
     let out = executeHistory(
       s,
-      { type: "commit", id: "c1", branchId: "shared", scopes: ["design"], message: "Listo" },
+      { type: "commit", id: "c1", branchId: "shared", scopes, message: "Listo" },
       guest,
       { shared: draft },
       stamp.at,
@@ -185,21 +191,29 @@ describe("ramas y versiones colaborativas", () => {
         branchId: "shared",
         targetId: "main",
         commitId: "c1",
-        scopes: ["design"],
+        scopes,
         message: "Revisar",
       },
       guest,
       { shared: modify(draft, "nombre", "Todavía no") },
       stamp.at,
     );
+    const preview = previewIncorporation(out.state, "main", "c1", mainDraft, scopes);
+    expect(preview.conflicts).toEqual([]);
+    expect(preview.dependencies).toEqual([]);
+    expect(preview.project.customViews).toEqual([...mainDraft.customViews, newView]);
+    expect(() => previewIncorporation(out.state, "main", "c1", mainDraft, ["view:inventada"])).toThrow(
+      /Selecciona vistas válidas/,
+    );
     const merged = executeHistory(
       out.state,
       { type: "merge", id: "m1", proposalId: "q1", expectedHead: "initial", choices: {} },
       host,
-      { main: board() },
+      { main: mainDraft },
       stamp.at,
     );
     expect(merged.writes.main.content.big_picture.nodos![0].nombre).toBe("Revisado");
+    expect(merged.writes.main).toEqual(preview.project);
     expect(merged.state.proposals[0].status).toBe("merged");
     expect(() =>
       executeHistory(
