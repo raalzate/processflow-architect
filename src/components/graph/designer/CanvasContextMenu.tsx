@@ -14,6 +14,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { dropdownViewportPadding } from "@/components/ui/dropdown-viewport";
 
 export interface CanvasMenuItem {
   id: string;
@@ -91,10 +92,11 @@ export const CanvasContextMenu: React.FC<{
   const alto = items.length * 32 + items.filter((i) => i.separatorBefore).length * 9 + 10;
   const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-  const width = Math.min(MENU_W, vw - 16);
-  const maxHeight = Math.min(384, vh - 16);
-  const left = Math.max(8, Math.min(x, vw - width - 8));
-  const top = Math.max(8, Math.min(y, vh - Math.min(alto, maxHeight) - 8));
+  const padding = dropdownViewportPadding;
+  const width = Math.min(MENU_W, vw - padding.left - padding.right);
+  const maxHeight = Math.min(384, vh - padding.top - padding.bottom);
+  const left = Math.max(padding.left, Math.min(x, vw - width - padding.right));
+  const top = Math.max(padding.top, Math.min(y, vh - Math.min(alto, maxHeight) - padding.bottom));
 
   return (
     <div
