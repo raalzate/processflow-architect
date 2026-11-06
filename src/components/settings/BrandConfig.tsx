@@ -11,6 +11,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Palette, Globe, Save, Trash2, Wand2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -219,20 +220,18 @@ export function BrandConfig() {
       <CardContent className="space-y-5">
         <div className="grid gap-2 sm:grid-cols-[200px_1fr] sm:items-center">
           <Label htmlFor="brand-destino">Organización</Label>
-          <select
-            id="brand-destino"
-            value={destino}
-            onChange={(e) => setDestino(e.target.value)}
-            className="h-9 rounded-md border bg-background px-2 text-sm"
-          >
-            <option value={PERFIL_POR_DEFECTO_ID}>Por defecto (proyectos sin organización)</option>
-            {orgs.map((o) => (
-              <option key={o.slug} value={o.slug}>
-                {o.nombre}
-                {perfiles.some((p) => p.orgId === o.slug) ? " · con marca" : ""}
-              </option>
-            ))}
-          </select>
+          <Select value={destino} onValueChange={setDestino}>
+            <SelectTrigger id="brand-destino" className="h-9 min-w-0"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={PERFIL_POR_DEFECTO_ID}>Por defecto (proyectos sin organización)</SelectItem>
+              {orgs.map((o) => (
+                <SelectItem key={o.slug} value={o.slug}>
+                  {o.nombre}
+                  {perfiles.some((p) => p.orgId === o.slug) ? " · con marca" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Proponer desde el sitio */}

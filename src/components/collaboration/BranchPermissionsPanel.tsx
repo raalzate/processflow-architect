@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { selectStyle } from "@/components/collaboration/branch-utils";
 import type { Branch, DiagramHistory, HistoryAction } from "@/lib/collaboration/history";
 import type { Presence } from "@/lib/collaboration/presence";
 import type { CollaborationStatus } from "@/lib/collaboration/types";
@@ -57,13 +57,10 @@ export function BranchPermissionsPanel({
         Solo el anfitrión concede o revoca estos permisos.
       </p>
       <Label htmlFor="permission-person">Persona</Label>
-      <select
-        id="permission-person"
-        className={`${selectStyle} w-full`}
+      <Select
         value={chosenMember}
-        onChange={e => {
-          const id = e.target.value,
-            p = deRegistro(history.permissions, id);
+        onValueChange={id => {
+          const p = deRegistro(history.permissions, id);
           setChosenMember(id);
           setMergePermission(!!p?.mergeMain);
           setEditPermission(!!p?.editMain);
@@ -73,16 +70,20 @@ export function BranchPermissionsPanel({
         }}
         required
       >
-        <option value="">Selecciona una persona</option>
-        {status.members
-          ?.filter(m => !m.revoked)
-          .map((m, i) => (
-            <option key={m.id} value={m.id}>
-              {m.name ?? peers.find(p => p.id.startsWith(m.id))?.name ?? `Participante ${i + 1}`} (
-              {m.role === "viewer" ? "Lectura" : "Edición"})
-            </option>
-          ))}
-      </select>
+        <SelectTrigger id="permission-person">
+          <SelectValue placeholder="Selecciona una persona" />
+        </SelectTrigger>
+        <SelectContent>
+          {status.members
+            ?.filter(m => !m.revoked)
+            .map((m, i) => (
+              <SelectItem key={m.id} value={m.id}>
+                {m.name ?? peers.find(p => p.id.startsWith(m.id))?.name ?? `Participante ${i + 1}`} (
+                {m.role === "viewer" ? "Lectura" : "Edición"})
+              </SelectItem>
+            ))}
+        </SelectContent>
+      </Select>
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -111,21 +112,22 @@ export function BranchPermissionsPanel({
         onChange={e => setPermissionUntil(e.target.value)}
       />
       <Label htmlFor="permission-proposal">Limitar a una solicitud de fusión</Label>
-      <select
-        id="permission-proposal"
-        className={`${selectStyle} w-full`}
-        value={proposalLimit}
-        onChange={e => setProposalLimit(e.target.value)}
+      <Select
+        value={proposalLimit ? "proposal:" + proposalLimit : "any"}
+        onValueChange={value => setProposalLimit(value === "any" ? "" : value.slice("proposal:".length))}
       >
-        <option value="">Sin limitar a una solicitud</option>
-        {history.proposals
-          .filter(p => p.status === "open")
-          .map(p => (
-            <option key={p.id} value={p.id}>
-              {p.message}
-            </option>
-          ))}
-      </select>
+        <SelectTrigger id="permission-proposal"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="any">Sin limitar a una solicitud</SelectItem>
+          {history.proposals
+            .filter(p => p.status === "open")
+            .map(p => (
+              <SelectItem key={p.id} value={"proposal:" + p.id}>
+                {p.message}
+              </SelectItem>
+            ))}
+        </SelectContent>
+      </Select>
       <p className="text-xs text-muted-foreground">
         Para quitar permisos, desmárcalos y guarda (o usa Revocar).
       </p>

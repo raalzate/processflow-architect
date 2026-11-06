@@ -962,7 +962,7 @@ const GlobalSearch: React.FC<{
             ? `${searchResults.length} resultado(s) en lo que estás viendo.`
             : "Sin coincidencias en este diagrama."}
         </div>
-        <ul className="max-h-80 overflow-y-auto">
+        <ul>
           {searchResults.map(node => {
             // Icono del registro de notaciones: sirve a DDD, BPMN, C4 y UML.
             const Icon = iconForType(node.tipo_elemento);

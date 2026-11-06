@@ -1,8 +1,5 @@
 import type { Choices, MergePreview } from "@/lib/collaboration/history";
 
-export const selectStyle =
-  "h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
 export const formatBranchDate = (at: string) =>
   new Date(at).toLocaleString("es", { dateStyle: "short", timeStyle: "short" });
 

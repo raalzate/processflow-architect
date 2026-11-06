@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Users, Copy, RefreshCw, Download, Link2 } from "lucide-react";
 import { useCollaboration } from "@/context/CollaborationContext";
 import { useGraphContext } from "@/context/GraphContext";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -85,7 +86,7 @@ export function CollaborationControl() {
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="max-h-[80vh] w-[min(26rem,calc(100vw-2rem))] space-y-4 overflow-y-auto"
+        className="w-[min(26rem,calc(100vw-2rem))] space-y-4"
       >
         <div className="space-y-1">
           <div className="flex items-center justify-between gap-2">
@@ -171,15 +172,13 @@ export function CollaborationControl() {
             {status.owner ? (
               <div className="space-y-2 border-t pt-3">
                 <Label htmlFor="collaboration-role">Permiso de la siguiente persona</Label>
-                <select
-                  id="collaboration-role"
-                  value={role}
-                  onChange={e => setRole(e.target.value as Role)}
-                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                >
-                  <option value="editor">Editar</option>
-                  <option value="viewer">Solo lectura</option>
-                </select>
+                <Select value={role} onValueChange={value => setRole(value as Role)}>
+                  <SelectTrigger id="collaboration-role"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="editor">Editar</SelectItem>
+                    <SelectItem value="viewer">Solo lectura</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   disabled={busy}
                   onClick={() =>

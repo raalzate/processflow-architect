@@ -7,7 +7,7 @@
  * de pantalla —el mismo truco que la ficha flotante del nodo— así no hay que
  * traducir viewBox/zoom/scroll.
  *
- * Se cierra con Escape, con un clic afuera, al hacer scroll y al perder el foco
+ * Se cierra con Escape, con un clic afuera, al redimensionar y al perder el foco
  * la ventana: un menú que queda pegado tapando el diagrama es peor que no tenerlo.
  */
 "use client";
@@ -57,11 +57,12 @@ export const CanvasContextMenu: React.FC<{
         if (!items.some((it) => !it.disabled)) return;
         const paso = e.key === "ArrowDown" ? 1 : -1;
         const orden = items.map((it, i) => (it.disabled ? -1 : i)).filter((i) => i >= 0);
-        setActivo((prev) => {
-          const pos = orden.indexOf(prev);
-          if (pos === -1) return paso > 0 ? orden[0] : orden[orden.length - 1];
-          return orden[(pos + paso + orden.length) % orden.length];
-        });
+        const pos = orden.indexOf(activo);
+        const siguiente = pos === -1
+          ? orden[paso > 0 ? 0 : orden.length - 1]
+          : orden[(pos + paso + orden.length) % orden.length];
+        setActivo(siguiente);
+        ref.current?.querySelectorAll('[role="menuitem"]')[siguiente]?.scrollIntoView({ block: "nearest" });
         return;
       }
       if (e.key === "Enter" && activo >= 0) {
@@ -87,18 +88,20 @@ export const CanvasContextMenu: React.FC<{
 
   // Alto estimado para voltear contra el borde inferior sin medir el DOM
   // (32 px por entrada + 9 por separador + padding).
-  const alto = items.length * 32 + items.filter((i) => i.separatorBefore).length * 9 + 8;
+  const alto = items.length * 32 + items.filter((i) => i.separatorBefore).length * 9 + 10;
   const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-  const left = Math.max(4, Math.min(x, vw - MENU_W - 8));
-  const top = Math.max(4, Math.min(y, vh - alto - 8));
+  const width = Math.min(MENU_W, vw - 16);
+  const maxHeight = Math.min(384, vh - 16);
+  const left = Math.max(8, Math.min(x, vw - width - 8));
+  const top = Math.max(8, Math.min(y, vh - Math.min(alto, maxHeight) - 8));
 
   return (
     <div
       ref={ref}
       role="menu"
-      className="fixed z-50 overflow-hidden rounded-md border bg-popover py-1 text-popover-foreground shadow-lg"
-      style={{ left, top, width: MENU_W }}
+      className="fixed z-50 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border bg-popover py-1 text-popover-foreground shadow-lg"
+      style={{ left, top, width, maxHeight }}
       // El clic derecho DENTRO del menú no debe abrir otro menú encima.
       onContextMenu={(e) => e.preventDefault()}
     >

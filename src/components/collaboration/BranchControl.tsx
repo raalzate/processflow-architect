@@ -5,6 +5,7 @@ import { History, Save, ArrowDownToLine, ShieldCheck, GitPullRequest, Plus, X, A
 import { collaboratorsDescription } from "@/lib/collaboration/participants";
 import { useCollaboration } from "@/context/CollaborationContext";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,6 @@ import { ScopeSelection } from "@/components/collaboration/ScopeSelection";
 import {
   downloadBoardJson,
   formatBranchDate,
-  selectStyle,
   type ReviewState,
 } from "@/components/collaboration/branch-utils";
 import {
@@ -217,7 +217,7 @@ export function BranchControl() {
         <PopoverContent
           align="end"
           data-branch-controls=""
-          className="max-h-[80vh] w-[min(22rem,calc(100vw-2rem))] space-y-3 overflow-y-auto p-3.5"
+          className="w-[min(22rem,calc(100vw-2rem))] space-y-3 p-3.5"
         >
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-sm font-semibold">
@@ -234,25 +234,26 @@ export function BranchControl() {
               Rama activa
             </Label>
             <div className="flex items-center gap-1.5">
-              <select
-                id="current-branch"
-                className={`${selectStyle} min-w-0 flex-1 font-medium`}
+              <Select
                 value={branch.id}
                 disabled={c.busy || c.pending > 0}
-                onChange={e => {
+                onValueChange={branchId => {
                   setSelectedCommit(undefined);
                   setSelection(undefined);
                   setProposeSelection(undefined);
                   setInlinePanel("none");
-                  void run(() => c.selectBranch(e.target.value));
+                  void run(() => c.selectBranch(branchId));
                 }}
               >
-                {s.branches.map(b => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="current-branch" className="min-w-0 flex-1 font-medium">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {s.branches.map(b => (
+                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {canCreateBranch ? (
                 <Button
                   type="button"

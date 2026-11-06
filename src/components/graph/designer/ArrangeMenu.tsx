@@ -54,7 +54,7 @@ export const ArrangeMenu: React.FC<{
         Organizar
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="start" className="max-h-[80vh] w-72 overflow-y-auto">
+    <DropdownMenuContent align="start" className="w-72">
       <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
         Aire del diagrama
       </DropdownMenuLabel>
