@@ -58,10 +58,16 @@ export function useSavedFiles(initial: SavedFile[] = []) {
     }
   }, []);
 
+  // Galería de la organización elegida en el header: abrir un proyecto la cierra.
+  const [orgOverview, setOrgOverview] = useState(false);
+
   const addFile = useCallback((file: SavedFile) => {
     const next = [...savedFiles, file];
     saveFilesToStorage(next);
     setCurrentFileId(file.id);
+    // Crear es abrir (#691): si la galería quedara encima, el proyecto recién creado
+    // no se ve seleccionado aunque ya sea el activo.
+    setOrgOverview(false);
     try {
       localStorage.setItem(STORAGE_LAST_FILE_ID, file.id);
     } catch (e) {
@@ -81,9 +87,6 @@ export function useSavedFiles(initial: SavedFile[] = []) {
       }
     }
   }, [savedFiles, saveFilesToStorage, currentFileId]);
-
-  // Galería de la organización elegida en el header: abrir un proyecto la cierra.
-  const [orgOverview, setOrgOverview] = useState(false);
 
   const selectFile = useCallback((id: string | null) => {
     setCurrentFileId(id);

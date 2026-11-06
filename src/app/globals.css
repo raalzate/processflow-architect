@@ -72,8 +72,11 @@
     --muted: 210 20% 94%;
     --muted-foreground: 220 10% 44%;  /* 4,6:1 sobre la superficie atenuada */
 
-    --accent: 200 30% 44%;            /* Azul-grisáceo frío, con blanco encima a 4,6:1 */
-    --accent-foreground: 0 0% 100%;
+    /* Superficie de HOVER: tinte suave con texto oscuro (#693). Era un azul medio
+       pensado para texto blanco, y todo hover que conserva su color de texto (el
+       atenuado, un ícono) bajaba a 1,15:1. El candado es hover-contrast.test.ts. */
+    --accent: 205 30% 94%;
+    --accent-foreground: 220 15% 15%;
 
     /* Se lee como TEXTO de error sobre el fondo y como fondo de botón con texto
        claro: las dos cosas piden 4,5:1, y a 62% daba 3,44:1. */

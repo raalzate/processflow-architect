@@ -186,6 +186,7 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     savedFiles,
     setSavedFiles,
     currentFileId,
+    orgFilter,
     setCurrentFileId,
     addFile,
     deleteFileHook: deleteFile,
