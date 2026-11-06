@@ -270,8 +270,6 @@ los punteros aparecen al coincidir en rama y vista. Al cerrar y abrir la aplicac
 se recupera el vínculo y se reintenta la conexión automáticamente. **Desvincular**
 es una acción distinta: elimina deliberadamente ese vínculo.
 
-**Conexiones incompletas → Revisar** muestra flechas que apuntan a identificadores
-ausentes. Si el componente llega después de una desconexión, la flecha reaparece.
-Si la referencia era incorrecta, se pueden elegir origen y destino existentes o
-retirar la conexión, conservando sus campos en los datos de recuperación. No se
-adivinan extremos ni se borran componentes para quitar un aviso.
+Las flechas que apuntan a identificadores ausentes se conservan en el documento
+compartido. Si el componente llega después de una desconexión, la flecha reaparece
+al sincronizar.

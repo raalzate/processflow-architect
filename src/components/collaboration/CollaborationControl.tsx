@@ -11,7 +11,6 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { FieldConflictsNotice } from "@/components/collaboration/FieldConflictsNotice";
-import { PendingConnectionsNotice } from "@/components/collaboration/PendingConnectionsNotice";
 import { hostBridge } from "@/lib/host-bridge";
 import type { PeerRoute, Role } from "@/lib/collaboration/types";
 
@@ -161,7 +160,6 @@ export function CollaborationControl() {
                   Último intercambio: {new Date(status.lastSynced).toLocaleString()}
                 </p>
               ) : null}
-              <PendingConnectionsNotice />
             </div>
             {!collaboration.workspace && status.role === "editor" && status.discardedEdits?.length ? (
               <FieldConflictsNotice
