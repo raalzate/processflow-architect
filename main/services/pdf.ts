@@ -1,12 +1,32 @@
 import { app, dialog, BrowserWindow } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { mdToPdf } from 'md-to-pdf';
-import { runMermaid } from './mermaid';
+import { htmlParaPdf, PDF_LISTO, PDF_OPCIONES } from './pdf-html';
 
+// `marked` llega con `md-to-pdf` y no trae tipos: se declara lo único que se usa.
+// Es el mismo conversor que usaba md-to-pdf, así el documento se ve igual.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { marked } = require('marked') as { marked: { parse: (md: string) => string } };
+
+/** Tope de espera a que mermaid dibuje: un diagrama roto no debe colgar el PDF. */
+const ESPERA_MS = 15000;
+
+/** El bundle de mermaid para dibujar dentro de la página; sin él, el PDF sale igual. */
+async function leerMermaid(): Promise<string | null> {
+  try {
+    return await fs.promises.readFile(require.resolve('mermaid/dist/mermaid.min.js'), 'utf-8');
+  } catch (e) {
+    console.error('PDF: no se encontró el bundle de mermaid:', e);
+    return null;
+  }
+}
+
+/**
+ * Markdown → PDF con el Chromium de Electron (ver `pdf-html.ts` por qué no
+ * Puppeteer). La ventana es oculta, aislada y sin Node: el markdown trae texto
+ * del usuario y no se le da más que dibujar.
+ */
 export async function handleMdToPdf(event: Electron.IpcMainInvokeEvent, markdownContent: string) {
-  console.log('Recibido markdown. Pre-procesando con mmdc...');
-  
   const window = BrowserWindow.fromWebContents(event.sender);
   if (!window) throw new Error('Ventana no encontrada');
 
@@ -15,51 +35,35 @@ export async function handleMdToPdf(event: Electron.IpcMainInvokeEvent, markdown
     defaultPath: path.join(app.getPath('downloads'), 'documento_arquitectura.pdf'),
     filters: [{ name: 'Documentos PDF', extensions: ['pdf'] }]
   });
-
   if (canceled || !filePath) return null;
 
-  const tempFiles: string[] = [];
-  
+  const html = htmlParaPdf(marked.parse(markdownContent), await leerMermaid());
+  const tmp = path.join(app.getPath('temp'), `processflow-pdf-${process.pid}-${Date.now()}.html`);
+  const hoja = new BrowserWindow({
+    show: false,
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: true }
+  });
+  // La página no navega ni abre ventanas: sólo se imprime.
+  hoja.webContents.on('will-navigate', (e) => e.preventDefault());
+  hoja.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
   try {
-    const mermaidRegex = /(```mermaid\n[\s\S]*?\n```)/g;
-    const parts = markdownContent.split(mermaidRegex);
-
-    const processedParts = await Promise.all(parts.map(async (part, index) => {
-      if (!part.startsWith('```mermaid')) return part;
-
-      try {
-        const code = part.replace(/^```mermaid\n/g, '').replace(/\n```$/g, '');
-        const tempInputPath = path.join(app.getPath('temp'), `mermaid_input_${index}.mmd`);
-        const tempOutputPath = path.join(app.getPath('temp'), `mermaid_output_${index}.svg`);
-        
-        tempFiles.push(tempInputPath, tempOutputPath);
-        await fs.promises.writeFile(tempInputPath, code, 'utf-8');
-        
-        await runMermaid(tempInputPath, tempOutputPath); // Usamos el servicio de mermaid
-        
-        const svgFileBuffer = await fs.promises.readFile(tempOutputPath);
-        return `\n<img src="data:image/svg+xml;base64,${svgFileBuffer.toString('base64')}" alt="Mermaid Diagram" style="display:block; margin:0 auto;max-height:300px;max-width:100%;">\n`;
-      } catch (error) {
-        console.error('Error Mermaid:', error);
-        return `\n <pre style="color:red">Error generando diagrama: ${(error as Error).message}</pre>\n`;
-      }
-    }));
-
-    const modifiedMarkdown = processedParts.join('');
-    
-    await mdToPdf({ content: modifiedMarkdown }, {
-      dest: filePath,
-      launch_options: { args: ['--no-sandbox', '--disable-setuid-sandbox'] },
-      css: `body { text-align: justify; }`,
-      pdf_options: { format: 'A4', printBackground: true, margin: { top: '20mm', bottom: '20mm', left: '15mm', right: '15mm' } }
-    });
-
+    await fs.promises.writeFile(tmp, html, 'utf-8');
+    await hoja.loadFile(tmp);
+    const limite = Date.now() + ESPERA_MS;
+    while (Date.now() < limite) {
+      if (await hoja.webContents.executeJavaScript(`window.${PDF_LISTO} === true`)) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const pdf = await hoja.webContents.printToPDF(PDF_OPCIONES);
+    await fs.promises.writeFile(filePath, pdf);
     return filePath;
   } catch (error) {
     console.error('Error MD a PDF:', error);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     throw error;
   } finally {
-    tempFiles.forEach(f => { if(fs.existsSync(f)) fs.unlinkSync(f); });
+    if (!hoja.isDestroyed()) hoja.destroy();
+    fs.promises.unlink(tmp).catch(() => {});
   }
 }
