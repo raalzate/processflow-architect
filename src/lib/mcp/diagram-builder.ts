@@ -210,6 +210,8 @@ export interface BuilderNode {
 }
 
 export interface BuilderEdge {
+  /** Identidad persistida del enlace; editarlo no crea otra flecha colaborativa. */
+  id?: string;
   fuente: string;
   destino: string;
   descripcion?: string;
@@ -2305,6 +2307,7 @@ export function toGraphData(input: DiagramModel): GraphData {
   const domainNodes = model.nodes.filter((n) => !isContainerNode(n));
 
   const agregados: Agregado[] = containers.map((c) => ({
+    id: c.id,
     nombre_agregado: c.nombre,
     entidad_raiz: (c.descripcion || "").trim() || c.nombre,
     descripcion: c.descripcion || "",
@@ -2356,6 +2359,7 @@ export function toGraphData(input: DiagramModel): GraphData {
     const sa = containerOf(e.fuente);
     const ta = containerOf(e.destino);
     const arista = {
+      id: e.id,
       fuente: e.fuente,
       destino: e.destino,
       descripcion: e.descripcion || "",
@@ -2429,6 +2433,7 @@ export function toGraphData(input: DiagramModel): GraphData {
  */
 /** Campos de una relación de la app que el constructor conserva tal cual. */
 const CAMPOS_DE_ARISTA = [
+  "id",
   "descripcion",
   // Estilo: punteado = retorno en secuencia, flecha, color, enrutado.
   "dashed",
@@ -2466,7 +2471,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
 
   for (const agg of data.agregados || []) {
     nodes.push({
-      id: `agg-${agg.nombre_agregado}`,
+      id: agg.id ?? `agg-${agg.nombre_agregado}`,
       nombre: agg.nombre_agregado,
       tipo_elemento: agg.tipo_contenedor && isNotationContainer(agg.tipo_contenedor)
         ? agg.tipo_contenedor

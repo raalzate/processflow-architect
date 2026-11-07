@@ -4,7 +4,7 @@ import type { GraphData } from "../../types";
 
 function sampleGraph(): GraphData {
   return {
-    nombre_proyecto: "RedSalud",
+    nombre_proyecto: "Proyecto de prueba",
     version: "1.0.0",
     fecha_analisis: "2026-11-02",
     agregados: [],

@@ -52,6 +52,36 @@ const modify = (p: SharedProject, field: "x" | "nombre", value: number | string)
   return n;
 };
 describe("ramas y versiones colaborativas", () => {
+  it("guarda y fusiona retirando automáticamente los enlaces a vistas ya borradas", () => {
+    const base = board();
+    base.content.big_picture.nodos[0].viewRef = "web";
+    const draft = structuredClone(base);
+    draft.customViews = [];
+    const history = createHistory(base, host, stamp);
+    const saved = executeHistory(history, { type: "commit", id: "clean", branchId: "shared", scopes: ["design", "view:web"], message: "Retirar detalle" }, host, { shared: draft }, stamp.at);
+    const snapshot = saved.state.commits.at(-1)!.snapshot;
+    expect(snapshot.content.big_picture.nodos[0].viewRef).toBeUndefined();
+    expect(snapshot.content.big_picture.nodos.map(n => n.id)).toEqual(["a", "b"]);
+    const preview = mergeProjects(base, base, draft, ["design", "view:web"]);
+    expect(preview.dependencies).toEqual([]);
+    expect(preview.project.content.big_picture.nodos[0].viewRef).toBeUndefined();
+    expect(base.content.big_picture.nodos[0].viewRef).toBe("web");
+    const proposed = executeHistory(saved.state, { type: "propose", id: "request", branchId: "shared", targetId: "main", commitId: "clean", scopes: ["design", "view:web"], message: "Incorporar borrado" }, host, { shared: draft }, stamp.at);
+    const merged = executeHistory(proposed.state, { type: "merge", id: "merged", proposalId: "request", expectedHead: "initial", choices: {} }, host, { main: base }, stamp.at);
+    expect(merged.writes.main.content.big_picture.nodos[0].viewRef).toBeUndefined();
+    expect(merged.writes.main.customViews).toEqual([]);
+  });
+
+  it("no retira el enlace si la vista nueva existe en el borrador pero quedó fuera de la selección", () => {
+    const base = board(), draft = board();
+    draft.customViews.push({ id: "detalle-nuevo", name: "Detalle", kind: "graph", createdAt: stamp.at, graph: structuredClone(base.content) });
+    draft.content.big_picture.nodos[0].viewRef = "detalle-nuevo";
+    const history = createHistory(base, host, stamp);
+    expect(() => executeHistory(history, { type: "commit", id: "partial", branchId: "shared", scopes: ["design"], message: "Parcial" }, host, { shared: draft }, stamp.at)).toThrow(/necesita la vista/);
+    const preview = mergeProjects(base, base, draft, ["design"]);
+    expect(preview.dependencies.join(" ")).toContain("detalle-nuevo");
+  });
+
   it("conserva la base aprobada separada del trabajo en vivo", () => {
     const s = createHistory(board(), host, stamp);
     expect(s.branches.map(b => b.id)).toEqual(["main", "shared"]);

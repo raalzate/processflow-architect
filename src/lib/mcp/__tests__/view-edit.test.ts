@@ -386,6 +386,31 @@ describe("update-element como lo usa un agente de código (#636)", () => {
 });
 
 describe("enlazar un elemento a su subvista (#638)", () => {
+  it("desenlaza en colaboración sin recrear la banda ni sus flechas", () => {
+    const g = vista();
+    g.big_picture.nodos[1].viewRef = "detalle";
+    g.big_picture.aristas[0].id = "flecha-estable";
+    g.agregados.push({ id: "banda-estable", nombre_agregado: "Sistema", entidad_raiz: "Sistema", descripcion: "Límite del sistema actual", tipo_contenedor: "Límite de Sistema", nodos: [], aristas: [] });
+    const a = new SharedDocument(), b = new SharedDocument();
+    try {
+      const project = { name: "Prueba", content: g, customViews: [], references: [], agent: { versions: [], lineages: [], artifacts: [] }, analysis: {} };
+      a.patch({}, project);
+      b.receive(a.update());
+      for (let i = 0; i < 3; i++) {
+        const before = a.snapshot();
+        const r = applyViewEdit(before.content, { kind: "update-element", name: "API", subviewId: null }, "c4");
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        expect(r.graph.agregados[0].id).toBe("banda-estable");
+        expect(aristas(r.graph).map(e => e.id)).toEqual(["flecha-estable"]);
+        a.patch(before, { ...before, content: r.graph });
+        b.receiveRemote(a.update(b.vector()));
+        expect(aristas(b.snapshot().content).map(e => e.id)).toEqual(["flecha-estable"]);
+        expect(nodos(b.snapshot().content).find(n => n.id === "api")?.viewRef).toBeFalsy();
+      }
+    } finally { a.destroy(); b.destroy(); }
+  });
+
   it("update-element con subviewId deja el viewRef y no toca nada más", () => {
     const r = applyViewEdit(vista(), { kind: "update-element", name: "API", subviewId: "detalle-api" }, "c4");
     expect(r.ok).toBe(true);

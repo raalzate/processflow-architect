@@ -40,7 +40,7 @@ import { DEFAULT_NOTATION_ID, INITIAL_NOTATION_ID, type NotationId } from "@/lib
 import { emptyGraphData } from "@/components/graph/designer/serialize";
 import type { GraphData } from "@/lib/types";
 import type { AppFocus } from "@/lib/mcp/app-state";
-import { openTabIds, viewAfterClosing, type EmbedView } from "@/lib/view-embeds";
+import { deleteCustomView, openTabIds, viewAfterClosing, type EmbedView } from "@/lib/view-embeds";
 import { DEFAULT_MERMAID_CODE } from "@/lib/mermaid/templates";
 import type { ViewKind } from "@/lib/views-types";
 
@@ -192,7 +192,7 @@ export const useViews = () => {
 };
 
 export function ViewsProvider({ children }: { children: React.ReactNode }) {
-  const { currentFileId, graphData, sharedReadOnly, sharedStorageScope } = useGraphContext();
+  const { currentFileId, graphData, handleDesignUpdate, sharedReadOnly, sharedStorageScope } = useGraphContext();
   const { toast } = useToast();
 
   const [customViews, setCustomViews] = useState<DesignView[]>([]);
@@ -452,12 +452,17 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
 
   const deleteView = useCallback(
     (id: string) => {
-      setCustomViews((prev) => prev.filter((v) => v.id !== id));
+      const deleted = deleteCustomView(graphData, customViews, id);
+      if (deleted.views === customViews) return;
+      if (currentFileId && deleted.graph && deleted.graph !== graphData)
+        handleDesignUpdate(currentFileId, deleted.graph);
+      setCustomViews(deleted.views);
       setInjectedViewIds((prev) => prev.filter((x) => x !== id));
       setDrillStack((prev) => prev.filter((x) => x !== id));
+      setRawOpenViewIds((prev) => prev.filter((x) => x !== id));
       setActiveViewId((cur) => (cur === id ? "design" : cur));
     },
-    []
+    [currentFileId, graphData, customViews, handleDesignUpdate]
   );
 
   const updateViewGraph = useCallback((id: string, graph: GraphData) => {

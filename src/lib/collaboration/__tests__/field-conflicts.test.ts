@@ -5,9 +5,9 @@ import { encodeProject } from "../graph-codec";
 import type { SharedProject } from "../types";
 
 const baseProject = (): SharedProject => ({
-  name: "RedSalud",
+  name: "Proyecto de prueba",
   content: {
-    nombre_proyecto: "RedSalud",
+    nombre_proyecto: "Proyecto de prueba",
     version: "1",
     fecha_analisis: "",
     responsables: [],

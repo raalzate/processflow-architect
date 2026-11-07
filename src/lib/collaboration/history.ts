@@ -3,6 +3,7 @@ import { encodeProject, decodeProject } from "./graph-codec";
 import { assertEncodedProject, assertJson } from "./validation";
 import { enRegistro } from "../registro";
 import { parseHistoryAction } from "./history-validation";
+import { withoutViewReferences } from "../view-embeds";
 
 export interface HistoryActor {
   id: string;
@@ -170,6 +171,23 @@ export function projectDependencies(project: SharedProject): string[] {
         );
     }
   return dependencies;
+}
+
+/** Los vínculos huérfanos de vistas borradas no bloquean versiones ni fusiones.
+ * `available` protege las vistas existentes que sólo faltan por la selección parcial.
+ */
+function repairMissingViewRefs(project: SharedProject, available = new Set<string>()): SharedProject {
+  const known = new Set(["design", ...project.customViews.map(v => v.id), ...available]);
+  const remove = (ref: string) => !known.has(ref);
+  const content = withoutViewReferences(project.content, remove);
+  let changed = content !== project.content;
+  const customViews = project.customViews.map(v => {
+    const graph = v.graph ? withoutViewReferences(v.graph, remove) : v.graph;
+    if (graph === v.graph) return v;
+    changed = true;
+    return { ...v, graph };
+  });
+  return changed ? { ...project, content, customViews } : project;
 }
 export function canManage(
   s: DiagramHistory,
@@ -423,7 +441,7 @@ export function mergeProjects(
   }
   assertJson(merged);
   assertEncodedProject(merged);
-  const project = decodeProject(merged).project;
+  const project = repairMissingViewRefs(decodeProject(merged).project, new Set(theirs.customViews.map(v => v.id)));
   dependencies.push(...projectDependencies(project));
   return { project, conflicts, dependencies };
 }
@@ -522,10 +540,16 @@ export function executeHistory(
       requireEdit(action.branchId);
       if (!action.message.trim()) throw new Error("Describe esta versión.");
       const head = findCommit(s, findBranch(s, action.branchId).head);
-      const snapshot = selectScopes(head.snapshot, draft(action.branchId), action.scopes);
+      const currentDraft = draft(action.branchId);
+      const cleanedDraft = repairMissingViewRefs(currentDraft);
+      const snapshot = repairMissingViewRefs(
+        selectScopes(head.snapshot, cleanedDraft, action.scopes),
+        new Set(currentDraft.customViews.map(v => v.id)),
+      );
       const missing = projectDependencies(snapshot);
       if (missing.length) throw new Error(missing.join(" "));
       addCommit(action.id, action.branchId, snapshot, action.scopes, action.message, "commit");
+      if (cleanedDraft !== currentDraft) writes[action.branchId] = cleanedDraft;
       break;
     }
     case "permission": {
