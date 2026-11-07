@@ -100,5 +100,14 @@ app.on('window-all-closed', () => {
 // proceso ya hubiera salido, y la limpieza no corría nunca.
 app.on('before-quit', () => {
   cancelAllAgentCli();
-  void closeCollaboration();
+});
+
+let collaborationClosed = false;
+app.on('will-quit', event => {
+  if (collaborationClosed) return;
+  event.preventDefault();
+  void closeCollaboration().catch(console.error).finally(() => {
+    collaborationClosed = true;
+    app.quit();
+  });
 });

@@ -430,8 +430,7 @@ export class CollaborationEngine {
     } catch {
       /* Joining has not received its first state. */
     }
-    this.event({
-      fileId: room.stored.fileId,
+    const result: CollaborationResult = {
       status: { ...room.status },
       ...(includeSnapshot && !room.quarantined
         ? {
@@ -439,7 +438,9 @@ export class CollaborationEngine {
             workspace: room.quarantined ? undefined : room.branches?.view(this.actor(room)),
           }
         : {}),
-    });
+    };
+    this.event({ fileId: room.stored.fileId, ...result });
+    return result;
   }
   private emitPresence(room: Room) {
     if (room.disposed) return;
@@ -668,11 +669,12 @@ export class CollaborationEngine {
             this.actor(room),
           );
         else room.document.patch(command.before, this.migrate(command.after));
-        this.emit(room, true);
+        const saved = this.emit(room, true);
         if (!room.stored.owner) {
           room.needsSync = true;
           this.schedule(room, 0);
         }
+        return saved ?? this.result(room);
       } else if (command.type === "resolve-field-conflict") {
         if (
           typeof command.editId !== "string" ||
