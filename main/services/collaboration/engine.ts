@@ -377,6 +377,15 @@ export class CollaborationEngine {
         capacity: estimateCapacity({ freeMemoryBytes: freemem(), projectBytes: 0, mergeMs: 1 }),
       },
     };
+    // El archivo de ramas ya es duradero. Restaurarlo no debe reescribirlo como una edición del diario.
+    this.rooms.set(stored.fileId, room);
+    room.branches = new BranchStore(join(this.root, stored.projectId, "branches.json"), document, () => {
+      room.revision++;
+      if (room.stored.owner) {
+        document.receiveRemote(room.branches!.defaultUpdate(document.vector()));
+        this.notifyClients(room);
+      }
+    });
     document.doc.on("update", (update: Uint8Array) => {
       if (room.status.initialized) room.networkLoad.record(update.byteLength * 1.4, Date.now());
       room.status.saved = false;
@@ -392,20 +401,10 @@ export class CollaborationEngine {
         throw error;
       }
     });
-    // Register before seeding so a failed first fsync still has a recoverable
-    // in-memory document and a journal that close() can release.
-    this.rooms.set(stored.fileId, room);
     if (!journal.updates.length && initial) document.patch({}, initial);
     document.clearUndo();
-    room.branches = new BranchStore(join(this.root, stored.projectId, "branches.json"), document, () => {
-      room.revision++;
-      if (room.stored.owner) {
-        document.receiveRemote(room.branches!.defaultUpdate(document.vector()));
-        this.notifyClients(room);
-      }
-    });
     room.status.initialized = document.isInitialized();
-    if (journal.updates.length || initial) {
+    if (room.status.initialized || journal.updates.length || initial) {
       try {
         document.assertValid();
         this.refreshCapacity(room);

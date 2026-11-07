@@ -125,6 +125,17 @@ export function CollaborationControl() {
                   ? `${status.peers} personas conectadas; nuevas entradas en pausa (cupo estimado: ${status.capacity.limit})`
                   : `${status.peers} ${status.peers === 1 ? "persona conectada" : "personas conectadas"}, incluido el anfitrión. Cupo estimado: ${status.capacity.limit}.`}
               </p>
+              {!status.owner && !status.connected && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" disabled={busy} onClick={() => run(collaboration.retry)} className="gap-2">
+                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                    Reconectar
+                  </Button>
+                  {status.saved && (
+                    <span className="text-muted-foreground">También se reintenta automáticamente cada 5 segundos.</span>
+                  )}
+                </div>
+              )}
               <p className="text-muted-foreground">{status.capacity.reason}</p>
               <p>
                 {status.route === "lan"
@@ -211,7 +222,7 @@ export function CollaborationControl() {
                   dispositivo de la primera persona que la use.
                 </p>
               </div>
-            ) : !status.connected ? <p className="text-sm text-muted-foreground">Reconectando automáticamente. Se reintenta cada 5 segundos; no necesitas pulsar ningún botón.</p> : null}
+            ) : null}
             <Button
               variant="outline"
               disabled={busy}

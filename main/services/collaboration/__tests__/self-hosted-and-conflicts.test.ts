@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CollaborationEngine } from "../engine";
@@ -36,6 +36,54 @@ const initial: SharedProject = {
 };
 
 describe("admisión automática multirruta y resolución de campos simultáneos", () => {
+  it("reconecta una copia invitada cuyo historial guardado supera el límite de una edición", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pf-large-reconnect-"));
+    const hostRoot = join(root, "host");
+    const guestRoot = join(root, "guest");
+    let host = new CollaborationEngine(hostRoot, undefined, { publicNetwork: false });
+    let guest = new CollaborationEngine(guestRoot, undefined, { publicNetwork: false });
+    try {
+      const created = await host.command({ type: "create", fileId: "host", initial, options: {} });
+      const projectId = created.status!.projectId;
+      const owner = created.workspace!.actor;
+      await host.close();
+
+      const document = new SharedDocument();
+      const archive = new BranchStore(join(hostRoot, projectId, "branches.json"), document);
+      const large = structuredClone(initial);
+      large.content.notas = "x".repeat(17 * 1024 ** 2);
+      try {
+        archive.patch("shared", archive.defaultSnapshot(), large, owner);
+        expect(archive.defaultUpdate().byteLength).toBeGreaterThan(32 * 1024 ** 2);
+      } finally {
+        archive.close();
+        document.destroy();
+      }
+
+      host = new CollaborationEngine(hostRoot, undefined, { publicNetwork: false });
+      await host.start();
+      const invitation = await host.command({ type: "invite", fileId: "host", role: "editor" });
+      expect(invitation.error).toBeUndefined();
+      const joined = await guest.command({ type: "join", fileId: "guest", invitation: invitation.invitation! });
+      expect(joined.status?.error ?? joined.error).toBeUndefined();
+      expect(joined.status?.connected).toBe(true);
+      await guest.close();
+
+      const journal = join(guestRoot, projectId, "updates.bin");
+      const previousBytes = statSync(journal).size;
+      guest = new CollaborationEngine(guestRoot, undefined, { publicNetwork: false });
+      await guest.start();
+      const retried = await guest.command({ type: "retry", fileId: "guest" });
+      expect(retried.status?.error ?? retried.error).toBeUndefined();
+      expect(retried.status?.connected).toBe(true);
+      expect(retried.workspace?.snapshots.shared.content.notas.length).toBe(large.content.notas.length);
+      expect(statSync(journal).size).toBe(previousBytes);
+    } finally {
+      await Promise.all([host.close(), guest.close()]);
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 40_000);
+
   it("admite participantes por red local aunque los cupos de relay estén ocupados", async () => {
     const now = 1_800_000_000_000;
     const clock = vi.spyOn(Date, "now").mockReturnValue(now);
