@@ -82,7 +82,10 @@ describe("admisión automática multirruta y resolución de campos simultáneos"
       await Promise.all([host.close(), guest.close()]);
       rmSync(root, { recursive: true, force: true });
     }
-  }, 40_000);
+  // Incluye preparar, persistir y restaurar varios archivos de más de 32 MiB.
+  // La cobertura y las demás suites comparten CPU: este límite protege la
+  // ejecución de la prueba, no representa una latencia objetivo del producto.
+  }, 120_000);
 
   it("admite participantes por red local aunque los cupos de relay estén ocupados", async () => {
     const now = 1_800_000_000_000;
