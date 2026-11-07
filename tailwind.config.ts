@@ -112,6 +112,20 @@ export default {
           accent: 'hsl(var(--ed-accent) / <alpha-value>)',
           link: 'hsl(var(--ed-link) / <alpha-value>)',
         },
+        // Skin plano del lienzo (spec 026): fondo, tinta y las siete categorías.
+        pl: {
+          bg: 'hsl(var(--pl-bg) / <alpha-value>)',
+          grid: 'hsl(var(--pl-grid) / <alpha-value>)',
+          ink: 'hsl(var(--pl-ink) / <alpha-value>)',
+          muted: 'hsl(var(--pl-muted) / <alpha-value>)',
+          frontend: 'hsl(var(--pl-frontend) / <alpha-value>)',
+          backend: 'hsl(var(--pl-backend) / <alpha-value>)',
+          datos: 'hsl(var(--pl-datos) / <alpha-value>)',
+          nube: 'hsl(var(--pl-nube) / <alpha-value>)',
+          seguridad: 'hsl(var(--pl-seguridad) / <alpha-value>)',
+          mensajeria: 'hsl(var(--pl-mensajeria) / <alpha-value>)',
+          externo: 'hsl(var(--pl-externo) / <alpha-value>)',
+        },
         sidebar: {
           DEFAULT: 'hsl(var(--sidebar-background))',
           foreground: 'hsl(var(--sidebar-foreground))',

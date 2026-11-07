@@ -189,7 +189,19 @@ export interface NotationElement {
    * Negocio es una restricción (seguridad), no un servicio.
    */
   treatment?: Treatment;
+  /**
+   * Categoría de la skin «Plano» (spec 026) cuando ni el rol ni el tratamiento
+   * la dicen: la Nube no es un servicio genérico, es infraestructura de nube.
+   * Si falta, la deduce `categoriaDe` en `src/lib/skin.ts`.
+   */
+  category?: PlanoCategory;
 }
+
+/**
+ * Categorías de la skin «Plano» (spec 026): de qué es cada pieza en una lámina
+ * de arquitectura. El color de cada una vive en `src/lib/skin.ts`.
+ */
+export type PlanoCategory = "frontend" | "backend" | "datos" | "nube" | "seguridad" | "mensajeria" | "externo";
 
 /**
  * Tratamientos editoriales de nodo (spec 022, adaptados de diagram-design). El
@@ -912,7 +924,7 @@ const GENERAL: Notation = {
     { type: "Globo Ovalado", icon: "MessageCircle", shape: "callout-oval", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
     // --- Otras siluetas ---
     { type: "Cilindro", icon: "Database", shape: "cylinder", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
-    { type: "Nube", icon: "Cloud", shape: "cloud", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
+    { type: "Nube", icon: "Cloud", shape: "cloud", category: "nube", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
     { type: "Semicírculo", icon: "Boxes", shape: "semicircle", stroke: "stroke-slate-600 dark:stroke-slate-400", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-400", text: "text-slate-900 dark:text-white" },
     { type: "Figura de Persona", icon: "PersonStanding", shape: "person", size: SQUARE_SIZE, hideIcon: true, stroke: "stroke-slate-600 dark:stroke-slate-300", bg: "fill-slate-100 dark:fill-slate-700", border: "border-slate-400 dark:border-slate-300", text: "text-slate-900 dark:text-white" },
     // --- Contenedor ---

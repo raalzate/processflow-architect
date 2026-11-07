@@ -9,12 +9,15 @@ import { emptyPersistedViews, type PersistedViews } from "@/lib/views-types";
 import { readStoredViews, writeStoredViews } from "@/context/ViewsContext";
 import { normalizeProjectName, renameSavedFile } from "@/lib/project-rename";
 import type { NotationId } from "@/lib/notations";
+import { orgForNewProject, type OrgFilter } from "@/lib/project-orgs";
 
 type FileHandlersDeps = {
     sharedStorageScope?: string;
     savedFiles: SavedFile[];
     setSavedFiles: (files: SavedFile[]) => void;
     currentFileId: string | null;
+    /** Filtro de organización del header: el proyecto nuevo nace en él (#691). */
+    orgFilter: OrgFilter;
     setCurrentFileId: (id: string | null) => void;
     addFile: (file: SavedFile) => void;
     deleteFileHook: (id: string) => void;
@@ -33,6 +36,7 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         savedFiles,
         setSavedFiles,
         currentFileId,
+        orgFilter,
         setCurrentFileId,
         addFile,
         deleteFileHook,
@@ -54,7 +58,13 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         try {
             const fecha = new Date().toISOString().slice(0, 10);
             const content = emptyGraphData(name, fecha, notation);
-            const newFile: SavedFile = { id: `${name}-${new Date().getTime()}`, name: `${name}.json`, content };
+            const orgId = orgForNewProject(orgFilter);
+            const newFile: SavedFile = {
+                id: `${name}-${new Date().getTime()}`,
+                name: `${name}.json`,
+                content,
+                ...(orgId ? { orgId } : {}),
+            };
             const res = loadFile(newFile);
             addFile(newFile);
             setDriversResult(null); setConstraintsResult(null); setRoadmapResult(null); setProposalResult(null);
@@ -63,7 +73,7 @@ export function useFileHandlers(deps: FileHandlersDeps) {
             console.error("Error creating project:", error);
             toast({ variant: "destructive", title: "No se pudo crear el proyecto", description: error.message || "Error inesperado." });
         }
-    }, [addFile, loadFile, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
+    }, [addFile, loadFile, orgFilter, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
 
     // Crea un proyecto NUEVO a partir de contenido ya generado (ej. el modelo de
     // dominio que produce la IA desde documentos) y lo carga en el lienzo.
@@ -80,11 +90,14 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         // (`DomainAnalysis`, sin escalares) pasan ambos por la misma función pura.
         // Reconstruir con lista blanca aquí perdía campos en el round-trip (#423).
         const fullContent: GraphData = normalizeImportedGraphData(content, name);
+        // Importar un tablero o un diagrama no nombra organización: hereda la que
+        // está filtrando el humano, igual que «Proyecto › Nuevo» (#691).
+        const org = orgForNewProject(orgFilter, orgId);
         const newFile: SavedFile = {
             id: `${name}-${new Date().getTime()}`,
             name: `${name}.json`,
             content: fullContent,
-            ...(orgId ? { orgId } : {}),
+            ...(org ? { orgId: org } : {}),
             ...compartido?.analysis,
         };
         try {
@@ -106,7 +119,7 @@ export function useFileHandlers(deps: FileHandlersDeps) {
             toast({ variant: "destructive", title: "No se pudo cargar el modelo generado", description: error.message || "Formato inválido." });
             return null;
         }
-    }, [addFile, loadFile, setCurrentFileId, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
+    }, [addFile, loadFile, orgFilter, setCurrentFileId, toast, setDriversResult, setConstraintsResult, setRoadmapResult, setProposalResult]);
 
     // Persiste el GraphData generado por el diseñador en el SavedFile actual
     // y refresca las vistas derivadas (Big Picture, Read Model, Data Flow).

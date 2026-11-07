@@ -149,6 +149,8 @@ async function run() {
     const guestBefore = await state(guest, "guest-project");
     await host.close();
     const guestNext = structuredClone(guestBefore);
+    guestNext.content.skin = "plano";
+    guestNext.content.agregados[0].nodos[0].categoria = "frontend";
     guestNext.content.agregados[0].aristas.push({
       id: "ab",
       fuente: "a",
@@ -176,8 +178,11 @@ async function run() {
       async () => (await state(guest, "guest-project")).content.agregados[0].nodos[1].nombre === "B otro día",
       "other-day edits received",
     );
-    assert.deepEqual(await state(host, "host-project"), await state(guest, "guest-project"));
-    console.log("PASS: both processes restart and merge offline edge with later component edits");
+    const synchronized = await state(host, "host-project");
+    assert.equal(synchronized.content.skin, "plano");
+    assert.equal(synchronized.content.agregados[0].nodos[0].categoria, "frontend");
+    assert.deepEqual(synchronized, await state(guest, "guest-project"));
+    console.log("PASS: both processes restart and synchronize offline edges, component edits and the Plano skin");
     await eventually(async () => {
       await host.publish("host-project", {
         name: "Ana",

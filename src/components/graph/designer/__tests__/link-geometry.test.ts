@@ -505,3 +505,37 @@ describe("clipToShape con las siluetas nuevas", () => {
     expect(Math.abs(p.x) / 100 + Math.abs(p.y) / 50).toBeCloseTo(1, 5);
   });
 });
+
+describe("linkGeometry · skin plano (spec 026)", () => {
+  // Desalineados a propósito: en recta habría un tramo diagonal.
+  const ns = mapa(nodo("a", ACTOR, 0, 0), nodo("b", SISTEMA, 400, 300));
+  const tramosAxiales = (path: string) => {
+    const pts = [...path.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    return pts.slice(1).every(([x, y], i) => x === pts[i][0] || y === pts[i][1]);
+  };
+
+  it("en plano, sin trazo propio, la arista es ortogonal: sólo tramos horizontales y verticales", () => {
+    const geo = linkGeometry(arista(), ns, "c4", "plano")!;
+    expect(geo.path).not.toContain("Q");
+    expect(tramosAxiales(geo.path)).toBe(true);
+    expect(routingOf(arista(), "c4", "plano")).toBe("orthogonal");
+  });
+
+  it("canónica y editorial conservan el trazado de la notación (FR-012)", () => {
+    const canon = linkGeometry(arista(), ns, "c4")!;
+    expect(linkGeometry(arista(), ns, "c4", "canon")!.path).toBe(canon.path);
+    expect(linkGeometry(arista(), ns, "c4", "editorial")!.path).toBe(canon.path);
+    expect(routingOf(arista(), "c4", "editorial")).toBe(defaultRoutingFor("c4"));
+  });
+
+  it("el trazo propio del enlace sigue mandando en plano", () => {
+    expect(routingOf(arista({ routing: "straight" }), "c4", "plano")).toBe("straight");
+  });
+
+  it("un mensaje de secuencia no se escalona en plano", () => {
+    const vidas = mapa(lifeline("a", 0, 0), lifeline("b", 800, 0));
+    const plano = linkGeometry(arista({ orden: 0 }), vidas, "uml", "plano")!;
+    const canon = linkGeometry(arista({ orden: 0 }), vidas, "uml")!;
+    expect(plano.path).toBe(canon.path);
+  });
+});

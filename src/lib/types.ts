@@ -9,6 +9,7 @@ import type { ElementDoc } from "./element-docs";
 import type { ElementStyle } from "./element-style";
 import type { SourceDoc } from "./source-docs";
 import type { TableColumn } from "./mer/table-box";
+import type { PlanoCategory } from "./notations";
 import type { NotationId } from "./notations";
 import { z } from "zod";
 
@@ -81,6 +82,12 @@ export interface GraphNode extends SimulationNodeDatum {
    * revisión lo avisa.
    */
   icono?: string;
+  /**
+   * Categoría de la caja en la skin «Plano» (spec 026): frontend, backend,
+   * datos, nube, seguridad, mensajeria o externo. Ausente, la deduce el tipo
+   * (`categoriaDe` en `src/lib/skin.ts`). Las otras skins no la leen.
+   */
+  categoria?: PlanoCategory;
   /**
    * Cómo se DIBUJA la caja cuando el usuario no quiere lo que decidió la
    * notación: tipografía, tamaño, alineación y colores. Ausente mientras nadie
@@ -287,11 +294,12 @@ export interface GraphData {
    */
   defaultRouting?: "straight" | "curved" | "orthogonal";
   /**
-   * Skin con que se dibuja el proyecto (spec 022): `canon` (cada tipo con su
-   * color) o `editorial` (tinta sobre papel, acento sólo en los hotspots).
+   * Skin con que se dibuja el proyecto (spec 022 · 026): `canon` (cada tipo con
+   * su color), `editorial` (tinta sobre papel, acento sólo en los hotspots) o
+   * `plano` (lámina técnica oscura, borde por categoría).
    * Ausente = canónica: un archivo anterior a la feature se ve igual que antes.
    */
-  skin?: "canon" | "editorial";
+  skin?: "canon" | "editorial" | "plano";
   fecha_analisis: string;
   big_picture: BigPicture;
   agregados: Agregado[];

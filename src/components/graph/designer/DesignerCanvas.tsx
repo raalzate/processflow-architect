@@ -167,7 +167,16 @@ import {
 } from "@/lib/notations";
 import { MIN_PALETTE_QUERY, filtrarPaleta } from "@/lib/palette-search";
 import { CANVAS_CHROME } from "@/lib/canvas-chrome";
-import { CONTAINER_TREATMENT, SKIN_DEFAULT, edgeTreatment, nodeTreatment, type SkinId } from "@/lib/skin";
+import {
+  CONTAINER_TREATMENT,
+  PLANO_CATEGORIES,
+  PLANO_CONTAINER,
+  SKIN_DEFAULT,
+  edgeTreatment,
+  nodeTreatment,
+  planoEdgeCategory,
+  type SkinId,
+} from "@/lib/skin";
 import { isContainerType, type DesignerNode, type DesignerLink } from "./serialize";
 import { FRAGMENT_OPS, GUARDA_X, esOperador, guardaVisible, type FragmentPart } from "@/lib/sequence/fragments";
 import {
@@ -208,6 +217,8 @@ export {
 export const EDGE_LABEL_MAX_CHARS = 34;
 /** Ancho aproximado de un carácter a `text-2xs font-semibold`, para el halo. */
 export const EDGE_LABEL_CHAR_PX = 5.4;
+/** Cuánto más ancho es un carácter en la monoespaciada de «Plano» (spec 026). */
+const PLANO_CHAR_FACTOR = 1.25;
 
 export function truncateEdgeLabel(label: string): string {
   const limpio = label.trim();
@@ -379,14 +390,19 @@ export const SkinContext = React.createContext<{ skin: SkinId; focal: ReadonlySe
 function useNodeColor(
   type: string,
   nombre: string,
-  notation: NotationId | undefined
-): { bg: string; border: string; text: string; dash?: string; editorial: boolean } {
+  notation: NotationId | undefined,
+  /** Categoría fijada a mano (sólo la lee «Plano», spec 026). */
+  categoria?: string
+): { bg: string; border: string; text: string; dash?: string; editorial: boolean; plano: boolean } {
   const { skin, focal } = React.useContext(SkinContext);
   const canon = colorForType(type);
-  if (skin !== "editorial") return { ...canon, editorial: false };
-  if (isContainerType(type)) return { ...CONTAINER_TREATMENT, editorial: true };
-  const t = nodeTreatment(skin, notation, type, focal.has(nombre));
-  return t ? { ...t, editorial: true } : { ...canon, editorial: true };
+  // `editorial` quiere decir «la skin trata al nodo»: sin sombra, icono
+  // monocromo y contorno del tratamiento. Lo cumplen editorial y plano.
+  if (skin === "canon") return { ...canon, editorial: false, plano: false };
+  const plano = skin === "plano";
+  if (isContainerType(type)) return { ...(plano ? PLANO_CONTAINER : CONTAINER_TREATMENT), editorial: true, plano };
+  const t = nodeTreatment(skin, notation, type, focal.has(nombre), categoria);
+  return t ? { ...t, editorial: true, plano } : { ...canon, editorial: true, plano };
 }
 
 
@@ -1443,7 +1459,7 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
       />
     ) : null;
 
-  const color = useNodeColor(node.tipo_elemento, node.nombre, notation);
+  const color = useNodeColor(node.tipo_elemento, node.nombre, notation, node.categoria);
   // En editorial no hay sombra (bordes, no sombras) y el contorno propio del
   // tipo (`meta.stroke`) cede ante el del tratamiento.
   const editorial = color.editorial;
@@ -1820,7 +1836,10 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
     !labelOutside &&
     shape !== "text" &&
     !libre &&
-    labelLayoutOfType(node.tipo_elemento, notation) === "detail";
+    // En «Plano» (spec 026) toda caja rectangular es ficha: icono arriba a la
+    // izquierda, nombre y descripción, como en la lámina de referencia.
+    (labelLayoutOfType(node.tipo_elemento, notation) === "detail" ||
+      (color.plano && !compact && (shape === "rect" || shape === "rounded")));
 
   // CAJA DE TABLA (MER físico): el nombre arriba y un compartimento por
   // estereotipo —«column», «FK», «index», «PK»—. Se dibuja con <text> y no con
@@ -2098,10 +2117,14 @@ export const DesignerNodeComponent: React.FC<NodeComponentProps> = ({
                   {node.descripcion}
                 </p>
               )}
-              <p className="text-2xs leading-tight opacity-70 select-none truncate max-w-full">
-                [{node.tipo_elemento}
-                {node.tags_tecnologia?.length ? `: ${node.tags_tecnologia.join(", ")}` : ""}]
-              </p>
+              {/* En «Plano» la categoría ya la dice el color y la leyenda: el
+                  `[Tipo]` sería una tercera línea que la lámina no lleva. */}
+              {!color.plano && (
+                <p className="text-2xs leading-tight opacity-70 select-none truncate max-w-full">
+                  [{node.tipo_elemento}
+                  {node.tags_tecnologia?.length ? `: ${node.tags_tecnologia.join(", ")}` : ""}]
+                </p>
+              )}
             </div>
           </div>
         ) : (
@@ -2263,15 +2286,16 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   // Skin editorial (spec 022): atenuada, enlace si toca un externo, acento
   // entre dos focos. En la canónica es `undefined` y manda el cromo del lienzo.
   const skinCtx = React.useContext(SkinContext);
-  const trazoSkin = edgeTreatment(
-    skinCtx.skin,
-    notation,
-    [link.sourceId, link.targetId]
-      .map((id) => nodes.get(id))
-      .filter((n): n is DesignerNode => !!n)
-      .map((n) => ({ tipo: n.tipo_elemento, focal: skinCtx.focal.has(n.nombre) }))
-  );
-  const geo = linkGeometry(link, nodes, notation);
+  const extremos = [link.sourceId, link.targetId]
+    .map((id) => nodes.get(id))
+    .filter((n): n is DesignerNode => !!n)
+    .map((n) => ({ tipo: n.tipo_elemento, focal: skinCtx.focal.has(n.nombre), categoria: n.categoria }));
+  const trazoSkin = edgeTreatment(skinCtx.skin, notation, extremos);
+  // «Plano» (spec 026): la arista, su punta y su píldora son del color de la
+  // categoría del ORIGEN. Fuera de plano es `null` y nada cambia.
+  const planoCat =
+    skinCtx.skin === "plano" && extremos.length ? planoEdgeCategory(notation, extremos[0]) : null;
+  const geo = linkGeometry(link, nodes, notation, skinCtx.skin);
   if (!geo) return null;
   const { path, labelX, labelY } = geo;
 
@@ -2285,7 +2309,9 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   const { width: labelWidth, height: labelHeight } = edgeLabelBox(
     labelText,
     notaText,
-    EDGE_LABEL_CHAR_PX
+    // La monoespaciada de «Plano» es más ancha que la proporcional: medida con
+    // el factor de siempre, la píldora quedaba corta y el texto la desbordaba.
+    planoCat ? EDGE_LABEL_CHAR_PX * PLANO_CHAR_FACTOR : EDGE_LABEL_CHAR_PX
   );
   const sinEtiqueta = !labelText && !notaText;
 
@@ -2297,7 +2323,11 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
   const rel = relationStyle(link.relation);
   const marca = (m: EdgeMarker, punta: "end" | "start"): string | undefined => {
     if (m === "none") return undefined;
-    if (m === "arrow") return `url(#arrow-${punta}${sel})`;
+    if (m === "arrow") {
+      // En plano la punta lleva el color del trazo: un marcador por categoría.
+      if (planoCat && !sel && !isRelated && !link.color) return `url(#arrow-${punta}-pl-${planoCat})`;
+      return `url(#arrow-${punta}${sel})`;
+    }
     // Cada marca tiene dos variantes: la de destino (orient auto) y la de
     // origen (`-rev`, auto-start-reverse). Sin la reversa, la pata de gallo del
     // extremo de origen apuntaría hacia el nodo equivocado.
@@ -2310,7 +2340,7 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
       : rel.start !== "none"
         ? marca(rel.start, "start")
         : arrow === "both"
-          ? `url(#arrow-start${sel})`
+          ? marca("arrow", "start")
           : undefined;
   const dashed = edgeIsDashed(link);
 
@@ -2404,14 +2434,28 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
         {!sinEtiqueta && (
           <>
             <title>{link.descripcion}</title>
-            <rect
-              x={labelX - labelWidth / 2}
-              y={labelY - labelHeight / 2}
-              width={labelWidth}
-              height={labelHeight}
-              className="fill-canvas/90"
-              rx="4"
-            />
+            {planoCat ? (
+              // Píldora de «Plano»: fondo de la lámina, borde y texto del color
+              // del trazo, extremos redondos (rx = media altura).
+              <rect
+                x={labelX - labelWidth / 2 - 4}
+                y={labelY - labelHeight / 2}
+                width={labelWidth + 8}
+                height={labelHeight}
+                className={cn("fill-pl-bg", PLANO_CATEGORIES[planoCat].border)}
+                strokeWidth={1}
+                rx={Math.min(labelHeight / 2, 10)}
+              />
+            ) : (
+              <rect
+                x={labelX - labelWidth / 2}
+                y={labelY - labelHeight / 2}
+                width={labelWidth}
+                height={labelHeight}
+                className="fill-canvas/90"
+                rx="4"
+              />
+            )}
             {!!labelText && (
               <text
                 x={labelX}
@@ -2420,7 +2464,10 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fill="currentColor"
-                className="text-2xs font-semibold text-foreground select-none pointer-events-none"
+                className={cn(
+                  "text-2xs font-semibold select-none pointer-events-none",
+                  planoCat ? PLANO_CATEGORIES[planoCat].text : "text-foreground"
+                )}
               >
                 {labelText}
               </text>
@@ -2432,7 +2479,10 @@ export const DesignerLinkComponent: React.FC<LinkComponentProps> = ({
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fill="currentColor"
-                className="text-2xs text-muted-foreground select-none pointer-events-none"
+                className={cn(
+                  "text-2xs select-none pointer-events-none",
+                  planoCat ? "text-pl-muted" : "text-muted-foreground"
+                )}
               >
                 [{notaText}]
               </text>
@@ -2470,7 +2520,8 @@ export const LinkEndpointHandles: React.FC<{
   onWaypointDoubleClick,
   onBendDoubleClick,
 }) => {
-  const geo = linkGeometry(link, nodes, notation);
+  const { skin } = React.useContext(SkinContext);
+  const geo = linkGeometry(link, nodes, notation, skin);
   if (!geo) return null;
   const { start, end, bend, bendKind, waypoints } = geo;
   const esArco = bendKind === "curve";

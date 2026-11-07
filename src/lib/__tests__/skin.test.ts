@@ -30,7 +30,7 @@ describe("skin", () => {
     expect(leerSkin(undefined)).toBe("canon");
     expect(leerSkin("rara")).toBe("canon");
     expect(leerSkin("editorial")).toBe("editorial");
-    expect(SKIN_LIST.map((s) => s.id)).toEqual(["canon", "editorial"]);
+    expect(SKIN_LIST.map((s) => s.id)).toEqual(["canon", "editorial", "plano"]);
   });
 
   it("el tratamiento se deduce del rol: datos → store, externo → external, actor → input, resto → backend", () => {

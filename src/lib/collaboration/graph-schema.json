@@ -74,6 +74,9 @@
             },
             {
               "literal": "editorial"
+            },
+            {
+              "literal": "plano"
             }
           ]
         },
@@ -240,6 +243,31 @@
           "anyOf": [
             {
               "type": "string"
+            }
+          ]
+        },
+        "categoria": {
+          "anyOf": [
+            {
+              "literal": "frontend"
+            },
+            {
+              "literal": "backend"
+            },
+            {
+              "literal": "datos"
+            },
+            {
+              "literal": "nube"
+            },
+            {
+              "literal": "seguridad"
+            },
+            {
+              "literal": "mensajeria"
+            },
+            {
+              "literal": "externo"
             }
           ]
         },
@@ -1551,6 +1579,31 @@
           "anyOf": [
             {
               "type": "string"
+            }
+          ]
+        },
+        "categoria": {
+          "anyOf": [
+            {
+              "literal": "frontend"
+            },
+            {
+              "literal": "backend"
+            },
+            {
+              "literal": "datos"
+            },
+            {
+              "literal": "nube"
+            },
+            {
+              "literal": "seguridad"
+            },
+            {
+              "literal": "mensajeria"
+            },
+            {
+              "literal": "externo"
             }
           ]
         },

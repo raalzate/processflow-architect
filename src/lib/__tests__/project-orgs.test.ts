@@ -18,6 +18,8 @@ import {
   orgOptions,
   visibleSelection,
   projectContext,
+  orgForNewProject,
+  selectorFiles,
 } from "../project-orgs";
 
 const file = (id: string, orgId?: string): SavedFile =>
@@ -152,5 +154,59 @@ describe("projectContext", () => {
     const ctx = projectContext(conContenido(undefined, { nombre_proyecto: "  " }));
     expect(ctx.proyecto).toBe("archivo.json");
     expect(ctx.notacion).toBe("DDD / Event Storming");
+  });
+});
+
+describe("orgForNewProject · el proyecto nuevo nace donde está parado el humano (#691)", () => {
+  it("con una organización filtrada, el proyecto nace en ella", () => {
+    // El defecto: con «Geiser» filtrado, el proyecto nacía sin orgId, el filtro lo
+    // escondía y el selector decía «Sin proyectos en Geiser» con el proyecto abierto.
+    expect(orgForNewProject("geiser")).toBe("geiser");
+  });
+
+  it("con «Todas» o «Sin organización» no se le inventa una", () => {
+    expect(orgForNewProject(ORG_TODAS)).toBeUndefined();
+    expect(orgForNewProject(null)).toBeUndefined();
+  });
+
+  it("la organización explícita manda sobre el filtro (el MCP elige dónde crear)", () => {
+    expect(orgForNewProject("geiser", "acme")).toBe("acme");
+    // `null` explícito = «sin organización» a propósito: no hereda el filtro.
+    expect(orgForNewProject("geiser", null)).toBeUndefined();
+  });
+
+  it("sin organización explícita, hereda el filtro (importar un tablero, un diagrama)", () => {
+    expect(orgForNewProject("geiser", undefined)).toBe("geiser");
+    expect(orgForNewProject(ORG_TODAS, undefined)).toBeUndefined();
+  });
+});
+
+describe("selectorFiles · el proyecto activo nunca desaparece del selector (#691)", () => {
+  const todos = [acme, acme2, contoso, suelto];
+
+  it("sin proyecto activo, muestra exactamente lo que deja el filtro", () => {
+    expect(selectorFiles(todos, "acme", null)).toEqual([acme, acme2]);
+  });
+
+  it("el proyecto activo fuera del filtro se suma a la lista", () => {
+    const lista = selectorFiles(todos, "acme", "onboarding");
+    expect(lista).toEqual([acme, acme2, contoso]);
+    // Con él en la lista, el selector lo nombra en vez de anunciar un vacío falso.
+    expect(visibleSelection("onboarding", lista)).toBe("onboarding");
+    expect(emptyOrgHint(lista.length, "acme")).toBeNull();
+  });
+
+  it("aunque el filtro deje la organización vacía, el activo sigue a la vista", () => {
+    const lista = selectorFiles(todos, "geiser", "borrador");
+    expect(lista).toEqual([suelto]);
+    expect(emptyOrgHint(lista.length, "geiser")).toBeNull();
+  });
+
+  it("no duplica al activo cuando ya está a la vista", () => {
+    expect(selectorFiles(todos, "acme", "enrollment")).toEqual([acme, acme2]);
+  });
+
+  it("un id activo que no existe no agrega nada", () => {
+    expect(selectorFiles(todos, "acme", "fantasma")).toEqual([acme, acme2]);
   });
 });
