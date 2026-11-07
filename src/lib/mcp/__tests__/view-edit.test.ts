@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { applyViewEdit, fundir, loQueSePierde, reconciliarIds } from "../view-edit";
 import type { GraphData } from "../../types";
+import { SharedDocument } from "../../collaboration/document";
 
 const nodo = (id: string, nombre: string, tipo: string, extra: Record<string, unknown> = {}) =>
   ({ id, nombre, tipo_elemento: tipo, estado_comparativo: "nuevo", x: 10, y: 20, width: 220, height: 104, ...extra }) as any;
@@ -93,6 +94,51 @@ describe("applyViewEdit — elementos", () => {
 // la ve, sin pasar por el workspace del MCP ni reemplazar la pestaña.
 describe("applyViewEdit — spec de un elemento", () => {
   const spec = { requirements: [{ texto: "Responde en 500 ms" }], criteria: [{ texto: "p95 < 500 ms" }] };
+
+  it("cambiar specs repetidamente conserva las identidades, relaciones y datos ajenos a la ficha", () => {
+    const g = vista();
+    g.big_picture.aristas[0] = { ...g.big_picture.aristas[0], id: "enlace-guardado", orden: 4, sourceAnchor: { x: 1, y: 0.5 } } as any;
+    g.agregados.push({ id: "limite-estable", nombre_agregado: "Sistema", tipo_contenedor: "Límite de Sistema", nodos: [], aristas: [], x: 30, y: 50, width: 600, height: 400 } as any);
+    const sinSpec = (value: unknown): unknown => Array.isArray(value) ? value.map(sinSpec) : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== "spec").map(([key, child]) => [key, sinSpec(child)])) : value;
+    let graph = g;
+    for (let i = 0; i < 4; i++) {
+      const r = applyViewEdit(graph, { kind: "set-spec", name: "api", spec, merge: true }, "c4");
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      graph = r.graph;
+      expect(sinSpec(graph)).toEqual(sinSpec(g));
+    }
+    expect(g.big_picture.nodos[1].spec).toBeUndefined();
+  });
+
+  it("guarda por el id estable de un contenedor sin sustituirlo por su nombre", () => {
+    const g = vista();
+    g.agregados.push({ id: "limite-estable", nombre_agregado: "Sistema", tipo_contenedor: "Límite de Sistema", nodos: [], aristas: [] } as any);
+    const r = applyViewEdit(g, { kind: "set-spec", name: "limite-estable", spec }, "c4");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.graph.agregados[0]).toMatchObject({ id: "limite-estable", spec: { requirements: [{ texto: "Responde en 500 ms" }] } });
+  });
+
+  it("sincroniza las specs entre dos participantes sin crear nuevas flechas", () => {
+    const a = new SharedDocument(), b = new SharedDocument();
+    try {
+      const graph = vista();
+      graph.big_picture.aristas[0] = { ...graph.big_picture.aristas[0], id: "conexion" };
+      a.patch({}, { name: "Tienda", content: graph, customViews: [], references: [], agent: { versions: [], lineages: [], artifacts: [] }, analysis: {} });
+      b.receive(a.update());
+      for (let i = 0; i < 4; i++) {
+        const before = a.snapshot();
+        const r = applyViewEdit(before.content, { kind: "set-spec", name: "API", spec, merge: true }, "c4");
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        a.patch(before, { ...before, content: r.graph });
+        b.receiveRemote(a.update(b.vector()));
+        expect(b.snapshot()).toEqual(a.snapshot());
+        expect(b.snapshot().content.big_picture.aristas).toEqual(graph.big_picture.aristas);
+      }
+    } finally { a.destroy(); b.destroy(); }
+  });
 
   it("escribe la spec por nombre y conserva la geometría de la caja", () => {
     const r = applyViewEdit(vista(), { kind: "set-spec", name: "api", spec }, "c4");

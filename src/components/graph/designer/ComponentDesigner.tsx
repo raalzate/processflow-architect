@@ -1501,6 +1501,7 @@ const EditNodeDialog: React.FC<{
       const adoptado = original && borrador ? adoptarExternos(original, borrador, node) : null;
       if (adoptado) {
         originalRef.current = adoptado.original;
+        draftRef.current = adoptado.borrador;
         setDraft(adoptado.borrador);
       }
       return;

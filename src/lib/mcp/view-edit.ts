@@ -32,7 +32,7 @@ import {
   type DiagramModel,
 } from "./diagram-builder";
 import { mergeProjectGraph } from "./project-update";
-import { setElementSpec } from "./element-spec-tools";
+import { patchSpec, sanitizeSpec } from "../element-spec";
 import { normalizarTipo, plano } from "./tipo-notacion";
 
 /** Operación de edición sobre el grafo de una vista. */
@@ -227,7 +227,7 @@ export function reconciliarIds(actual: GraphData, entrante: GraphData): GraphDat
 }
 
 /** El elemento del modelo que se llama así (o el motivo por el que no hay UNO). */
-function porNombre(model: DiagramModel, nombre: string): { node: BuilderNode } | { error: string } {
+function porNombre(model: Pick<DiagramModel, "nodes">, nombre: string): { node: BuilderNode } | { error: string } {
   const buscado = plano(nombre ?? "");
   if (!buscado) return { error: "Falta el nombre del elemento." };
   const exactos = model.nodes.filter((n) => plano(n.nombre) === buscado);
@@ -389,6 +389,36 @@ export function applyViewEdit(
     };
   }
 
+  if (edit.kind === "set-spec") {
+    // Una spec sólo cambia la ficha. La conversión al modelo del constructor
+    // regenera layout e identidades de aristas y contenedores: en colaboración
+    // esas identidades nuevas se interpretaban como flechas adicionales.
+    const contenedores = actual.agregados ?? [];
+    const candidatos = [
+      ...nodosDe(actual),
+      ...contenedores.map((a) => ({ id: a.id ?? `agg-${a.nombre_agregado}`, nombre: a.nombre_agregado, tipo_elemento: a.tipo_contenedor, spec: a.spec })),
+    ] as BuilderNode[];
+    const r = porNombre({ nodes: candidatos }, edit.name);
+    if ("error" in r) return { ok: false, error: r.error };
+    const guardada = edit.merge ? patchSpec(r.node.spec, edit.spec) : sanitizeSpec(edit.spec);
+    const conSpec = <T extends { id: string }>(n: T): T => n.id === r.node.id ? { ...n, spec: guardada } : n;
+    const graph: GraphData = {
+      ...actual,
+      big_picture: { ...actual.big_picture, nodos: (actual.big_picture?.nodos ?? []).map(conSpec) },
+      agregados: contenedores.map((a) => ({
+        ...a,
+        ...((a.id ?? `agg-${a.nombre_agregado}`) === r.node.id ? { spec: guardada } : {}),
+        nodos: (a.nodos ?? []).map(conSpec),
+      })),
+    };
+    const message = !guardada
+      ? edit.merge
+        ? `El parche de "${r.node.nombre}" no traía nada: la especificación quedó como estaba.`
+        : `Especificación de "${r.node.nombre}" borrada (llegó vacía).`
+      : `Especificación de "${r.node.nombre}" guardada en la vista: ${guardada.stories.length} paso(s), ${guardada.requirements.length} requisito(s), ${guardada.criteria.length} criterio(s).`;
+    return { ok: true, graph, message };
+  }
+
   const model = fromGraphData(actual, notation);
   let nuevo: DiagramModel;
   let message: string;
@@ -460,20 +490,6 @@ export function applyViewEdit(
         if ("error" in r) return { ok: false, error: r.error };
         nuevo = removeNode(model, r.node.id);
         message = `"${r.node.nombre}" eliminado de la vista.`;
-        break;
-      }
-      case "set-spec": {
-        const r = porNombre(model, edit.name);
-        if ("error" in r) return { ok: false, error: r.error };
-        // La misma regla que `set_element_spec` sobre el workspace: lo que llega
-        // de un agente se sanea, y `merge` parchea en vez de pisar.
-        nuevo = setElementSpec(model, r.node.id, edit.spec, edit.merge === true);
-        const guardada = nuevo.nodes.find((n) => n.id === r.node.id)?.spec;
-        message = !guardada
-          ? edit.merge
-            ? `El parche de "${r.node.nombre}" no traía nada: la especificación quedó como estaba.`
-            : `Especificación de "${r.node.nombre}" borrada (llegó vacía).`
-          : `Especificación de "${r.node.nombre}" guardada en la vista: ${guardada.stories.length} paso(s), ${guardada.requirements.length} requisito(s), ${guardada.criteria.length} criterio(s).`;
         break;
       }
       case "add-edge": {

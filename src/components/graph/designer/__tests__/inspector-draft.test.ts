@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { adoptarExternos, changedKeys, draftPatch, hasDraftChanges, parseTagList } from "../inspector-draft";
+import { emptySpec, sanitizeSpec } from "@/lib/element-spec";
 
 describe("inspector-draft", () => {
   const abierto = { id: "a", nombre: "Pago", descripcion: "", x: 100, y: 100, tags: ["java"] };
@@ -121,5 +122,25 @@ describe("adoptarExternos (#643): lo que escribe un agente con la ficha abierta"
 
   it("sin cambios de afuera no hay nada que adoptar", () => {
     expect(adoptarExternos(abierto, { ...abierto, nombre: "x" }, { ...abierto })).toBeNull();
+  });
+
+  it("adopta el flujo del MCP aunque el humano esté editando el nombre de una spec nueva", () => {
+    const original = { id: "api", spec: undefined as ReturnType<typeof sanitizeSpec> };
+    const borrador = { ...original, spec: { ...emptySpec(), featureName: "Nombre del humano" } };
+    const vivo = { ...original, spec: sanitizeSpec({ featureName: "Nombre del agente", stories: [{ tipo: "entrada", ref: "web", hace: "Consultar", escenarios: [{ given: "Autorizado", when: "Consulta", then: "Devuelve datos" }] }], criteria: [{ texto: "1 respuesta" }] }) };
+    const r = adoptarExternos(original, borrador, vivo)!;
+    expect(r).not.toBeNull();
+    expect(r.borrador.spec?.featureName).toBe("Nombre del humano");
+    expect(r.borrador.spec?.stories).toEqual(vivo.spec?.stories);
+    expect(r.borrador.spec?.criteria).toEqual(vivo.spec?.criteria);
+    expect((draftPatch(r.original, r.borrador).spec as any)?.stories).toEqual(vivo.spec?.stories);
+  });
+
+  it("actualizar la spec externa no cuenta como un cambio local que se guarde otra vez", () => {
+    const original = { id: "api", spec: sanitizeSpec({ input: "Inicial" }) };
+    const vivo = { ...original, spec: sanitizeSpec({ input: "Actualizada", criteria: [{ texto: "1 respuesta" }] }) };
+    const r = adoptarExternos(original, { ...original }, vivo)!;
+    expect(r.borrador.spec).toEqual(vivo.spec);
+    expect(draftPatch(r.original, r.borrador)).toEqual({});
   });
 });
