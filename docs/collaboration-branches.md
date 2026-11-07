@@ -1,5 +1,8 @@
 # Ramas y versiones desde la pantalla
 
+La guía detallada para participantes y anfitriones está en **Ayuda → Documentación → Ramas y versiones**,
+junto a **Trabajo cooperativo**, sin necesitar comandos.
+
 Un proyecto individual conserva el flujo habitual. Al vincularlo como proyecto compartido
 se guarda una versión inicial y se habilitan permanentemente las ramas. El anfitrión
 puede consultarlas aunque sea la única persona conectada.
@@ -61,8 +64,9 @@ temporales corresponden a la misma rama y vista.
    (además del contador en el botón de la cabecera). Quien tenga permiso expreso de fusión
    puede comparar las vistas, resolver conflictos, aprobar o rechazar. Los cambios
    posteriores al commit propuesto quedan fuera.
-5. Si dos personas editan en vivo el mismo campo dentro de una misma rama, aparece
-   un aviso en la rama para elegir entre **Mantener actual** o **Restaurar este valor**.
+5. Las ramas de trabajo resuelven automáticamente las ediciones simultáneas y conservan
+   la alternativa para recuperación. **Revisar alternativas** permite recuperarla; en
+   Principal se mantiene la revisión explícita.
 
 Guardar automáticamente, guardar un commit y fusionarlo son acciones distintas.
 Un commit en una rama compartida contiene las contribuciones visibles de esa rama
@@ -81,8 +85,9 @@ La revisión no modifica la rama y se puede cancelar. Antes de aplicar se compru
 que el destino no haya cambiado y se guarda un punto de recuperación. Si cambió,
 hay que revisar de nuevo. Una fusión parcial conserva cuáles vistas fueron
 incorporadas para no dar por aprobadas las restantes. Las dependencias entre
-vistas, como un nodo que abre un subdiagrama, deben quedar incluidas o corregidas;
-el sistema no añade vistas silenciosamente.
+vistas, como un nodo que abre un subdiagrama, deben quedar incluidas si esas vistas todavía
+existen; el sistema no añade vistas silenciosamente. Los enlaces a vistas realmente
+borradas se retiran automáticamente al guardar o preparar la fusión, conservando los componentes.
 
 ## Historial, árbol y restauración
 

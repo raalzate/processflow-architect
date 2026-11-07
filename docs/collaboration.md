@@ -1,5 +1,8 @@
 # Colaboración en un proyecto compartido
 
+La guía para usuarios está integrada en **Ayuda → Documentación → Trabajo cooperativo**.
+La sección **Ramas y versiones** explica el recorrido completo desde la edición hasta la aprobación.
+
 Al vincular el proyecto se habilitan [ramas, versiones e historial visual](collaboration-branches.md), aunque el anfitrión esté solo.
 Principal conserva lo aprobado y Trabajo compartido continúa la edición en vivo.
 
