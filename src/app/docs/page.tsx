@@ -34,6 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { NOTATION_LIST, type Notation, type NotationElement } from "@/lib/notations";
 import { NOTATION_HELP } from "@/lib/notation-help";
+import { OntologyReference } from "@/components/ontology/OntologyReference";
 import { iconForType, NodeShape, CHANGE_STATES } from "@/components/graph/designer/DesignerCanvas";
 
 // Secciones: lienzo + estados + vistas + una por notación (para el sidebar).
@@ -143,6 +144,8 @@ function NotationSection({ notation }: { notation: Notation }) {
             </div>
           </div>
         ))}
+        {/* El reglamento de la notación (spec 027): qué es subclase de qué y qué significa cada flecha. */}
+        <OntologyReference notation={notation.id} />
       </CardContent>
     </Card>
   );

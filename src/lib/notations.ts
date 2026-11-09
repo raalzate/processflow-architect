@@ -12,6 +12,8 @@
  * Los iconos se referencian por NOMBRE (string) y se resuelven en la capa de UI.
  */
 
+import type { EdgeRelationKind } from "./edge-relations";
+
 export type NotationId = "ddd" | "bpmn" | "c4" | "uml" | "mer" | "general";
 
 /**
@@ -174,6 +176,13 @@ export interface NotationElement {
    * siguen midiendo `COMPACT_NODE_SIZE`.
    */
   size?: { w: number; h: number };
+  /**
+   * Tipo PADRE dentro de la misma notación (spec 027, ontología): la Compuerta
+   * Exclusiva ES UNA Compuerta. Es la jerarquía de clases que la ontología lee
+   * (`src/lib/ontology/tbox.ts`); el rol lo hereda del padre si no declara uno.
+   * Vive acá porque la jerarquía de tipos es notación, no lógica (P6).
+   */
+  parent?: string;
   /** Clase tailwind de trazo SVG (stroke-*) que dibuja el contorno del nodo. */
   stroke?: string;
   /** Clases tailwind: relleno SVG, borde y texto. */
@@ -402,7 +411,7 @@ const DDD: Notation = {
     { type: "Regla de Negocio", icon: "Gavel", shape: "ellipse", treatment: "security", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Sistema Externo", icon: "HardDrive", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-400", bg: "fill-zinc-100 dark:fill-zinc-500", border: "border-zinc-400 dark:border-zinc-500", text: "text-zinc-900 dark:text-white" },
     { type: "Política", icon: "Milestone", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
-    { type: "Raíz de Agregado", icon: "Crown", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Raíz de Agregado", parent: "Entidad", icon: "Crown", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Entidad", icon: "Fingerprint", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Objeto de Valor", icon: "Gem", shape: "ellipse", treatment: "optional", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Servicio de Dominio", icon: "Cog", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
@@ -493,9 +502,9 @@ const BPMN: Notation = {
     { type: "Evento de Inicio", icon: "Play", shape: "ellipse", compact: true, stroke: "stroke-green-600 dark:stroke-green-600", bg: "fill-green-100 dark:fill-green-950", border: "border-green-400 dark:border-green-500", text: "text-green-900 dark:text-green-100" },
     { type: "Evento Intermedio", icon: "Circle", shape: "ellipse", compact: true, stroke: "stroke-yellow-700 dark:stroke-yellow-600", bg: "fill-yellow-100 dark:fill-yellow-950", border: "border-yellow-400 dark:border-yellow-500", text: "text-yellow-900 dark:text-yellow-100" },
     { type: "Evento de Fin", icon: "StopCircle", shape: "ellipse", compact: true, stroke: "stroke-red-600 dark:stroke-red-600", bg: "fill-red-100 dark:fill-red-950", border: "border-red-400 dark:border-red-500", text: "text-red-900 dark:text-red-100" },
-    { type: "Evento de Mensaje", icon: "Mail", shape: "ellipse", compact: true, stroke: "stroke-sky-600 dark:stroke-sky-600", bg: "fill-sky-100 dark:fill-sky-950", border: "border-sky-400 dark:border-sky-500", text: "text-sky-900 dark:text-sky-100" },
-    { type: "Evento Temporizador", icon: "Timer", shape: "ellipse", compact: true, stroke: "stroke-amber-600 dark:stroke-amber-600", bg: "fill-amber-100 dark:fill-amber-950", border: "border-amber-400 dark:border-amber-500", text: "text-amber-900 dark:text-amber-100" },
-    { type: "Evento de Error", icon: "AlertTriangle", shape: "ellipse", compact: true, stroke: "stroke-rose-600 dark:stroke-rose-600", bg: "fill-rose-100 dark:fill-rose-950", border: "border-rose-400 dark:border-rose-500", text: "text-rose-900 dark:text-rose-100" },
+    { type: "Evento de Mensaje", parent: "Evento Intermedio", icon: "Mail", shape: "ellipse", compact: true, stroke: "stroke-sky-600 dark:stroke-sky-600", bg: "fill-sky-100 dark:fill-sky-950", border: "border-sky-400 dark:border-sky-500", text: "text-sky-900 dark:text-sky-100" },
+    { type: "Evento Temporizador", parent: "Evento Intermedio", icon: "Timer", shape: "ellipse", compact: true, stroke: "stroke-amber-600 dark:stroke-amber-600", bg: "fill-amber-100 dark:fill-amber-950", border: "border-amber-400 dark:border-amber-500", text: "text-amber-900 dark:text-amber-100" },
+    { type: "Evento de Error", parent: "Evento Intermedio", icon: "AlertTriangle", shape: "ellipse", compact: true, stroke: "stroke-rose-600 dark:stroke-rose-600", bg: "fill-rose-100 dark:fill-rose-950", border: "border-rose-400 dark:border-rose-500", text: "text-rose-900 dark:text-rose-100" },
     // --- Actividades y datos ---
     { type: "Tarea", icon: "Square", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Subproceso", icon: "Boxes", shape: "rounded", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
@@ -505,11 +514,12 @@ const BPMN: Notation = {
     // --- Compuertas (decisiones / bifurcaciones): rombo compacto, nombre debajo ---
     // Compuerta genérica: se conserva por compatibilidad con diagramas existentes.
     { type: "Compuerta", icon: "Diamond", shape: "diamond", compact: true, stroke: "stroke-amber-600 dark:stroke-amber-600", bg: "fill-amber-100 dark:fill-amber-950", border: "border-amber-400 dark:border-amber-500", text: "text-amber-900 dark:text-amber-100" },
-    { type: "Compuerta Exclusiva", icon: "X", shape: "diamond", compact: true, stroke: "stroke-orange-600 dark:stroke-orange-600", bg: "fill-orange-100 dark:fill-orange-950", border: "border-orange-400 dark:border-orange-500", text: "text-orange-900 dark:text-orange-100" },
-    { type: "Compuerta Paralela", icon: "Plus", shape: "diamond", compact: true, stroke: "stroke-emerald-600 dark:stroke-emerald-600", bg: "fill-emerald-100 dark:fill-emerald-950", border: "border-emerald-400 dark:border-emerald-500", text: "text-emerald-900 dark:text-emerald-100" },
-    { type: "Compuerta Inclusiva", icon: "Circle", shape: "diamond", compact: true, stroke: "stroke-indigo-600 dark:stroke-indigo-400", bg: "fill-indigo-100 dark:fill-indigo-950", border: "border-indigo-400 dark:border-indigo-500", text: "text-indigo-900 dark:text-indigo-100" },
+    // `parent`: la compuerta concreta ES UNA Compuerta (jerarquía de la ontología, spec 027).
+    { type: "Compuerta Exclusiva", parent: "Compuerta", icon: "X", shape: "diamond", compact: true, stroke: "stroke-orange-600 dark:stroke-orange-600", bg: "fill-orange-100 dark:fill-orange-950", border: "border-orange-400 dark:border-orange-500", text: "text-orange-900 dark:text-orange-100" },
+    { type: "Compuerta Paralela", parent: "Compuerta", icon: "Plus", shape: "diamond", compact: true, stroke: "stroke-emerald-600 dark:stroke-emerald-600", bg: "fill-emerald-100 dark:fill-emerald-950", border: "border-emerald-400 dark:border-emerald-500", text: "text-emerald-900 dark:text-emerald-100" },
+    { type: "Compuerta Inclusiva", parent: "Compuerta", icon: "Circle", shape: "diamond", compact: true, stroke: "stroke-indigo-600 dark:stroke-indigo-400", bg: "fill-indigo-100 dark:fill-indigo-950", border: "border-indigo-400 dark:border-indigo-500", text: "text-indigo-900 dark:text-indigo-100" },
     // Oscuro en 500: el violeta 600 de la paleta de Tailwind 4 da 2,98:1 sobre el lienzo (mínimo 3:1, #501).
-    { type: "Compuerta de Eventos", icon: "CircleDot", shape: "diamond", compact: true, stroke: "stroke-purple-600 dark:stroke-purple-500", bg: "fill-purple-100 dark:fill-purple-950", border: "border-purple-400 dark:border-purple-500", text: "text-purple-900 dark:text-purple-100" },
+    { type: "Compuerta de Eventos", parent: "Compuerta", icon: "CircleDot", shape: "diamond", compact: true, stroke: "stroke-purple-600 dark:stroke-purple-500", bg: "fill-purple-100 dark:fill-purple-950", border: "border-purple-400 dark:border-purple-500", text: "text-purple-900 dark:text-purple-100" },
     // --- Contenedores (los ÚNICOS transparentes: un fondo taparía a sus hijos) ---
     { type: "Pool", icon: "Container", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-sky-600 dark:stroke-sky-600", bg: "fill-sky-100 dark:fill-sky-950/40", border: "border-sky-400 dark:border-sky-600", text: "text-sky-900 dark:text-sky-200" },
     { type: "Carril", icon: "Rows3", container: true, transparent: true, containerStyle: "swimlane", stroke: "stroke-cyan-600 dark:stroke-cyan-600", bg: "fill-cyan-100 dark:fill-cyan-950/40", border: "border-cyan-400 dark:border-cyan-600", text: "text-cyan-900 dark:text-cyan-200" },
@@ -651,15 +661,15 @@ const UML: Notation = {
   ],
   elements: [
     { type: "Clase", icon: "Box", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
-    { type: "Clase Abstracta", icon: "BoxSelect", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Clase Abstracta", parent: "Clase", icon: "BoxSelect", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Interfaz", icon: "Plug", shape: "ellipse", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Enumeración", icon: "List", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     // Tipos que NO son clases pero viven en el diagrama de clases: el tipo de
     // dato (valor sin identidad), la plantilla (genérico) y el estereotipo
     // («entity», «service»), que es la extensión estándar de UML.
     { type: "Tipo de Dato", icon: "Type", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
-    { type: "Clase Plantilla", icon: "Braces", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
-    { type: "Clase de Asociación", icon: "Link2", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Clase Plantilla", parent: "Clase", icon: "Braces", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
+    { type: "Clase de Asociación", parent: "Clase", icon: "Link2", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Estereotipo", icon: "Tag", shape: "rect", stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Componente", icon: "Component", shape: "rect", deployable: true, stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
     { type: "Nodo", icon: "Server", shape: "rect", deployable: true, stroke: "stroke-zinc-600 dark:stroke-zinc-500", bg: "fill-zinc-100 dark:fill-zinc-700", border: "border-zinc-400 dark:border-zinc-700", text: "text-zinc-900 dark:text-white" },
@@ -1351,4 +1361,391 @@ export function notationRoles(
  */
 export function isDatastoreType(type: string): boolean {
   return Object.values(ELEMENT_ROLES).some((t) => t.datastore?.includes(type) ?? false);
+}
+
+// =============================================================================
+// Ontología (spec 027): clases generales y catálogo de PREDICADOS por notación
+// =============================================================================
+//
+// La ontología del modelo (`src/lib/ontology/`) se DERIVA de este registro: acá
+// se declara qué significa cada flecha, y allá se razona, valida y consulta.
+// Los predicados se declaran sobre ROLES y clases generales, nunca sobre tipos
+// concretos: así una notación nueva hereda el catálogo declarando sus roles, y
+// `ontology/` no necesita conocer un solo literal de tipo (P6, SC-009).
+
+/** Clases generales: el nivel más alto de la jerarquía, común a toda notación. */
+export type ClaseGeneral = "NodoDeFlujo" | "Agente" | "Almacen" | "Informacion" | "Frontera";
+
+/** Etiqueta legible de cada clase general. */
+export const CLASES_GENERALES: Record<ClaseGeneral, string> = {
+  NodoDeFlujo: "Nodo de flujo",
+  Agente: "Agente",
+  Almacen: "Almacén",
+  Informacion: "Información",
+  Frontera: "Frontera",
+};
+
+/**
+ * Clase general de cada rol (R-03 del plan 027). Las cinco generales son
+ * DISJUNTAS entre sí: un Evento no puede ser a la vez un Actor, y es esa
+ * disjunción la que permite rechazar una equivalencia absurda.
+ */
+export const ROLE_GENERAL: Record<ElementRole, ClaseGeneral> = {
+  start: "NodoDeFlujo",
+  end: "NodoDeFlujo",
+  gateway: "NodoDeFlujo",
+  task: "NodoDeFlujo",
+  command: "NodoDeFlujo",
+  event: "NodoDeFlujo",
+  policy: "NodoDeFlujo",
+  actor: "Agente",
+  external: "Agente",
+  system: "Agente",
+  datastore: "Almacen",
+  entity: "Informacion",
+  attribute: "Informacion",
+  relationship: "Informacion",
+  rule: "Informacion",
+  context: "Frontera",
+  pool: "Frontera",
+  lane: "Frontera",
+  boundary: "Frontera",
+};
+
+/** Etiqueta legible de cada rol (la ayuda de la notación y el MCP la muestran). */
+export const ROLE_LABELS: Record<ElementRole, string> = {
+  start: "Inicio",
+  end: "Fin",
+  gateway: "Bifurcación",
+  task: "Tarea",
+  command: "Intención",
+  event: "Hecho",
+  policy: "Reacción",
+  rule: "Regla",
+  actor: "Actor",
+  external: "Externo",
+  system: "Sistema",
+  datastore: "Almacén de datos",
+  entity: "Entidad",
+  attribute: "Atributo",
+  relationship: "Relación",
+  context: "Contexto",
+  pool: "Participante",
+  lane: "Rol",
+  boundary: "Frontera",
+};
+
+/** Todos los roles, en el orden en que se declaran (para recorrerlos sin `in`). */
+export const ELEMENT_ROLE_LIST = Object.keys(ROLE_GENERAL) as ElementRole[];
+
+/** Clases generales, en orden. */
+export const CLASE_GENERAL_LIST = Object.keys(CLASES_GENERALES) as ClaseGeneral[];
+
+/**
+ * Un predicado: una relación con significado (FR-003). `dominio` y `rango` son
+ * roles o clases generales; ausentes = cualquiera. `subDe` es subPropertyOf:
+ * «dispara» ⊂ «provoca», y por eso la cadena comando → evento → política →
+ * comando se lee como una sola causa (R-04).
+ */
+export interface PredicadoDecl {
+  /** snake_case, único dentro de la notación (universales + propios). */
+  id: string;
+  /** Cómo se lee: «dispara». */
+  etiqueta: string;
+  /** Formas con que la gente rotula la flecha: «emite», «genera»… */
+  sinonimos: string[];
+  dominio?: (ElementRole | ClaseGeneral)[];
+  rango?: (ElementRole | ClaseGeneral)[];
+  /** Id del predicado inverso (debe declararlo a su vez). */
+  inversa?: string;
+  /** subPropertyOf: ids de predicados más generales. */
+  subDe?: string[];
+  transitiva?: boolean;
+  simetrica?: boolean;
+  funcional?: boolean;
+  /** Relación UML/MER que se lee 1:1 como este predicado (FR-005). */
+  relacion?: EdgeRelationKind;
+  /** Para qué sirve, en una línea (ayuda y MCP). */
+  descripcion?: string;
+}
+
+/**
+ * Predicados de TODA notación (FR-004). «relacionado_con» es el genérico: sin
+ * dominio ni rango, es a donde cae una flecha cuyo significado no se puede
+ * afirmar sin adivinar (US2-AC3).
+ */
+export const UNIVERSAL_PREDICATES: PredicadoDecl[] = [
+  {
+    id: "pertenece_a",
+    etiqueta: "pertenece a",
+    sinonimos: ["pertenece a", "parte de", "contenido en", "dentro de", "es parte de"],
+    transitiva: true,
+    descripcion: "Composición / contenido en: la caja vive dentro del contenedor (nunca es subclase)",
+  },
+  {
+    id: "es_mismo_que",
+    etiqueta: "es el mismo que",
+    sinonimos: ["es el mismo que", "equivale a", "igual a", "mismo que"],
+    simetrica: true,
+    transitiva: true,
+    descripcion: "Equivalencia: dos elementos (de vistas distintas) son el mismo concepto",
+  },
+  {
+    id: "realiza",
+    etiqueta: "realiza",
+    sinonimos: ["realiza", "implementa", "materializa"],
+    relacion: "realizacion",
+    descripcion: "El origen implementa o materializa al destino",
+  },
+  {
+    id: "depende_de",
+    etiqueta: "depende de",
+    sinonimos: ["depende de", "requiere", "necesita"],
+    transitiva: true,
+    relacion: "dependencia",
+    descripcion: "Si el destino cambia o cae, el origen se ve afectado",
+  },
+  {
+    id: "provoca",
+    etiqueta: "provoca",
+    sinonimos: ["provoca", "causa", "lleva a", "desencadena"],
+    transitiva: true,
+    descripcion: "Causa, directa o indirecta: la cadena de flujo resumida en una relación",
+  },
+  {
+    id: "precede",
+    etiqueta: "precede a",
+    sinonimos: ["precede", "antes de"],
+    transitiva: true,
+    descripcion: "Orden: el origen ocurre antes que el destino",
+  },
+  {
+    id: "lee_de",
+    etiqueta: "lee de",
+    sinonimos: ["lee", "lee de", "consulta", "obtiene", "recupera", "carga"],
+    dominio: ["NodoDeFlujo", "Agente"],
+    rango: ["Almacen"],
+    subDe: ["depende_de"],
+    descripcion: "Lectura de un almacén de datos",
+  },
+  {
+    id: "escribe_en",
+    etiqueta: "escribe en",
+    sinonimos: ["escribe", "escribe en", "guarda", "persiste", "almacena", "registra", "actualiza", "graba"],
+    dominio: ["NodoDeFlujo", "Agente"],
+    rango: ["Almacen"],
+    subDe: ["depende_de"],
+    descripcion: "Escritura en un almacén de datos",
+  },
+  {
+    id: "relacionado_con",
+    etiqueta: "relacionado con",
+    sinonimos: [],
+    descripcion: "Genérico: hay relación pero el modelo no afirma cuál",
+  },
+];
+
+/** Flujo de control entre nodos de flujo: lo comparten BPMN y la actividad UML. */
+const FLUJO_A: PredicadoDecl = {
+  id: "flujo_a",
+  etiqueta: "fluye a",
+  sinonimos: ["fluye a", "pasa a", "sigue", "luego", "continua", "si", "no", "siguiente", "entonces"],
+  dominio: ["NodoDeFlujo"],
+  rango: ["NodoDeFlujo"],
+  subDe: ["precede"],
+  descripcion: "Flujo de secuencia: al terminar el origen, sigue el destino",
+};
+
+/** Catálogo propio de cada notación (se suma a `UNIVERSAL_PREDICATES`). */
+export const NOTATION_PREDICATES: Record<NotationId, PredicadoDecl[]> = {
+  ddd: [
+    {
+      id: "invoca",
+      etiqueta: "invoca",
+      sinonimos: ["invoca", "ejecuta", "inicia", "solicita", "lanza", "usa", "pide"],
+      dominio: ["actor", "external"],
+      rango: ["command"],
+      subDe: ["provoca"],
+      descripcion: "Un actor o sistema externo da la orden",
+    },
+    {
+      id: "dispara",
+      etiqueta: "dispara",
+      sinonimos: ["dispara", "emite", "genera", "produce", "publica", "resulta en", "origina"],
+      dominio: ["command"],
+      rango: ["event"],
+      subDe: ["provoca"],
+      descripcion: "El comando deja como hecho consumado el evento",
+    },
+    {
+      id: "activa",
+      etiqueta: "activa",
+      sinonimos: ["activa", "dispara", "notifica", "despierta"],
+      dominio: ["event"],
+      rango: ["policy"],
+      inversa: "reacciona_a",
+      subDe: ["provoca"],
+      descripcion: "El evento pone en marcha la política",
+    },
+    {
+      id: "reacciona_a",
+      etiqueta: "reacciona a",
+      sinonimos: ["reacciona a", "escucha", "cuando", "se suscribe a", "consume", "atiende"],
+      dominio: ["policy"],
+      rango: ["event"],
+      inversa: "activa",
+      descripcion: "La política se ejecuta cuando ocurre el evento",
+    },
+    {
+      id: "emite",
+      etiqueta: "emite",
+      sinonimos: ["emite", "envia", "ordena", "lanza", "invoca", "ejecuta", "dispara"],
+      dominio: ["policy"],
+      rango: ["command"],
+      subDe: ["provoca"],
+      descripcion: "La política da la siguiente orden",
+    },
+    {
+      id: "restringe",
+      etiqueta: "restringe",
+      sinonimos: ["restringe", "valida", "aplica a", "condiciona", "controla"],
+      dominio: ["rule"],
+      rango: ["command", "policy"],
+      descripcion: "La regla de negocio condiciona la orden o la reacción",
+    },
+    {
+      id: "llama_a",
+      etiqueta: "llama a",
+      sinonimos: ["llama a", "llama", "integra", "integra con", "consulta a"],
+      dominio: ["command", "policy"],
+      rango: ["external"],
+      subDe: ["depende_de"],
+      descripcion: "La orden o la reacción necesitan a un sistema de terceros",
+    },
+  ],
+  bpmn: [
+    FLUJO_A,
+    {
+      id: "mensaje_a",
+      etiqueta: "envía mensaje a",
+      sinonimos: ["mensaje", "envia mensaje", "envia", "notifica", "comunica"],
+      dominio: ["pool"],
+      rango: ["pool"],
+      descripcion: "Flujo de mensaje entre participantes",
+    },
+  ],
+  c4: [
+    {
+      id: "usa",
+      etiqueta: "usa",
+      sinonimos: ["usa", "utiliza", "consume", "llama", "llama a", "invoca", "accede", "envia", "solicita", "visita", "navega"],
+      dominio: ["actor", "system"],
+      rango: ["system", "external"],
+      subDe: ["depende_de"],
+      descripcion: "El origen necesita al destino para hacer su trabajo",
+    },
+  ],
+  uml: [
+    FLUJO_A,
+    {
+      id: "mensaje",
+      etiqueta: "envía mensaje a",
+      sinonimos: ["mensaje", "llama", "envia", "responde", "retorna", "devuelve"],
+      dominio: ["pool"],
+      rango: ["pool"],
+      // NO transitiva a propósito: en una secuencia los mensajes tienen orden y
+      // A→B, B→C no dice que A le hable a C (edge case de la spec).
+      descripcion: "Mensaje entre líneas de vida (ordenado, no transitivo)",
+    },
+    {
+      id: "participa_en",
+      etiqueta: "participa en",
+      sinonimos: ["participa en", "usa", "ejecuta", "inicia"],
+      dominio: ["actor"],
+      rango: ["task", "system"],
+      descripcion: "El actor participa del caso de uso o usa el componente",
+    },
+    {
+      id: "hereda_de",
+      etiqueta: "hereda de",
+      sinonimos: ["hereda de", "extiende", "es un", "especializa"],
+      transitiva: true,
+      relacion: "herencia",
+      descripcion: "Generalización: el origen ES UN caso del destino",
+    },
+    {
+      id: "compuesto_por",
+      etiqueta: "está compuesto por",
+      sinonimos: ["compuesto por", "contiene", "tiene"],
+      relacion: "composicion",
+      descripcion: "Composición: las partes no viven sin el todo",
+    },
+    {
+      id: "agrega",
+      etiqueta: "agrega",
+      sinonimos: ["agrega", "agrupa", "reune"],
+      relacion: "agregacion",
+      descripcion: "Agregación: el todo agrupa partes que existen por su cuenta",
+    },
+    {
+      id: "asociado_con",
+      etiqueta: "asociado con",
+      sinonimos: ["asociado con", "asociado a", "conoce"],
+      relacion: "asociacion",
+      descripcion: "Asociación simple entre clases",
+    },
+  ],
+  mer: [
+    {
+      id: "tiene_atributo",
+      etiqueta: "tiene atributo",
+      sinonimos: ["tiene atributo", "tiene", "atributo"],
+      dominio: ["entity", "relationship"],
+      rango: ["attribute"],
+      descripcion: "La entidad (o la relación) se describe con el atributo",
+    },
+    {
+      id: "participa",
+      etiqueta: "participa en",
+      sinonimos: ["participa", "participa en"],
+      dominio: ["entity"],
+      rango: ["relationship"],
+      descripcion: "La entidad participa de la relación",
+    },
+    { id: "uno_a_uno", etiqueta: "uno a uno con", sinonimos: ["1:1", "uno a uno"], dominio: ["entity"], rango: ["entity"], relacion: "cardinalidad_1_1", subDe: ["relacionado_con"], descripcion: "Cardinalidad 1:1" },
+    { id: "uno_a_muchos", etiqueta: "uno a muchos con", sinonimos: ["1:n", "uno a muchos"], dominio: ["entity"], rango: ["entity"], relacion: "cardinalidad_1_n", subDe: ["relacionado_con"], descripcion: "Cardinalidad 1:N" },
+    { id: "cero_o_uno", etiqueta: "cero o uno con", sinonimos: ["0:1", "cero o uno"], dominio: ["entity"], rango: ["entity"], relacion: "cardinalidad_0_1", subDe: ["relacionado_con"], descripcion: "Cardinalidad 0:1 (opcional)" },
+    { id: "cero_a_muchos", etiqueta: "cero a muchos con", sinonimos: ["0:n", "cero a muchos"], dominio: ["entity"], rango: ["entity"], relacion: "cardinalidad_0_n", subDe: ["relacionado_con"], descripcion: "Cardinalidad 0:N" },
+    { id: "muchos_a_muchos", etiqueta: "muchos a muchos con", sinonimos: ["n:m", "muchos a muchos"], dominio: ["entity"], rango: ["entity"], relacion: "cardinalidad_n_m", subDe: ["relacionado_con"], descripcion: "Cardinalidad N:M" },
+  ],
+  // Dibujo libre: sin roles no hay a qué atar un predicado propio; sólo valen
+  // los universales.
+  general: [],
+};
+
+/** Catálogo completo de una notación: universales + propios. */
+export function notationPredicates(id: NotationId | string | undefined): PredicadoDecl[] {
+  return [...UNIVERSAL_PREDICATES, ...NOTATION_PREDICATES[getNotation(id).id]];
+}
+
+/**
+ * Rol de un tipo contando la JERARQUÍA: si el tipo no declara rol pero su padre
+ * (`NotationElement.parent`) sí, lo hereda. Las reglas de calidad siguen usando
+ * `roleOfType`, que no cambia de comportamiento.
+ */
+export function roleOfTypeDeep(
+  id: NotationId | string | undefined,
+  type: string
+): ElementRole | undefined {
+  const n = getNotation(id);
+  const visto = new Set<string>();
+  let actual: string | undefined = type;
+  while (actual && !visto.has(actual)) {
+    visto.add(actual);
+    const r = roleOfType(n.id, actual);
+    if (r) return r;
+    const t: string = actual;
+    actual = n.elements.find((e) => e.type === t)?.parent;
+  }
+  return undefined;
 }
