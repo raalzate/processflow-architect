@@ -87,8 +87,9 @@ export function vocabularioEvaluacion(k: Pick<Conocimiento, "elementos" | "arist
  * Acierto: nombra TODOS los esperados (o, si no se espera nada, dice que el
  * modelo no lo sabe) y no inventa elementos. `vocabulario` son los nombres que
  * existen en el modelo (y los términos del reglamento, que se pueden citar);
- * `elementos`, sólo los nombres de las cajas, cuando el vocabulario es el
- * extendido de `vocabularioEvaluacion`.
+ * `elementos`, sólo los nombres de las cajas. Con el vocabulario extendido de
+ * `vocabularioEvaluacion` es OBLIGATORIO pasarlo: el valor por defecto
+ * (todo el vocabulario) dejaría pasar «Pagar emite Facturita» como cita legítima.
  */
 export function puntuar(respuesta: string, esperado: string[], vocabulario: string[], elementos = vocabulario): PuntajeRespuesta {
   const conocidos = new Set(vocabulario.map(plana));
