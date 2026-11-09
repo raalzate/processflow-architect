@@ -52,6 +52,13 @@ describe("contextoParaIA", () => {
     expect(contextoParaIA(k, [iriElemento("actual", "grafo", "c0")]).length).toBeLessThanOrEqual(PRESUPUESTO_CONTEXTO);
   });
 
+  it("un presupuesto donde ni la cabecera entra devuelve nada, nunca más del tope (#742)", () => {
+    const k = proyecto();
+    for (const tope of [0, 10, 50, 90])
+      expect(contextoParaIA(k, [es("pagar")], tope).length).toBeLessThanOrEqual(tope);
+    expect(contextoParaIA(k, [es("pagar")], 10)).toBe("");
+  });
+
   it("prioriza el foco: lo dibujado del foco antes que lo deducido y que lo lejano", () => {
     const t = contextoParaIA(proyecto(), [es("pagar")], 10_000);
     const filas = t.split("\n").filter((l) => /,(d|i)$/.test(l));

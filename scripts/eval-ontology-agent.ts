@@ -21,7 +21,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { graphToToon } from "../src/lib/ai/graph-toon";
-import { puntuar, resumir, type PuntajeRespuesta } from "../src/lib/ai/eval-ontology";
+import { puntuar, resumir, vocabularioEvaluacion, type PuntajeRespuesta } from "../src/lib/ai/eval-ontology";
 import { PREGUNTAS_COMPETENCIA } from "../src/lib/ontology/competency";
 import { construirConocimiento } from "../src/lib/ontology/conocimiento";
 import { LEYENDA_CONOCIMIENTO, contextoParaIA, focoDeTexto } from "../src/lib/ontology/context";
@@ -66,7 +66,12 @@ const BANCO: { pregunta: string; esperado: () => string[] }[] = [
   { pregunta: "¿Qué se vería afectado si cae la Pasarela?", esperado: pc("PC-07", { sistema: "Pasarela" }, "elemento") },
   { pregunta: "¿Qué sistemas escriben en PagosDB?", esperado: pc("PC-04", { almacen: "PagosDB" }, "elemento") },
   { pregunta: "¿Qué sistemas leen de PagosDB?", esperado: consulta("?x", "lee de", "PagosDB") },
-  { pregunta: "¿Qué usa la Persona Cliente en el paisaje de sistemas?", esperado: consulta("Cliente", "usa") },
+  // Sólo el paisaje (C4), como dice la pregunta: desde #742 «usa» también lee el
+  // «invoca» del Event Storming (Cliente invoca Pagar), que no es lo preguntado.
+  {
+    pregunta: "¿Qué usa la Persona Cliente en el paisaje de sistemas?",
+    esperado: () => nombres(consultarPorNombre(k, [["Cliente", "usa", "?x"]]).filas.map((f) => f.x).filter((x) => x.includes("/v-c4/"))),
+  },
   { pregunta: "¿Qué actor inicia el flujo de pago y en qué contexto cae?", esperado: () => nombres(PREGUNTAS_COMPETENCIA[1].ejecutar(k).filas.flatMap((f) => Object.values(f))) },
   { pregunta: "¿Qué políticas cruzan de un contexto delimitado a otro?", esperado: pc("PC-05", {}, "politica") },
   { pregunta: "¿Qué elementos desplegables no declaran repositorio o responsable?", esperado: pc("PC-06", {}, "elemento") },
@@ -80,7 +85,9 @@ const BANCO: { pregunta: string; esperado: () => string[] }[] = [
   { pregunta: "¿Quién es responsable del sistema Pagos?", esperado: nada },
 ];
 
-const VOCABULARIO = [...new Set(k.elementos.map((e) => e.nombre))];
+// Nombres de elementos más lo que una respuesta correcta puede citar: predicados, tipos, etiquetas (#742).
+const VOCABULARIO = vocabularioEvaluacion(k);
+const ELEMENTOS = [...new Set(k.elementos.map((e) => e.nombre))];
 
 const contextoBase = vistas.map((v) => `### Vista ${v.name} (${v.notation}, TOON)\n${graphToToon(v.graph)}`).join("\n\n");
 
@@ -124,7 +131,7 @@ BANCO.forEach((q, n) => {
   const esperado = q.esperado();
   for (const modo of ["sin", "con"] as const) {
     const respuesta = preguntar(cmd, prompt(q.pregunta, modo === "con"));
-    const p = puntuar(respuesta, esperado, VOCABULARIO);
+    const p = puntuar(respuesta, esperado, VOCABULARIO, ELEMENTOS);
     puntajes[modo].push(p);
     console.log(
       `${String(n + 1).padStart(2)} ${modo} grafo · ${p.acierto ? "OK " : "MAL"}` +

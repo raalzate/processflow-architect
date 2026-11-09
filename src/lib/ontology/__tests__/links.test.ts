@@ -101,10 +101,17 @@ describe("los vínculos aceptados entran al razonamiento", () => {
 
   it("Q8: PC-07 sobre Pasarela llega al Contexto y al Pool Pagos a través de «realiza» y ≡", () => {
     const filas = preguntaCompetencia("PC-07")!.ejecutar(proyecto(VINCULOS_PEDIDOS), { sistema: "Pasarela" }).filas;
+    // #742 · O1: además de las fronteras, lo que vive dentro de ellas (de las dos vistas, por ≡).
+    const dentro = [
+      ...["cliente", "pagar", "pago-realizado", "facturar", "facturar-pedido", "factura-emitida", "cancelar"].map((n) => iri("v-es", n)),
+      ...["inicio", "cobrar", "aprobado", "confirmar", "rechazar", "fin"].map((n) => iri("v-bpmn", n)),
+    ];
     expect(filas.map((f) => f.elemento).sort()).toEqual(
-      [iri("v-c4", "pagos"), iri("v-c4", "cliente"), iri("v-es", "agg-Pagos"), iri("v-bpmn", "agg-Pagos")].sort()
+      [iri("v-c4", "pagos"), iri("v-c4", "cliente"), iri("v-es", "agg-Pagos"), iri("v-bpmn", "agg-Pagos"), ...dentro].sort()
     );
     expect(filas.find((f) => f.elemento === iri("v-es", "agg-Pagos"))?.via).toBe(iri("v-c4", "pagos"));
+    // Cada elemento interno dice por qué frontera cae.
+    expect(filas.find((f) => f.elemento === iri("v-es", "pagar"))?.via).toMatch(/agg-Pagos$/);
   });
 
   it("renombrar una caja no rompe el vínculo: la identidad es el id (US6-AC3)", () => {

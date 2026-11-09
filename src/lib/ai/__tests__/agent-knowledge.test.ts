@@ -60,6 +60,14 @@ describe("herramientas del agente sobre el grafo", () => {
     expect(consultarGrafo(catalogo(), "Inventario dispara ?x")).toMatchObject({ ok: true, text: DESCONOCIDO });
   });
 
+  it("la palabra dibujada en la flecha se entiende aunque sea sinónimo («Pagar emite ?x», #742)", () => {
+    const r = consultarGrafo(catalogo(), "Pagar emite ?x");
+    expect(r.ok && r.text).toContain("PagoRealizado");
+    expect(porQue(catalogo(), "Pagar emite PagoRealizado").ok && porQue(catalogo(), "Pagar emite PagoRealizado")).toMatchObject({
+      text: expect.stringContaining("(dibujado)"),
+    });
+  });
+
   it("camino: la cadena legible, con el paso deducido marcado (US5-AC1)", () => {
     const r = caminoGrafo(catalogo(), "Pagar", "FacturaEmitida", "provoca");
     expect(r.ok && r.text).toBe(

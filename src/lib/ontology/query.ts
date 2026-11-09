@@ -264,7 +264,7 @@ const PREDICADO_TIPO = new Set(["es", "es un", "es una", "tipo", "tipo de"]);
  * predicados (id, etiqueta y sinónimos) y clases. Dos elementos con el mismo
  * nombre vuelven los dos, cada uno con su vista.
  */
-export function resolver(k: ConNombres, texto: string): Coincidencia[] {
+export function resolver(k: ConNombres, texto: string, opts: { sinonimos?: boolean } = {}): Coincidencia[] {
   const t = texto.trim();
   if (!t) return [];
   if (esLiteral(t)) return [{ termino: t, nombre: t, tipo: "iri" }];
@@ -282,6 +282,8 @@ export function resolver(k: ConNombres, texto: string): Coincidencia[] {
   const tboxes = (k.notaciones.length ? k.notaciones : [undefined]).map(tboxDe);
   // Por id o etiqueta primero; los sinónimos sólo si nada encajó así: «dispara»
   // es el predicado `dispara`, aunque sea también sinónimo de `activa` y `emite`.
+  // Con `sinonimos` van las dos lecturas: en un patrón, los tipos de los extremos
+  // descartan la que no aplica («Pagar emite ?x» es `dispara`: Pagar es comando, #742).
   for (const exacto of [true, false]) {
     for (const p of tboxes.flatMap((tb) => tb.predicados)) {
       const iri = iriPredicado(p.id);
@@ -291,7 +293,7 @@ export function resolver(k: ConNombres, texto: string): Coincidencia[] {
         out.push({ termino: iri, nombre: p.etiqueta, tipo: "predicado" });
       }
     }
-    if (vistos.size) break;
+    if (vistos.size && !opts.sinonimos) break;
   }
   for (const tb of tboxes) {
     for (const c of tb.clases)
@@ -318,10 +320,10 @@ export const MAX_COMBINACIONES = 64;
 export function resolverPatrones(k: ConNombres, patrones: [string, string, string][]): PatronesResueltos {
   const sinResolver: string[] = [];
   const opciones = patrones.map((pt) =>
-    pt.map((t): TerminoOVar[] => {
+    pt.map((t, i): TerminoOVar[] => {
       const x = t.trim();
       if (esVar(x)) return [x];
-      const r = [...new Set(resolver(k, x).map((c) => c.termino))];
+      const r = [...new Set(resolver(k, x, { sinonimos: i === 1 }).map((c) => c.termino))];
       if (!r.length) sinResolver.push(x);
       return r;
     })

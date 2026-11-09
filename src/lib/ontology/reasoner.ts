@@ -139,6 +139,25 @@ export function razonar(store: TripleStore, tboxes: Tbox[], opts: OpcionesRazona
   let ronda = 0;
   let nuevos: Hecho[] = [];
 
+  // Aristas BASE de cada predicado transitivo: las que no salen de la regla
+  // transitiva (dibujadas o deducidas por otra regla). Un hecho que ya es
+  // clausura sólo se extiende con una base; si se cruzara con toda la clausura,
+  // cada par de una cadena se deduciría una vez por cada punto intermedio
+  // (n³ intentos: 1,6 s en un BPMN de 250 tareas, #742). La base nueva sí se
+  // cruza con todo, así ningún hecho que llegue tarde queda sin extender.
+  const salidas = new Map<string, Termino[]>();
+  const entradas = new Map<string, Termino[]>();
+  const anotar = (m: Map<string, Termino[]>, clave: string, t: Termino) => {
+    const l = m.get(clave);
+    if (l) l.push(t);
+    else m.set(clave, [t]);
+  };
+  const ponerBase = (s: Termino, p: Termino, o: Termino) => {
+    anotar(salidas, `${p} ${s}`, o);
+    anotar(entradas, `${p} ${o}`, s);
+  };
+  for (const h of store.match()) if (r.predicados.get(h.p)?.transitiva) ponerBase(h.s, h.p, h.o);
+
   const deducir = (s: Termino, p: Termino, o: Termino, regla: ReglaId, premisas: Tripleta[], axioma?: string) => {
     if (tope) return;
     // Triviales (FR-018): reflexivos, la clase raíz y hechos sobre el reglamento.
@@ -156,6 +175,7 @@ export function razonar(store: TripleStore, tboxes: Tbox[], opts: OpcionesRazona
     store.add(h, j);
     nuevos.push(h);
     deducidos++;
+    if (regla !== "transitiva" && r.predicados.get(p)?.transitiva) ponerBase(s, p, o);
   };
 
   /** Clasifica por dominio/rango salvo que la clase contradiga lo que el individuo ya es. */
@@ -214,9 +234,28 @@ export function razonar(store: TripleStore, tboxes: Tbox[], opts: OpcionesRazona
     for (const sup of decl.subDe ?? [])
       deducir(h.s, iriPredicado(sup), h.o, "subpropiedad", [t], `${decl.id} ⊑ ${sup}`);
     if (decl.transitiva) {
-      for (const d of store.match(h.o, h.p)) deducir(h.s, h.p, d.o, "transitiva", [t, [d.s, d.p, d.o]], `${decl.id} transitiva`);
-      for (const a of store.match(undefined, h.p, h.s))
-        deducir(a.s, h.p, h.o, "transitiva", [[a.s, a.p, a.o], t], `${decl.id} transitiva`);
+      // La clausura se cierra en ESTA ronda (pila local): si cada deducción
+      // esperara a la ronda siguiente, la cadena crecería un paso por ronda y un
+      // proceso dibujado en desorden llegaría a MAX_RONDAS sin cerrar (revisión de #742).
+      const axioma = `${decl.id} transitiva`;
+      const p = h.p;
+      const pila: [Tripleta, boolean][] = [[t, store.justificacion(t)?.regla !== "transitiva"]];
+      while (pila.length && !tope) {
+        const [x, esBase] = pila.pop()!;
+        const [s0, , o0] = x;
+        const despues = esBase ? store.match(o0, p).map((d) => d.o) : salidas.get(`${p} ${o0}`) ?? [];
+        for (const o of despues)
+          if (!store.has([s0, p, o])) {
+            deducir(s0, p, o, "transitiva", [x, [o0, p, o]], axioma);
+            if (store.has([s0, p, o])) pila.push([[s0, p, o], false]);
+          }
+        const antes = esBase ? store.match(undefined, p, s0).map((a) => a.s) : entradas.get(`${p} ${s0}`) ?? [];
+        for (const s of antes)
+          if (!store.has([s, p, o0])) {
+            deducir(s, p, o0, "transitiva", [[s, p, s0], x], axioma);
+            if (store.has([s, p, o0])) pila.push([[s, p, o0], false]);
+          }
+      }
     }
   };
 

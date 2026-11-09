@@ -116,7 +116,7 @@ export function porQue(cat: Catalog, hecho: string): ToolResult {
   const k = conocimientoDelCatalogo(cat);
   const p = patronDeTexto(k, hecho);
   if (!p) return resultado(DESCONOCIDO, `por qué: ${hecho}`, [], []);
-  const terminos = p.map((t) => resolver(k, t).map((c) => c.termino));
+  const terminos = p.map((t, i) => resolver(k, t, { sinonimos: i === 1 }).map((c) => c.termino));
   for (const s of terminos[0])
     for (const pr of terminos[1])
       for (const o of terminos[2]) {
