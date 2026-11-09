@@ -13,6 +13,8 @@ import {
   parseSugerenciaPredicado,
   suggestEquivalencesTask,
   parsePares,
+  proposeFactsTask,
+  parseHechosPropuestos,
 } from "@/lib/ai/tasks";
 import { DEFAULT_NOTATION_ID, notationTypes } from "@/lib/notations";
 
@@ -547,5 +549,35 @@ describe("suggestEquivalencesTask", () => {
     expect(suggestEquivalencesTask.parse!(raw, entrada)).toEqual([{ candidato: "c4/pagos", tipo: "realiza", razon: "el sistema cubre el contexto" }]);
     expect(parsePares("no sé", candidatos)).toEqual([]);
     expect(parsePares('{"pares": roto', candidatos)).toEqual([]);
+  });
+});
+
+// Spec 027 · T33 (FR-034, FR-036): la IA PROPONE hechos con cita; no aplica nada.
+describe("proposeFactsTask", () => {
+  const entrada = { fragmento: "Cuando el cliente paga, se registra el pago.", fuente: "docs/pedidos.md", notation: "ddd", existentes: ["Pagar"] };
+
+  it("heavy y structured; el prompt trae tipos, predicados, existentes y el fragmento", () => {
+    expect(proposeFactsTask).toMatchObject({ id: "propose-facts", tier: "heavy", structured: true });
+    const { prompt } = proposeFactsTask.buildPrompt!(entrada);
+    expect(prompt).toContain("- dispara: dispara — command → event");
+    expect(prompt).toContain("Ya existen (reusá estos nombres tal cual): Pagar.");
+    expect(prompt).toContain("Cuando el cliente paga");
+  });
+
+  it("parse: sólo hechos completos; sin JSON, nada", () => {
+    const raw = JSON.stringify({
+      hechos: [
+        { s: "Pagar", p: "dispara", o: "PagoRegistrado", cita: "se registra el pago" },
+        { s: "PagoRegistrado", p: "es", o: "Evento" },
+        { s: "", p: "es", o: "Evento" },
+        "basura",
+      ],
+    });
+    expect(proposeFactsTask.parse!(raw, entrada)).toEqual([
+      { s: "Pagar", p: "dispara", o: "PagoRegistrado", cita: "se registra el pago" },
+      { s: "PagoRegistrado", p: "es", o: "Evento", cita: "" },
+    ]);
+    expect(parseHechosPropuestos("no puedo")).toEqual([]);
+    expect(parseHechosPropuestos('{"hechos": roto')).toEqual([]);
   });
 });

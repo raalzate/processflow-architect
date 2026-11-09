@@ -23,6 +23,7 @@ import {
   SYSTEM_PROMPT_DESIGNER,
 } from "@/lib/template-prompt";
 import { getNotation, notationTypes } from "@/lib/notations";
+import { tboxDe } from "@/lib/ontology/tbox";
 import { specFromLines, type ElementSpec } from "@/lib/element-spec";
 import { BUILDER_LOCAL_MAX_CHARS } from "./agent-engine";
 import { citaConRutaBase, lineaRutaBase } from "@/lib/source-base";
@@ -296,6 +297,73 @@ export function parsePares(raw: string, candidatos: CandidatoVinculo[]): ParProp
     out.push({ candidato, tipo, razon: typeof razon === "string" ? razon.trim() : "" });
   }
   return out;
+}
+
+/** Tope del fragmento que viaja: la propuesta se pide por trozos del documento. */
+export const MAX_FRAGMENTO_PROPUESTA = 6000;
+
+/**
+ * La IA lee un fragmento de la fuente y PROPONE hechos (spec 027 · US8, FR-034,
+ * FR-036): elementos con su tipo y relaciones con un predicado del reglamento,
+ * cada uno con la cita que lo sostiene. `heavy` y `structured`: leer y
+ * estructurar un documento es la tarea larga por excelencia, y la respuesta
+ * tiene forma fija. Nada de lo que devuelve se aplica: `revisarPropuestas` lo
+ * valida contra el reglamento y el humano acepta o descarta.
+ */
+export const proposeFactsTask: AiTask<
+  { fragmento: string; fuente: string; notation?: string; existentes: string[] },
+  HechoPropuestoIA[]
+> = {
+  id: "propose-facts",
+  tier: "heavy",
+  structured: true,
+  buildPrompt: (i) => {
+    const t = tboxDe(i.notation);
+    const n = getNotation(i.notation);
+    return {
+      prompt: [
+        `Leé el fragmento de «${i.fuente}» y proponé HECHOS para un diagrama ${n.label}.`,
+        `Tipos de elemento: ${notationTypes(i.notation).join(", ")}.`,
+        "Predicados (id: lectura — origen → destino):",
+        ...t.predicados.map((p) => `- ${p.id}: ${p.etiqueta}${p.dominio || p.rango ? ` — ${(p.dominio ?? ["*"]).join("|")} → ${(p.rango ?? ["*"]).join("|")}` : ""}`),
+        i.existentes.length ? `Ya existen (reusá estos nombres tal cual): ${i.existentes.slice(0, 60).join(", ")}.` : "El diagrama está vacío.",
+        "Cada elemento NUEVO necesita su hecho de tipo: {\"s\":\"<nombre>\",\"p\":\"es\",\"o\":\"<tipo>\"}. Cada relación usa un id de predicado.",
+        "Cada hecho lleva `cita`: el pasaje textual del fragmento que lo sostiene. Si el fragmento no lo dice, no lo propongas.",
+        'Respondé SÓLO con JSON: {"hechos":[{"s":"...","p":"...","o":"...","cita":"..."}]}.',
+        "",
+        "Fragmento:",
+        i.fragmento.slice(0, MAX_FRAGMENTO_PROPUESTA),
+      ].join("\n"),
+      system: SYSTEM_PROMPT_DESIGNER,
+    };
+  },
+  parse: (raw) => parseHechosPropuestos(raw),
+};
+
+export interface HechoPropuestoIA {
+  s: string;
+  p: string;
+  o: string;
+  cita: string;
+}
+
+/** Los hechos bien formados de la respuesta (lo demás se descarta, no se adivina). */
+export function parseHechosPropuestos(raw: string): HechoPropuestoIA[] {
+  const json = raw.match(/\{[\s\S]*\}/)?.[0];
+  if (!json) return [];
+  let hechos: unknown;
+  try {
+    hechos = (JSON.parse(json) as { hechos?: unknown }).hechos;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(hechos)) return [];
+  const texto = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  return hechos
+    .filter((h): h is Record<string, unknown> => !!h && typeof h === "object")
+    .map((h) => ({ s: texto(h.s), p: texto(h.p), o: texto(h.o), cita: texto(h.cita) }))
+    .filter((h) => h.s && h.p && h.o)
+    .slice(0, 40);
 }
 
 /**

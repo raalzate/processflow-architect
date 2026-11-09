@@ -214,6 +214,9 @@ import { handoffPrompt } from "@/lib/mcp/handoff";
 import { AgentCliChat } from "./AgentCliChat";
 import { buildEmbedMap, wouldCreateCycle } from "@/lib/view-embeds";
 import { ReferenceContextDialog } from "./ReferenceContextDialog";
+import { ProposeFactsDialog } from "./ProposeFactsDialog";
+import { fromGraphData, toGraphData, type DiagramModel } from "@/lib/mcp/diagram-builder";
+import { fusionarEnLienzo } from "@/lib/canvas-merge";
 import { CanvasContextMenu, type CanvasMenuItem } from "./CanvasContextMenu";
 import { adoptarExternos, draftPatch, hasDraftChanges, parseTagList } from "./inspector-draft";
 import { CANVAS_CHROME } from "@/lib/canvas-chrome";
@@ -3189,6 +3192,7 @@ export const ComponentDesigner: React.FC<{
   const [editandoEnLienzo, setEditandoEnLienzo] = useState<{ id: string; campo: CampoEnLienzo } | null>(null);
   const [metaOpen, setMetaOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [proponerOpen, setProponerOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // Confirmación de "Limpiar" controlada: así también la paleta (⌘K) puede
   // ABRIR la confirmación en vez de borrar sin preguntar (acción destructiva).
@@ -5001,6 +5005,25 @@ export const ComponentDesigner: React.FC<{
     toast({ title: "Diagrama exportado", description: "Se descargó un SVG del lienzo." });
   }, [meta, toast, boundsDeLamina, skinActiva]);
 
+  // Integra lo que el humano aceptó de las propuestas de la IA (spec 027 · US8).
+  // Lo que ya estaba no se mueve: sólo se le suma la procedencia. Lo nuevo entra
+  // en una columna a la derecha del contenido, y todo queda en UN paso del
+  // historial, así ⌘Z lo deshace entero.
+  const integrarPropuestas = useCallback(
+    (model: DiagramModel, resumen: { aplicadas: number; omitidas: string[] }) => {
+      const r = fusionarEnLienzo({ nodes: nodesRef.current, links: linksRef.current }, graphDataToCanvas(toGraphData(model)));
+      setNodes(r.nodes);
+      setLinks(r.links);
+      pushSnapshot(r.nodes, r.links);
+      const omitidas = [...resumen.omitidas, ...(r.omitidas.length ? [`${r.omitidas.length} flecha(s) repetida(s)`] : [])];
+      toast({
+        title: `${resumen.aplicadas} hecho(s) integrados`,
+        description: omitidas.length ? `Omitidos: ${omitidas.join(" · ")}` : "Quedaron con su procedencia en la ficha.",
+      });
+    },
+    [pushSnapshot, toast]
+  );
+
   // Exporta el CONOCIMIENTO del proyecto (spec 027 · US7): reglamento + lo
   // dibujado en todas las vistas (la abierta, como está en el lienzo) y, si se
   // pide, lo deducido aparte. Sin camino de vuelta: es para otras herramientas.
@@ -5603,6 +5626,9 @@ export const ComponentDesigner: React.FC<{
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setReferenceOpen(true)}>
                 <Library className="mr-2 h-4 w-4" /> Contexto
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setProponerOpen(true)} title="La IA lee un documento fuente y propone elementos y relaciones; vos elegís qué entra">
+                <Sparkles className="mr-2 h-4 w-4" /> Proponer hechos con IA…
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setMetaOpen(true)}>
                 <Settings2 className="mr-2 h-4 w-4" /> Metadatos
@@ -6282,6 +6308,16 @@ export const ComponentDesigner: React.FC<{
 
       {/* Contexto de referencia: documentos que alimentan las sugerencias de IA */}
       <ReferenceContextDialog open={referenceOpen} onOpenChange={setReferenceOpen} />
+
+      {/* Spec 027 · US8: la IA propone hechos desde un documento fuente; el humano elige. */}
+      <ProposeFactsDialog
+        open={proponerOpen}
+        onOpenChange={setProponerOpen}
+        docs={graphData?.source_docs ?? []}
+        notation={notationId}
+        modelo={() => (meta ? fromGraphData(buildContent(nodesRef.current, linksRef.current, meta, notationId), notationId) : null)}
+        onIntegrar={integrarPropuestas}
+      />
 
       {/* Ayuda: interacciones y atajos de teclado */}
       <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
