@@ -10,6 +10,7 @@
 
 import { fromGraphData, type DiagramModel } from "../mcp/diagram-builder";
 import { DEFAULT_NOTATION_ID, isNotationContainer, type NotationId } from "../notations";
+import type { SourceDoc } from "../source-docs";
 import type { GraphData } from "../types";
 import type { DesignView } from "../views-types";
 import { ELEMENTO, RDF_TYPE, RDFS_LABEL, iriElemento, iriPredicado, literal, slugTipo } from "./iri";
@@ -23,9 +24,50 @@ export interface ContextoAbox {
   vista: string;
 }
 
+/**
+ * Índice de lo DIBUJADO, en el orden del diagrama. Los hechos dicen qué
+ * significa el modelo; esto conserva lo que una tripleta no puede: el orden de
+ * lectura, la etiqueta de cada flecha (dos flechas iguales son un solo hecho) y
+ * los documentos adjuntos. Las formas lo necesitan para decir exactamente lo
+ * que decían las reglas de calidad (FR-023).
+ */
+export interface ElementoAbox {
+  iri: string;
+  id: string;
+  nombre: string;
+  tipo: string;
+  proyecto: string;
+  vista: string;
+  contenedor: boolean;
+  /** La cita tal cual (FUENTE-SIN-ADJUNTAR la resuelve contra los adjuntos). */
+  fuente?: string;
+}
+
+export interface AristaAbox {
+  s: string;
+  p: string;
+  o: string;
+  /** Ids crudos: una flecha a un elemento que no existe se conserva igual. */
+  fuente: string;
+  destino: string;
+  etiqueta?: string;
+  proyecto: string;
+  vista: string;
+}
+
+export interface VistaAbox {
+  proyecto: string;
+  vista: string;
+  notation: NotationId;
+  documentos: SourceDoc[];
+}
+
 export interface ResultadoAbox {
   hechos: Hecho[];
   hallazgos: Hallazgo[];
+  elementos: ElementoAbox[];
+  aristas: AristaAbox[];
+  vistas: VistaAbox[];
 }
 
 export function hechosDeModelo(m: DiagramModel, ctx: ContextoAbox): ResultadoAbox {
@@ -33,6 +75,8 @@ export function hechosDeModelo(m: DiagramModel, ctx: ContextoAbox): ResultadoAbo
   const t = tboxDe(notation);
   const hechos: Hecho[] = [];
   const hallazgos: Hallazgo[] = [];
+  const elementos: ElementoAbox[] = [];
+  const aristas: AristaAbox[] = [];
   const iri = (id: string) => iriElemento(ctx.proyecto, ctx.vista, id);
   const poner = (s: string, p: string, o: string, extra?: Partial<Hecho>) =>
     hechos.push({ s, p, o, origen: "explicito", vista: ctx.vista, ...extra });
@@ -44,6 +88,16 @@ export function hechosDeModelo(m: DiagramModel, ctx: ContextoAbox): ResultadoAbo
 
   for (const n of m.nodes) {
     const e = iri(n.id);
+    elementos.push({
+      iri: e,
+      id: n.id,
+      nombre: n.nombre,
+      tipo: n.tipo_elemento,
+      proyecto: ctx.proyecto,
+      vista: ctx.vista,
+      contenedor: isNotationContainer(n.tipo_elemento),
+      ...(n.source !== undefined ? { fuente: n.source } : {}),
+    });
     const clase = claseDeTipo(t, n.tipo_elemento);
     if (clase === ELEMENTO)
       hallazgos.push({
@@ -70,12 +124,25 @@ export function hechosDeModelo(m: DiagramModel, ctx: ContextoAbox): ResultadoAbo
   for (const a of m.edges) {
     const f = porId.get(a.fuente);
     const d = porId.get(a.destino);
+    const arista: AristaAbox = {
+      s: iri(a.fuente),
+      p: "",
+      o: iri(a.destino),
+      fuente: a.fuente,
+      destino: a.destino,
+      proyecto: ctx.proyecto,
+      vista: ctx.vista,
+      ...(a.descripcion !== undefined ? { etiqueta: a.descripcion } : {}),
+    };
+    aristas.push(arista);
     if (!f || !d) continue;
     const s = sugerirPredicado(a, f, d, notation);
-    poner(iri(f.id), iriPredicado(s.id), iri(d.id), s.confianza === "confirmado" ? {} : { sugerido: true });
+    arista.p = iriPredicado(s.id);
+    poner(arista.s, arista.p, arista.o, s.confianza === "confirmado" ? {} : { sugerido: true });
   }
 
-  return { hechos, hallazgos };
+  const vistas: VistaAbox[] = [{ proyecto: ctx.proyecto, vista: ctx.vista, notation, documentos: m.sources ?? [] }];
+  return { hechos, hallazgos, elementos, aristas, vistas };
 }
 
 export function hechosDeGraphData(
@@ -88,13 +155,22 @@ export function hechosDeGraphData(
 
 /** Hechos de todas las vistas de grafo de un proyecto (las Mermaid no son modelo). */
 export function hechosDeVistas(vistas: DesignView[], proyecto: string): ResultadoAbox {
-  const hechos: Hecho[] = [];
-  const hallazgos: Hallazgo[] = [];
-  for (const v of vistas) {
-    if (!v.graph) continue;
-    const r = hechosDeGraphData(v.graph, { proyecto, vista: v.id }, v.notation ?? v.graph.notation ?? DEFAULT_NOTATION_ID);
-    hechos.push(...r.hechos);
-    hallazgos.push(...r.hallazgos);
+  return unirAbox(
+    vistas
+      .filter((v) => v.graph)
+      .map((v) => hechosDeGraphData(v.graph!, { proyecto, vista: v.id }, v.notation ?? v.graph!.notation ?? DEFAULT_NOTATION_ID))
+  );
+}
+
+/** Varios ABox en uno, en orden. */
+export function unirAbox(partes: ResultadoAbox[]): ResultadoAbox {
+  const out: ResultadoAbox = { hechos: [], hallazgos: [], elementos: [], aristas: [], vistas: [] };
+  for (const r of partes) {
+    out.hechos.push(...r.hechos);
+    out.hallazgos.push(...r.hallazgos);
+    out.elementos.push(...r.elementos);
+    out.aristas.push(...r.aristas);
+    out.vistas.push(...r.vistas);
   }
-  return { hechos, hallazgos };
+  return out;
 }

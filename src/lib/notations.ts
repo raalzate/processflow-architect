@@ -1749,3 +1749,265 @@ export function roleOfTypeDeep(
   }
   return undefined;
 }
+
+// =============================================================================
+// Ontología (spec 027 · US4): FORMAS de validación por rol
+// =============================================================================
+//
+// Una forma dice qué debe cumplir todo elemento de un rol («todo Comando dispara
+// al menos un Evento»). `ontology/validate.ts` las evalúa en MUNDO CERRADO sobre
+// lo dibujado y lo deducido. Las diez primeras son las reglas semánticas que
+// antes vivían como código en `mcp/quality.ts`, con el MISMO id y el MISMO
+// mensaje (FR-023): la prueba de paridad corre ambas sobre diagramas reales.
+//
+// Mensajes con marcadores: {nombre} {id} {tipo} {valor} {esperado} {encontrado}
+// {lista} (todos) {lista3} (tres y «…») {origen} {destino} {doc} {tipos:<rol>}.
+
+/** A qué se aplica: un rol, una clase general, todo elemento, los contenedores, cada relación o el diagrama entero. */
+export type ObjetivoForma = ElementRole | ClaseGeneral | "*" | "contenedor" | "relacion" | "diagrama";
+
+export type RestriccionForma =
+  /**
+   * Cuántas relaciones salen/entran. `predicado: "*"` = cualquier FLECHA
+   * DIBUJADA (lo que hacían las reglas de calidad); un id de predicado cuenta
+   * también los hechos deducidos (un evento que llega por cadena cuenta).
+   */
+  | {
+      tipo: "minCount" | "maxCount";
+      predicado: string;
+      direccion: "sale" | "entra";
+      n: number;
+      /** Rol o clase del OTRO extremo. */
+      claseObjeto?: (ElementRole | ClaseGeneral)[];
+      /** Sólo las flechas sin etiqueta. */
+      sinEtiqueta?: boolean;
+      /** El otro extremo no es un contenedor. */
+      soloElementos?: boolean;
+      /**
+       * Sólo lo DIBUJADO, aunque el predicado sea transitivo: con contenedores
+       * anidados, «pertenece_a» deducido haría que un Pool «contenga» lo de sus
+       * carriles, y el lienzo igual lo dibuja vacío.
+       */
+      soloDibujado?: boolean;
+      /**
+       * Con un predicado con nombre: suma además cualquier flecha DIBUJADA en esa
+       * dirección. Así una forma gana lo deducido (la inversa de una flecha
+       * dibujada al revés) sin perder lo que ya contaba.
+       */
+      tambienDibujadas?: boolean;
+    }
+  | { tipo: "atributoRequerido"; atributo: string }
+  | { tipo: "minPalabras"; atributo: string; n: number; distintoDe?: string }
+  | { tipo: "patron"; atributo: string; regex: string }
+  /** El atributo no trae una cita de fuente pegada (va en `source`). */
+  | { tipo: "sinCita"; atributo: string }
+  | { tipo: "prohibido"; predicado: string; claseObjeto: (ElementRole | ClaseGeneral)[] }
+  /** Diagrama: hay al menos un elemento del rol. */
+  | { tipo: "existe"; rol: ElementRole }
+  /** Diagrama: toda cita apunta a un documento adjunto. */
+  | { tipo: "fuentesAdjuntas" }
+  /** Relación: lleva etiqueta. */
+  | { tipo: "etiquetaRequerida" };
+
+export interface FormaDecl {
+  /** = id de la regla de calidad cuando migra («CADENA»). */
+  id: string;
+  objetivo: ObjetivoForma | ElementRole[];
+  severidad: "error" | "aviso" | "sugerencia";
+  restriccion: RestriccionForma;
+  mensaje: string;
+  /** Mensaje cuando el atributo directamente falta (si no, `mensaje`). */
+  mensajeVacio?: string;
+  sugerencia?: string;
+  /** Sólo aplica si la notación declara el rol y/o el diagrama tiene alguno. */
+  aplicaSi?: { declara?: ElementRole; hay?: ElementRole };
+  /**
+   * Formas consecutivas del mismo bloque se evalúan elemento por elemento (no
+   * forma por forma): así los hallazgos salen en el orden en que se leen.
+   */
+  bloque?: string;
+  /** Si otra forma del mismo id ya señaló al elemento, ésta calla. */
+  unaPorElemento?: boolean;
+}
+
+/** Palabras por debajo de las cuales una descripción no alcanza a decir qué hace (#636). */
+export const MIN_PALABRAS_DESCRIPCION = 6;
+
+const DESCRIPCION_PIDE = "Decí su responsabilidad, qué recibe o produce y por qué existe.";
+const POLITICA_PATRON = '"{nombre}" no cierra el patrón "cuando <evento> entonces <comando>"';
+
+/**
+ * Formas de toda notación (`*`) y las propias de cada una. Las de `*` se
+ * escriben sobre roles: aplican sólo donde la notación los declara.
+ */
+export const NOTATION_SHAPES: Record<NotationId | "*", FormaDecl[]> = {
+  "*": [
+    {
+      id: "FUENTE-SIN-ADJUNTAR",
+      objetivo: "diagrama",
+      severidad: "aviso",
+      restriccion: { tipo: "fuentesAdjuntas" },
+      mensaje:
+        '{encontrado} elemento(s) citan "{doc}", que no está adjunto al diagrama ({lista3}): dentro de la app esa cita no lleva a ningún lado. Adjuntalo con attach_source usando ESE nombre.',
+    },
+    {
+      id: "DESCRIPCION-POBRE",
+      objetivo: "*",
+      severidad: "aviso",
+      restriccion: { tipo: "sinCita", atributo: "descripcion" },
+      mensaje: '"{nombre}" ({id}) trae la cita pegada a la descripción: pasala a `source` (es una propiedad) y dejá la descripción para lo que hace.',
+      unaPorElemento: true,
+    },
+    {
+      id: "DESCRIPCION-POBRE",
+      objetivo: "*",
+      severidad: "aviso",
+      restriccion: { tipo: "minPalabras", atributo: "descripcion", n: MIN_PALABRAS_DESCRIPCION, distintoDe: "nombre" },
+      mensaje: `"{nombre}" ({id}): la descripción ("{valor}") no alcanza para saber qué hace. ${DESCRIPCION_PIDE}`,
+      mensajeVacio: `"{nombre}" ({id}) no tiene descripción. ${DESCRIPCION_PIDE}`,
+      unaPorElemento: true,
+    },
+    {
+      id: "FLUJO-INICIO",
+      objetivo: "diagrama",
+      severidad: "error",
+      aplicaSi: { declara: "start", hay: "task" },
+      restriccion: { tipo: "existe", rol: "start" },
+      mensaje: "El proceso no tiene arranque: añade un nodo de tipo {tipos:start} y conéctalo al primer paso.",
+    },
+    {
+      // Un Pool es un proceso independiente: exactamente un arranque cada uno.
+      id: "FLUJO-INICIO",
+      objetivo: "pool",
+      severidad: "aviso",
+      aplicaSi: { declara: "start", hay: "task" },
+      restriccion: { tipo: "maxCount", predicado: "pertenece_a", direccion: "entra", n: 1, claseObjeto: ["start"], soloElementos: true, soloDibujado: true },
+      mensaje: '"{nombre}" tiene {encontrado} arranques ({lista}); un participante arranca su proceso una sola vez.',
+    },
+    {
+      id: "FLUJO-FIN",
+      objetivo: "diagrama",
+      severidad: "error",
+      aplicaSi: { declara: "end", hay: "task" },
+      restriccion: { tipo: "existe", rol: "end" },
+      mensaje: "Ningún camino termina: añade al menos un nodo de tipo {tipos:end} (uno por desenlace distinto).",
+    },
+    {
+      id: "FLUJO-FIN",
+      objetivo: ["task", "gateway"],
+      severidad: "aviso",
+      aplicaSi: { declara: "end", hay: "task" },
+      restriccion: { tipo: "minCount", predicado: "*", direccion: "sale", n: 1 },
+      mensaje: '"{nombre}" no tiene continuación; el camino queda colgando sin llegar a un cierre.',
+    },
+    {
+      id: "RAMAS",
+      bloque: "decision",
+      objetivo: "gateway",
+      severidad: "aviso",
+      restriccion: { tipo: "minCount", predicado: "*", direccion: "sale", n: 2 },
+      mensaje: '"{nombre}" es una decisión con {encontrado} salida(s): una decisión que no bifurca es una tarea.',
+    },
+    {
+      id: "RAMAS",
+      bloque: "decision",
+      objetivo: "gateway",
+      severidad: "error",
+      restriccion: { tipo: "maxCount", predicado: "*", direccion: "sale", n: 0, sinEtiqueta: true },
+      mensaje:
+        '"{nombre}" tiene {encontrado} rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).',
+    },
+    {
+      id: "DECISION-PREGUNTA",
+      bloque: "decision",
+      objetivo: "gateway",
+      severidad: "aviso",
+      restriccion: { tipo: "patron", atributo: "nombre", regex: "[?¿]" },
+      mensaje: '"{nombre}" es una decisión: nómbrala como pregunta ("¿Hay stock?") para que sus ramas se lean solas.',
+    },
+    {
+      id: "RAMAS",
+      bloque: "decision",
+      objetivo: "gateway",
+      severidad: "aviso",
+      restriccion: { tipo: "minCount", predicado: "*", direccion: "entra", n: 1 },
+      mensaje: '"{nombre}" no recibe flujo: una decisión evalúa el resultado de un paso anterior.',
+    },
+    {
+      id: "CADENA",
+      bloque: "dominio",
+      objetivo: "command",
+      severidad: "aviso",
+      aplicaSi: { declara: "command" },
+      restriccion: { tipo: "minCount", predicado: "*", direccion: "sale", n: 1, claseObjeto: ["event"] },
+      mensaje: '"{nombre}" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.',
+    },
+    {
+      id: "CADENA",
+      bloque: "dominio",
+      objetivo: "event",
+      severidad: "aviso",
+      aplicaSi: { declara: "command" },
+      restriccion: {
+        tipo: "minCount",
+        predicado: "*",
+        direccion: "entra",
+        n: 1,
+        claseObjeto: ["command", "policy", "actor", "external", "task"],
+      },
+      mensaje: '"{nombre}" ocurre sin causa visible: conéctalo al comando (o al actor/sistema) que lo dispara.',
+    },
+    {
+      id: "POLITICA",
+      bloque: "dominio",
+      objetivo: "policy",
+      severidad: "aviso",
+      aplicaSi: { declara: "command" },
+      // Lo deducido cuenta: «Facturar reacciona a PagoRealizado» dibujado al
+      // revés ⇒ «PagoRealizado activa Facturar» por la inversa.
+      restriccion: { tipo: "minCount", predicado: "activa", tambienDibujadas: true, direccion: "entra", n: 1, claseObjeto: ["event"] },
+      mensaje: `${POLITICA_PATRON} (le falta el evento que la activa).`,
+      unaPorElemento: true,
+    },
+    {
+      id: "POLITICA",
+      bloque: "dominio",
+      objetivo: "policy",
+      severidad: "aviso",
+      aplicaSi: { declara: "command" },
+      restriccion: { tipo: "minCount", predicado: "emite", tambienDibujadas: true, direccion: "sale", n: 1, claseObjeto: ["command"] },
+      mensaje: `${POLITICA_PATRON} (le falta el comando que dispara).`,
+      unaPorElemento: true,
+    },
+    {
+      // En un paisaje de sistemas una flecha sin etiqueta no dice nada.
+      id: "RELACION-SIN-ETIQUETA",
+      objetivo: "relacion",
+      severidad: "error",
+      aplicaSi: { declara: "system" },
+      restriccion: { tipo: "etiquetaRequerida" },
+      mensaje:
+        '"{origen}" → "{destino}" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología ("consulta inventario [SQL]").',
+    },
+    {
+      // El lienzo dibuja bandas PLANAS: un contenedor sin hijos es una banda en blanco.
+      id: "CONTENEDOR-VACIO",
+      objetivo: "contenedor",
+      severidad: "aviso",
+      restriccion: { tipo: "minCount", predicado: "pertenece_a", direccion: "entra", n: 1, soloElementos: true, soloDibujado: true },
+      mensaje:
+        '"{nombre}" ({tipo}) no contiene elementos: el lienzo lo dibujaría como una banda vacía. Los contenedores no se anidan entre sí — elige UN nivel (participante o rol) y pon los elementos dentro, o elimínalo.',
+    },
+  ],
+  ddd: [],
+  bpmn: [],
+  c4: [],
+  uml: [],
+  mer: [],
+  general: [],
+};
+
+/** Formas que valen en una notación: las de toda notación más las propias. */
+export function notationShapes(id: NotationId | string | undefined): FormaDecl[] {
+  return [...NOTATION_SHAPES["*"], ...NOTATION_SHAPES[getNotation(id).id]];
+}

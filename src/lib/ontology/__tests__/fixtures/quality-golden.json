@@ -1,0 +1,1610 @@
+{
+  "real:cobranza-y-aplicacion-de-pagos": [
+    {
+      "level": "grave",
+      "rule": "FLUJO-INICIO",
+      "message": "El proceso no tiene arranque: añade un nodo de tipo Evento de Inicio y conéctalo al primer paso."
+    },
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 3\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-3"
+    },
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 5\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-5"
+    },
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 6\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-6"
+    },
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 15\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-15"
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-1",
+      "message": "\"Banda 1\" (banda-1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-2",
+      "message": "\"Banda 2\" (banda-2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-1",
+      "message": "\"Elemento 1\" (elem-1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-2",
+      "message": "\"Elemento 2\" (elem-2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-3",
+      "message": "\"Elemento 3\" (elem-3) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-4",
+      "message": "\"Elemento 4\" (elem-4) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-5",
+      "message": "\"Elemento 5\" (elem-5) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-6",
+      "message": "\"Elemento 6\" (elem-6) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-7",
+      "message": "\"Elemento 7\" (elem-7) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-8",
+      "message": "\"Elemento 8\" (elem-8) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-9",
+      "message": "\"Elemento 9\" (elem-9) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-10",
+      "message": "\"Elemento 10\" (elem-10) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-11",
+      "message": "\"Elemento 11\" (elem-11) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-12",
+      "message": "\"Elemento 12\" (elem-12) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-13",
+      "message": "\"Elemento 13\" (elem-13) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-14",
+      "message": "\"Elemento 14\" (elem-14) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-15",
+      "message": "\"Elemento 15\" (elem-15) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-16",
+      "message": "\"Elemento 16\" (elem-16) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-17",
+      "message": "\"Elemento 17\" (elem-17) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-18",
+      "message": "\"Elemento 18\" (elem-18) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 3\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-3"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 5\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-5"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 6\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-6"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 15\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-15"
+    }
+  ],
+  "real:geiser-big-picture-del-dominio": [
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-1",
+      "message": "\"Banda 1\" (banda-1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-2",
+      "message": "\"Banda 2\" (banda-2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-3",
+      "message": "\"Banda 3\" (banda-3) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-4",
+      "message": "\"Banda 4\" (banda-4) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-5",
+      "message": "\"Banda 5\" (banda-5) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-1",
+      "message": "\"Elemento 1\" (elem-1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-2",
+      "message": "\"Elemento 2\" (elem-2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-3",
+      "message": "\"Elemento 3\" (elem-3) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-4",
+      "message": "\"Elemento 4\" (elem-4) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-5",
+      "message": "\"Elemento 5\" (elem-5) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-6",
+      "message": "\"Elemento 6\" (elem-6) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-7",
+      "message": "\"Elemento 7\" (elem-7) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-8",
+      "message": "\"Elemento 8\" (elem-8) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-9",
+      "message": "\"Elemento 9\" (elem-9) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-10",
+      "message": "\"Elemento 10\" (elem-10) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-11",
+      "message": "\"Elemento 11\" (elem-11) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-12",
+      "message": "\"Elemento 12\" (elem-12) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-13",
+      "message": "\"Elemento 13\" (elem-13) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-14",
+      "message": "\"Elemento 14\" (elem-14) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-15",
+      "message": "\"Elemento 15\" (elem-15) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-16",
+      "message": "\"Elemento 16\" (elem-16) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-17",
+      "message": "\"Elemento 17\" (elem-17) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-18",
+      "message": "\"Elemento 18\" (elem-18) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-19",
+      "message": "\"Elemento 19\" (elem-19) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-20",
+      "message": "\"Elemento 20\" (elem-20) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-21",
+      "message": "\"Elemento 21\" (elem-21) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-22",
+      "message": "\"Elemento 22\" (elem-22) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-23",
+      "message": "\"Elemento 23\" (elem-23) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-24",
+      "message": "\"Elemento 24\" (elem-24) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-25",
+      "message": "\"Elemento 25\" (elem-25) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-26",
+      "message": "\"Elemento 26\" (elem-26) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-27",
+      "message": "\"Elemento 27\" (elem-27) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-28",
+      "message": "\"Elemento 28\" (elem-28) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-29",
+      "message": "\"Elemento 29\" (elem-29) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Elemento 1\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
+      "nodeId": "elem-1"
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Elemento 2\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
+      "nodeId": "elem-2"
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Elemento 6\" ocurre sin causa visible: conéctalo al comando (o al actor/sistema) que lo dispara.",
+      "nodeId": "elem-6"
+    },
+    {
+      "level": "aviso",
+      "rule": "POLITICA",
+      "message": "\"Elemento 10\" no cierra el patrón \"cuando <evento> entonces <comando>\" (le falta el evento que la activa).",
+      "nodeId": "elem-10"
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Elemento 11\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
+      "nodeId": "elem-11"
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Elemento 22\" ocurre sin causa visible: conéctalo al comando (o al actor/sistema) que lo dispara.",
+      "nodeId": "elem-22"
+    },
+    {
+      "level": "aviso",
+      "rule": "POLITICA",
+      "message": "\"Elemento 23\" no cierra el patrón \"cuando <evento> entonces <comando>\" (le falta el comando que dispara).",
+      "nodeId": "elem-23"
+    }
+  ],
+  "real:geiser-enrollment-y-emision-en-amigos": [
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 5\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-5"
+    },
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 9\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-9"
+    },
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 10\" tiene 3 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-10"
+    },
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 18\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-18"
+    },
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 21\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-21"
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-1",
+      "message": "\"Banda 1\" (banda-1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-2",
+      "message": "\"Banda 2\" (banda-2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-3",
+      "message": "\"Banda 3\" (banda-3) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-1",
+      "message": "\"Elemento 1\" (elem-1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-2",
+      "message": "\"Elemento 2\" (elem-2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-3",
+      "message": "\"Elemento 3\" (elem-3) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-4",
+      "message": "\"Elemento 4\" (elem-4) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-5",
+      "message": "\"Elemento 5\" (elem-5) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-6",
+      "message": "\"Elemento 6\" (elem-6) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-7",
+      "message": "\"Elemento 7\" (elem-7) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-8",
+      "message": "\"Elemento 8\" (elem-8) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-9",
+      "message": "\"Elemento 9\" (elem-9) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-10",
+      "message": "\"Elemento 10\" (elem-10) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-11",
+      "message": "\"Elemento 11\" (elem-11) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-12",
+      "message": "\"Elemento 12\" (elem-12) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-13",
+      "message": "\"Elemento 13\" (elem-13) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-14",
+      "message": "\"Elemento 14\" (elem-14) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-15",
+      "message": "\"Elemento 15\" (elem-15) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-16",
+      "message": "\"Elemento 16\" (elem-16) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-17",
+      "message": "\"Elemento 17\" (elem-17) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-18",
+      "message": "\"Elemento 18\" (elem-18) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-19",
+      "message": "\"Elemento 19\" (elem-19) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-20",
+      "message": "\"Elemento 20\" (elem-20) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-21",
+      "message": "\"Elemento 21\" (elem-21) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-22",
+      "message": "\"Elemento 22\" (elem-22) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-23",
+      "message": "\"Elemento 23\" (elem-23) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-24",
+      "message": "\"Elemento 24\" (elem-24) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "FLUJO-FIN",
+      "message": "\"Elemento 12\" no tiene continuación; el camino queda colgando sin llegar a un cierre.",
+      "nodeId": "elem-12"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 5\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-5"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 9\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-9"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 10\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-10"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 18\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-18"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 21\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-21"
+    }
+  ],
+  "real:geiser-paisaje-de-sistemas": [
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 1\" → \"Elemento 3\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 2\" → \"Elemento 3\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 3\" → \"Elemento 4\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 3\" → \"Elemento 6\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 3\" → \"Elemento 5\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 4\" → \"Elemento 5\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 6\" → \"Elemento 5\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 5\" → \"Elemento 7\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 5\" → \"Elemento 10\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 5\" → \"Elemento 8\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 8\" → \"Elemento 11\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 8\" → \"Elemento 9\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 1\" → \"Elemento 9\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Elemento 4\" → \"Elemento 1\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-1",
+      "message": "\"Banda 1\" (banda-1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-2",
+      "message": "\"Banda 2\" (banda-2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-1",
+      "message": "\"Elemento 1\" (elem-1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-2",
+      "message": "\"Elemento 2\" (elem-2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-3",
+      "message": "\"Elemento 3\" (elem-3) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-4",
+      "message": "\"Elemento 4\" (elem-4) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-5",
+      "message": "\"Elemento 5\" (elem-5) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-6",
+      "message": "\"Elemento 6\" (elem-6) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-7",
+      "message": "\"Elemento 7\" (elem-7) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-8",
+      "message": "\"Elemento 8\" (elem-8) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-9",
+      "message": "\"Elemento 9\" (elem-9) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-10",
+      "message": "\"Elemento 10\" (elem-10) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-11",
+      "message": "\"Elemento 11\" (elem-11) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    }
+  ],
+  "real:prueba-tooltip": [
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-1",
+      "message": "\"Elemento 1\" (elem-1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-2",
+      "message": "\"Elemento 2\" (elem-2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Elemento 1\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
+      "nodeId": "elem-1"
+    }
+  ],
+  "real:venta-y-underwriting-en-eva": [
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 5\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-5"
+    },
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 6\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-6"
+    },
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 8\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-8"
+    },
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Elemento 15\" tiene 2 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "elem-15"
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-1",
+      "message": "\"Banda 1\" (banda-1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "banda-2",
+      "message": "\"Banda 2\" (banda-2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-1",
+      "message": "\"Elemento 1\" (elem-1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-2",
+      "message": "\"Elemento 2\" (elem-2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-3",
+      "message": "\"Elemento 3\" (elem-3) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-4",
+      "message": "\"Elemento 4\" (elem-4) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-5",
+      "message": "\"Elemento 5\" (elem-5) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-6",
+      "message": "\"Elemento 6\" (elem-6) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-7",
+      "message": "\"Elemento 7\" (elem-7) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-8",
+      "message": "\"Elemento 8\" (elem-8) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-9",
+      "message": "\"Elemento 9\" (elem-9) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-10",
+      "message": "\"Elemento 10\" (elem-10) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-11",
+      "message": "\"Elemento 11\" (elem-11) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-12",
+      "message": "\"Elemento 12\" (elem-12) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-13",
+      "message": "\"Elemento 13\" (elem-13) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-14",
+      "message": "\"Elemento 14\" (elem-14) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "elem-15",
+      "message": "\"Elemento 15\" (elem-15) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 5\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-5"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 6\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-6"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 8\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-8"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Elemento 15\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "elem-15"
+    }
+  ],
+  "pedidos:es": [
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "agg-Pagos",
+      "message": "\"Pagos\" (agg-Pagos) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "cliente",
+      "message": "\"Cliente\" (cliente) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "pagar",
+      "message": "\"Pagar\" (pagar) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "pago-realizado",
+      "message": "\"PagoRealizado\" (pago-realizado) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "facturar",
+      "message": "\"Facturar\" (facturar) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "facturar-pedido",
+      "message": "\"FacturarPedido\" (facturar-pedido) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "factura-emitida",
+      "message": "\"FacturaEmitida\" (factura-emitida) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "cancelar",
+      "message": "\"Cancelar\" (cancelar) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Cancelar\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
+      "nodeId": "cancelar"
+    }
+  ],
+  "pedidos:bpmn": [
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "agg-Pagos",
+      "message": "\"Pagos\" (agg-Pagos) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "inicio",
+      "message": "\"Pedido recibido\" (inicio) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "cobrar",
+      "message": "\"Cobrar\" (cobrar) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "aprobado",
+      "message": "\"¿Aprobado?\" (aprobado) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "confirmar",
+      "message": "\"Confirmar pago\" (confirmar) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "rechazar",
+      "message": "\"Rechazar pago\" (rechazar) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "fin",
+      "message": "\"Pago procesado\" (fin) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    }
+  ],
+  "pedidos:c4": [
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "cliente",
+      "message": "\"Cliente\" (cliente) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "pagos",
+      "message": "\"Pagos\" (pagos) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "pagos-db",
+      "message": "\"PagosDB\" (pagos-db) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "pasarela",
+      "message": "\"Pasarela\" (pasarela) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    }
+  ],
+  "bpmn:decision-sin-condicion": [
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"¿Hay stock?\" tiene 1 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "gw"
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "ini",
+      "message": "\"Pedido recibido\" (ini) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "t1",
+      "message": "\"Revisar pedido\" (t1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "gw",
+      "message": "\"¿Hay stock?\" (gw) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "t2",
+      "message": "\"Preparar envío\" (t2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "fin",
+      "message": "\"Fin\" (fin) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    }
+  ],
+  "bpmn:decisiones-varias": [
+    {
+      "level": "grave",
+      "rule": "RAMAS",
+      "message": "\"Suelta\" tiene 1 rama(s) sin condición: etiqueta cada arista con su caso (Sí / No / la condición de la fuente).",
+      "nodeId": "gw2"
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "ini",
+      "message": "\"Inicio\" (ini) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "t1",
+      "message": "\"Revisar\" (t1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "gw",
+      "message": "\"Validación stock\" (gw) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "gw2",
+      "message": "\"Suelta\" (gw2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "gw3",
+      "message": "\"¿Colgada?\" (gw3) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "fin",
+      "message": "\"Fin\" (fin) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "FLUJO-FIN",
+      "message": "\"¿Colgada?\" no tiene continuación; el camino queda colgando sin llegar a un cierre.",
+      "nodeId": "gw3"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Validación stock\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "gw"
+    },
+    {
+      "level": "aviso",
+      "rule": "RAMAS",
+      "message": "\"Suelta\" es una decisión con 1 salida(s): una decisión que no bifurca es una tarea.",
+      "nodeId": "gw2"
+    },
+    {
+      "level": "aviso",
+      "rule": "DECISION-PREGUNTA",
+      "message": "\"Suelta\" es una decisión: nómbrala como pregunta (\"¿Hay stock?\") para que sus ramas se lean solas.",
+      "nodeId": "gw2"
+    },
+    {
+      "level": "aviso",
+      "rule": "RAMAS",
+      "message": "\"Suelta\" no recibe flujo: una decisión evalúa el resultado de un paso anterior.",
+      "nodeId": "gw2"
+    },
+    {
+      "level": "aviso",
+      "rule": "RAMAS",
+      "message": "\"¿Colgada?\" es una decisión con 0 salida(s): una decisión que no bifurca es una tarea.",
+      "nodeId": "gw3"
+    }
+  ],
+  "bpmn:sin-arranque-ni-cierre": [
+    {
+      "level": "grave",
+      "rule": "FLUJO-INICIO",
+      "message": "El proceso no tiene arranque: añade un nodo de tipo Evento de Inicio y conéctalo al primer paso."
+    },
+    {
+      "level": "grave",
+      "rule": "FLUJO-FIN",
+      "message": "Ningún camino termina: añade al menos un nodo de tipo Evento de Fin (uno por desenlace distinto)."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "a",
+      "message": "\"Revisar\" (a) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "b",
+      "message": "\"Aprobar\" (b) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "FLUJO-FIN",
+      "message": "\"Aprobar\" no tiene continuación; el camino queda colgando sin llegar a un cierre.",
+      "nodeId": "b"
+    }
+  ],
+  "bpmn:dos-arranques-en-pool": [
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "cliente",
+      "message": "\"Cliente\" (cliente) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "vacio",
+      "message": "\"Vacío\" (vacio) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "i1",
+      "message": "\"Solicitud recibida\" (i1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "i2",
+      "message": "\"Cliente llama\" (i2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "t1",
+      "message": "\"Atender\" (t1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "fin",
+      "message": "\"Fin\" (fin) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "FLUJO-INICIO",
+      "message": "\"Cliente\" tiene 2 arranques (Solicitud recibida, Cliente llama); un participante arranca su proceso una sola vez.",
+      "nodeId": "cliente"
+    },
+    {
+      "level": "aviso",
+      "rule": "CONTENEDOR-VACIO",
+      "message": "\"Vacío\" (Pool) no contiene elementos: el lienzo lo dibujaría como una banda vacía. Los contenedores no se anidan entre sí — elige UN nivel (participante o rol) y pon los elementos dentro, o elimínalo.",
+      "nodeId": "vacio"
+    }
+  ],
+  "bpmn:contenedores-anidados": [
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "ventas",
+      "message": "\"Ventas\" (ventas) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "mostrador",
+      "message": "\"Mostrador\" (mostrador) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "i1",
+      "message": "\"Llega cliente\" (i1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "i2",
+      "message": "\"Llama cliente\" (i2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "t1",
+      "message": "\"Atender\" (t1) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "fin",
+      "message": "\"Atendido\" (fin) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "CONTENEDOR-VACIO",
+      "message": "\"Ventas\" (Pool) no contiene elementos: el lienzo lo dibujaría como una banda vacía. Los contenedores no se anidan entre sí — elige UN nivel (participante o rol) y pon los elementos dentro, o elimínalo.",
+      "nodeId": "ventas"
+    }
+  ],
+  "uml:sin-arranque": [
+    {
+      "level": "grave",
+      "rule": "FLUJO-INICIO",
+      "message": "El proceso no tiene arranque: añade un nodo de tipo Estado Inicial o Inicio de Actividad y conéctalo al primer paso."
+    },
+    {
+      "level": "grave",
+      "rule": "FLUJO-FIN",
+      "message": "Ningún camino termina: añade al menos un nodo de tipo Estado Final o Fin de Actividad (uno por desenlace distinto)."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "a",
+      "message": "\"Registrar pago\" (a) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "b",
+      "message": "\"Cerrar caso\" (b) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "FLUJO-FIN",
+      "message": "\"Cerrar caso\" no tiene continuación; el camino queda colgando sin llegar a un cierre.",
+      "nodeId": "b"
+    }
+  ],
+  "ddd:comando-sin-evento": [
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "cmd",
+      "message": "\"Pagar Pedido\" (cmd) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "act",
+      "message": "\"Cliente\" (act) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Pagar Pedido\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
+      "nodeId": "cmd"
+    }
+  ],
+  "ddd:cadena-completa": [
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "cmd",
+      "message": "\"Pagar Pedido\" (cmd) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "evt",
+      "message": "\"Pago Confirmado\" (evt) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "pol",
+      "message": "\"Preparar envío\" (pol) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "cmd2",
+      "message": "\"Preparar Envío\" (cmd2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "evt2",
+      "message": "\"Envío Preparado\" (evt2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    }
+  ],
+  "ddd:politicas-incompletas": [
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "evt",
+      "message": "\"Pago Confirmado\" (evt) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "pol",
+      "message": "\"Cancelar sin pago\" (pol) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "pol2",
+      "message": "\"Sorda\" (pol2) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "pol3",
+      "message": "\"Muda\" (pol3) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "cmd",
+      "message": "\"Reintentar\" (cmd) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "huerf",
+      "message": "\"Evento huérfano\" (huerf) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "POLITICA",
+      "message": "\"Cancelar sin pago\" no cierra el patrón \"cuando <evento> entonces <comando>\" (le falta el comando que dispara).",
+      "nodeId": "pol"
+    },
+    {
+      "level": "aviso",
+      "rule": "POLITICA",
+      "message": "\"Sorda\" no cierra el patrón \"cuando <evento> entonces <comando>\" (le falta el evento que la activa).",
+      "nodeId": "pol2"
+    },
+    {
+      "level": "aviso",
+      "rule": "POLITICA",
+      "message": "\"Muda\" no cierra el patrón \"cuando <evento> entonces <comando>\" (le falta el comando que dispara).",
+      "nodeId": "pol3"
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Evento huérfano\" ocurre sin causa visible: conéctalo al comando (o al actor/sistema) que lo dispara.",
+      "nodeId": "huerf"
+    }
+  ],
+  "c4:relaciones": [
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Cliente\" → \"Pagos\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "grave",
+      "rule": "RELACION-SIN-ETIQUETA",
+      "message": "\"Pagos\" → \"fantasma\" sin etiqueta: en un paisaje de sistemas toda relación lleva verbo + tecnología (\"consulta inventario [SQL]\")."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "plataforma",
+      "message": "\"Plataforma\" (plataforma) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "u",
+      "message": "\"Cliente\" (u) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "s",
+      "message": "\"Pagos\" (s) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "db",
+      "message": "\"PagosDB\" (db) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    }
+  ],
+  "ddd:descripciones-y-fuentes": [
+    {
+      "level": "aviso",
+      "rule": "FUENTE-SIN-ADJUNTAR",
+      "message": "4 elemento(s) citan \"docs/otro.md\", que no está adjunto al diagrama (Sin, Otro, Más…): dentro de la app esa cita no lleva a ningún lado. Adjuntalo con attach_source usando ESE nombre."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "cobros",
+      "message": "\"Cobros\" (cobros) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "vacio",
+      "message": "\"Vacío\" (vacio) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "b",
+      "message": "\"Pago hecho\" (b): la descripción (\"Pago hecho\") no alcanza para saber qué hace. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "d",
+      "message": "\"Sin\" (d) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "e",
+      "message": "\"Otro\" (e) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "f",
+      "message": "\"Más\" (f) no tiene descripción. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "DESCRIPCION-POBRE",
+      "nodeId": "g",
+      "message": "\"Y más\" (g): la descripción (\"dos palabras\") no alcanza para saber qué hace. Decí su responsabilidad, qué recibe o produce y por qué existe."
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Cobrar\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
+      "nodeId": "c"
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Sin\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
+      "nodeId": "d"
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Otro\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
+      "nodeId": "e"
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Más\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
+      "nodeId": "f"
+    },
+    {
+      "level": "aviso",
+      "rule": "CADENA",
+      "message": "\"Y más\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
+      "nodeId": "g"
+    },
+    {
+      "level": "aviso",
+      "rule": "CONTENEDOR-VACIO",
+      "message": "\"Vacío\" (Agregado) no contiene elementos: el lienzo lo dibujaría como una banda vacía. Los contenedores no se anidan entre sí — elige UN nivel (participante o rol) y pon los elementos dentro, o elimínalo.",
+      "nodeId": "vacio"
+    }
+  ]
+}

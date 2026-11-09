@@ -75,6 +75,7 @@ import { useBrandProfiles } from "@/hooks/use-brand-profiles";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { PredicateSelect } from "./PredicateSelect";
+import { KnowledgeTab } from "./KnowledgeTab";
 import { ColumnsField } from "./ColumnsField";
 import {
   agregarColumna,
@@ -1436,7 +1437,7 @@ const EditNodeDialog: React.FC<{
   // Tab visible. Vive FUERA del borrador a propósito: al saltar de un elemento
   // a otro sin cerrar la ficha se sigue viendo el mismo tab (si se reiniciara,
   // revisar la spec de cinco cajas obligaría a volver a entrar cinco veces).
-  const [tab, setTab] = useState<"elemento" | "spec" | "agente">("elemento");
+  const [tab, setTab] = useState<"elemento" | "spec" | "conocimiento" | "agente">("elemento");
   // Borrador de spec propuesto por la IA, en espera de «Aplicar»/«Descartar».
   // Nunca se escribe solo: pisar lo que el usuario redactó a mano sería el peor
   // resultado posible de un botón de sugerencia.
@@ -1801,10 +1802,10 @@ const EditNodeDialog: React.FC<{
               pie —Siguiente paso · Cerrar— queda FUERA: aplica a las dos. */}
           <Tabs
             value={tab}
-            onValueChange={(v) => setTab(v as "elemento" | "spec" | "agente")}
+            onValueChange={(v) => setTab(v as "elemento" | "spec" | "conocimiento" | "agente")}
             className="flex min-h-0 flex-1 flex-col"
           >
-            <TabsList className={cn("mx-4 mt-3 grid w-auto", puedeChatear ? "grid-cols-3" : "grid-cols-2")}>
+            <TabsList className={cn("mx-4 mt-3 grid w-auto", puedeChatear ? "grid-cols-4" : "grid-cols-3")}>
               <TabsTrigger value="elemento">Elemento</TabsTrigger>
               <TabsTrigger value="spec">
                 Spec
@@ -1813,6 +1814,8 @@ const EditNodeDialog: React.FC<{
                   <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
                 )}
               </TabsTrigger>
+              {/* Lo que el razonador deduce de la caja (spec 027 · US3). */}
+              <TabsTrigger value="conocimiento">Conocimiento</TabsTrigger>
               {/* Chat con Claude Code / Codex (feature 020): sólo en la app de
                   escritorio, donde el CLI corre en el proceso main. */}
               {puedeChatear && <TabsTrigger value="agente">Agente</TabsTrigger>}
@@ -2241,6 +2244,17 @@ const EditNodeDialog: React.FC<{
               </Button>
             )}
           </div>
+            </TabsContent>
+            <TabsContent value="conocimiento" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">
+              <KnowledgeTab
+                elementId={draft.id}
+                nodes={nodes}
+                links={links}
+                notation={notation}
+                vistas={vistasDelProyecto}
+                vistaActivaId={vistaActivaId}
+                activo={tab === "conocimiento"}
+              />
             </TabsContent>
             <TabsContent value="spec" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">
               <SpecTab

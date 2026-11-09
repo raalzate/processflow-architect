@@ -55,4 +55,29 @@ export {
   type Confianza,
   type Sugerencia,
 } from "./predicate-guess";
-export { hechosDeGraphData, hechosDeModelo, hechosDeVistas, type ContextoAbox, type ResultadoAbox } from "./abox";
+export {
+  hechosDeGraphData,
+  hechosDeModelo,
+  hechosDeVistas,
+  unirAbox,
+  type AristaAbox,
+  type ContextoAbox,
+  type ElementoAbox,
+  type ResultadoAbox,
+  type VistaAbox,
+} from "./abox";
+export { plana, validar, type OpcionesValidar } from "./validate";
+export { deducidosDe, explicacionLegible, textoDeHecho, type FilaDeducida, type LineaExplicacion } from "./ficha";
+export { MAX_HECHOS, MAX_RONDAS, razonar, type OpcionesRazonador, type ResultadoRazonador } from "./reasoner";
+export { explicar, hojasDe, type Explicacion } from "./query";
+export {
+  PROYECTO_SUELTO,
+  VISTA_SUELTA,
+  conocimientoDeModelo,
+  construirConocimiento,
+  type Alcance,
+  type Conocimiento,
+  type EntradaConocimiento,
+  type OrganizacionEntrada,
+  type ProyectoEntrada,
+} from "./conocimiento";
