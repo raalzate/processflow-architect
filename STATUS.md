@@ -100,6 +100,17 @@ Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
 
 ## Trabajo en curso
 
+**027 · Ontología del modelo** (#697, ruta SDD; tareas #698–#735; ADR 0007). F1–F5 en `main`
+(PR #736–#740). Verificado con comando:
+- `npm run gate` verde en cada fase, la última en `175f04e` (2026-11-09).
+- Paridad de las formas con las reglas de calidad (`quality-parity.test.ts`).
+- Export RDF validado con `n3` (`export-rdf.test.ts`, Q10).
+- Las 10 preguntas de competencia sobre el fixture «Pedidos» (`competency.test.ts`, `links.test.ts` para Q8).
+- SC-002 medido fuera del gate con Gemma 4 E4B local (`scripts/eval-ontology-agent.ts`): 67% sin grafo → 80% con grafo (comentario en #697).
+- SC-003 medido con `scripts/bench-ontology.ts`: 104 ms un proyecto de 50×40 y 1,5 ms una vista.
+
+**Sin verificar** (manual, con la app): T8 (ayuda con jerarquía y predicados), T12 (selector «Significado»), Q14 (el agente local en la app usa `camino`, con la red desconectada), T37 (quickstart 2–4 sin red y aislamiento en modo remoto/híbrido), y en la app: vincular vistas, exportar con deducidos, proponer hechos y comparar conocimiento. **Versión:** las notas están en borrador en `docs/releases/0.23.0.md`; `package.json` sigue en 0.22.1 hasta que se decida publicar.
+
 **016 · Adjuntos y referencias documentales en la caja** (#360, ruta SDD completa: plan,
 checklist, testify, tasks y analyze como comentarios de la issue madre; tareas #361–#369).
 Implementadas T1–T8 en `feat/360-adjuntos-elemento`: el módulo puro `src/lib/element-docs.ts`,
