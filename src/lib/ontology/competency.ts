@@ -184,9 +184,23 @@ export const PREGUNTAS_COMPETENCIA: PreguntaCompetencia[] = [
         }
         // Lo que un afectado REALIZA también cae (Q8): si el Sistema Pagos depende
         // de la Pasarela, el Contexto Pagos que implementa queda expuesto.
-        for (const s of afectados)
+        const fronteras: Termino[] = [];
+        for (const s of [...afectados])
           for (const o of objetos(k, s, P("realiza")))
-            if (!afectados.has(o) && o !== x) out.filas.push({ elemento: o, sistema: x, via: s });
+            if (!afectados.has(o) && o !== x) {
+              afectados.add(o);
+              fronteras.push(o);
+              out.filas.push({ elemento: o, sistema: x, via: s });
+            }
+        // Y lo que vive DENTRO de esa frontera (#742): si cae el Contexto Pagos,
+        // caen Pagar, Cobrar… `pertenece_a` es transitiva y ya cruza las
+        // equivalencias, así que el Pool ≡ Contexto aporta sus tareas.
+        for (const f of fronteras)
+          for (const m of k.store.match(undefined, P("pertenece_a"), f).map((h) => h.s))
+            if (m.startsWith("kb:") && !afectados.has(m) && m !== x) {
+              afectados.add(m);
+              out.filas.push({ elemento: m, sistema: x, via: f });
+            }
       }
       return out;
     },
