@@ -116,10 +116,14 @@ import {
   conocimientoDeDiagramas,
   explainFact,
   findPath,
+  leerVinculos,
+  linkElements,
   queryKnowledge,
   setEdgePredicate,
+  vinculosRel,
 } from "../../src/lib/mcp/ontology-tools";
 import { PREGUNTAS_COMPETENCIA } from "../../src/lib/ontology/competency";
+import { exportarConocimiento } from "../../src/lib/ontology/exportar";
 import { toMermaid, idsQueCambian } from "../../src/lib/mcp/to-mermaid";
 import { qualityFindings, formatFindings, MAX_NODES } from "../../src/lib/mcp/quality";
 import { reviewPacket } from "../../src/lib/mcp/review";
@@ -757,8 +761,72 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         if (scope === "diagram") throw e;
       }
     }
-    return conocimientoDeDiagramas(diagramas, org ?? "sin-org");
+    return conocimientoDeDiagramas(diagramas, org ?? "sin-org", scope === "org" ? await leerVinculosDe(org) : []);
   }
+
+  const vinculosPath = (org: string | null) => path.join(PROCESSFLOW_DIR, vinculosRel(org));
+  async function leerVinculosDe(org: string | null) {
+    try {
+      return leerVinculos(await fs.readFile(vinculosPath(org), "utf8"));
+    } catch {
+      return [];
+    }
+  }
+
+  server.registerTool(
+    "export_knowledge",
+    {
+      title: "Exportar el conocimiento (JSON-LD / Turtle)",
+      description:
+        "Devuelve el conocimiento del diagrama activo (o de la org con scope:\"org\") en un formato estándar de la web semántica: el reglamento (clases, predicados, disjunciones, alineación con schema.org) y lo dibujado, con identificadores estables. Con `inferred: true` suma lo deducido por el razonador, separado (grafo nombrado en JSON-LD, bloque declarado en Turtle). Es para otras herramientas: no se reimporta.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        format: z.enum(["jsonld", "turtle"]),
+        inferred: z.boolean().default(false),
+        scope: scopeSchema,
+      },
+    },
+    async ({ diagramId, format, inferred, scope }) => {
+      try {
+        const k = await conocimientoDelAlcance(scope, diagramId);
+        return text(exportarConocimiento(k, format, { deducidos: !!inferred }).contenido);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "link_elements",
+    {
+      title: "Vincular elementos de dos diagramas",
+      description:
+        "Declara que dos elementos de diagramas DISTINTOS de la org son el mismo concepto (`same_as`: el Cliente del Event Storming y la Persona Cliente del C4) o que uno implementa al otro (`realizes`: el Sistema Pagos realiza el Contexto Pagos). Se valida contra el reglamento: un `same_as` entre clases disjuntas (un sistema y una zona, un evento y un actor) se rechaza. Con el vínculo, query_knowledge/find_path/ask_competency con scope:\"org\" consultan los diagramas como un solo grafo.",
+      inputSchema: {
+        a: z.object({ diagram: z.string(), element: z.string().describe("Id o nombre del elemento.") }),
+        b: z.object({ diagram: z.string(), element: z.string() }),
+        kind: z.enum(["same_as", "realizes"]).describe("same_as = el mismo concepto; realizes = a implementa a b."),
+      },
+    },
+    async ({ a, b, kind }) => {
+      try {
+        const org = await activeOrg();
+        const diagramas: { id: string; model: DiagramModel }[] = [];
+        for (const id of [...new Set([a.diagram, b.diagram])]) diagramas.push({ id, model: await loadModel(id, org) });
+        const actuales = await leerVinculosDe(org);
+        const k = conocimientoDeDiagramas(diagramas, org ?? "sin-org");
+        const r = linkElements(k, actuales, org ?? "sin-org", { a, b, kind }, new Date().toISOString());
+        await ensureDir(path.dirname(vinculosPath(org)));
+        await fs.writeFile(vinculosPath(org), JSON.stringify(r.vinculos, null, 2), "utf8");
+        const lectura = r.vinculo.tipo === "es_mismo_que" ? "es el mismo que" : "realiza";
+        return text(
+          `Vinculado: ${a.diagram}/${r.vinculo.a.nodo} ${lectura} ${b.diagram}/${r.vinculo.b.nodo}. Las consultas con scope:"org" ya lo usan.`
+        );
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
 
   const termino = z.string().describe("Nombre de elemento, predicado o clase (o un IRI kb:/pf:). Los nombres repetidos devuelven todas las coincidencias.");
 

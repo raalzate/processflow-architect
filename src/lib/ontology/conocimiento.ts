@@ -15,7 +15,7 @@
 
 import { DEFAULT_NOTATION_ID, type NotationId } from "../notations";
 import type { GraphData } from "../types";
-import type { DesignView } from "../views-types";
+import type { DesignView, VinculoVistas } from "../views-types";
 import type { DiagramModel } from "../mcp/diagram-builder";
 import {
   hechosDeGraphData,
@@ -28,9 +28,10 @@ import {
   type VistaAbox,
 } from "./abox";
 import { razonar, type OpcionesRazonador } from "./reasoner";
+import { iriElemento, iriPredicado } from "./iri";
 import { crearStore, type TripleStore } from "./store";
 import { tboxDe } from "./tbox";
-import type { Hallazgo } from "./types";
+import type { Hallazgo, Hecho } from "./types";
 
 export type Alcance =
   | { tipo: "vista"; vista: string; proyecto?: string }
@@ -40,6 +41,8 @@ export type Alcance =
 export interface ProyectoEntrada {
   proyecto: string;
   vistas: DesignView[];
+  /** Vínculos entre vistas (US6): sólo los aceptados entran al razonamiento. */
+  vinculos?: VinculoVistas[];
 }
 
 export interface OrganizacionEntrada {
@@ -148,6 +151,27 @@ function expresar(p: Pieza): { hash: string; abox: ResultadoAbox } {
   return { hash, abox };
 }
 
+/**
+ * Los vínculos ACEPTADOS del alcance como hechos explícitos: «es el mismo que»
+ * o «realiza» entre cajas de vistas distintas. Un vínculo con un extremo fuera
+ * del alcance (alcance vista) o que ya no existe se ignora: su extremo no es
+ * un elemento del grafo.
+ */
+function hechosDeVinculos(entrada: EntradaConocimiento, alcance: Alcance, abox: ResultadoAbox): Hecho[] {
+  if (!esOrganizacion(entrada) && !esProyecto(entrada)) return [];
+  const existen = new Set(abox.elementos.map((e) => e.iri));
+  const out: Hecho[] = [];
+  for (const p of esOrganizacion(entrada) ? entrada.proyectos : [entrada])
+    for (const v of p.vinculos ?? []) {
+      if (v.estado !== "aceptado") continue;
+      const a = iriElemento(p.proyecto, v.a.vista, v.a.nodo);
+      const b = iriElemento(p.proyecto, v.b.vista, v.b.nodo);
+      if (!existen.has(a) || !existen.has(b) || alcance.tipo === "vista") continue;
+      out.push({ s: a, p: iriPredicado(v.tipo), o: b, origen: "explicito", ...(v.procedencia ? { procedencia: v.procedencia } : {}) });
+    }
+  return out;
+}
+
 export function construirConocimiento(
   entrada: EntradaConocimiento,
   alcance: Alcance,
@@ -155,12 +179,14 @@ export function construirConocimiento(
 ): Conocimiento {
   const fuentes = piezasDe(entrada, alcance);
   const piezas = fuentes.map(expresar);
-  const clave = `${JSON.stringify(opts)}#${piezas.map((p) => p.hash).join("#")}`;
+  const abox = unirAbox(piezas.map((p) => p.abox));
+  const vinculos = hechosDeVinculos(entrada, alcance, abox);
+  const clave = `${JSON.stringify(opts)}#${piezas.map((p) => p.hash).join("#")}#${vinculos.map((h) => `${h.s} ${h.p} ${h.o}`).join("|")}`;
   const hecho = CONOCIMIENTO.get(clave);
   if (hecho) return hecho;
 
   const k = razonarAbox(
-    unirAbox(piezas.map((p) => p.abox)),
+    vinculos.length ? { ...abox, hechos: [...abox.hechos, ...vinculos] } : abox,
     [...new Set(fuentes.map((p) => p.notation))],
     opts
   );

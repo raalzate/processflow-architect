@@ -16,7 +16,7 @@ import {
   type DiagramModel,
 } from "@/lib/mcp/diagram-builder";
 import type { NotationId } from "@/lib/notations";
-import type { DesignView } from "@/lib/views-types";
+import type { DesignView, VinculoVistas } from "@/lib/views-types";
 
 export const PROYECTO_PEDIDOS = "pedidos";
 
@@ -117,8 +117,12 @@ export const vistasPedidos = (): DesignView[] => [
   vista("v-c4", "Paisaje", "c4", modeloC4()),
 ];
 
-/** «Pagos» es el mismo concepto en las tres vistas (vínculos de US6). */
-export const VINCULOS_PEDIDOS = [
-  { a: { vista: "v-es", nodo: "agg-Pagos" }, b: { vista: "v-c4", nodo: "pagos" } },
-  { a: { vista: "v-c4", nodo: "pagos" }, b: { vista: "v-bpmn", nodo: "agg-Pagos" } },
-] as const;
+/**
+ * «Pagos» en las tres vistas (vínculos de US6, decisión Q8): el Contexto del
+ * Event Storming y el Pool del BPMN son la misma zona; el Sistema del C4 la
+ * REALIZA —un Agente no puede ser una Frontera—.
+ */
+export const VINCULOS_PEDIDOS: VinculoVistas[] = [
+  { id: "v1", tipo: "es_mismo_que", a: { vista: "v-es", nodo: "agg-Pagos" }, b: { vista: "v-bpmn", nodo: "agg-Pagos" }, estado: "aceptado" },
+  { id: "v2", tipo: "realiza", a: { vista: "v-c4", nodo: "pagos" }, b: { vista: "v-es", nodo: "agg-Pagos" }, estado: "aceptado" },
+];

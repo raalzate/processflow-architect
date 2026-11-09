@@ -121,3 +121,46 @@ describe("consultas al conocimiento", () => {
     expect(r.isError).toBe(true);
   });
 });
+
+// T30 · link_elements: vincular dos diagramas y que la consulta de la org los atraviese.
+describe("link_elements", () => {
+  it("Sistema realiza Contexto: PC-07 con scope org llega al Contexto", async () => {
+    const t = toolsFor();
+    const crear = async (name: string, notation: string) =>
+      /diagramId="([^"]+)"/.exec(await t.textOf("create_diagram", { name, notation }))![1];
+    const es = await crear("Cobros", "ddd");
+    await t.call("add_container", { diagramId: es, id: "ctx", name: "Pagos", type: tipo("ddd", "context") });
+    const c4 = await crear("Paisaje", "c4");
+    await t.call("add_node", { diagramId: c4, id: "s", name: "Pagos", type: tipo("c4", "system") });
+    await t.call("add_node", { diagramId: c4, id: "x", name: "Pasarela", type: tipo("c4", "external") });
+    await t.call("add_edge", { diagramId: c4, from: "s", to: "x", label: "usa" });
+
+    const mal = await t.call("link_elements", { a: { diagram: c4, element: "Pagos" }, b: { diagram: es, element: "Pagos" }, kind: "same_as" });
+    expect(mal.isError).toBe(true);
+    const ok = await t.call("link_elements", { a: { diagram: c4, element: "Pagos" }, b: { diagram: es, element: "Pagos" }, kind: "realizes" });
+    expect(ok.isError).toBeUndefined();
+    expect(JSON.parse(await guardado("vinculos"))).toHaveLength(1);
+
+    const pc = await t.textOf("ask_competency", { diagramId: c4, id: "PC-07", args: { sistema: "Pasarela" }, scope: "org" });
+    expect(pc).toMatch(/\| Pagos \[[^\]]+\] \| Pasarela \| Pagos \[[^\]]+\] \|/);
+  });
+});
+
+// T32 · export_knowledge responde lo mismo que la API pura y es Turtle válido.
+describe("export_knowledge", () => {
+  it("Turtle del diagrama activo, parseable; con inferred suma lo deducido", async () => {
+    const { Parser } = await import("n3");
+    const t = toolsFor();
+    const id = /diagramId="([^"]+)"/.exec(await t.textOf("create_diagram", { name: "Ventas", notation: "ddd" }))![1];
+    await t.call("add_node", { diagramId: id, id: "cmd", name: "Pagar", type: tipo("ddd", "command") });
+    await t.call("add_node", { diagramId: id, id: "evt", name: "Pagado", type: tipo("ddd", "event") });
+    await t.call("add_edge", { diagramId: id, from: "cmd", to: "evt", label: "emite" });
+    const solo = await t.textOf("export_knowledge", { diagramId: id, format: "turtle" });
+    const con = await t.textOf("export_knowledge", { diagramId: id, format: "turtle", inferred: true });
+    const n = (ttl: string) => new Parser({ format: "Turtle" }).parse(ttl).length;
+    expect(n(con)).toBeGreaterThan(n(solo));
+    expect(con).toContain("Deducidos por el razonador");
+    const ld = JSON.parse(await t.textOf("export_knowledge", { diagramId: id, format: "jsonld" }));
+    expect(ld["@context"].pf).toBe("https://processflow.app/ontology#");
+  });
+});

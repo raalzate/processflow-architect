@@ -16,7 +16,10 @@ import { caminoLegible, explicacionLegible, filaLegible } from "../ontology/fich
 import { predicadosCompatibles, validarPredicado } from "../ontology/predicate-guess";
 import { camino, consultarPorNombre, resolver, MAX_SALTOS, type Camino, type Fila } from "../ontology/query";
 import type { Origen } from "../ontology/types";
-import type { DesignView } from "../views-types";
+import { sanitizeVinculos } from "../board-file";
+import { idVinculo, validarVinculo } from "../ontology/links";
+import { plana } from "../ontology/validate";
+import type { DesignView, VinculoVistas } from "../views-types";
 import { toGraphData, updateEdge, type DiagramModel } from "./diagram-builder";
 import { mermaidSafeId } from "./mermaid-id";
 
@@ -75,7 +78,11 @@ export function setEdgePredicate(
  * con `scope:"org"`). El IRI de cada caja lleva el id de su diagrama, así dos
  * Cliente de diagramas distintos no se confunden (FR-014).
  */
-export function conocimientoDeDiagramas(diagramas: { id: string; model: DiagramModel }[], proyecto: string): Conocimiento {
+export function conocimientoDeDiagramas(
+  diagramas: { id: string; model: DiagramModel }[],
+  proyecto: string,
+  vinculos: VinculoVistas[] = []
+): Conocimiento {
   const vistas: DesignView[] = diagramas.map(({ id, model }) => ({
     id,
     name: id,
@@ -84,7 +91,72 @@ export function conocimientoDeDiagramas(diagramas: { id: string; model: DiagramM
     graph: toGraphData(model),
     createdAt: "",
   }));
-  return construirConocimiento({ proyecto, vistas }, { tipo: "proyecto" });
+  return construirConocimiento({ proyecto, vistas, vinculos }, { tipo: "proyecto" });
+}
+
+// ── Vínculos entre diagramas (T30) ───────────────────────────────────────────
+
+/**
+ * Dónde guarda una org sus vínculos, relativo a `.processflow/`. Fuera de
+ * `diagrams/` a propósito: ahí todo `.json` es un diagrama.
+ */
+export const vinculosRel = (org: string | null): string => (org ? `orgs/${org}/vinculos.json` : "vinculos.json");
+
+/** Lee el archivo de vínculos (ausente o roto ⇒ ninguno). */
+export function leerVinculos(raw: string | undefined): VinculoVistas[] {
+  if (!raw) return [];
+  try {
+    return sanitizeVinculos(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+export type TipoVinculoMcp = "same_as" | "realizes";
+
+/** La caja de un diagrama por id exacto o, si no, por nombre (sin acentos ni mayúsculas). */
+function cajaDe(k: Conocimiento, diagram: string, element: string): string | undefined {
+  const en = k.elementos.filter((e) => e.vista === diagram);
+  return (en.find((e) => e.id === element) ?? en.find((e) => plana(e.nombre) === plana(element)))?.id;
+}
+
+/**
+ * Vincula dos cajas de diagramas distintos de la org (FR-037). Valida contra el
+ * reglamento (FR-039): un «same_as» entre clases disjuntas se rechaza con la
+ * regla y la sugerencia de «realizes». Reemplaza la decisión anterior sobre el
+ * mismo par, aceptada o rechazada.
+ * @throws Error con el hallazgo si no corresponde.
+ */
+export function linkElements(
+  k: Conocimiento,
+  vinculos: VinculoVistas[],
+  proyecto: string,
+  entrada: { a: { diagram: string; element: string }; b: { diagram: string; element: string }; kind: TipoVinculoMcp },
+  fecha?: string
+): { vinculos: VinculoVistas[]; vinculo: VinculoVistas } {
+  const na = cajaDe(k, entrada.a.diagram, entrada.a.element);
+  const nb = cajaDe(k, entrada.b.diagram, entrada.b.element);
+  if (!na || !nb) {
+    const [d, el] = !na ? [entrada.a.diagram, entrada.a.element] : [entrada.b.diagram, entrada.b.element];
+    throw new Error(`No existe «${el}» en el diagrama "${d}". Revisá el id o el nombre (list_diagrams), y que el diagrama sea de esta org.`);
+  }
+  const tipo = entrada.kind === "same_as" ? "es_mismo_que" : "realiza";
+  const a = { vista: entrada.a.diagram, nodo: na };
+  const b = { vista: entrada.b.diagram, nodo: nb };
+  const h = validarVinculo(k, { tipo, a, b }, proyecto);
+  if (h) throw new Error(`${h.mensaje}${h.sugerencia ? ` ${h.sugerencia}` : ""}`);
+  const vinculo: VinculoVistas = {
+    id: idVinculo(tipo, a, b),
+    tipo,
+    a,
+    b,
+    estado: "aceptado",
+    procedencia: { por: "mcp", ...(fecha ? { fecha } : {}) },
+  };
+  const mismoPar = (v: VinculoVistas) =>
+    (v.a.vista === a.vista && v.a.nodo === a.nodo && v.b.vista === b.vista && v.b.nodo === b.nodo) ||
+    (v.a.vista === b.vista && v.a.nodo === b.nodo && v.b.vista === a.vista && v.b.nodo === a.nodo);
+  return { vinculos: [...vinculos.filter((v) => !mismoPar(v)), vinculo], vinculo };
 }
 
 export type Inclusion = "explicit" | "inferred" | "all";
