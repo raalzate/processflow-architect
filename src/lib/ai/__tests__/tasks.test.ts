@@ -9,6 +9,8 @@ import {
   bigPictureDescTask,
   orderLanesTask,
   creativeDiagramTask,
+  suggestPredicateTask,
+  parseSugerenciaPredicado,
 } from "@/lib/ai/tasks";
 import { DEFAULT_NOTATION_ID, notationTypes } from "@/lib/notations";
 
@@ -476,5 +478,44 @@ describe("brandFromSiteTask", () => {
   it("recorta las razones a 200 caracteres", () => {
     const out = brandFromSiteTask.parse!(`{"paper":"0 0% 100%","razones":"${"a".repeat(300)}"}`, input);
     expect(out?.razones).toHaveLength(200);
+  });
+});
+
+// Spec 027 · T27 (FR-034, R-07): la IA elige el significado DE LA LISTA.
+describe("suggestPredicateTask", () => {
+  const compatibles = [
+    { id: "dispara", etiqueta: "dispara", descripcion: "El comando deja el evento" },
+    { id: "relacionado_con", etiqueta: "relacionado con" },
+  ];
+  const entrada = {
+    etiqueta: "cierra",
+    origen: { nombre: "Pagar", tipo: "Comando" },
+    destino: { nombre: "Pagado", tipo: "Evento" },
+    compatibles,
+    notation: "ddd",
+  };
+
+  it("es light y structured, con techo local, y el prompt lista sólo los compatibles", () => {
+    expect(suggestPredicateTask).toMatchObject({ id: "suggest-predicate", tier: "light", structured: true, maxLocalChars: 1500 });
+    const { prompt } = suggestPredicateTask.buildPrompt!(entrada);
+    expect(prompt).toContain("- dispara: dispara — El comando deja el evento");
+    expect(prompt).toContain("rotulada «cierra»");
+    expect(prompt).not.toContain("activa");
+  });
+
+  it("acepta un id de la lista, con su razón", () => {
+    expect(suggestPredicateTask.parse!('{"predicado":"dispara","razon":"deja el hecho"}', entrada)).toEqual({
+      predicado: "dispara",
+      razon: "deja el hecho",
+    });
+  });
+
+  it("descarta lo que no está en la lista; rescata un id dicho en prosa", () => {
+    expect(parseSugerenciaPredicado('{"predicado":"activa","razon":"x"}', compatibles)).toBeNull();
+    // La razón menciona un id de la lista: igual se descarta, la IA no lo eligió.
+    expect(parseSugerenciaPredicado('{"predicado":"activa","razon":"porque dispara el evento"}', compatibles)).toBeNull();
+    expect(parseSugerenciaPredicado("Yo diría que dispara.", compatibles)).toEqual({ predicado: "dispara", razon: "" });
+    expect(parseSugerenciaPredicado("ni idea", compatibles)).toBeNull();
+    expect(parseSugerenciaPredicado('{"predicado": roto', compatibles)).toBeNull();
   });
 });

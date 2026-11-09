@@ -111,7 +111,15 @@ import { CATEGORIAS, buscarIconos, esIconoValido } from "../../src/lib/icons/cat
 import { formatLedger } from "../../src/lib/mcp/import-ledger";
 import { contarModelo, marcasDiagrama, textoConteo } from "../../src/lib/mcp/conteo";
 import { listNotations, describeNotation, isContainerType, ontologyMarkdown } from "../../src/lib/mcp/catalog";
-import { setEdgePredicate } from "../../src/lib/mcp/ontology-tools";
+import {
+  askCompetency,
+  conocimientoDeDiagramas,
+  explainFact,
+  findPath,
+  queryKnowledge,
+  setEdgePredicate,
+} from "../../src/lib/mcp/ontology-tools";
+import { PREGUNTAS_COMPETENCIA } from "../../src/lib/ontology/competency";
 import { toMermaid, idsQueCambian } from "../../src/lib/mcp/to-mermaid";
 import { qualityFindings, formatFindings, MAX_NODES } from "../../src/lib/mcp/quality";
 import { reviewPacket } from "../../src/lib/mcp/review";
@@ -726,6 +734,117 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       inputSchema: { notation: NOTATION },
     },
     async ({ notation }) => text(ontologyMarkdown(notation))
+  );
+
+  // -- 1a. Consultas al conocimiento (spec 027 · US5) -----------------------------
+  // Todas de LECTURA. Alcance: el diagrama activo, o con scope:"org" todos los
+  // diagramas de la org resuelta (nunca otra: aislamiento de resolveOrg).
+
+  const scopeSchema = z
+    .enum(["diagram", "org"])
+    .default("diagram")
+    .describe('"diagram" (por defecto): el diagrama activo. "org": todos los diagramas de la organización activa, como un solo grafo.');
+
+  async function conocimientoDelAlcance(scope: "diagram" | "org", diagramIdEntrada?: string) {
+    const org = await activeOrg();
+    const ids = scope === "org" ? await listModels(org) : [await activeId(diagramIdEntrada)];
+    const diagramas: { id: string; model: DiagramModel }[] = [];
+    for (const id of ids) {
+      try {
+        diagramas.push({ id, model: await loadModel(id, org) });
+      } catch (e) {
+        // En un barrido de la org, un archivo ilegible no tumba la consulta; el diagrama pedido sí.
+        if (scope === "diagram") throw e;
+      }
+    }
+    return conocimientoDeDiagramas(diagramas, org ?? "sin-org");
+  }
+
+  const termino = z.string().describe("Nombre de elemento, predicado o clase (o un IRI kb:/pf:). Los nombres repetidos devuelven todas las coincidencias.");
+
+  server.registerTool(
+    "query_knowledge",
+    {
+      title: "Consultar el conocimiento por patrón",
+      description:
+        "Consulta el grafo de conocimiento (spec 027) con patrones sujeto·predicado·objeto: cada término es un nombre, un IRI o una variable `?x`; varios patrones se combinan por sus variables compartidas. Responde sobre lo DIBUJADO y lo DEDUCIDO por el razonador (subclase, inversa, transitiva…): `[[\"Pagar\",\"provoca\",\"?x\"]]` lista todo lo que Pagar termina provocando. Usala ante preguntas de relaciones o de varios saltos en vez de leer el diagrama a ojo. Sin filas = desconocido en el modelo, no falso.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        patterns: z.array(z.tuple([termino, termino, termino])).min(1).max(5),
+        include: z.enum(["explicit", "inferred", "all"]).default("all").describe("explicit = sólo lo dibujado; inferred = sólo lo deducido."),
+        scope: scopeSchema,
+        limit: z.number().int().min(1).max(500).default(50),
+      },
+    },
+    async ({ diagramId, patterns, include, scope, limit }) => {
+      try {
+        return text(queryKnowledge(await conocimientoDelAlcance(scope, diagramId), patterns, include, limit));
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "find_path",
+    {
+      title: "Camino entre elementos",
+      description:
+        "Caminos más cortos en el grafo de conocimiento desde un elemento (hasta otro, o a todo lo alcanzable), siguiendo las flechas. Con `predicate` sólo recorre ese predicado y sus especializaciones (`provoca` recorre dispara, activa, emite, invoca). Cuenta la cadena paso a paso («Pagar —dispara→ PagoRealizado —activa→ Facturar…») y marca los pasos deducidos.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        from: termino,
+        to: termino.optional(),
+        predicate: z.string().optional().describe("Id o nombre del predicado (p. ej. `provoca`, `depende_de`)."),
+        maxHops: z.number().int().min(1).max(12).default(8),
+        scope: scopeSchema,
+      },
+    },
+    async ({ diagramId, from, to, predicate, maxHops, scope }) => {
+      try {
+        return text(findPath(await conocimientoDelAlcance(scope, diagramId), from, { to, predicate, maxHops }));
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "explain_fact",
+    {
+      title: "¿Por qué el modelo afirma esto?",
+      description:
+        "Explica un hecho del grafo de conocimiento: árbol de justificación con la regla del razonador y el axioma de cada paso, hasta los hechos dibujados. Sirve para verificar una deducción antes de afirmarla.",
+      inputSchema: { diagramId: diagramIdSchema, subject: termino, predicate: termino, object: termino, scope: scopeSchema },
+    },
+    async ({ diagramId, subject, predicate, object, scope }) => {
+      try {
+        return text(explainFact(await conocimientoDelAlcance(scope, diagramId), subject, predicate, object));
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "ask_competency",
+    {
+      title: "Pregunta de competencia",
+      description: `Corre una de las preguntas de competencia predefinidas de la ontología (spec 027) sobre el modelo:\n${PREGUNTAS_COMPETENCIA.map((p) => `- ${p.id}${p.parametros.length ? ` (${p.parametros.join(", ")})` : ""}: ${p.titulo}`).join("\n")}`,
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        id: z.enum(PREGUNTAS_COMPETENCIA.map((p) => p.id) as [string, ...string[]]),
+        args: z.record(z.string(), z.string()).optional().describe("Parámetros por nombre, p. ej. {\"comando\":\"Pagar\"}."),
+        scope: scopeSchema,
+      },
+    },
+    async ({ diagramId, id, args, scope }) => {
+      try {
+        return text(askCompetency(await conocimientoDelAlcance(scope, diagramId), id, args ?? {}));
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
   );
 
   // -- 1a-bis. Catálogo de iconos de tecnología (spec 025) ------------------------
