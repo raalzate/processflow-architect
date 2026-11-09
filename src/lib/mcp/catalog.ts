@@ -19,6 +19,7 @@ import {
   type NotationBudget,
   type NotationId,
 } from "../notations";
+import { describirTerminos, propiedadesDe, tboxDe, tboxMarkdown } from "../ontology/tbox";
 
 /** Descriptor de un tipo de componente tal como lo expone el MCP. */
 export interface CatalogElement {
@@ -41,6 +42,22 @@ export interface CatalogNotation {
   elements: CatalogElement[];
   /** Presupuesto de complejidad declarado por la notación (ver `Notation.budget`). */
   budget?: NotationBudget;
+  /**
+   * Qué puede significar una flecha (spec 027): predicados con dominio y rango
+   * legibles. Sin esto el agente rotula «emite» donde la notación dice
+   * «dispara», y la flecha no se puede razonar.
+   */
+  predicados: CatalogPredicate[];
+}
+
+/** Predicado del catálogo tal como lo expone el MCP. */
+export interface CatalogPredicate {
+  id: string;
+  etiqueta: string;
+  /** «Intención (Comando)», o «cualquiera». */
+  dominio: string;
+  rango: string;
+  propiedades: string[];
 }
 
 /** Mapa tipo → sección de la paleta, para una notación dada. */
@@ -55,7 +72,15 @@ function groupByType(n: Notation): Record<string, string> {
 /** Convierte una notación del registro a su descriptor de catálogo. */
 export function toCatalogNotation(n: Notation): CatalogNotation {
   const groups = groupByType(n);
+  const t = tboxDe(n.id);
   return {
+    predicados: t.predicados.map((p) => ({
+      id: p.id,
+      etiqueta: p.etiqueta,
+      dominio: describirTerminos(t, p.dominio),
+      rango: describirTerminos(t, p.rango),
+      propiedades: propiedadesDe(p),
+    })),
     id: n.id,
     label: n.label,
     description: n.description,
@@ -78,6 +103,14 @@ export function listNotations(): CatalogNotation[] {
 /** Catálogo de UNA notación por id; cae a DDD si el id no existe. */
 export function describeNotation(id: NotationId | string | undefined): CatalogNotation {
   return toCatalogNotation(getNotation(id));
+}
+
+/**
+ * El reglamento (ontología) de una notación en Markdown: jerarquía de clases,
+ * predicados y disjunciones. Es lo que devuelve `get_ontology` (spec 027).
+ */
+export function ontologyMarkdown(id: NotationId | string | undefined): string {
+  return tboxMarkdown(tboxDe(id));
 }
 
 /** Conjunto de tipos válidos de una notación (para validar `tipo_elemento`). */

@@ -110,7 +110,8 @@ import { importarMermaid } from "../../src/lib/mcp/import-mermaid-file";
 import { CATEGORIAS, buscarIconos, esIconoValido } from "../../src/lib/icons/catalog";
 import { formatLedger } from "../../src/lib/mcp/import-ledger";
 import { contarModelo, marcasDiagrama, textoConteo } from "../../src/lib/mcp/conteo";
-import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
+import { listNotations, describeNotation, isContainerType, ontologyMarkdown } from "../../src/lib/mcp/catalog";
+import { setEdgePredicate } from "../../src/lib/mcp/ontology-tools";
 import { toMermaid, idsQueCambian } from "../../src/lib/mcp/to-mermaid";
 import { qualityFindings, formatFindings, MAX_NODES } from "../../src/lib/mcp/quality";
 import { reviewPacket } from "../../src/lib/mcp/review";
@@ -703,10 +704,28 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             "- Pasado eso, partí en una vista panorámica + vistas de detalle (suggest_views); validate_diagram lo avisa como PRESUPUESTO.",
           ].join("\n")
         : "";
+      // El significado de las flechas (spec 027): sin la lista, el agente rotula
+      // «emite» donde el reglamento dice «dispara» y nadie puede razonar con eso.
+      const predicados = [
+        "",
+        "## Predicados (significado de una flecha; `set_edge_predicate`, detalle en `get_ontology`)",
+        ...n.predicados.map((p) => `- \`${p.id}\` («${p.etiqueta}»): ${p.dominio} → ${p.rango}`),
+      ].join("\n");
       return text(
-        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n${relaciones}${presupuesto}${material}\n\n## Guía\n${n.aiGuidance}`
+        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n${relaciones}${predicados}${presupuesto}${material}\n\n## Guía\n${n.aiGuidance}`
       );
     }
+  );
+
+  server.registerTool(
+    "get_ontology",
+    {
+      title: "Ontología de una notación",
+      description:
+        "Devuelve el REGLAMENTO de una notación (spec 027): jerarquía de clases (general → rol → tipo), predicados con dominio, rango y propiedades lógicas (transitiva, inversa, simétrica) y clases disjuntas. Consultala para elegir el predicado correcto de una flecha.",
+      inputSchema: { notation: NOTATION },
+    },
+    async ({ notation }) => text(ontologyMarkdown(notation))
   );
 
   // -- 1a-bis. Catálogo de iconos de tecnología (spec 025) ------------------------
@@ -1758,6 +1777,41 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         });
         await saveModel(diagramId, next);
         return text(`Relación ${from} → ${to} actualizada.`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "set_edge_predicate",
+    {
+      title: "Fijar el significado de una relación",
+      description:
+        "Fija el PREDICADO canónico de una relación existente (por sus extremos): lo que la flecha significa para la ontología, independiente de su etiqueta visible. Debe ser un predicado de la notación que admita esos tipos (dominio/rango); si no, se rechaza con los compatibles. `predicate: null` lo quita (vuelve a proponerse solo). Los predicados se listan en describe_notation y get_ontology.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        from: z.string(),
+        to: z.string(),
+        predicate: z.string().nullable().describe("Id del predicado (p. ej. `dispara`), o null para quitarlo."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, from, to, predicate }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        const { model: next } = setEdgePredicate(model, from, to, predicate);
+        await saveModel(diagramId, next);
+        return text(
+          predicate
+            ? `Relación ${from} → ${to}: significa «${predicate}».`
+            : `Relación ${from} → ${to}: predicado quitado (se propondrá desde la etiqueta).`
+        );
       } catch (e: any) {
         return fail(e.message);
       }
