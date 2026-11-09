@@ -95,7 +95,10 @@ export function contextoParaIA(k: Conocimiento, foco: Termino[], presupuesto = P
     if (armar(mid).length <= presupuesto) lo = mid;
     else hi = mid - 1;
   }
-  return armar(lo);
+  // Si ni la cabecera del foco entra, nada (#742): el presupuesto es un tope, no
+  // una sugerencia, y quien llama ya trata «sin texto» como «sin grafo».
+  const texto = armar(lo);
+  return texto.length <= presupuesto ? texto : "";
 }
 
 /** Cuántos elementos puede nombrar una pregunta como foco (más, y el subgrafo no entra). */
