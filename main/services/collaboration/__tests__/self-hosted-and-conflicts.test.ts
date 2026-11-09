@@ -91,8 +91,12 @@ describe("admisión automática multirruta y resolución de campos simultáneos"
     const now = 1_800_000_000_000;
     const clock = vi.spyOn(Date, "now").mockReturnValue(now);
     const root = mkdtempSync(join(tmpdir(), "pf-multiroute-"));
-    const host = new CollaborationEngine(join(root, "host"), undefined, { publicNetwork: false });
-    const guest = new CollaborationEngine(join(root, "guest"), undefined, { publicNetwork: false });
+    // Memoria fija: la prueba mide el reparto de cupos por ruta, no la RAM de la
+    // máquina. En macOS `os.freemem()` reporta decenas de MB (lo demás es caché)
+    // y el cupo caía al mínimo de 5, sin lugar para 5 relay + 1 LAN (#746).
+    const freeMemory = () => 8 * 1024 ** 3;
+    const host = new CollaborationEngine(join(root, "host"), undefined, { publicNetwork: false, freeMemory });
+    const guest = new CollaborationEngine(join(root, "guest"), undefined, { publicNetwork: false, freeMemory });
     try {
       await host.start();
       await guest.start();

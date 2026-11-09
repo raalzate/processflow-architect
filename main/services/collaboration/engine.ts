@@ -142,7 +142,12 @@ export class CollaborationEngine {
   constructor(
     private root: string,
     private event: (event: CollaborationEvent) => void = () => {},
-    private dependencies: { journal?: (file: string) => Journal; publicNetwork?: boolean } = {},
+    private dependencies: {
+      journal?: (file: string) => Journal;
+      publicNetwork?: boolean;
+      /** Memoria libre para estimar el cupo; las pruebas la fijan para no depender de la máquina. */
+      freeMemory?: () => number;
+    } = {},
   ) {
     mkdirSync(root, { recursive: true });
     const configFile = join(root, "device.json");
@@ -150,6 +155,9 @@ export class CollaborationEngine {
       ? (JSON.parse(readFileSync(configFile, "utf8")) as Config)
       : { key: [...randomBytes(32)], rooms: [] };
     this.saveConfig();
+  }
+  private freeMemory(): number {
+    return this.dependencies.freeMemory?.() ?? freemem();
   }
   private saveConfig() {
     writePrivateJson(join(this.root, "device.json"), this.config);
@@ -173,7 +181,7 @@ export class CollaborationEngine {
           pendingEdges: 0,
           saved: false,
           initialized: false,
-          capacity: estimateCapacity({ freeMemoryBytes: freemem(), projectBytes: 0, mergeMs: 1 }),
+          capacity: estimateCapacity({ freeMemoryBytes: this.freeMemory(), projectBytes: 0, mergeMs: 1 }),
           error: `Historial en cuarentena: ${error instanceof Error ? error.message : String(error)}`,
         };
         this.failedRooms.set(stored.fileId, { stored, status });
@@ -299,7 +307,7 @@ export class CollaborationEngine {
         },
       ];
     });
-    const resources = { freeMemoryBytes: freemem(), projectBytes, mergeMs: Math.max(mergeMs, serviceMs) };
+    const resources = { freeMemoryBytes: this.freeMemory(), projectBytes, mergeMs: Math.max(mergeMs, serviceMs) };
     return estimateCapacity({
       ...resources,
       routeAware: true,
@@ -328,7 +336,7 @@ export class CollaborationEngine {
       room.status.capacity.projectBytes += extraBytes;
       room.status.capacity.limit = Math.max(
         MIN_ROOM_CAPACITY,
-        Math.min(room.status.capacity.limit, Math.floor((freemem() * 0.2) / Math.max(1, extraBytes * 6))),
+        Math.min(room.status.capacity.limit, Math.floor((this.freeMemory() * 0.2) / Math.max(1, extraBytes * 6))),
       );
     }
     room.seats.resize(room.status.capacity.limit, {
@@ -374,7 +382,7 @@ export class CollaborationEngine {
         pendingEdges: 0,
         saved: true,
         initialized: false,
-        capacity: estimateCapacity({ freeMemoryBytes: freemem(), projectBytes: 0, mergeMs: 1 }),
+        capacity: estimateCapacity({ freeMemoryBytes: this.freeMemory(), projectBytes: 0, mergeMs: 1 }),
       },
     };
     // El archivo de ramas ya es duradero. Restaurarlo no debe reescribirlo como una edición del diario.
