@@ -145,3 +145,22 @@ describe("link_elements", () => {
     expect(pc).toMatch(/\| Pagos \[[^\]]+\] \| Pasarela \| Pagos \[[^\]]+\] \|/);
   });
 });
+
+// T32 · export_knowledge responde lo mismo que la API pura y es Turtle válido.
+describe("export_knowledge", () => {
+  it("Turtle del diagrama activo, parseable; con inferred suma lo deducido", async () => {
+    const { Parser } = await import("n3");
+    const t = toolsFor();
+    const id = /diagramId="([^"]+)"/.exec(await t.textOf("create_diagram", { name: "Ventas", notation: "ddd" }))![1];
+    await t.call("add_node", { diagramId: id, id: "cmd", name: "Pagar", type: tipo("ddd", "command") });
+    await t.call("add_node", { diagramId: id, id: "evt", name: "Pagado", type: tipo("ddd", "event") });
+    await t.call("add_edge", { diagramId: id, from: "cmd", to: "evt", label: "emite" });
+    const solo = await t.textOf("export_knowledge", { diagramId: id, format: "turtle" });
+    const con = await t.textOf("export_knowledge", { diagramId: id, format: "turtle", inferred: true });
+    const n = (ttl: string) => new Parser({ format: "Turtle" }).parse(ttl).length;
+    expect(n(con)).toBeGreaterThan(n(solo));
+    expect(con).toContain("Deducidos por el razonador");
+    const ld = JSON.parse(await t.textOf("export_knowledge", { diagramId: id, format: "jsonld" }));
+    expect(ld["@context"].pf).toBe("https://processflow.app/ontology#");
+  });
+});

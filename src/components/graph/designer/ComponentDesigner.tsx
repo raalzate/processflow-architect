@@ -75,6 +75,13 @@ import { useBrandProfiles } from "@/hooks/use-brand-profiles";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { PredicateSelect } from "./PredicateSelect";
+import {
+  PROYECTO_SUELTO,
+  construirConocimiento,
+  exportarConocimiento,
+  type FormatoConocimiento,
+} from "@/lib/ontology";
+import type { DesignView } from "@/lib/views-types";
 import { KnowledgeTab } from "./KnowledgeTab";
 import { ColumnsField } from "./ColumnsField";
 import {
@@ -2961,7 +2968,7 @@ export const ComponentDesigner: React.FC<{
     },
     [currentFileId]
   );
-  const { views, activeViewId, drillStack, enterView, goToDrill, createView, filters, filtersActive, clearFilters } =
+  const { views, activeViewId, drillStack, enterView, goToDrill, createView, filters, filtersActive, clearFilters, vinculos } =
     useViews();
   const { referenceText } = useReference();
   const { toast } = useToast();
@@ -4994,6 +5001,31 @@ export const ComponentDesigner: React.FC<{
     toast({ title: "Diagrama exportado", description: "Se descargó un SVG del lienzo." });
   }, [meta, toast, boundsDeLamina, skinActiva]);
 
+  // Exporta el CONOCIMIENTO del proyecto (spec 027 · US7): reglamento + lo
+  // dibujado en todas las vistas (la abierta, como está en el lienzo) y, si se
+  // pide, lo deducido aparte. Sin camino de vuelta: es para otras herramientas.
+  const handleExportKnowledge = useCallback(
+    (formato: FormatoConocimiento, deducidos: boolean) => {
+      if (!meta) return;
+      const lienzo: DesignView = {
+        id: activeViewId,
+        name: "Lienzo",
+        kind: "graph",
+        notation: notationId,
+        graph: buildContent(nodesRef.current, linksRef.current, meta, notationId),
+        createdAt: "",
+      };
+      const k = construirConocimiento(
+        { proyecto: PROYECTO_SUELTO, vistas: [...views.filter((v) => v.id !== activeViewId), lienzo], vinculos },
+        { tipo: "proyecto" }
+      );
+      const archivo = exportarConocimiento(k, formato, { deducidos, base: meta?.nombre_proyecto });
+      downloadText(archivo.contenido, archivo.nombre, archivo.mime);
+      toast({ title: "Conocimiento exportado", description: `${archivo.nombre}${deducidos ? " · con lo deducido aparte" : ""}` });
+    },
+    [activeViewId, notationId, meta, views, vinculos, toast]
+  );
+
   // Exporta una página HTML autocontenida (spec 024): título, descripción y el
   // diagrama con su contrato accesible, en el preset del destino. Si la
   // autocomprobación encuentra algo, se avisa: el archivo sale, nunca en silencio.
@@ -5145,6 +5177,8 @@ export const ComponentDesigner: React.FC<{
       help: () => setHelpOpen(true),
       export: handleExportSvg,
       "export-png": handleExportPng,
+      "export-knowledge-jsonld": () => handleExportKnowledge("jsonld", true),
+      "export-knowledge-turtle": () => handleExportKnowledge("turtle", true),
       // No borra directo: abre la confirmación, igual que desde la barra.
       clear: () => setClearConfirmOpen(true),
     }),
@@ -5164,6 +5198,7 @@ export const ComponentDesigner: React.FC<{
       applyLinkStyle,
       handleExportSvg,
       handleExportPng,
+      handleExportKnowledge,
     ]
   );
   accionesRef.current = acciones;
@@ -5550,6 +5585,18 @@ export const ComponentDesigner: React.FC<{
                       HTML · {p.label.toLowerCase()} (página que se abre sola)
                     </DropdownMenuItem>
                   ))}
+                  <DropdownMenuSeparator />
+                  {/* Spec 027 · US7: el proyecto como grafo de conocimiento estándar. */}
+                  <DropdownMenuItem onClick={() => handleExportKnowledge("jsonld", false)} title="Reglamento y lo dibujado, para editores de ontologías y almacenes de grafos">
+                    Conocimiento (JSON-LD)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExportKnowledge("turtle", false)}>Conocimiento (Turtle)</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExportKnowledge("jsonld", true)} title="Lo deducido va en un grafo nombrado aparte">
+                    Conocimiento (JSON-LD) · incluir deducidos
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExportKnowledge("turtle", true)} title="Lo deducido va en un bloque aparte, declarado">
+                    Conocimiento (Turtle) · incluir deducidos
+                  </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
 

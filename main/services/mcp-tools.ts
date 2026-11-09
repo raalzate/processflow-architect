@@ -123,6 +123,7 @@ import {
   vinculosRel,
 } from "../../src/lib/mcp/ontology-tools";
 import { PREGUNTAS_COMPETENCIA } from "../../src/lib/ontology/competency";
+import { exportarConocimiento } from "../../src/lib/ontology/exportar";
 import { toMermaid, idsQueCambian } from "../../src/lib/mcp/to-mermaid";
 import { qualityFindings, formatFindings, MAX_NODES } from "../../src/lib/mcp/quality";
 import { reviewPacket } from "../../src/lib/mcp/review";
@@ -771,6 +772,29 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
       return [];
     }
   }
+
+  server.registerTool(
+    "export_knowledge",
+    {
+      title: "Exportar el conocimiento (JSON-LD / Turtle)",
+      description:
+        "Devuelve el conocimiento del diagrama activo (o de la org con scope:\"org\") en un formato estándar de la web semántica: el reglamento (clases, predicados, disjunciones, alineación con schema.org) y lo dibujado, con identificadores estables. Con `inferred: true` suma lo deducido por el razonador, separado (grafo nombrado en JSON-LD, bloque declarado en Turtle). Es para otras herramientas: no se reimporta.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        format: z.enum(["jsonld", "turtle"]),
+        inferred: z.boolean().default(false),
+        scope: scopeSchema,
+      },
+    },
+    async ({ diagramId, format, inferred, scope }) => {
+      try {
+        const k = await conocimientoDelAlcance(scope, diagramId);
+        return text(exportarConocimiento(k, format, { deducidos: !!inferred }).contenido);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
 
   server.registerTool(
     "link_elements",

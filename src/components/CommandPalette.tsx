@@ -162,6 +162,8 @@ export function CommandPalette() {
       ["select-all", "Seleccionar todo", BoxSelect, "seleccionar todo select all"],
       ["fit", "Ajustar a contenido", Maximize, "ajustar zoom fit encuadrar"],
       ["export", "Exportar diagrama (SVG)", Download, "exportar svg imagen"],
+      ["export-knowledge-jsonld", "Exportar conocimiento (JSON-LD, con deducidos)", Download, "exportar conocimiento ontologia json-ld rdf grafo"],
+      ["export-knowledge-turtle", "Exportar conocimiento (Turtle, con deducidos)", Download, "exportar conocimiento ontologia turtle ttl rdf grafo"],
       ["metadata", "Abrir metadatos del proyecto", Settings2, "metadatos read models"],
       ["context", "Abrir contexto de referencia", Library, "contexto documentos referencia"],
       ["clear", "Limpiar el lienzo", Trash, "limpiar borrar reiniciar"],
