@@ -43,6 +43,21 @@ export function vistaSintetica(i: number): DiagramModel {
 const GRAFOS = new Map<number, GraphData>();
 const grafo = (i: number) => GRAFOS.get(i) ?? GRAFOS.set(i, toGraphData(vistaSintetica(i))).get(i)!;
 
+/**
+ * Un BPMN LINEAL de `n` tareas (#742 · O2): el peor caso de `precede`, que es
+ * transitiva. La clausura son exactamente n(n-1)/2 hechos `precede`, así que
+ * sirve también para probar que optimizar el razonador no pierde ninguno.
+ */
+export function procesoLineal(n: number): DiagramModel {
+  let m = emptyDiagram({ nombre_proyecto: "Lineal", notation: "bpmn" });
+  const tarea = typesWithRole("bpmn", "task")[0];
+  for (let i = 0; i < n; i++) {
+    m = addNode(m, { id: `t${i}`, nombre: `Paso ${i}`, tipo_elemento: tarea }).model;
+    if (i) m = addEdge(m, { fuente: `t${i - 1}`, destino: `t${i}` });
+  }
+  return m;
+}
+
 export function proyectoSintetico(nombre: string, vistas: number): { proyecto: string; vistas: DesignView[] } {
   return {
     proyecto: nombre,
