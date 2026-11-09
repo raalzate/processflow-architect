@@ -17,7 +17,8 @@ import type { ElementRole } from "../notations";
 import type { Conocimiento } from "./conocimiento";
 import { RDF_TYPE, iriGeneral, iriPredicado, iriRol, literal } from "./iri";
 import { camino, consultar, explicar, resolver, type Camino, type Explicacion, type Fila } from "./query";
-import type { Termino } from "./types";
+import { diffConocimiento } from "./diff";
+import type { Hecho, Termino } from "./types";
 
 export interface ResultadoCompetencia {
   filas: Fila[];
@@ -225,14 +226,14 @@ export const PREGUNTAS_COMPETENCIA: PreguntaCompetencia[] = [
     parametros: [],
     ejecutar(k, _args, ctx) {
       if (!ctx?.antes) return vacio("Hace falta la versión anterior para comparar.");
-      const clave = (h: { s: string; p: string; o: string }) => `${h.s} ${h.p} ${h.o}`;
-      const antes = new Map(ctx.antes.store.match().map((h) => [clave(h), h]));
-      const ahora = new Map(k.store.match().map((h) => [clave(h), h]));
-      const filas: Fila[] = [];
-      for (const [c, h] of ahora)
-        if (!antes.has(c)) filas.push({ cambio: literal(h.origen === "deducido" ? "deduccion ganada" : "agregado"), s: h.s, p: h.p, o: h.o });
-      for (const [c, h] of antes)
-        if (!ahora.has(c)) filas.push({ cambio: literal(h.origen === "deducido" ? "deduccion perdida" : "quitado"), s: h.s, p: h.p, o: h.o });
+      const d = diffConocimiento(ctx.antes, k);
+      const fila = (cambio: string) => (h: Hecho): Fila => ({ cambio: literal(cambio), s: h.s, p: h.p, o: h.o });
+      const filas: Fila[] = [
+        ...d.agregados.map(fila("agregado")),
+        ...d.deduccionesGanadas.map(fila("deduccion ganada")),
+        ...d.reemplazados.map(fila("quitado")),
+        ...d.deduccionesPerdidas.map(fila("deduccion perdida")),
+      ];
       return { filas, caminos: [] };
     },
   },

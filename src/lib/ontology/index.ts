@@ -112,6 +112,14 @@ export { ALINEACION_PUBLICA, tripletasExport, type OpcionesExport, type Tripleta
 export { CONTEXTO_JSONLD, aJsonLd } from "./jsonld";
 export { aTurtle } from "./turtle";
 export { exportarConocimiento, type ArchivoConocimiento, type FormatoConocimiento } from "./exportar";
+export {
+  conocimientoDeTablero,
+  diffConocimiento,
+  hayCambios,
+  resumirDiff,
+  type DiffConocimiento,
+  type ResumenDiff,
+} from "./diff";
 export { idVinculo, sugerirVinculos, validarVinculo, type TipoVinculo, type VinculoSugerido } from "./links";
 export { LEYENDA_CONOCIMIENTO, MAX_FOCO, PRESUPUESTO_CONTEXTO, SALTOS_CONTEXTO, contextoParaIA, focoDeTexto } from "./context";
 export {
