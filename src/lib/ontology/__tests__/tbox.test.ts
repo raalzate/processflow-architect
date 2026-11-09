@@ -127,3 +127,33 @@ describe("FR-007 · el reglamento se puede leer", () => {
     expect(md).toContain("transitiva");
   });
 });
+
+describe("revisión de F1", () => {
+  it("dos tipos con el mismo slug son un error, no una fusión silenciosa", () => {
+    const t = construirTbox({
+      notation: {
+        id: "slug" as never,
+        elements: [
+          { type: "Read Model", icon: "x", bg: "", border: "", text: "" },
+          { type: "Read-Model", icon: "x", bg: "", border: "", text: "" },
+        ],
+      },
+      roles: {},
+      predicados: [],
+    });
+    expect(checkTbox(t).join("\n")).toMatch(/Clase duplicada pf:slug\/read-model/);
+    expect(checkTbox({ ...t, clases: t.clases.slice(0, 1) }).join("\n")).toMatch(/Disjunción con una clase inexistente/);
+  });
+
+  it("el memo de superclases no se puede corromper desde afuera", () => {
+    const t = tboxDe("bpmn");
+    const s = superclases(t, claseDeTipo(t, "Tarea"));
+    expect(Object.isFrozen(s)).toBe(true);
+  });
+
+  it("los universales entran una vez y los propios vienen del registro", () => {
+    const ids = tboxDe("ddd").predicados.map((p) => p.id);
+    expect(ids.filter((x) => x === "relacionado_con")).toHaveLength(1);
+    expect(ids).toContain("dispara");
+  });
+});

@@ -30,3 +30,14 @@ describe("setEdgePredicate", () => {
     expect(r.model.edges.find((e) => e.fuente === "facturar-pedido")?.predicado).toBe("dispara");
   });
 });
+
+describe("quitar actúa sobre la misma arista que update_edge", () => {
+  it("con aristas paralelas sólo quita la primera, como fijar sólo fija la primera", () => {
+    let m = modeloES();
+    m = { ...m, edges: [...m.edges, { fuente: "pagar", destino: "pago-realizado", descripcion: "otra" }] };
+    m = { ...m, edges: m.edges.map((e) => (e.fuente === "pagar" ? { ...e, predicado: "dispara" } : e)) };
+    const r = setEdgePredicate(m, "pagar", "pago-realizado", null).model;
+    const paralelas = r.edges.filter((e) => e.fuente === "pagar");
+    expect(paralelas.map((e) => e.predicado)).toEqual([undefined, "dispara"]);
+  });
+});

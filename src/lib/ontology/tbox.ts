@@ -11,10 +11,11 @@ import {
   CLASES_GENERALES,
   CLASE_GENERAL_LIST,
   ELEMENT_ROLE_LIST,
+  NOTATION_PREDICATES,
   ROLE_GENERAL,
   ROLE_LABELS,
+  UNIVERSAL_PREDICATES,
   getNotation,
-  notationPredicates,
   notationRoles,
   type ClaseGeneral,
   type ElementRole,
@@ -92,7 +93,7 @@ export function construirTbox({ notation, roles, predicados }: EntradaTbox): Tbo
     CLASE_GENERAL_LIST.slice(i + 1).forEach((b) => disjuntas.push([iriGeneral(a), iriGeneral(b)]))
   );
 
-  return { notation: notation.id, clases, predicados: [...notationPredicates("general"), ...predicados], disjuntas };
+  return { notation: notation.id, clases, predicados: [...UNIVERSAL_PREDICATES, ...predicados], disjuntas };
 }
 
 // El registro es estático: el reglamento de cada notación se deriva una vez.
@@ -113,28 +114,35 @@ function derivar(n: Notation): Tbox {
   return construirTbox({
     notation: n,
     roles: notationRoles(n.id),
-    predicados: notationPredicates(n.id).slice(notationPredicates("general").length),
+    predicados: NOTATION_PREDICATES[n.id],
   });
 }
 
 /** Clase de un tipo; la raíz si el tipo no existe en la notación (edge case: tipo desconocido). */
 export function claseDeTipo(t: Tbox, tipo: string): Termino {
+  let tipos = TIPOS.get(t);
+  if (!tipos) TIPOS.set(t, (tipos = new Set(t.clases.filter((c) => c.nivel === "tipo").map((c) => c.id))));
   const iri = iriTipo(t.notation, tipo);
-  return t.clases.some((c) => c.id === iri && c.nivel === "tipo") ? iri : ELEMENTO;
+  return tipos.has(iri) ? iri : ELEMENTO;
 }
 
+// Camino caliente: `admite` lo pide por predicado y por extremo de cada arista.
+const TIPOS = new WeakMap<Tbox, Set<Termino>>();
+
 /** Superclases de una clase, de la más cercana a la raíz (cierre de subClassOf, sin ella misma). */
-export function superclases(t: Tbox, clase: Termino): Termino[] {
+export function superclases(t: Tbox, clase: Termino): readonly Termino[] {
   let memo = SUPER.get(t);
   if (!memo) SUPER.set(t, (memo = new Map()));
   const hecho = memo.get(clase);
   if (hecho) return hecho;
-  const out = calcularSuperclases(t, clase);
+  // Congelado: el memo vive tanto como el reglamento cacheado, y un `push` del
+  // llamador lo corrompería para todo el proceso.
+  const out = Object.freeze(calcularSuperclases(t, clase));
   memo.set(clase, out);
   return out;
 }
 
-const SUPER = new WeakMap<Tbox, Map<Termino, Termino[]>>();
+const SUPER = new WeakMap<Tbox, Map<Termino, readonly Termino[]>>();
 
 function calcularSuperclases(t: Tbox, clase: Termino): Termino[] {
   const porId = new Map(t.clases.map((c) => [c.id, c]));
@@ -171,6 +179,17 @@ export function admite(t: Tbox, p: PredicadoDecl, tipo: string, lado: "dominio" 
 export function checkTbox(t: Tbox): string[] {
   const errores: string[] = [];
   const clases = new Map(t.clases.map((c) => [c.id, c]));
+
+  // Dos tipos cuyo slug coincide («Read Model» / «Read-Model») darían la MISMA
+  // clase y uno heredaría las reglas del otro sin que nadie lo note.
+  const vistas = new Map<Termino, string>();
+  for (const c of t.clases) {
+    const previo = vistas.get(c.id);
+    if (previo !== undefined) errores.push(`Clase duplicada ${c.id}: «${previo}» y «${c.etiqueta}» dan el mismo identificador.`);
+    else vistas.set(c.id, c.etiqueta);
+  }
+  for (const [a, b] of t.disjuntas)
+    for (const x of [a, b]) if (!clases.has(x)) errores.push(`Disjunción con una clase inexistente: ${x}.`);
 
   for (const c of t.clases)
     for (const p of c.padres)

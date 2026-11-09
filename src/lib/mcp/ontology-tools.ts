@@ -26,22 +26,24 @@ export function setEdgePredicate(
   to: string,
   predicate: string | null
 ): { model: DiagramModel } {
-  // Que la relación exista va primero, con el mismo mensaje que update_edge.
-  const tocado = updateEdge(model, from, to, {});
   if (predicate === null) {
-    const f = model.nodes.find((n) => n.id === from || mermaidSafeId(n.id) === from)?.id ?? from;
-    const t = model.nodes.find((n) => n.id === to || mermaidSafeId(n.id) === to)?.id ?? to;
+    // La MISMA arista que tocaría update_edge (mismo id exacto → id Mermaid, la
+    // primera f→t): quitar y fijar no pueden actuar sobre aristas distintas.
+    const antes = model.edges;
+    const next = updateEdge(model, from, to, { predicado: undefined });
     return {
       model: {
-        ...tocado,
-        edges: tocado.edges.map((e) => {
-          if (e.fuente !== f || e.destino !== t) return e;
+        ...next,
+        edges: next.edges.map((e, i) => {
+          if (e === antes[i] || !("predicado" in e)) return e;
           const { predicado: _quitado, ...resto } = e;
           return resto;
         }),
       },
     };
   }
+  // Que la relación exista va antes que el reglamento, con el mensaje de update_edge.
+  updateEdge(model, from, to, {});
   const notation = model.meta.notation ?? DEFAULT_NOTATION_ID;
   const tf = tipoDe(model, from);
   const tt = tipoDe(model, to);

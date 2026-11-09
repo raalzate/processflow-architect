@@ -32,7 +32,7 @@ export interface AristaLeible {
   predicado?: string;
 }
 
-const SUFIJOS = ["ando", "iendo", "aron", "ieron", "an", "en", "ar", "er", "ir", "a", "e", "o", "n", "s"];
+const SUFIJOS = ["ando", "iendo", "aron", "ieron", "an", "en", "ar", "er", "ir", "r", "a", "e", "o", "n", "s"];
 
 /** Raíz pobre pero estable: «emiten», «emitir» y «emite» dan lo mismo. */
 function raiz(palabra: string): string {
@@ -55,6 +55,8 @@ export function normalizarEtiqueta(texto: string | undefined): string[] {
     .replace(/[^a-z0-9:]+/g, " ")
     .trim()
     .split(/\s+/)
+    // «emite:» es «emite»; el «:» sólo vale por dentro («1:n»).
+    .map((w) => w.replace(/^:+|:+$/g, ""))
     .filter(Boolean)
     .map(raiz);
 }

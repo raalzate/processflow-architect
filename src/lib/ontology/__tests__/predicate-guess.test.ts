@@ -106,3 +106,16 @@ describe("SC-005 · sobre el proyecto de referencia", () => {
     expect(aciertos / total).toBeGreaterThanOrEqual(0.8);
   });
 });
+
+describe("raíces de borde (revisión de F1)", () => {
+  it("el infinitivo corto comparte raíz con el presente", () => {
+    expect(normalizarEtiqueta("Usar")).toEqual(normalizarEtiqueta("usa"));
+    expect(normalizarEtiqueta("Leer de")).toEqual(normalizarEtiqueta("lee de"));
+    expect(sugerirPredicado({ descripcion: "Usar [API]" }, n("Persona"), n("Sistema"), "c4").id).toBe("usa");
+  });
+
+  it("los dos puntos sólo cuentan por dentro de la palabra", () => {
+    expect(normalizarEtiqueta("emite:")).toEqual(normalizarEtiqueta("emite"));
+    expect(normalizarEtiqueta("1:N")).toEqual(["1:n"]);
+  });
+});

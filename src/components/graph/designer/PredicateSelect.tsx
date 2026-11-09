@@ -14,7 +14,7 @@ import { AlertTriangle, Check, X } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { NotationId } from "@/lib/notations";
-import { predicadosCompatibles, sugerirPredicado, tboxDe, validarPredicado, type Confianza } from "@/lib/ontology";
+import { predicadoDe, predicadosCompatibles, sugerirPredicado, tboxDe, validarPredicado, type Confianza } from "@/lib/ontology";
 import type { DesignerLink, DesignerNode } from "./serialize";
 
 const CONFIANZA: Record<Confianza, string> = {
@@ -44,10 +44,17 @@ export const PredicateSelect: React.FC<{
   if (!source || !target || !sugerencia) return null;
 
   const actual = sugerencia.id;
-  const confirmado = sugerencia.confianza === "confirmado";
+  // Un predicado guardado que la notación ya no conoce (se cambió la notación de
+  // la vista) no puede quedar invisible: sigue en el proyecto y se tiene que poder quitar.
+  const huerfano = !!link.predicado && !predicadoDe(t, link.predicado);
+  const confirmado = sugerencia.confianza === "confirmado" || huerfano;
   // Un predicado confirmado que ya no corresponde (cambió el tipo de un extremo)
   // se avisa con los compatibles: no se corrige solo (US2-AC2).
-  const hallazgo = confirmado ? validarPredicado(actual, source.tipo_elemento, target.tipo_elemento, notation) : null;
+  const hallazgo = huerfano
+    ? validarPredicado(link.predicado!, source.tipo_elemento, target.tipo_elemento, notation)
+    : confirmado
+      ? validarPredicado(actual, source.tipo_elemento, target.tipo_elemento, notation)
+      : null;
   // El confirmado aparece aunque no sea compatible, para que se vea qué hay.
   const opciones = compatibles.some((p) => p.id === actual)
     ? compatibles
