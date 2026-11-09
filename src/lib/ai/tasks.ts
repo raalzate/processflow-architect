@@ -166,6 +166,67 @@ export const linkLabelTask: AiTask<
   parse: (raw) => stripQuotes(raw).replace(/\.$/, "").toLowerCase(),
 };
 
+/** Un predicado que la IA puede elegir: los compatibles con los tipos de los extremos. */
+export interface PredicadoOpcion {
+  id: string;
+  etiqueta: string;
+  descripcion?: string;
+}
+
+/**
+ * Elige el SIGNIFICADO de una flecha ambigua (spec 027 · FR-034, R-07). Sólo a
+ * demanda —botón «Sugerir con IA» del selector—: la propuesta determinista
+ * (`sugerirPredicado`) ya resuelve las etiquetas claras. La IA elige DE LA
+ * LISTA; lo que no esté en ella se descarta (`null`), nunca se inventa un
+ * predicado. `structured` porque la respuesta es un objeto con una forma fija.
+ */
+export const suggestPredicateTask: AiTask<
+  {
+    etiqueta?: string;
+    origen: { nombre: string; tipo: string };
+    destino: { nombre: string; tipo: string };
+    compatibles: PredicadoOpcion[];
+    notation?: string;
+  },
+  { predicado: string; razon: string } | null
+> = {
+  id: "suggest-predicate",
+  tier: "light",
+  structured: true,
+  maxLocalChars: 1500,
+  buildPrompt: (i) => ({
+    prompt: [
+      `Relación del diagrama (notación ${getNotation(i.notation).label}):`,
+      `«${i.origen.nombre}» (${i.origen.tipo}) → «${i.destino.nombre}» (${i.destino.tipo})${i.etiqueta?.trim() ? `, rotulada «${i.etiqueta.trim()}»` : ", sin rótulo"}.`,
+      "¿Qué SIGNIFICA esta flecha? Elegí UNO de estos predicados (id: lectura — para qué sirve):",
+      ...i.compatibles.map((p) => `- ${p.id}: ${p.etiqueta}${p.descripcion ? ` — ${p.descripcion}` : ""}`),
+      'Respondé SÓLO con JSON: {"predicado":"<id de la lista>","razon":"<una frase>"}. Si ninguno encaja, usá "relacionado_con" si está en la lista.',
+    ].join("\n"),
+    system: SYSTEM_PROMPT_DESIGNER,
+  }),
+  parse: (raw, i) => parseSugerenciaPredicado(raw, i?.compatibles ?? []),
+};
+
+/** El predicado elegido, sólo si está en la lista; `null` si la IA respondió otra cosa. */
+export function parseSugerenciaPredicado(raw: string, compatibles: PredicadoOpcion[]): { predicado: string; razon: string } | null {
+  const ids = new Set(compatibles.map((p) => p.id));
+  const json = raw.match(/\{[\s\S]*\}/)?.[0];
+  if (json) {
+    try {
+      const o = JSON.parse(json) as { predicado?: unknown; razon?: unknown };
+      const predicado = typeof o.predicado === "string" ? o.predicado.trim() : "";
+      // Si la IA eligió fuera de la lista, se descarta: rescatar un id de su
+      // razón le atribuiría una elección que no hizo.
+      return ids.has(predicado) ? { predicado, razon: typeof o.razon === "string" ? o.razon.trim() : "" } : null;
+    } catch {
+      /* el modelo local a veces rompe el JSON: se intenta con el texto */
+    }
+  }
+  // Sin JSON legible: el primer id de la lista que aparezca como palabra en la respuesta.
+  const predicado = [...ids].find((id) => new RegExp(`\\b${id}\\b`).test(raw));
+  return predicado ? { predicado, razon: "" } : null;
+}
+
 /**
  * Ordena las BANDAS del diagrama (contextos, participantes, límites) para el
  * botón «Organizar → Sugerir con IA».

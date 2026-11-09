@@ -75,3 +75,49 @@ describe("set_edge_predicate", () => {
     expect(JSON.parse(await guardado(id)).edges[0].predicado).toBeUndefined();
   });
 });
+
+// T25 · FR-030, FR-014: las consultas por MCP responden lo mismo que la API pura,
+// sobre el diagrama activo o sobre la org entera.
+describe("consultas al conocimiento", () => {
+  async function armar() {
+    const t = toolsFor();
+    const crear = async (name: string, notation: string) =>
+      /diagramId="([^"]+)"/.exec(await t.textOf("create_diagram", { name, notation }))![1];
+    const es = await crear("Cobros", "ddd");
+    await t.call("add_node", { diagramId: es, id: "cmd", name: "Pagar", type: tipo("ddd", "command") });
+    await t.call("add_node", { diagramId: es, id: "evt", name: "Pagado", type: tipo("ddd", "event") });
+    await t.call("add_edge", { diagramId: es, from: "cmd", to: "evt", label: "emite" });
+    const c4 = await crear("Paisaje", "c4");
+    await t.call("add_node", { diagramId: c4, id: "s", name: "Pagos", type: tipo("c4", "system") });
+    await t.call("add_node", { diagramId: c4, id: "x", name: "Pasarela", type: tipo("c4", "external") });
+    await t.call("add_edge", { diagramId: c4, from: "s", to: "x", label: "usa" });
+    return { t, es, c4 };
+  }
+
+  it("query_knowledge sobre el diagrama pedido; scope org ve los dos", async () => {
+    const { t, es } = await armar();
+    const solo = await t.textOf("query_knowledge", { diagramId: es, patterns: [["?a", "dispara", "?b"]] });
+    expect(solo).toContain("| Pagar | Pagado |");
+    expect(await t.textOf("query_knowledge", { diagramId: es, patterns: [["?a", "usa", "?b"]] })).toMatch(/^Sin filas/);
+    const org = await t.textOf("query_knowledge", { diagramId: es, patterns: [["?a", "usa", "?b"]], scope: "org" });
+    expect(org).toContain("| Pagos | Pasarela |");
+  });
+
+  it("find_path, explain_fact y ask_competency", async () => {
+    const { t, c4 } = await armar();
+    expect(await t.textOf("find_path", { diagramId: c4, from: "Pagos", to: "Pasarela" })).toBe(
+      "1 camino(s):\n- Pagos —usa→ Pasarela"
+    );
+    expect(await t.textOf("explain_fact", { diagramId: c4, subject: "Pagos", predicate: "depende de", object: "Pasarela" })).toMatch(
+      /por subpropiedad/
+    );
+    const pc = await t.textOf("ask_competency", { diagramId: c4, id: "PC-07", args: { sistema: "Pasarela" } });
+    expect(pc).toContain("| Pagos | Pasarela |");
+  });
+
+  it("un diagrama que no existe es error accionable", async () => {
+    const { t } = await armar();
+    const r = await t.call("query_knowledge", { diagramId: "nada", patterns: [["?a", "?p", "?b"]] });
+    expect(r.isError).toBe(true);
+  });
+});

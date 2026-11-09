@@ -3,8 +3,8 @@
  *
  * El diagrama deja de ser dibujo y pasa a ser conocimiento: un REGLAMENTO por
  * notación (TBox, derivado de `notations.ts`), los diagramas como HECHOS (ABox)
- * y el significado canónico de cada flecha. Las fases siguientes agregan acá el
- * razonador, las formas y las consultas.
+ * y el significado canónico de cada flecha; el razonador, las formas, las
+ * consultas y el contexto para la IA.
  *
  * Importar siempre desde los módulos concretos con ruta relativa en el proceso
  * main: la fachada es para la UI y las pruebas.
@@ -67,9 +67,48 @@ export {
   type VistaAbox,
 } from "./abox";
 export { plana, validar, type OpcionesValidar } from "./validate";
-export { deducidosDe, explicacionLegible, textoDeHecho, type FilaDeducida, type LineaExplicacion } from "./ficha";
+export {
+  caminoLegible,
+  deducidosDe,
+  etiquetaDe,
+  explicacionLegible,
+  filaLegible,
+  nombreDe,
+  textoDeHecho,
+  type FilaDeducida,
+  type LineaExplicacion,
+} from "./ficha";
 export { MAX_HECHOS, MAX_RONDAS, razonar, type OpcionesRazonador, type ResultadoRazonador } from "./reasoner";
-export { explicar, hojasDe, type Explicacion } from "./query";
+export {
+  LIMITE_FILAS,
+  MAX_SALTOS,
+  camino,
+  consultar,
+  consultarPorNombre,
+  explicar,
+  hojasDe,
+  patronDeTexto,
+  resolver,
+  resolverPatrones,
+  type Camino,
+  type Coincidencia,
+  type Consulta,
+  type Explicacion,
+  type Fila,
+  type OpcionesCamino,
+  type Paso,
+  type Patron,
+  type PatronesResueltos,
+  type TerminoOVar,
+} from "./query";
+export {
+  PREGUNTAS_COMPETENCIA,
+  preguntaCompetencia,
+  type ContextoCompetencia,
+  type PreguntaCompetencia,
+  type ResultadoCompetencia,
+} from "./competency";
+export { LEYENDA_CONOCIMIENTO, MAX_FOCO, PRESUPUESTO_CONTEXTO, SALTOS_CONTEXTO, contextoParaIA, focoDeTexto } from "./context";
 export {
   PROYECTO_SUELTO,
   VISTA_SUELTA,

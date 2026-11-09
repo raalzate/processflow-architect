@@ -10,7 +10,7 @@
 
 import type { Conocimiento } from "./conocimiento";
 import { RDFS_LABEL, RDF_TYPE, esLiteral, idDePredicado, valorLiteral } from "./iri";
-import { explicar, type Explicacion } from "./query";
+import { explicar, type Camino, type Explicacion, type Fila } from "./query";
 import { predicadoDe, tboxDe } from "./tbox";
 import type { ReglaId, Termino, Tripleta } from "./types";
 
@@ -29,7 +29,7 @@ export interface LineaExplicacion {
   dibujado: boolean;
 }
 
-function nombreDe(k: Conocimiento, t: Termino): string {
+export function nombreDe(k: Conocimiento, t: Termino): string {
   if (esLiteral(t)) return valorLiteral(t);
   const l = k.store.match(t, RDFS_LABEL)[0];
   if (l) return valorLiteral(l.o);
@@ -78,4 +78,30 @@ export function explicacionLegible(k: Conocimiento, t: Tripleta): LineaExplicaci
   };
   visitar(e, 0);
   return out;
+}
+
+/**
+ * Nombre de un término para mostrar a alguien: si otro elemento se llama igual
+ * (el Cliente de la vista DDD y el de C4), se agrega la vista para distinguirlos.
+ */
+export function etiquetaDe(k: Conocimiento, t: Termino): string {
+  const n = nombreDe(k, t);
+  const e = k.elementos.find((x) => x.iri === t);
+  if (!e) return n;
+  const repetido = k.elementos.some((x) => x.iri !== t && x.nombre === e.nombre);
+  return repetido ? `${n} [${e.vista}]` : n;
+}
+
+/** «Pagar —dispara→ PagoRealizado —activa→ Facturar», con (deducido) en los pasos que no se dibujaron. */
+export function caminoLegible(k: Conocimiento, c: Camino): string {
+  if (!c.pasos.length) return "";
+  const partes = [etiquetaDe(k, c.pasos[0].s)];
+  for (const p of c.pasos)
+    partes.push(`—${nombreDe(k, p.p)}${p.origen === "deducido" ? " (deducido)" : ""}→ ${etiquetaDe(k, p.o)}`);
+  return partes.join(" ");
+}
+
+/** Una fila de consulta con nombres en lugar de IRIs. */
+export function filaLegible(k: Conocimiento, f: Fila): Record<string, string> {
+  return Object.fromEntries(Object.entries(f).map(([v, t]) => [v, etiquetaDe(k, t)]));
 }

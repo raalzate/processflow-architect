@@ -351,4 +351,4 @@ export function safeGraphToToon(graph: unknown): string {
  * sepa leer el formato tabular. Se inyecta una sola vez en el contexto.
  */
 export const TOON_LEGEND =
-  "Formato TOON — `campo[N]{col1,col2}:` es una tabla con N filas CSV indentadas (un elemento por fila, en el orden de las columnas); `campo[N]: a,b,c` es una lista de N escalares; el resto es `clave: valor`.";
+  "Formato TOON — `campo[N]{col1,col2}:` es una tabla con N filas CSV indentadas (un elemento por fila, en el orden de las columnas); `campo[N]: a,b,c` es una lista de N escalares; el resto es `clave: valor`. En una arista, `predicado` es su significado canónico (dispara, activa, usa, escribe_en…): manda sobre la `descripcion`, que es sólo el rótulo dibujado.";

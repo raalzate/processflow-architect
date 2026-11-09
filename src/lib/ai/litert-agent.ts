@@ -13,6 +13,9 @@
 
 import { litertGenerate, createLitertConversation } from "./litert-engine";
 import { safeGraphToToon, TOON_LEGEND } from "./graph-toon";
+import { construirConocimiento } from "../ontology/conocimiento";
+import { contextoParaIA, focoDeTexto, LEYENDA_CONOCIMIENTO } from "../ontology/context";
+import type { GraphData } from "../types";
 import { sanitizeId } from "@/lib/mermaid-diagram";
 import { getNotation, DEFAULT_NOTATION_ID } from "@/lib/notations";
 import {
@@ -563,6 +566,7 @@ export function buildContext(input: LitertAgentInput): string {
       safeGraphToToon(input.graphData),
       8000
     )}`;
+    ctx += conocimientoDelFoco(input.graphData, input.message);
   }
   if (input.views?.length) {
     ctx +=
@@ -585,6 +589,25 @@ export function buildContext(input: LitertAgentInput): string {
   // Adelante: el bucle explorador recorta el contexto por el final, y unos
   // documentos largos se comerían la conversación entera.
   return historyBlock(input.history) + ctx;
+}
+
+/**
+ * GraphRAG local (spec 027 · FR-033): lo que el grafo sabe —dibujado y
+ * deducido— alrededor de los elementos que nombra la pregunta, recortado al
+ * presupuesto. Sin foco no se agrega nada: el grafo entero ya va arriba. Nunca
+ * rompe el turno: un grafo raro deja el contexto como estaba.
+ */
+export function conocimientoDelFoco(graph: GraphData | undefined, mensaje: string): string {
+  if (!graph) return "";
+  try {
+    const k = construirConocimiento(graph, { tipo: "proyecto" });
+    const foco = focoDeTexto(k, mensaje);
+    if (!foco.length) return "";
+    const sub = contextoParaIA(k, foco);
+    return sub ? `\n\n### Conocimiento alrededor de lo que se pregunta (grafo · TOON)\n${LEYENDA_CONOCIMIENTO}\n${sub}` : "";
+  } catch {
+    return "";
+  }
 }
 
 /** Turnos previos que entran al prompt: los últimos, que son los que se retoman. */
@@ -1156,6 +1179,19 @@ function readCallFrom(action: string, a: any): ToolCall {
       };
     case "read_source":
       return { tool: "read_source", name: String(a.name ?? a.doc ?? a.document ?? ""), ...rango };
+    case "consultar_grafo":
+      return { tool: "consultar_grafo", patron: String(a.patron ?? a.pattern ?? a.query ?? "") };
+    case "camino": {
+      const opc = (v: unknown) => (v === undefined || v === null || String(v).trim() === "" ? undefined : String(v));
+      return {
+        tool: "camino",
+        desde: String(a.desde ?? a.from ?? ""),
+        hasta: opc(a.hasta ?? a.to),
+        predicado: opc(a.predicado ?? a.predicate),
+      };
+    }
+    case "por_que":
+      return { tool: "por_que", hecho: String(a.hecho ?? a.fact ?? a.patron ?? "") };
     default:
       return { tool: "list_views" };
   }
@@ -1168,7 +1204,7 @@ function readStep(
   r: { observation: string; note?: { facts: string[] } }
 ): AgentStepOut {
   return {
-    type: action === "search_model" ? "search" : "read",
+    type: action === "search_model" || action === "consultar_grafo" || action === "camino" ? "search" : "read",
     tool: action,
     source:
       call.tool === "read_view" ||
@@ -1180,7 +1216,13 @@ function readStep(
           ? call.names.join(", ")
           : call.tool === "search_model"
             ? call.term
-            : undefined,
+            : call.tool === "consultar_grafo"
+              ? call.patron
+              : call.tool === "camino"
+                ? [call.desde, call.hasta].filter(Boolean).join(" → ")
+                : call.tool === "por_que"
+                  ? call.hecho
+                  : undefined,
     content: r.note ? r.note.facts.join(" ") : clamp(r.observation, 200),
   };
 }
@@ -1198,7 +1240,12 @@ function exploreToolMenu(cat: Catalog, invMax = 1200, requestedKind?: string, ge
       : `
 - "read_element_doc" {"element":"<caja>","name":"<adjunto>","from":<línea>,"to":<línea>} — un trozo del MATERIAL adjunto a una caja (contrato, ejemplo, decisión). Pedilo cuando la caja venga marcada con {docs:N}: el adjunto NO entra solo en el contexto porque no cabe.`
   }
+- "consultar_grafo" {"patron":"<Sujeto> <predicado> ?x"} — consulta el GRAFO DE CONOCIMIENTO (lo dibujado y lo deducido). Ej.: "Pagar provoca ?x", "?c dispara ?e; ?e activa ?p" (varios con «;»).
+- "camino" {"desde":"<caja>","hasta":"<caja>","predicado":"<opcional>"} — la cadena de flechas de una caja a otra, paso a paso.
+- "por_que" {"hecho":"<Sujeto> <predicado> <Objeto>"} — por qué el modelo afirma algo: de qué flechas dibujadas sale.
 - "list_views" {} — refrescar el inventario (ya lo tenés abajo: normalmente NO hace falta).
+
+Regla del grafo: ante una pregunta de RELACIONES o de VARIOS SALTOS (qué provoca, de qué depende, qué afecta, quién usa, cómo se llega de A a B), usá consultar_grafo o camino ANTES de contestar, y citá el camino que devuelven. Si devuelven «Desconocido en el modelo», contestá que el modelo no lo sabe: no lo completes con lo que suele pasar.
 ${
     generar
       ? `
