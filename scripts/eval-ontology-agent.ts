@@ -21,7 +21,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { graphToToon } from "../src/lib/ai/graph-toon";
-import { puntuar, resumir, type PuntajeRespuesta } from "../src/lib/ai/eval-ontology";
+import { puntuar, resumir, vocabularioEvaluacion, type PuntajeRespuesta } from "../src/lib/ai/eval-ontology";
 import { PREGUNTAS_COMPETENCIA } from "../src/lib/ontology/competency";
 import { construirConocimiento } from "../src/lib/ontology/conocimiento";
 import { LEYENDA_CONOCIMIENTO, contextoParaIA, focoDeTexto } from "../src/lib/ontology/context";
@@ -80,7 +80,8 @@ const BANCO: { pregunta: string; esperado: () => string[] }[] = [
   { pregunta: "¿Quién es responsable del sistema Pagos?", esperado: nada },
 ];
 
-const VOCABULARIO = [...new Set(k.elementos.map((e) => e.nombre))];
+// Nombres de elementos más lo que una respuesta correcta puede citar: predicados, tipos, etiquetas (#742).
+const VOCABULARIO = vocabularioEvaluacion(k);
 
 const contextoBase = vistas.map((v) => `### Vista ${v.name} (${v.notation}, TOON)\n${graphToToon(v.graph)}`).join("\n\n");
 

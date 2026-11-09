@@ -8,6 +8,9 @@
  * sólo junta preguntas, llama al modelo y suma.
  */
 
+import { notationTypes } from "../notations";
+import type { Conocimiento } from "../ontology/conocimiento";
+import { tboxDe } from "../ontology/tbox";
 import { plana } from "../ontology/validate";
 
 export interface PuntajeRespuesta {
@@ -48,13 +51,44 @@ export function nombresCitados(respuesta: string): string[] {
 }
 
 /**
+ * Lo citado que NO es un nombre inventado aunque no esté en el vocabulario
+ * (#742): la propia respuesta «desconocido en el modelo» puesta en negrita, y la
+ * cita de una flecha («Pagar emite PagoRealizado», «pagar → pago-realizado»),
+ * que nombra dos elementos que existen. Contarlas como alucinación castigaba
+ * justo las respuestas correctas y subestimaba la exactitud en 25–40 puntos.
+ */
+function esCitaLegitima(cita: string, vocabulario: string[]): boolean {
+  if (DESCONOCE.test(plana(cita))) return true;
+  return new Set(vocabulario.filter((v) => contiene(cita, v)).map(plana)).size >= 2;
+}
+
+/**
+ * Las palabras que una respuesta correcta puede citar además de los nombres de
+ * los elementos: predicados del reglamento (id, etiqueta y sinónimos), clases y
+ * tipos de las notaciones presentes y las etiquetas tal como están dibujadas
+ * («Escribe en [SQL]», «Sí»). Sin esto, decir «Facturar «reacciona a»
+ * PagoRealizado» contaba como inventar un elemento.
+ */
+export function vocabularioEvaluacion(k: Pick<Conocimiento, "elementos" | "aristas" | "notaciones">): string[] {
+  const out = new Set<string>(k.elementos.map((e) => e.nombre));
+  for (const a of k.aristas) if (a.etiqueta) out.add(a.etiqueta);
+  for (const n of k.notaciones) {
+    const t = tboxDe(n);
+    for (const p of t.predicados) [p.id, p.id.replace(/_/g, " "), p.etiqueta, ...p.sinonimos].forEach((x) => out.add(x));
+    for (const c of t.clases) out.add(c.etiqueta);
+    for (const tipo of notationTypes(n)) out.add(tipo);
+  }
+  return [...out];
+}
+
+/**
  * Acierto: nombra TODOS los esperados (o, si no se espera nada, dice que el
  * modelo no lo sabe) y no inventa elementos. `vocabulario` son los nombres que
  * existen en el modelo (y los términos del reglamento, que se pueden citar).
  */
 export function puntuar(respuesta: string, esperado: string[], vocabulario: string[]): PuntajeRespuesta {
   const conocidos = new Set(vocabulario.map(plana));
-  const inexistentes = nombresCitados(respuesta).filter((n) => !conocidos.has(plana(n)));
+  const inexistentes = nombresCitados(respuesta).filter((n) => !conocidos.has(plana(n)) && !esCitaLegitima(n, vocabulario));
   const faltan = esperado.filter((e) => !contiene(respuesta, e));
   const contesta = esperado.length ? faltan.length === 0 : DESCONOCE.test(plana(respuesta));
   return { acierto: contesta && inexistentes.length === 0, faltan, inexistentes };

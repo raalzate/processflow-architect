@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { nombresCitados, puntuar, resumir } from "../eval-ontology";
+import { construirConocimiento } from "@/lib/ontology/conocimiento";
+import { PROYECTO_PEDIDOS, vistasPedidos } from "@/lib/ontology/__tests__/fixtures/pedidos";
+import { nombresCitados, puntuar, resumir, vocabularioEvaluacion } from "../eval-ontology";
 
 const VOCAB = ["Pagar", "PagoRealizado", "Facturar", "FacturarPedido", "FacturaEmitida", "Pasarela", "Pagos"];
 
@@ -39,6 +41,31 @@ describe("puntuar una respuesta del agente", () => {
     expect(nombresCitados('Es «Pagos» y "Pasarela", también **Cobro web** y PagoRealizado.').sort()).toEqual(
       ["Cobro web", "PagoRealizado", "Pagos", "Pasarela"].sort()
     );
+  });
+
+  // #742 · H1: respuestas REALES de la corrida de evaluación que se contaban como alucinación.
+  it("la respuesta «desconocido» citada en negrita no es un nombre inventado", () => {
+    expect(puntuar("**Desconocido en el modelo.** No hay arista de Cancelar a un evento.", [], VOCAB)).toEqual({
+      acierto: true,
+      faltan: [],
+      inexistentes: [],
+    });
+  });
+
+  it("citar una flecha entre dos elementos que existen no es alucinar", () => {
+    expect(puntuar("El comando **Pagar** emite **PagoRealizado** (arista «Pagar emite PagoRealizado»).", ["PagoRealizado"], VOCAB).acierto).toBe(true);
+    expect(puntuar("Según la arista «pagar → pago-realizado».", ["PagoRealizado"], VOCAB).acierto).toBe(true);
+    // Con un solo elemento real, lo citado sigue siendo un invento.
+    expect(puntuar("Provoca «Notificar Pagos»", [], VOCAB).inexistentes).toEqual(["Notificar Pagos"]);
+  });
+
+  it("el vocabulario de la evaluación suma predicados, tipos y etiquetas dibujadas", () => {
+    const k = construirConocimiento({ proyecto: PROYECTO_PEDIDOS, vistas: vistasPedidos() }, { tipo: "proyecto" });
+    const voc = vocabularioEvaluacion(k);
+    expect(voc).toEqual(expect.arrayContaining(["Pagar", "reacciona a", "emite", "Escribe en [SQL]", "Sí", "Comando", "Tarea"]));
+    expect(puntuar("La política Facturar «reacciona a» **PagoRealizado**.", ["PagoRealizado"], voc).acierto).toBe(true);
+    expect(puntuar("Pagos escribe en PagosDB («Escribe en [SQL]»).", ["Pagos"], voc).acierto).toBe(true);
+    expect(puntuar("Provoca «InventarioActualizado».", [], voc).inexistentes).toEqual(["InventarioActualizado"]);
   });
 
   it("resumen: exactitud y respuestas con inexistentes", () => {
