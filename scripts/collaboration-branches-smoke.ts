@@ -104,7 +104,8 @@ async function run() {
     const fileId = "clinic-host",
       other = "clinic-guest";
     const created = ok(await host.command({ type: "create", fileId, initial, options: {} }));
-    assert.equal(created.workspace, undefined);
+    // Desde 05ff5f1 crear la sala activa las ramas: el anfitrión ya tiene Principal.
+    assert.ok(created.workspace?.history.branches.some(branch => branch.id === "main"));
     const invitation = ok(await host.command({ type: "invite", fileId, role: "editor" })).invitation!;
     const joined = ok(await guest.command({ type: "join", fileId: other, invitation }));
     assert.ok(joined.workspace);
