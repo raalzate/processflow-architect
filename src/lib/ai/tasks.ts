@@ -227,6 +227,77 @@ export function parseSugerenciaPredicado(raw: string, compatibles: PredicadoOpci
   return predicado ? { predicado, razon: "" } : null;
 }
 
+/** Un elemento de otra vista que podría ser el mismo concepto (o realizarlo). */
+export interface CandidatoVinculo {
+  id: string;
+  nombre: string;
+  tipo: string;
+  vista: string;
+}
+
+/** Un par que propone la IA: el elemento de la ficha con uno de los candidatos. */
+export interface ParPropuesto {
+  candidato: string;
+  tipo: "es_mismo_que" | "realiza";
+  razon: string;
+}
+
+/** Tope de candidatos que viajan al prompt: más no entra en la ventana local. */
+export const MAX_CANDIDATOS_VINCULO = 20;
+
+/**
+ * Sugiere vínculos entre vistas que el nombre no delata (spec 027 · FR-034,
+ * FR-038): «Cobros» en el Event Storming y «Pagos» en el C4. La IA sólo puede
+ * elegir candidatos de la lista; cada par vuelve como PROPUESTA y el humano
+ * decide (FR-036). Lo que contradiga el reglamento lo rechaza `validarVinculo`
+ * antes de guardarse.
+ */
+export const suggestEquivalencesTask: AiTask<
+  { elemento: CandidatoVinculo; candidatos: CandidatoVinculo[]; notation?: string },
+  ParPropuesto[]
+> = {
+  id: "suggest-equivalences",
+  tier: "light",
+  structured: true,
+  maxLocalChars: 2000,
+  buildPrompt: (i) => ({
+    prompt: [
+      `Elemento: «${i.elemento.nombre}» (${i.elemento.tipo}) en la vista «${i.elemento.vista}».`,
+      "¿Cuáles de estos elementos de OTRAS vistas representan el mismo concepto, o lo implementan?",
+      ...i.candidatos.slice(0, MAX_CANDIDATOS_VINCULO).map((c) => `- ${c.id}: «${c.nombre}» (${c.tipo}) en «${c.vista}»`),
+      "Tipos: es_mismo_que (el mismo concepto en otra notación) o realiza (uno implementa al otro, p. ej. un sistema y el contexto de negocio que cubre).",
+      'Respondé SÓLO con JSON: {"pares":[{"candidato":"<id de la lista>","tipo":"es_mismo_que|realiza","razon":"<una frase>"}]}. Si ninguno encaja: {"pares":[]}.',
+    ].join("\n"),
+    system: SYSTEM_PROMPT_DESIGNER,
+  }),
+  parse: (raw, i) => parsePares(raw, i?.candidatos ?? []),
+};
+
+/** Los pares válidos: candidato de la lista, tipo conocido, sin repetir. */
+export function parsePares(raw: string, candidatos: CandidatoVinculo[]): ParPropuesto[] {
+  const ids = new Set(candidatos.map((c) => c.id));
+  const json = raw.match(/\{[\s\S]*\}/)?.[0];
+  if (!json) return [];
+  let pares: unknown;
+  try {
+    pares = (JSON.parse(json) as { pares?: unknown }).pares;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(pares)) return [];
+  const vistos = new Set<string>();
+  const out: ParPropuesto[] = [];
+  for (const p of pares) {
+    if (!p || typeof p !== "object") continue;
+    const { candidato, tipo, razon } = p as Record<string, unknown>;
+    if (typeof candidato !== "string" || !ids.has(candidato) || vistos.has(candidato)) continue;
+    if (tipo !== "es_mismo_que" && tipo !== "realiza") continue;
+    vistos.add(candidato);
+    out.push({ candidato, tipo, razon: typeof razon === "string" ? razon.trim() : "" });
+  }
+  return out;
+}
+
 /**
  * Ordena las BANDAS del diagrama (contextos, participantes, límites) para el
  * botón «Organizar → Sugerir con IA».

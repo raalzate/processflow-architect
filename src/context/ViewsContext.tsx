@@ -35,7 +35,9 @@ import {
   emptyPersistedViews,
   type DesignView,
   type PersistedViews,
+  type VinculoVistas,
 } from "@/lib/views-types";
+import { sanitizeVinculos } from "@/lib/board-file";
 import { DEFAULT_NOTATION_ID, INITIAL_NOTATION_ID, type NotationId } from "@/lib/notations";
 import { emptyGraphData } from "@/components/graph/designer/serialize";
 import type { GraphData } from "@/lib/types";
@@ -127,6 +129,9 @@ export interface ViewsContextType {
   openViewTab: (id: string) => void;
   /** Cierra la pestaña virtual; si era la activa, deja activa otra vista. */
   closeViewTab: (id: string) => void;
+  /** Vínculos entre vistas decididos por el humano (spec 027 · US6): viajan con el tablero. */
+  vinculos: VinculoVistas[];
+  setVinculos: (next: VinculoVistas[]) => void;
 
   setActiveView: (id: string) => void;
   /** Entra a una vista embebida apilando la actual (drill-down). */
@@ -201,6 +206,7 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
   // persiste: es estado de navegación efímero, no del documento.
   const [drillStack, setDrillStack] = useState<string[]>([]);
   const [rawOpenViewIds, setRawOpenViewIds] = useState<string[]>([]);
+  const [vinculos, setVinculos] = useState<VinculoVistas[]>([]);
   // Ficha abierta (feature 019). Se limpia al cambiar de proyecto: la caja era
   // del anterior y publicarla sería mentirle al agente.
   const [focus, setFocus] = useState<ElementFocus | null>(null);
@@ -213,6 +219,7 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
       setCustomViews([]);
       setActiveViewId("design");
       setInjectedViewIds([]);
+      setVinculos([]);
       return;
     }
     const s = loadViews(currentFileId);
@@ -220,6 +227,7 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     setActiveViewId(s.activeViewId ?? "design");
     setInjectedViewIds(s.injectedViewIds ?? []);
     setRawOpenViewIds(s.openViewIds ?? []);
+    setVinculos(sanitizeVinculos(s.vinculos));
   }, [currentFileId]);
 
   // Persiste.
@@ -233,12 +241,14 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
           activeViewId,
           injectedViewIds,
           openViewIds: rawOpenViewIds,
+          // Sin vínculos, sin clave: el catálogo de un proyecto viejo no cambia de forma.
+          ...(vinculos.length ? { vinculos } : {}),
         } as PersistedViews)
       );
     } catch {
       /* ignore quota */
     }
-  }, [currentFileId, customViews, activeViewId, injectedViewIds, rawOpenViewIds]);
+  }, [currentFileId, customViews, activeViewId, injectedViewIds, rawOpenViewIds, vinculos]);
 
   // La notación de la vista built-in "Modelo" se deriva del documento activo
   // (graphData.notation), no del "ddd" cableado: así un proyecto BPMN se ve como
@@ -591,6 +601,8 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     openViewIds,
     openViewTab,
     closeViewTab,
+    vinculos,
+    setVinculos,
     setActiveView,
     enterView,
     enterViewPath,

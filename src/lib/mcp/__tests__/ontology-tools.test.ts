@@ -4,8 +4,11 @@ import {
   conocimientoDeDiagramas,
   explainFact,
   findPath,
+  leerVinculos,
+  linkElements,
   queryKnowledge,
   setEdgePredicate,
+  vinculosRel,
 } from "@/lib/mcp/ontology-tools";
 import { modeloBPMN, modeloC4, modeloES } from "@/lib/ontology/__tests__/fixtures/pedidos";
 import { preguntaCompetencia } from "@/lib/ontology/competency";
@@ -122,5 +125,43 @@ describe("consultas por MCP", () => {
     expect(t.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(pura.caminos.length);
     expect(askCompetency(k, "PC-99")).toMatch(/^No existe la pregunta/);
     expect(askCompetency(k, "PC-09", { sujeto: "Pagar", predicado: "provoca", objeto: "FacturaEmitida" })).toContain("· dibujado");
+  });
+});
+
+// T30 · FR-037, FR-039: vincular por MCP, validado contra el reglamento.
+describe("linkElements", () => {
+  const diagramas = () => [
+    { id: "es", model: modeloES() },
+    { id: "c4", model: modeloC4() },
+  ];
+  const k = () => conocimientoDeDiagramas(diagramas(), "org");
+
+  it("por id o por nombre; el Sistema realiza el Contexto", () => {
+    const r = linkElements(k(), [], "org", { a: { diagram: "c4", element: "Pagos" }, b: { diagram: "es", element: "agg-Pagos" }, kind: "realizes" }, "2026-11-09");
+    expect(r.vinculo).toMatchObject({ tipo: "realiza", a: { vista: "c4", nodo: "pagos" }, b: { vista: "es", nodo: "agg-Pagos" }, estado: "aceptado" });
+    expect(r.vinculo.procedencia).toEqual({ por: "mcp", fecha: "2026-11-09" });
+    expect(r.vinculos).toHaveLength(1);
+  });
+
+  it("same_as entre un Sistema y un Contexto se rechaza y sugiere realizes", () => {
+    expect(() =>
+      linkElements(k(), [], "org", { a: { diagram: "c4", element: "pagos" }, b: { diagram: "es", element: "Pagos" }, kind: "same_as" })
+    ).toThrow(/disjuntas.*realiza/);
+  });
+
+  it("una caja inexistente es un error accionable; el mismo par se reemplaza", () => {
+    expect(() =>
+      linkElements(k(), [], "org", { a: { diagram: "c4", element: "Nada" }, b: { diagram: "es", element: "Pagos" }, kind: "realizes" })
+    ).toThrow(/No existe «Nada»/);
+    const uno = linkElements(k(), [], "org", { a: { diagram: "es", element: "Cliente" }, b: { diagram: "c4", element: "Cliente" }, kind: "same_as" });
+    const dos = linkElements(k(), uno.vinculos, "org", { a: { diagram: "c4", element: "Cliente" }, b: { diagram: "es", element: "Cliente" }, kind: "same_as" });
+    expect(dos.vinculos).toHaveLength(1);
+  });
+
+  it("el archivo de vínculos vive fuera de diagrams/ y se lee tolerante", () => {
+    expect(vinculosRel("acme")).toBe("orgs/acme/vinculos.json");
+    expect(vinculosRel(null)).toBe("vinculos.json");
+    expect(leerVinculos(undefined)).toEqual([]);
+    expect(leerVinculos("{roto")).toEqual([]);
   });
 });

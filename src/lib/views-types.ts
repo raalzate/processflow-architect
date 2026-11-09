@@ -48,6 +48,31 @@ export interface PersistedViews {
   injectedViewIds: string[];
   /** Subprocesos abiertos como pestaña virtual. Opcional: proyectos viejos no lo tienen. */
   openViewIds?: string[];
+  /**
+   * Vínculos entre elementos de vistas distintas (spec 027 · US6). Opcional:
+   * un archivo viejo no lo trae y no se agrega al guardarlo sin vincular nada.
+   */
+  vinculos?: VinculoVistas[];
+}
+
+/** Un extremo de un vínculo: la caja por su id (renombrarla no rompe el vínculo). */
+export interface ExtremoVinculo {
+  vista: string;
+  nodo: string;
+}
+
+/**
+ * «Es el mismo concepto» o «uno realiza al otro» entre dos vistas. Sólo se
+ * persisten los que el humano decidió: aceptados (entran al razonamiento) y
+ * rechazados (para no volver a sugerirlos). Los sugeridos viven en memoria.
+ */
+export interface VinculoVistas {
+  id: string;
+  tipo: "es_mismo_que" | "realiza";
+  a: ExtremoVinculo;
+  b: ExtremoVinculo;
+  estado: "aceptado" | "rechazado";
+  procedencia?: { por: "humano" | "ia" | "mcp"; fuente?: string; fecha?: string };
 }
 
 /** Catálogo vacío por defecto (proyecto sin vistas custom). */

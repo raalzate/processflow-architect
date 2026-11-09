@@ -1410,7 +1410,7 @@ const EditNodeDialog: React.FC<{
   // Ficha abierta → foco publicado al MCP (feature 019). El nombre de la vista
   // sale del contexto: la ficha no sabe en qué pestaña vive y el agente externo
   // necesita las dos cosas para encontrar la caja.
-  const { setFocus, views: vistasDelProyecto, activeViewId: vistaActivaId } = useViews();
+  const { setFocus, views: vistasDelProyecto, activeViewId: vistaActivaId, vinculos, setVinculos } = useViews();
   const vistaActivaNombre = vistasDelProyecto.find((v) => v.id === vistaActivaId)?.name ?? "Modelo";
 
   // Nombre de cualquier caja por su id, para los chips y el markdown de la spec.
@@ -2254,6 +2254,8 @@ const EditNodeDialog: React.FC<{
                 vistas={vistasDelProyecto}
                 vistaActivaId={vistaActivaId}
                 activo={tab === "conocimiento"}
+                vinculos={vinculos}
+                onVinculos={setVinculos}
               />
             </TabsContent>
             <TabsContent value="spec" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">

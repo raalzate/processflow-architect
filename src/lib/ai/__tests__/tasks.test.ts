@@ -11,6 +11,8 @@ import {
   creativeDiagramTask,
   suggestPredicateTask,
   parseSugerenciaPredicado,
+  suggestEquivalencesTask,
+  parsePares,
 } from "@/lib/ai/tasks";
 import { DEFAULT_NOTATION_ID, notationTypes } from "@/lib/notations";
 
@@ -517,5 +519,33 @@ describe("suggestPredicateTask", () => {
     expect(parseSugerenciaPredicado("Yo diría que dispara.", compatibles)).toEqual({ predicado: "dispara", razon: "" });
     expect(parseSugerenciaPredicado("ni idea", compatibles)).toBeNull();
     expect(parseSugerenciaPredicado('{"predicado": roto', compatibles)).toBeNull();
+  });
+});
+
+// Spec 027 · T30 (FR-034, FR-038): la IA propone vínculos SÓLO con candidatos de la lista.
+describe("suggestEquivalencesTask", () => {
+  const candidatos = [
+    { id: "c4/pagos", nombre: "Pagos", tipo: "Sistema", vista: "Paisaje" },
+    { id: "c4/db", nombre: "PagosDB", tipo: "Base de Datos", vista: "Paisaje" },
+  ];
+  const entrada = { elemento: { id: "es/cobros", nombre: "Cobros", tipo: "Contexto Delimitado", vista: "Event Storming" }, candidatos };
+
+  it("light y structured, con techo local; el prompt lista los candidatos", () => {
+    expect(suggestEquivalencesTask).toMatchObject({ id: "suggest-equivalences", tier: "light", structured: true, maxLocalChars: 2000 });
+    expect(suggestEquivalencesTask.buildPrompt!(entrada).prompt).toContain("- c4/pagos: «Pagos» (Sistema) en «Paisaje»");
+  });
+
+  it("acepta pares de la lista y descarta lo inventado, lo repetido y los tipos raros", () => {
+    const raw = JSON.stringify({
+      pares: [
+        { candidato: "c4/pagos", tipo: "realiza", razon: "el sistema cubre el contexto" },
+        { candidato: "c4/pagos", tipo: "es_mismo_que", razon: "repetido" },
+        { candidato: "c4/inventado", tipo: "realiza" },
+        { candidato: "c4/db", tipo: "parecido" },
+      ],
+    });
+    expect(suggestEquivalencesTask.parse!(raw, entrada)).toEqual([{ candidato: "c4/pagos", tipo: "realiza", razon: "el sistema cubre el contexto" }]);
+    expect(parsePares("no sé", candidatos)).toEqual([]);
+    expect(parsePares('{"pares": roto', candidatos)).toEqual([]);
   });
 });

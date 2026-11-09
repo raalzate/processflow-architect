@@ -108,6 +108,7 @@ export {
   type PreguntaCompetencia,
   type ResultadoCompetencia,
 } from "./competency";
+export { idVinculo, sugerirVinculos, validarVinculo, type TipoVinculo, type VinculoSugerido } from "./links";
 export { LEYENDA_CONOCIMIENTO, MAX_FOCO, PRESUPUESTO_CONTEXTO, SALTOS_CONTEXTO, contextoParaIA, focoDeTexto } from "./context";
 export {
   PROYECTO_SUELTO,

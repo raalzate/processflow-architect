@@ -174,11 +174,19 @@ export const PREGUNTAS_COMPETENCIA: PreguntaCompetencia[] = [
       const xs = elementosDe(k, args, "sistema");
       if (typeof xs === "string") return vacio(xs);
       const out = vacio();
-      for (const x of xs)
+      for (const x of xs) {
+        const afectados = new Set<Termino>();
         for (const h of k.store.match(undefined, P("depende_de"), x)) {
+          afectados.add(h.s);
           out.filas.push({ elemento: h.s, sistema: x });
           out.caminos.push(...camino(k, h.s, { hasta: x, predicado: "depende_de" }));
         }
+        // Lo que un afectado REALIZA también cae (Q8): si el Sistema Pagos depende
+        // de la Pasarela, el Contexto Pagos que implementa queda expuesto.
+        for (const s of afectados)
+          for (const o of objetos(k, s, P("realiza")))
+            if (!afectados.has(o) && o !== x) out.filas.push({ elemento: o, sistema: x, via: s });
+      }
       return out;
     },
   },
