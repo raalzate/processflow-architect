@@ -22,6 +22,20 @@ describe("validar con las formas del registro", () => {
     });
   });
 
+  // POLITICA cuenta lo deducido: «Facturar reacciona a PagoRealizado» está
+  // dibujada AL EVENTO, y por la inversa el evento activa a la política.
+  it("POLITICA: la flecha dibujada al revés («reacciona a») cuenta por la inversa", () => {
+    const k = conocimientoDeModelo(modeloES());
+    expect(validar(k).filter((h) => h.forma === "POLITICA")).toEqual([]);
+  });
+
+  it("POLITICA: escuchar sin emitir sigue avisando, con el motivo correcto", () => {
+    const m = modeloES();
+    m.edges = m.edges.filter((e) => !(e.fuente === "facturar" && e.destino === "facturar-pedido"));
+    const politica = validar(conocimientoDeModelo(m)).filter((h) => h.forma === "POLITICA");
+    expect(politica).toEqual([expect.objectContaining({ nodo: "facturar", mensaje: expect.stringContaining("le falta el comando que dispara") })]);
+  });
+
   it("filtra por vista", () => {
     const k = construirConocimiento({ proyecto: PROYECTO_PEDIDOS, vistas: vistasPedidos() }, { tipo: "proyecto" });
     const soloBpmn = validar(k, { vista: "v-bpmn" });

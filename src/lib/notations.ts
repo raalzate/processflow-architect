@@ -1789,6 +1789,12 @@ export type RestriccionForma =
        * carriles, y el lienzo igual lo dibuja vacío.
        */
       soloDibujado?: boolean;
+      /**
+       * Con un predicado con nombre: suma además cualquier flecha DIBUJADA en esa
+       * dirección. Así una forma gana lo deducido (la inversa de una flecha
+       * dibujada al revés) sin perder lo que ya contaba.
+       */
+      tambienDibujadas?: boolean;
     }
   | { tipo: "atributoRequerido"; atributo: string }
   | { tipo: "minPalabras"; atributo: string; n: number; distintoDe?: string }
@@ -1957,7 +1963,9 @@ export const NOTATION_SHAPES: Record<NotationId | "*", FormaDecl[]> = {
       objetivo: "policy",
       severidad: "aviso",
       aplicaSi: { declara: "command" },
-      restriccion: { tipo: "minCount", predicado: "*", direccion: "entra", n: 1, claseObjeto: ["event"] },
+      // Lo deducido cuenta: «Facturar reacciona a PagoRealizado» dibujado al
+      // revés ⇒ «PagoRealizado activa Facturar» por la inversa.
+      restriccion: { tipo: "minCount", predicado: "activa", tambienDibujadas: true, direccion: "entra", n: 1, claseObjeto: ["event"] },
       mensaje: `${POLITICA_PATRON} (le falta el evento que la activa).`,
       unaPorElemento: true,
     },
@@ -1967,7 +1975,7 @@ export const NOTATION_SHAPES: Record<NotationId | "*", FormaDecl[]> = {
       objetivo: "policy",
       severidad: "aviso",
       aplicaSi: { declara: "command" },
-      restriccion: { tipo: "minCount", predicado: "*", direccion: "sale", n: 1, claseObjeto: ["command"] },
+      restriccion: { tipo: "minCount", predicado: "emite", tambienDibujadas: true, direccion: "sale", n: 1, claseObjeto: ["command"] },
       mensaje: `${POLITICA_PATRON} (le falta el comando que dispara).`,
       unaPorElemento: true,
     },

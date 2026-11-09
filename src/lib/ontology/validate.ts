@@ -138,15 +138,20 @@ function validarVista(k: Conocimiento, v: VistaAbox, formas: FormaDecl[]): Halla
 
   /** Lo que cuenta una restricción de cardinalidad: los OTROS extremos que califican. */
   const contar = (e: ElementoAbox, r: Extract<RestriccionForma, { tipo: "minCount" | "maxCount" }>): Termino[] => {
+    const dibujadas = () =>
+      (r.direccion === "sale" ? sale : entra).get(e.iri)?.map((a) => ({ iri: r.direccion === "sale" ? a.o : a.s, etiqueta: a.etiqueta })) ?? [];
     const otros: { iri: Termino; etiqueta?: string }[] =
       r.predicado === "*"
-        ? (r.direccion === "sale" ? sale : entra).get(e.iri)?.map((a) => ({ iri: r.direccion === "sale" ? a.o : a.s, etiqueta: a.etiqueta })) ?? []
+        ? dibujadas()
         : (r.direccion === "sale"
             ? k.store.match(e.iri, iriPredicado(r.predicado))
             : k.store.match(undefined, iriPredicado(r.predicado), e.iri)
           )
             .filter((h) => !r.soloDibujado || h.origen === "explicito")
-            .map((h) => ({ iri: r.direccion === "sale" ? h.o : h.s }));
+            .map((h) => ({ iri: r.direccion === "sale" ? h.o : h.s }) as { iri: Termino; etiqueta?: string })
+            // Unión sin repetir extremo: la flecha dibujada y su hecho son el mismo vecino.
+            .concat(r.tambienDibujadas ? dibujadas() : [])
+            .filter((x, i, xs) => !r.tambienDibujadas || xs.findIndex((y) => y.iri === x.iri) === i);
     return otros
       .filter((x) => !r.claseObjeto || es(x.iri, r.claseObjeto))
       .filter((x) => !r.sinEtiqueta || !x.etiqueta?.trim())

@@ -418,7 +418,7 @@
     {
       "level": "aviso",
       "rule": "POLITICA",
-      "message": "\"Elemento 23\" no cierra el patrón \"cuando <evento> entonces <comando>\" (le falta el evento que la activa).",
+      "message": "\"Elemento 23\" no cierra el patrón \"cuando <evento> entonces <comando>\" (le falta el comando que dispara).",
       "nodeId": "elem-23"
     }
   ],
@@ -1025,12 +1025,6 @@
     },
     {
       "level": "aviso",
-      "rule": "POLITICA",
-      "message": "\"Facturar\" no cierra el patrón \"cuando <evento> entonces <comando>\" (le falta el evento que la activa).",
-      "nodeId": "facturar"
-    },
-    {
-      "level": "aviso",
       "rule": "CADENA",
       "message": "\"Cancelar\" no produce ningún hecho: todo comando termina en un evento (en pasado) que registre su resultado.",
       "nodeId": "cancelar"
@@ -1482,7 +1476,7 @@
     {
       "level": "aviso",
       "rule": "POLITICA",
-      "message": "\"Muda\" no cierra el patrón \"cuando <evento> entonces <comando>\" (le falta el evento que la activa).",
+      "message": "\"Muda\" no cierra el patrón \"cuando <evento> entonces <comando>\" (le falta el comando que dispara).",
       "nodeId": "pol3"
     },
     {
