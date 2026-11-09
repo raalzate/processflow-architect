@@ -163,6 +163,15 @@ describe("resolver nombres", () => {
     expect(filas.every((f) => f.x.startsWith("kb:pedidos/v-es/"))).toBe(true);
   });
 
+  // #742 · H2: «emite» es el id de Política→Comando y sinónimo de `dispara` (Comando→Evento).
+  it("en un patrón, el predicado prueba también sus sinónimos y los tipos eligen la lectura", () => {
+    const k = proyecto();
+    expect(consultarPorNombre(k, [["Pagar", "emite", "?x"]]).filas).toEqual([{ x: es("pago-realizado") }]);
+    expect(consultarPorNombre(k, [["Facturar", "emite", "?x"]]).filas).toEqual([{ x: es("facturar-pedido") }]);
+    // Fuera de un patrón manda la lectura exacta.
+    expect(resolver(k, "emite").map((c) => c.termino)).toEqual([iriPredicado("emite")]);
+  });
+
   it("modelo suelto: resuelve sobre su propia notación", () => {
     const k = conocimientoDeModelo(modeloES());
     expect(resolver(k, "Pagar")).toHaveLength(1);
