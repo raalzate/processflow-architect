@@ -30,15 +30,19 @@ describe("rendimiento (50 vistas × 40 elementos): el mecanismo", { timeout: 30_
   }, 60_000);
 
   // #742 · O2: la clausura de una cadena larga, completa y sin repetir trabajo.
-  it("un BPMN lineal de 250 tareas cierra `precede` completo sin llegar al tope", () => {
-    const n = 250;
-    const k = conocimientoDeModelo(procesoLineal(n));
-    expect(k.topeAlcanzado).toBe(false);
-    expect(k.store.match(undefined, iriPredicado("precede"))).toHaveLength((n * (n - 1)) / 2);
-    // La explicación de la punta a punta sigue bajando hasta lo dibujado.
-    const lineas = explicacionLegible(k, [k.elementos[0].iri, iriPredicado("precede"), k.elementos[n - 1].iri]);
-    expect(lineas?.some((l) => l.dibujado)).toBe(true);
-  }, 60_000);
+  it.each(["ascendente", "pares-impares", "barajado"] as const)(
+    "un BPMN lineal de 250 tareas dibujado en orden %s cierra `precede` completo sin llegar al tope",
+    (orden) => {
+      const n = 250;
+      const k = conocimientoDeModelo(procesoLineal(n, orden));
+      expect(k.topeAlcanzado).toBe(false);
+      expect(k.store.match(undefined, iriPredicado("precede"))).toHaveLength((n * (n - 1)) / 2);
+      // La explicación de la punta a punta sigue bajando hasta lo dibujado.
+      const lineas = explicacionLegible(k, [k.elementos[0].iri, iriPredicado("precede"), k.elementos[n - 1].iri]);
+      expect(lineas?.some((l) => l.dibujado)).toBe(true);
+    },
+    60_000
+  );
 
   it("recalcular sin cambios no vuelve a serializar ni a razonar (memo por identidad y hash)", () => {
     const p = proyectoSintetico("perf-memo", 10);

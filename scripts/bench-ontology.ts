@@ -41,10 +41,11 @@ const proyecto = medir("proyecto", 50, { tipo: "proyecto" });
 const vista = medir("vista", 1, { tipo: "vista", vista: "v0" });
 
 // #742 · O2: un proceso BPMN lineal largo es el peor caso de `precede` (transitiva).
-// Antes de extender la clausura sólo con aristas base tardaba ~1,6 s.
+// Antes de extender la clausura sólo con aristas base tardaba ~1,6 s. Se mide
+// con las flechas BARAJADAS: dibujadas en orden, una cadena engaña al bench.
 const lineal = mediana(
   Array.from({ length: 3 }, () => {
-    const m = procesoLineal(LARGO_LINEAL);
+    const m = procesoLineal(LARGO_LINEAL, "barajado");
     const t0 = performance.now();
     validar(conocimientoDeModelo(m));
     return performance.now() - t0;
@@ -55,7 +56,7 @@ const k = construirConocimiento(proyectoSintetico("conteo", 50), { tipo: "proyec
 console.log(`hechos: ${k.store.size} (${k.deducidos} deducidos en ${k.rondas} rondas)`);
 console.log(`proyecto 50×40: ${proyecto.toFixed(1)} ms (tope ${TOPE_PROYECTO})`);
 console.log(`una vista:      ${vista.toFixed(1)} ms (tope ${TOPE_VISTA})`);
-console.log(`BPMN lineal ${LARGO_LINEAL}: ${lineal.toFixed(1)} ms (tope ${TOPE_PROYECTO})`);
+console.log(`BPMN lineal ${LARGO_LINEAL} (barajado): ${lineal.toFixed(1)} ms (tope ${TOPE_PROYECTO})`);
 
 const ok = proyecto < TOPE_PROYECTO && vista < TOPE_VISTA && lineal < TOPE_PROYECTO;
 console.log(ok ? "SC-003: cumple" : "SC-003: NO cumple — evaluar Web Worker (R-09b)");

@@ -48,13 +48,20 @@ const grafo = (i: number) => GRAFOS.get(i) ?? GRAFOS.set(i, toGraphData(vistaSin
  * transitiva. La clausura son exactamente n(n-1)/2 hechos `precede`, así que
  * sirve también para probar que optimizar el razonador no pierde ninguno.
  */
-export function procesoLineal(n: number): DiagramModel {
+export function procesoLineal(n: number, orden: "ascendente" | "pares-impares" | "barajado" = "ascendente"): DiagramModel {
   let m = emptyDiagram({ nombre_proyecto: "Lineal", notation: "bpmn" });
   const tarea = typesWithRole("bpmn", "task")[0];
-  for (let i = 0; i < n; i++) {
-    m = addNode(m, { id: `t${i}`, nombre: `Paso ${i}`, tipo_elemento: tarea }).model;
-    if (i) m = addEdge(m, { fuente: `t${i - 1}`, destino: `t${i}` });
+  for (let i = 0; i < n; i++) m = addNode(m, { id: `t${i}`, nombre: `Paso ${i}`, tipo_elemento: tarea }).model;
+  // El orden en que se DIBUJAN las flechas cambia el orden en que llegan al
+  // razonador: una persona no dibuja la cadena de punta a punta (revisión de #742).
+  let pasos = Array.from({ length: n - 1 }, (_, i) => i);
+  if (orden === "pares-impares") pasos = [...pasos.filter((i) => i % 2 === 0), ...pasos.filter((i) => i % 2)];
+  if (orden === "barajado") {
+    let semilla = 7;
+    const azar = () => (semilla = (semilla * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+    pasos = pasos.map((i) => [azar(), i] as const).sort((a, b) => a[0] - b[0]).map(([, i]) => i);
   }
+  for (const i of pasos) m = addEdge(m, { fuente: `t${i}`, destino: `t${i + 1}` });
   return m;
 }
 

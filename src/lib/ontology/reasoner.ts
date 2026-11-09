@@ -234,12 +234,28 @@ export function razonar(store: TripleStore, tboxes: Tbox[], opts: OpcionesRazona
     for (const sup of decl.subDe ?? [])
       deducir(h.s, iriPredicado(sup), h.o, "subpropiedad", [t], `${decl.id} ⊑ ${sup}`);
     if (decl.transitiva) {
+      // La clausura se cierra en ESTA ronda (pila local): si cada deducción
+      // esperara a la ronda siguiente, la cadena crecería un paso por ronda y un
+      // proceso dibujado en desorden llegaría a MAX_RONDAS sin cerrar (revisión de #742).
       const axioma = `${decl.id} transitiva`;
-      const esBase = store.justificacion(t)?.regla !== "transitiva";
-      const despues = esBase ? store.match(h.o, h.p).map((d) => d.o) : salidas.get(`${h.p} ${h.o}`) ?? [];
-      for (const o of despues) if (!store.has([h.s, h.p, o])) deducir(h.s, h.p, o, "transitiva", [t, [h.o, h.p, o]], axioma);
-      const antes = esBase ? store.match(undefined, h.p, h.s).map((a) => a.s) : entradas.get(`${h.p} ${h.s}`) ?? [];
-      for (const s of antes) if (!store.has([s, h.p, h.o])) deducir(s, h.p, h.o, "transitiva", [[s, h.p, h.s], t], axioma);
+      const p = h.p;
+      const pila: [Tripleta, boolean][] = [[t, store.justificacion(t)?.regla !== "transitiva"]];
+      while (pila.length && !tope) {
+        const [x, esBase] = pila.pop()!;
+        const [s0, , o0] = x;
+        const despues = esBase ? store.match(o0, p).map((d) => d.o) : salidas.get(`${p} ${o0}`) ?? [];
+        for (const o of despues)
+          if (!store.has([s0, p, o])) {
+            deducir(s0, p, o, "transitiva", [x, [o0, p, o]], axioma);
+            if (store.has([s0, p, o])) pila.push([[s0, p, o], false]);
+          }
+        const antes = esBase ? store.match(undefined, p, s0).map((a) => a.s) : entradas.get(`${p} ${s0}`) ?? [];
+        for (const s of antes)
+          if (!store.has([s, p, o0])) {
+            deducir(s, p, o0, "transitiva", [[s, p, s0], x], axioma);
+            if (store.has([s, p, o0])) pila.push([[s, p, o0], false]);
+          }
+      }
     }
   };
 
