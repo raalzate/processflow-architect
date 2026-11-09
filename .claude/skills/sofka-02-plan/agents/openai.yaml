@@ -1,4 +1,0 @@
-interface:
-  display_name: "Plan técnico sobre el código actual"
-  short_description: "Flujo SDD local de Processflow Architect"
-  default_prompt: "Usa $sofka-02-plan para esta fase del proyecto."

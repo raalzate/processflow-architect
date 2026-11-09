@@ -46,7 +46,7 @@ lo que se supone va en "deuda conocida".
 | El documento NO se cuela al contexto | `npx vitest run src/lib/ai/__tests__/graph-toon.test.ts` | verde — `source_docs` está en `NOISE_KEYS`: el texto viaja con el proyecto pero nunca en el TOON. Un documento de 60 000 caracteres reventaría la ventana de 4 096 tokens del motor local; el agente lo lee por trozos con `read_source` |
 | Link-check de docs | `node scripts/docs-linkcheck.mjs` | verde |
 | Lint de convenciones | `node scripts/repo-lint.mjs` | verde |
-| Registro de tiles al día | `node scripts/repo-lint.mjs` (regla TILES) | verde — `tessl.json` describe las deps reales en las dos direcciones: los 13 tiles huérfanos (recharts, webpack…) se quitaron con `tessl uninstall`; las 30 deps sin tile de la auditoría 2026-08-28 son **deuda declarada** en `tiles.allow` (sólo baja; primeros candidatos: `@litert-lm/core`, `electron-updater`, `@modelcontextprotocol/sdk`). **Excepción 2026-10-10 (#501):** `@tailwindcss/postcss` entra a la lista porque Tailwind 4 lo exige y no hay tile publicado. Y el tile `tessl/npm-tailwindcss` sigue en 3.4 aunque la dep es la 4: el de la 4 pide `tessl login` |
+| Registro de tiles al día | `node scripts/repo-lint.mjs` (regla TILES) | verde — `tessl.json` describe las deps reales en las dos direcciones: los 13 tiles huérfanos (recharts, webpack…) se quitaron con `tessl uninstall`; las 30 deps sin tile de la auditoría 2026-08-28 son **deuda declarada** en `tiles.allow` (sólo baja; primeros candidatos: `@litert-lm/core`, `electron-updater`, `@modelcontextprotocol/sdk`). **Excepción 2026-10-10 (#501):** `@tailwindcss/postcss` entra a la lista porque Tailwind 4 lo exige y no hay tile publicado. **Excepción 2026-11-09 (#728):** `n3`, devDependency sólo de pruebas (parser independiente que valida el export Turtle de la ontología, spec 027 · R-08); `tessl search n3` no encuentra tile oficial. Y el tile `tessl/npm-tailwindcss` sigue en 3.4 aunque la dep es la 4: el de la 4 pide `tessl login` |
 | Skills sincronizados | `node scripts/sync-skills.mjs --check` | verde — embed de `.claude/skills/**` al día |
 | Typecheck | `npm run typecheck` | verde (renderer + electron) |
 | Tests | `npm run test:coverage` | verde — 82 archivos, 1332 pruebas, **offline** (`vitest.setup.ts` cierra la red) |
@@ -103,6 +103,17 @@ Pre-commit instalado: sí (`core.hooksPath=.githooks`). CI corre el mismo gate.
 | Cobertura acotada a `src/lib/**` | `vitest.config.ts` | `main/`, `mcp-server/` y la UI no tienen cobertura exigida |
 
 ## Trabajo en curso
+
+**027 · Ontología del modelo** (#697, ruta SDD; tareas #698–#735; ADR 0007). F1–F5 en `main`
+(PR #736–#740). Verificado con comando:
+- `npm run gate` verde en cada fase, la última en `175f04e` (2026-11-09).
+- Paridad de las formas con las reglas de calidad (`quality-parity.test.ts`).
+- Export RDF validado con `n3` (`export-rdf.test.ts`, Q10).
+- Las 10 preguntas de competencia sobre el fixture «Pedidos» (`competency.test.ts`, `links.test.ts` para Q8).
+- SC-002 medido fuera del gate con Gemma 4 E4B local (`scripts/eval-ontology-agent.ts`): 67% sin grafo → 80% con grafo (comentario en #697).
+- SC-003 medido con `scripts/bench-ontology.ts`: 104 ms un proyecto de 50×40 y 1,5 ms una vista.
+
+**Sin verificar** (manual, con la app): T8 (ayuda con jerarquía y predicados), T12 (selector «Significado»), Q14 (el agente local en la app usa `camino`, con la red desconectada), T37 (quickstart 2–4 sin red y aislamiento en modo remoto/híbrido), y en la app: vincular vistas, exportar con deducidos, proponer hechos y comparar conocimiento. **Versión:** las notas están en borrador en `docs/releases/0.23.0.md`; `package.json` sigue en 0.22.1 hasta que se decida publicar.
 
 **016 · Adjuntos y referencias documentales en la caja** (#360, ruta SDD completa: plan,
 checklist, testify, tasks y analyze como comentarios de la issue madre; tareas #361–#369).

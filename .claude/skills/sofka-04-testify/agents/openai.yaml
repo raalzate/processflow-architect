@@ -1,4 +1,0 @@
-interface:
-  display_name: "Escenarios e integridad de pruebas"
-  short_description: "Flujo SDD local de Processflow Architect"
-  default_prompt: "Usa $sofka-04-testify para esta fase del proyecto."

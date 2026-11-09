@@ -23,6 +23,7 @@ import {
   SYSTEM_PROMPT_DESIGNER,
 } from "@/lib/template-prompt";
 import { getNotation, notationTypes } from "@/lib/notations";
+import { tboxDe } from "@/lib/ontology/tbox";
 import { specFromLines, type ElementSpec } from "@/lib/element-spec";
 import { BUILDER_LOCAL_MAX_CHARS } from "./agent-engine";
 import { citaConRutaBase, lineaRutaBase } from "@/lib/source-base";
@@ -165,6 +166,205 @@ export const linkLabelTask: AiTask<
   }),
   parse: (raw) => stripQuotes(raw).replace(/\.$/, "").toLowerCase(),
 };
+
+/** Un predicado que la IA puede elegir: los compatibles con los tipos de los extremos. */
+export interface PredicadoOpcion {
+  id: string;
+  etiqueta: string;
+  descripcion?: string;
+}
+
+/**
+ * Elige el SIGNIFICADO de una flecha ambigua (spec 027 · FR-034, R-07). Sólo a
+ * demanda —botón «Sugerir con IA» del selector—: la propuesta determinista
+ * (`sugerirPredicado`) ya resuelve las etiquetas claras. La IA elige DE LA
+ * LISTA; lo que no esté en ella se descarta (`null`), nunca se inventa un
+ * predicado. `structured` porque la respuesta es un objeto con una forma fija.
+ */
+export const suggestPredicateTask: AiTask<
+  {
+    etiqueta?: string;
+    origen: { nombre: string; tipo: string };
+    destino: { nombre: string; tipo: string };
+    compatibles: PredicadoOpcion[];
+    notation?: string;
+  },
+  { predicado: string; razon: string } | null
+> = {
+  id: "suggest-predicate",
+  tier: "light",
+  structured: true,
+  maxLocalChars: 1500,
+  buildPrompt: (i) => ({
+    prompt: [
+      `Relación del diagrama (notación ${getNotation(i.notation).label}):`,
+      `«${i.origen.nombre}» (${i.origen.tipo}) → «${i.destino.nombre}» (${i.destino.tipo})${i.etiqueta?.trim() ? `, rotulada «${i.etiqueta.trim()}»` : ", sin rótulo"}.`,
+      "¿Qué SIGNIFICA esta flecha? Elegí UNO de estos predicados (id: lectura — para qué sirve):",
+      ...i.compatibles.map((p) => `- ${p.id}: ${p.etiqueta}${p.descripcion ? ` — ${p.descripcion}` : ""}`),
+      'Respondé SÓLO con JSON: {"predicado":"<id de la lista>","razon":"<una frase>"}. Si ninguno encaja, usá "relacionado_con" si está en la lista.',
+    ].join("\n"),
+    system: SYSTEM_PROMPT_DESIGNER,
+  }),
+  parse: (raw, i) => parseSugerenciaPredicado(raw, i?.compatibles ?? []),
+};
+
+/** El predicado elegido, sólo si está en la lista; `null` si la IA respondió otra cosa. */
+export function parseSugerenciaPredicado(raw: string, compatibles: PredicadoOpcion[]): { predicado: string; razon: string } | null {
+  const ids = new Set(compatibles.map((p) => p.id));
+  const json = raw.match(/\{[\s\S]*\}/)?.[0];
+  if (json) {
+    try {
+      const o = JSON.parse(json) as { predicado?: unknown; razon?: unknown };
+      const predicado = typeof o.predicado === "string" ? o.predicado.trim() : "";
+      // Si la IA eligió fuera de la lista, se descarta: rescatar un id de su
+      // razón le atribuiría una elección que no hizo.
+      return ids.has(predicado) ? { predicado, razon: typeof o.razon === "string" ? o.razon.trim() : "" } : null;
+    } catch {
+      /* el modelo local a veces rompe el JSON: se intenta con el texto */
+    }
+  }
+  // Sin JSON legible: el primer id de la lista que aparezca como palabra en la respuesta.
+  const predicado = [...ids].find((id) => new RegExp(`\\b${id}\\b`).test(raw));
+  return predicado ? { predicado, razon: "" } : null;
+}
+
+/** Un elemento de otra vista que podría ser el mismo concepto (o realizarlo). */
+export interface CandidatoVinculo {
+  id: string;
+  nombre: string;
+  tipo: string;
+  vista: string;
+}
+
+/** Un par que propone la IA: el elemento de la ficha con uno de los candidatos. */
+export interface ParPropuesto {
+  candidato: string;
+  tipo: "es_mismo_que" | "realiza";
+  razon: string;
+}
+
+/** Tope de candidatos que viajan al prompt: más no entra en la ventana local. */
+export const MAX_CANDIDATOS_VINCULO = 20;
+
+/**
+ * Sugiere vínculos entre vistas que el nombre no delata (spec 027 · FR-034,
+ * FR-038): «Cobros» en el Event Storming y «Pagos» en el C4. La IA sólo puede
+ * elegir candidatos de la lista; cada par vuelve como PROPUESTA y el humano
+ * decide (FR-036). Lo que contradiga el reglamento lo rechaza `validarVinculo`
+ * antes de guardarse.
+ */
+export const suggestEquivalencesTask: AiTask<
+  { elemento: CandidatoVinculo; candidatos: CandidatoVinculo[]; notation?: string },
+  ParPropuesto[]
+> = {
+  id: "suggest-equivalences",
+  tier: "light",
+  structured: true,
+  maxLocalChars: 2000,
+  buildPrompt: (i) => ({
+    prompt: [
+      `Elemento: «${i.elemento.nombre}» (${i.elemento.tipo}) en la vista «${i.elemento.vista}».`,
+      "¿Cuáles de estos elementos de OTRAS vistas representan el mismo concepto, o lo implementan?",
+      ...i.candidatos.slice(0, MAX_CANDIDATOS_VINCULO).map((c) => `- ${c.id}: «${c.nombre}» (${c.tipo}) en «${c.vista}»`),
+      "Tipos: es_mismo_que (el mismo concepto en otra notación) o realiza (uno implementa al otro, p. ej. un sistema y el contexto de negocio que cubre).",
+      'Respondé SÓLO con JSON: {"pares":[{"candidato":"<id de la lista>","tipo":"es_mismo_que|realiza","razon":"<una frase>"}]}. Si ninguno encaja: {"pares":[]}.',
+    ].join("\n"),
+    system: SYSTEM_PROMPT_DESIGNER,
+  }),
+  parse: (raw, i) => parsePares(raw, i?.candidatos ?? []),
+};
+
+/** Los pares válidos: candidato de la lista, tipo conocido, sin repetir. */
+export function parsePares(raw: string, candidatos: CandidatoVinculo[]): ParPropuesto[] {
+  const ids = new Set(candidatos.map((c) => c.id));
+  const json = raw.match(/\{[\s\S]*\}/)?.[0];
+  if (!json) return [];
+  let pares: unknown;
+  try {
+    pares = (JSON.parse(json) as { pares?: unknown }).pares;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(pares)) return [];
+  const vistos = new Set<string>();
+  const out: ParPropuesto[] = [];
+  for (const p of pares) {
+    if (!p || typeof p !== "object") continue;
+    const { candidato, tipo, razon } = p as Record<string, unknown>;
+    if (typeof candidato !== "string" || !ids.has(candidato) || vistos.has(candidato)) continue;
+    if (tipo !== "es_mismo_que" && tipo !== "realiza") continue;
+    vistos.add(candidato);
+    out.push({ candidato, tipo, razon: typeof razon === "string" ? razon.trim() : "" });
+  }
+  return out;
+}
+
+/** Tope del fragmento que viaja: la propuesta se pide por trozos del documento. */
+export const MAX_FRAGMENTO_PROPUESTA = 6000;
+
+/**
+ * La IA lee un fragmento de la fuente y PROPONE hechos (spec 027 · US8, FR-034,
+ * FR-036): elementos con su tipo y relaciones con un predicado del reglamento,
+ * cada uno con la cita que lo sostiene. `heavy` y `structured`: leer y
+ * estructurar un documento es la tarea larga por excelencia, y la respuesta
+ * tiene forma fija. Nada de lo que devuelve se aplica: `revisarPropuestas` lo
+ * valida contra el reglamento y el humano acepta o descarta.
+ */
+export const proposeFactsTask: AiTask<
+  { fragmento: string; fuente: string; notation?: string; existentes: string[] },
+  HechoPropuestoIA[]
+> = {
+  id: "propose-facts",
+  tier: "heavy",
+  structured: true,
+  buildPrompt: (i) => {
+    const t = tboxDe(i.notation);
+    const n = getNotation(i.notation);
+    return {
+      prompt: [
+        `Leé el fragmento de «${i.fuente}» y proponé HECHOS para un diagrama ${n.label}.`,
+        `Tipos de elemento: ${notationTypes(i.notation).join(", ")}.`,
+        "Predicados (id: lectura — origen → destino):",
+        ...t.predicados.map((p) => `- ${p.id}: ${p.etiqueta}${p.dominio || p.rango ? ` — ${(p.dominio ?? ["*"]).join("|")} → ${(p.rango ?? ["*"]).join("|")}` : ""}`),
+        i.existentes.length ? `Ya existen (reusá estos nombres tal cual): ${i.existentes.slice(0, 60).join(", ")}.` : "El diagrama está vacío.",
+        "Cada elemento NUEVO necesita su hecho de tipo: {\"s\":\"<nombre>\",\"p\":\"es\",\"o\":\"<tipo>\"}. Cada relación usa un id de predicado.",
+        "Cada hecho lleva `cita`: el pasaje textual del fragmento que lo sostiene. Si el fragmento no lo dice, no lo propongas.",
+        'Respondé SÓLO con JSON: {"hechos":[{"s":"...","p":"...","o":"...","cita":"..."}]}.',
+        "",
+        "Fragmento:",
+        i.fragmento.slice(0, MAX_FRAGMENTO_PROPUESTA),
+      ].join("\n"),
+      system: SYSTEM_PROMPT_DESIGNER,
+    };
+  },
+  parse: (raw) => parseHechosPropuestos(raw),
+};
+
+export interface HechoPropuestoIA {
+  s: string;
+  p: string;
+  o: string;
+  cita: string;
+}
+
+/** Los hechos bien formados de la respuesta (lo demás se descarta, no se adivina). */
+export function parseHechosPropuestos(raw: string): HechoPropuestoIA[] {
+  const json = raw.match(/\{[\s\S]*\}/)?.[0];
+  if (!json) return [];
+  let hechos: unknown;
+  try {
+    hechos = (JSON.parse(json) as { hechos?: unknown }).hechos;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(hechos)) return [];
+  const texto = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  return hechos
+    .filter((h): h is Record<string, unknown> => !!h && typeof h === "object")
+    .map((h) => ({ s: texto(h.s), p: texto(h.p), o: texto(h.o), cita: texto(h.cita) }))
+    .filter((h) => h.s && h.p && h.o)
+    .slice(0, 40);
+}
 
 /**
  * Ordena las BANDAS del diagrama (contextos, participantes, límites) para el

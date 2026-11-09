@@ -1,4 +1,0 @@
-interface:
-  display_name: "Consistencia y trazabilidad"
-  short_description: "Flujo SDD local de Processflow Architect"
-  default_prompt: "Usa $sofka-06-analyze para esta fase del proyecto."

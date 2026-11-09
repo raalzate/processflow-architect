@@ -190,6 +190,17 @@ describe("safeGraphToToon", () => {
   it("la leyenda menciona el formato tabular campo[N]{...}", () => {
     expect(TOON_LEGEND).toContain("campo[N]");
   });
+
+  // Spec 027 · T24 (FR-033): el significado canónico de la flecha viaja a la IA.
+  it("el predicado de una arista NO es ruido: viaja y la leyenda lo explica", () => {
+    const toon = graphToToon({
+      links: [{ fuente: "pagar", destino: "pago", descripcion: "emite", predicado: "dispara", x: 3 }],
+    });
+    expect(toon).toContain("predicado");
+    expect(toon).toContain("dispara");
+    expect(toon).not.toMatch(/\bx\b/);
+    expect(TOON_LEGEND).toContain("predicado");
+  });
 });
 
 describe("metadatos en el contexto de la IA", () => {

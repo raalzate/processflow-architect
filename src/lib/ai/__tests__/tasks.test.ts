@@ -9,6 +9,12 @@ import {
   bigPictureDescTask,
   orderLanesTask,
   creativeDiagramTask,
+  suggestPredicateTask,
+  parseSugerenciaPredicado,
+  suggestEquivalencesTask,
+  parsePares,
+  proposeFactsTask,
+  parseHechosPropuestos,
 } from "@/lib/ai/tasks";
 import { DEFAULT_NOTATION_ID, notationTypes } from "@/lib/notations";
 
@@ -476,5 +482,102 @@ describe("brandFromSiteTask", () => {
   it("recorta las razones a 200 caracteres", () => {
     const out = brandFromSiteTask.parse!(`{"paper":"0 0% 100%","razones":"${"a".repeat(300)}"}`, input);
     expect(out?.razones).toHaveLength(200);
+  });
+});
+
+// Spec 027 · T27 (FR-034, R-07): la IA elige el significado DE LA LISTA.
+describe("suggestPredicateTask", () => {
+  const compatibles = [
+    { id: "dispara", etiqueta: "dispara", descripcion: "El comando deja el evento" },
+    { id: "relacionado_con", etiqueta: "relacionado con" },
+  ];
+  const entrada = {
+    etiqueta: "cierra",
+    origen: { nombre: "Pagar", tipo: "Comando" },
+    destino: { nombre: "Pagado", tipo: "Evento" },
+    compatibles,
+    notation: "ddd",
+  };
+
+  it("es light y structured, con techo local, y el prompt lista sólo los compatibles", () => {
+    expect(suggestPredicateTask).toMatchObject({ id: "suggest-predicate", tier: "light", structured: true, maxLocalChars: 1500 });
+    const { prompt } = suggestPredicateTask.buildPrompt!(entrada);
+    expect(prompt).toContain("- dispara: dispara — El comando deja el evento");
+    expect(prompt).toContain("rotulada «cierra»");
+    expect(prompt).not.toContain("activa");
+  });
+
+  it("acepta un id de la lista, con su razón", () => {
+    expect(suggestPredicateTask.parse!('{"predicado":"dispara","razon":"deja el hecho"}', entrada)).toEqual({
+      predicado: "dispara",
+      razon: "deja el hecho",
+    });
+  });
+
+  it("descarta lo que no está en la lista; rescata un id dicho en prosa", () => {
+    expect(parseSugerenciaPredicado('{"predicado":"activa","razon":"x"}', compatibles)).toBeNull();
+    // La razón menciona un id de la lista: igual se descarta, la IA no lo eligió.
+    expect(parseSugerenciaPredicado('{"predicado":"activa","razon":"porque dispara el evento"}', compatibles)).toBeNull();
+    expect(parseSugerenciaPredicado("Yo diría que dispara.", compatibles)).toEqual({ predicado: "dispara", razon: "" });
+    expect(parseSugerenciaPredicado("ni idea", compatibles)).toBeNull();
+    expect(parseSugerenciaPredicado('{"predicado": roto', compatibles)).toBeNull();
+  });
+});
+
+// Spec 027 · T30 (FR-034, FR-038): la IA propone vínculos SÓLO con candidatos de la lista.
+describe("suggestEquivalencesTask", () => {
+  const candidatos = [
+    { id: "c4/pagos", nombre: "Pagos", tipo: "Sistema", vista: "Paisaje" },
+    { id: "c4/db", nombre: "PagosDB", tipo: "Base de Datos", vista: "Paisaje" },
+  ];
+  const entrada = { elemento: { id: "es/cobros", nombre: "Cobros", tipo: "Contexto Delimitado", vista: "Event Storming" }, candidatos };
+
+  it("light y structured, con techo local; el prompt lista los candidatos", () => {
+    expect(suggestEquivalencesTask).toMatchObject({ id: "suggest-equivalences", tier: "light", structured: true, maxLocalChars: 2000 });
+    expect(suggestEquivalencesTask.buildPrompt!(entrada).prompt).toContain("- c4/pagos: «Pagos» (Sistema) en «Paisaje»");
+  });
+
+  it("acepta pares de la lista y descarta lo inventado, lo repetido y los tipos raros", () => {
+    const raw = JSON.stringify({
+      pares: [
+        { candidato: "c4/pagos", tipo: "realiza", razon: "el sistema cubre el contexto" },
+        { candidato: "c4/pagos", tipo: "es_mismo_que", razon: "repetido" },
+        { candidato: "c4/inventado", tipo: "realiza" },
+        { candidato: "c4/db", tipo: "parecido" },
+      ],
+    });
+    expect(suggestEquivalencesTask.parse!(raw, entrada)).toEqual([{ candidato: "c4/pagos", tipo: "realiza", razon: "el sistema cubre el contexto" }]);
+    expect(parsePares("no sé", candidatos)).toEqual([]);
+    expect(parsePares('{"pares": roto', candidatos)).toEqual([]);
+  });
+});
+
+// Spec 027 · T33 (FR-034, FR-036): la IA PROPONE hechos con cita; no aplica nada.
+describe("proposeFactsTask", () => {
+  const entrada = { fragmento: "Cuando el cliente paga, se registra el pago.", fuente: "docs/pedidos.md", notation: "ddd", existentes: ["Pagar"] };
+
+  it("heavy y structured; el prompt trae tipos, predicados, existentes y el fragmento", () => {
+    expect(proposeFactsTask).toMatchObject({ id: "propose-facts", tier: "heavy", structured: true });
+    const { prompt } = proposeFactsTask.buildPrompt!(entrada);
+    expect(prompt).toContain("- dispara: dispara — command → event");
+    expect(prompt).toContain("Ya existen (reusá estos nombres tal cual): Pagar.");
+    expect(prompt).toContain("Cuando el cliente paga");
+  });
+
+  it("parse: sólo hechos completos; sin JSON, nada", () => {
+    const raw = JSON.stringify({
+      hechos: [
+        { s: "Pagar", p: "dispara", o: "PagoRegistrado", cita: "se registra el pago" },
+        { s: "PagoRegistrado", p: "es", o: "Evento" },
+        { s: "", p: "es", o: "Evento" },
+        "basura",
+      ],
+    });
+    expect(proposeFactsTask.parse!(raw, entrada)).toEqual([
+      { s: "Pagar", p: "dispara", o: "PagoRegistrado", cita: "se registra el pago" },
+      { s: "PagoRegistrado", p: "es", o: "Evento", cita: "" },
+    ]);
+    expect(parseHechosPropuestos("no puedo")).toEqual([]);
+    expect(parseHechosPropuestos('{"hechos": roto')).toEqual([]);
   });
 });

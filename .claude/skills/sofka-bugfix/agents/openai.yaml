@@ -1,4 +1,0 @@
-interface:
-  display_name: "Reproducción y corrección acotada"
-  short_description: "Flujo SDD local de Processflow Architect"
-  default_prompt: "Usa $sofka-bugfix para esta fase del proyecto."

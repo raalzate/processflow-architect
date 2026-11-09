@@ -3,17 +3,12 @@
 Spec-Driven Development **no es el modo por defecto** de este repo: es la ruta para el trabajo que
 crea superficie nueva (una notación, una pantalla, un flujo, un handler IPC, un formato de export).
 
-Esta rama incluye un **kit SDD local original de Processflow** en
-`.claude/skills/`. Sus nombres `sofka-*` conservan compatibilidad con el arnés
-existente; no contienen ni representan el kit Sofka privado ni el Intent Integrity
-Kit de Tessl. No requieren una instalación en el directorio personal.
-
-Las ocho fases y los ayudantes `core`, `clarify`, `bugfix` y `taskstoissues` tienen
-entradas, salidas y comandos verificables. El agente lee el `SKILL.md` de la fase
-que corresponda; si el host reconoce skills de proyecto, también puede invocarlas
-por su nombre. `AGENTS.md` permite encontrarlas por ruta sin depender de esa
-capacidad del host. El self-test exige SKILL.md con nombre, descripción e
-instrucciones; la comprobación es obligatoria también en CI.
+El kit que se usa aquí son las skills **`sofka-0x`** del entorno del desarrollador
+(`~/.claude/skills/sofka-*`), un fork del Intent Integrity Kit de Tessl. **No están versionadas en
+el repo**: el self-test las exige en una máquina de desarrollo —que es donde el ruteo SDD ocurre— y
+en CI reporta la ausencia como *omitido*, nunca como "pasó". Si algún día se instala el kit de Tessl
+en `.tessl/plugins/`, se cambia `sdd.kit` y `sdd.skillRoots` en `.claude/harness.config.json` y nada
+más: el hook sólo evalúa la config.
 
 La decisión la toma el agente principal al leer el pedido; el hook `sdd-router` (UserPromptSubmit)
 le pone el criterio delante, y si el pedido es ambiguo la instrucción es **preguntar una sola cosa
@@ -56,8 +51,7 @@ vacío. `/sofka-core` inicializa, selecciona feature y muestra el estado.
 
 ## Dónde viven los artefactos: GitHub, no el repo
 
-Una feature es un **árbol de issues** en el repositorio configurado en
-`sdd.github.repo` de `.claude/harness.config.json`:
+Una feature es un **árbol de issues** en `raalzate/processflow-architect`:
 
 ```
 #N  [sdd] NNN · <título>        ← issue MADRE: spec en el cuerpo; plan · checklist ·
@@ -86,30 +80,9 @@ npm run sdd:status                           # avance por feature
 `.claude/harness.config.json` → `sdd.github`. El comando `check` **no toca la red**: por eso puede
 correr en el gate y en CI.
 
-## Integridad ejecutable de escenarios y pruebas
-
-La fase `04-testify` escribe escenarios y pruebas antes de implementar. El ayudante
-Node guarda SHA-256 del contenido completo de los archivos, incluidas las
-aserciones. Normaliza CRLF/LF para que la misma referencia funcione entre sistemas.
-La fase `07-implement` verifica esa referencia; un cambio de contrato legítimo
-requiere una referencia nueva, explicación y commit separado según P2.
-
-```sh
-node scripts/sdd-integrity.mjs capture ../scratch/integrity.json src/lib/collaboration/__tests__/document.test.ts
-node scripts/sdd-integrity.mjs verify ../scratch/integrity.json
-```
-
-Los archivos son relativos al workspace actual. Para combinar un scratchpad externo
-y archivos del repositorio, indicar `--root <directorio-común>` y rutas relativas
-a esa raíz. La verificación rechaza archivos fuera de la raíz, cambios, archivos
-ausentes y manifiestos inválidos. `capture` no sobrescribe una referencia existente.
-El manifiesto y los escenarios son artefactos del trabajo: se conservan en la issue,
-no se añade un directorio de specs al código. Un hash detecta cambios; no sustituye
-la revisión del contrato ni prueba que el escenario tenga cobertura suficiente.
-
-El kit y sus scripts usan rutas resueltas por Node y no requieren Bash, comandos
-Unix o PowerShell para sus operaciones de integridad. La configuración del arnés
-sigue declarando las otras herramientas necesarias para trabajar en el proyecto.
+**La cadena BDD es el aporte propio del kit**: `04-testify` genera los escenarios y les calcula un
+hash de integridad; `07-implement` lo verifica. Ese hash es la versión ejecutable de "jamás se
+ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
 
 ## Cómo convive con las otras reglas del repo
 
@@ -127,7 +100,7 @@ sigue declarando las otras herramientas necesarias para trabajar en el proyecto.
 | Regla | Mecanismo |
 |---|---|
 | El pedido de tamaño feature debe rutearse o declararse | `sdd-router` inyecta el criterio en cada prompt que dispara (informa, no bloquea: la intención no es verificable por máquina) |
-| El kit nombrado existe de verdad | self-test: cada fase tiene un SKILL.md válido en `sdd.skillRoots`, también en CI |
+| El kit nombrado existe de verdad | self-test: cada fase debe corresponder a una skill instalada en `sdd.skillRoots` (omitido en CI) |
 | El clasificador no se degrada | 8 casos de ruteo en `scripts/harness-selftest.mjs`, paso 4 del gate |
 | El puntero de feature activa resuelve | self-test: puntero colgado = gate rojo |
 | Los artefactos SDD no vuelven al repo | **nada**: `specs/` se borró y con él el freno del gate que lo vigilaba (#156). Es convención escrita, y el próximo spec que nazca como archivo no lo va a frenar ningún comando |
@@ -141,9 +114,8 @@ sigue declarando las otras herramientas necesarias para trabajar en el proyecto.
 - **Las cinco features vividas están migradas a issues** (2026-08-21): `#1` 001, `#25` 002, `#45`
   003, `#62` 004, `#79` 005, con 89 issues de tarea (83 cerradas al migrar, según el checklist de
   cada `tasks.md`). `specs/` se borró entero, índice incluido: el índice es la lista de issues con la etiqueta `sdd:feature` (`npm run sdd:status`).
-  Ese registro describe el historial upstream. En esta rama se añadió posteriormente
-  el kit local original descrito arriba; los escenarios se verifican con las pruebas
-  del proyecto y el manifiesto, sin afirmar que exista un runner Gherkin instalado.
+  Las skills `sofka-0x` no están versionadas en el repo, así que las fases se ejecutaron siguiendo
+  su contrato con las herramientas del repo (vitest en lugar de un runner de Gherkin).
 - **El registro ya no depende del criterio** (2026-08-24): `.githooks/commit-msg` frena cualquier
   commit que toque código sin una issue referenciada (`#123`) o sin una línea `sin-issue: <motivo>`,
   y la ruta `issue` del `sdd-router` recuerda **preguntarle al humano** si se registra antes de tocar

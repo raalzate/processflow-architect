@@ -29,6 +29,7 @@ import {
   readElementDoc,
   type Catalog,
 } from "./agent-retrieval";
+import { caminoGrafo, consultarGrafo, porQue } from "./agent-knowledge";
 
 /**
  * Presupuesto de contexto por corrida, en CARACTERES. No en tokens: sin
@@ -68,7 +69,13 @@ export type ToolCall =
   /** Un trozo del documento del que salió el modelo. */
   | { tool: "read_source"; name: string; from?: number; to?: number }
   /** Un trozo del material adjunto a UNA caja (el contrato con el que se construye). */
-  | { tool: "read_element_doc"; element: string; name: string; from?: number; to?: number };
+  | { tool: "read_element_doc"; element: string; name: string; from?: number; to?: number }
+  /** Patrón sobre el grafo de conocimiento: «Pagar provoca ?x» (spec 027). */
+  | { tool: "consultar_grafo"; patron: string }
+  /** Camino entre cajas, contado paso a paso. */
+  | { tool: "camino"; desde: string; hasta?: string; predicado?: string }
+  /** Por qué el modelo afirma un hecho: «Pagar provoca FacturaEmitida». */
+  | { tool: "por_que"; hecho: string };
 
 export const READ_TOOLS = [
   "list_views",
@@ -78,6 +85,9 @@ export const READ_TOOLS = [
   "read_element",
   "read_source",
   "read_element_doc",
+  "consultar_grafo",
+  "camino",
+  "por_que",
 ] as const;
 
 /** Vistas que se pueden leer de una sola vez (más no entra en la ventana). */
@@ -231,6 +241,24 @@ export function applyToolCall(
       notes: [...state.notes, r.note],
     };
     return { state: next, observation: `Búsqueda "${call.term}":\n${r.text}`, note: r.note };
+  }
+
+  if (call.tool === "consultar_grafo" || call.tool === "camino" || call.tool === "por_que") {
+    // Consultas al grafo (spec 027): misma contabilidad que una lectura —cuestan
+    // lo que ocupan— pero contestan con nombres y caminos, no con un digest.
+    const r =
+      call.tool === "consultar_grafo"
+        ? consultarGrafo(cat, call.patron)
+        : call.tool === "camino"
+          ? caminoGrafo(cat, call.desde, call.hasta, call.predicado)
+          : porQue(cat, call.hecho);
+    if (!r.ok) return { state, observation: r.error };
+    const next: AgentRunState = {
+      ...state,
+      budgetLeft: Math.max(0, state.budgetLeft - r.cost),
+      notes: [...state.notes, r.note],
+    };
+    return { state: next, observation: r.text, note: r.note };
   }
 
   const desconocida = (call as { tool: string }).tool;

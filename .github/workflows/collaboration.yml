@@ -1,6 +1,16 @@
 name: Native collaboration
+# Matriz de 4 sistemas (2 de macOS) y un job con relay: sólo cuando cambia la
+# colaboración, no en cada PR (#746).
 on:
   pull_request:
+    paths:
+      - "main/services/collaboration/**"
+      - "main/services/collaboration.ts"
+      - "src/lib/collaboration/**"
+      - "scripts/collaboration-*.ts"
+      - "scripts/prepare-iroh-native.mjs"
+      - "deploy/collaboration/**"
+      - ".github/workflows/collaboration.yml"
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,8 +28,6 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run collaboration:prepare-native
-      - name: Kit SDD local e integridad (offline)
-        run: npx vitest run scripts/__tests__/sdd-integrity.test.ts
       - run: npm run harness:selftest
       - run: npm run test:collaboration
       - name: Ramas, versiones, permisos y recuperación nativos

@@ -77,6 +77,15 @@ import { CATEGORIAS, buscarIconos, iconoDeCatalogo, iconoPorTecnologia } from "@
 import { useBrandProfiles } from "@/hooks/use-brand-profiles";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
+import { PredicateSelect } from "./PredicateSelect";
+import {
+  PROYECTO_SUELTO,
+  construirConocimiento,
+  exportarConocimiento,
+  type FormatoConocimiento,
+} from "@/lib/ontology";
+import type { DesignView } from "@/lib/views-types";
+import { KnowledgeTab } from "./KnowledgeTab";
 import { ColumnsField } from "./ColumnsField";
 import {
   agregarColumna,
@@ -209,6 +218,9 @@ import { handoffPrompt } from "@/lib/mcp/handoff";
 import { AgentCliChat } from "./AgentCliChat";
 import { buildEmbedMap, wouldCreateCycle } from "@/lib/view-embeds";
 import { ReferenceContextDialog } from "./ReferenceContextDialog";
+import { ProposeFactsDialog } from "./ProposeFactsDialog";
+import { fromGraphData, toGraphData, type DiagramModel } from "@/lib/mcp/diagram-builder";
+import { fusionarEnLienzo } from "@/lib/canvas-merge";
 import { CanvasContextMenu, type CanvasMenuItem } from "./CanvasContextMenu";
 import { adoptarExternos, draftPatch, hasDraftChanges, parseTagList } from "./inspector-draft";
 import { CANVAS_CHROME } from "@/lib/canvas-chrome";
@@ -1412,7 +1424,7 @@ const EditNodeDialog: React.FC<{
   // Ficha abierta → foco publicado al MCP (feature 019). El nombre de la vista
   // sale del contexto: la ficha no sabe en qué pestaña vive y el agente externo
   // necesita las dos cosas para encontrar la caja.
-  const { setFocus, views: vistasDelProyecto, activeViewId: vistaActivaId } = useViews();
+  const { setFocus, views: vistasDelProyecto, activeViewId: vistaActivaId, vinculos, setVinculos } = useViews();
   const vistaActivaNombre = vistasDelProyecto.find((v) => v.id === vistaActivaId)?.name ?? "Modelo";
 
   // Nombre de cualquier caja por su id, para los chips y el markdown de la spec.
@@ -1439,7 +1451,7 @@ const EditNodeDialog: React.FC<{
   // Tab visible. Vive FUERA del borrador a propósito: al saltar de un elemento
   // a otro sin cerrar la ficha se sigue viendo el mismo tab (si se reiniciara,
   // revisar la spec de cinco cajas obligaría a volver a entrar cinco veces).
-  const [tab, setTab] = useState<"elemento" | "spec" | "agente">("elemento");
+  const [tab, setTab] = useState<"elemento" | "spec" | "conocimiento" | "agente">("elemento");
   // Borrador de spec propuesto por la IA, en espera de «Aplicar»/«Descartar».
   // Nunca se escribe solo: pisar lo que el usuario redactó a mano sería el peor
   // resultado posible de un botón de sugerencia.
@@ -1805,10 +1817,10 @@ const EditNodeDialog: React.FC<{
               pie —Siguiente paso · Cerrar— queda FUERA: aplica a las dos. */}
           <Tabs
             value={tab}
-            onValueChange={(v) => setTab(v as "elemento" | "spec" | "agente")}
+            onValueChange={(v) => setTab(v as "elemento" | "spec" | "conocimiento" | "agente")}
             className="flex min-h-0 flex-1 flex-col"
           >
-            <TabsList className={cn("mx-4 mt-3 grid w-auto", puedeChatear ? "grid-cols-3" : "grid-cols-2")}>
+            <TabsList className={cn("mx-4 mt-3 grid w-auto", puedeChatear ? "grid-cols-4" : "grid-cols-3")}>
               <TabsTrigger value="elemento">Elemento</TabsTrigger>
               <TabsTrigger value="spec">
                 Spec
@@ -1817,6 +1829,8 @@ const EditNodeDialog: React.FC<{
                   <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
                 )}
               </TabsTrigger>
+              {/* Lo que el razonador deduce de la caja (spec 027 · US3). */}
+              <TabsTrigger value="conocimiento">Conocimiento</TabsTrigger>
               {/* Chat con Claude Code / Codex (feature 020): sólo en la app de
                   escritorio, donde el CLI corre en el proceso main. */}
               {puedeChatear && <TabsTrigger value="agente">Agente</TabsTrigger>}
@@ -2246,6 +2260,19 @@ const EditNodeDialog: React.FC<{
             )}
           </div>
             </TabsContent>
+            <TabsContent value="conocimiento" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">
+              <KnowledgeTab
+                elementId={draft.id}
+                nodes={nodes}
+                links={links}
+                notation={notation}
+                vistas={vistasDelProyecto}
+                vistaActivaId={vistaActivaId}
+                activo={tab === "conocimiento"}
+                vinculos={vinculos}
+                onVinculos={setVinculos}
+              />
+            </TabsContent>
             <TabsContent value="spec" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">
               <SpecTab
                 value={draft.spec}
@@ -2557,6 +2584,16 @@ const EditLinkDialog: React.FC<{
             </Select>
             <p className="text-xs text-muted-foreground">{relationStyle(draft.relation).hint}</p>
           </div>
+
+          {/* Significado para la ontología (spec 027): se propone desde la
+              etiqueta y los tipos; sólo se guarda al confirmarlo o cambiarlo. */}
+          <PredicateSelect
+            link={draft}
+            source={nodes.get(draft.sourceId)}
+            target={nodes.get(draft.targetId)}
+            notation={notation}
+            onChange={(predicado) => setDraft((d) => (d ? { ...d, predicado } : d))}
+          />
 
           {/* Tipo de MENSAJE (secuencia UML). Sólo aparece si las dos puntas son
               líneas de vida: en cualquier otro diagrama sería una opción que no
@@ -2939,7 +2976,7 @@ export const ComponentDesigner: React.FC<{
     },
     [currentFileId]
   );
-  const { views, activeViewId, drillStack, enterView, goToDrill, createView, filters, filtersActive, clearFilters } =
+  const { views, activeViewId, drillStack, enterView, goToDrill, createView, filters, filtersActive, clearFilters, vinculos } =
     useViews();
   const { referenceText } = useReference();
   const { toast } = useToast();
@@ -3164,6 +3201,7 @@ export const ComponentDesigner: React.FC<{
   const [editandoEnLienzo, setEditandoEnLienzo] = useState<{ id: string; campo: CampoEnLienzo } | null>(null);
   const [metaOpen, setMetaOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [proponerOpen, setProponerOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // Confirmación de "Limpiar" controlada: así también la paleta (⌘K) puede
   // ABRIR la confirmación en vez de borrar sin preguntar (acción destructiva).
@@ -5044,6 +5082,50 @@ export const ComponentDesigner: React.FC<{
     toast({ title: "Diagrama exportado", description: "Se descargó un SVG del lienzo." });
   }, [meta, toast, boundsDeLamina, skinActiva]);
 
+  // Integra lo que el humano aceptó de las propuestas de la IA (spec 027 · US8).
+  // Lo que ya estaba no se mueve: sólo se le suma la procedencia. Lo nuevo entra
+  // en una columna a la derecha del contenido, y todo queda en UN paso del
+  // historial, así ⌘Z lo deshace entero.
+  const integrarPropuestas = useCallback(
+    (model: DiagramModel, resumen: { aplicadas: number; omitidas: string[] }) => {
+      const r = fusionarEnLienzo({ nodes: nodesRef.current, links: linksRef.current }, graphDataToCanvas(toGraphData(model)));
+      setNodes(r.nodes);
+      setLinks(r.links);
+      pushSnapshot(r.nodes, r.links);
+      const omitidas = [...resumen.omitidas, ...(r.omitidas.length ? [`${r.omitidas.length} flecha(s) repetida(s)`] : [])];
+      toast({
+        title: `${resumen.aplicadas} hecho(s) integrados`,
+        description: omitidas.length ? `Omitidos: ${omitidas.join(" · ")}` : "Quedaron con su procedencia en la ficha.",
+      });
+    },
+    [pushSnapshot, toast]
+  );
+
+  // Exporta el CONOCIMIENTO del proyecto (spec 027 · US7): reglamento + lo
+  // dibujado en todas las vistas (la abierta, como está en el lienzo) y, si se
+  // pide, lo deducido aparte. Sin camino de vuelta: es para otras herramientas.
+  const handleExportKnowledge = useCallback(
+    (formato: FormatoConocimiento, deducidos: boolean) => {
+      if (!meta) return;
+      const lienzo: DesignView = {
+        id: activeViewId,
+        name: "Lienzo",
+        kind: "graph",
+        notation: notationId,
+        graph: buildContent(nodesRef.current, linksRef.current, meta, notationId),
+        createdAt: "",
+      };
+      const k = construirConocimiento(
+        { proyecto: PROYECTO_SUELTO, vistas: [...views.filter((v) => v.id !== activeViewId), lienzo], vinculos },
+        { tipo: "proyecto" }
+      );
+      const archivo = exportarConocimiento(k, formato, { deducidos, base: meta?.nombre_proyecto });
+      downloadText(archivo.contenido, archivo.nombre, archivo.mime);
+      toast({ title: "Conocimiento exportado", description: `${archivo.nombre}${deducidos ? " · con lo deducido aparte" : ""}` });
+    },
+    [activeViewId, notationId, meta, views, vinculos, toast]
+  );
+
   // Exporta una página HTML autocontenida (spec 024): título, descripción y el
   // diagrama con su contrato accesible, en el preset del destino. Si la
   // autocomprobación encuentra algo, se avisa: el archivo sale, nunca en silencio.
@@ -5195,6 +5277,8 @@ export const ComponentDesigner: React.FC<{
       help: () => setHelpOpen(true),
       export: handleExportSvg,
       "export-png": handleExportPng,
+      "export-knowledge-jsonld": () => handleExportKnowledge("jsonld", true),
+      "export-knowledge-turtle": () => handleExportKnowledge("turtle", true),
       // No borra directo: abre la confirmación, igual que desde la barra.
       clear: () => setClearConfirmOpen(true),
     }),
@@ -5214,6 +5298,7 @@ export const ComponentDesigner: React.FC<{
       applyLinkStyle,
       handleExportSvg,
       handleExportPng,
+      handleExportKnowledge,
     ]
   );
   accionesRef.current = acciones;
@@ -5602,12 +5687,26 @@ export const ComponentDesigner: React.FC<{
                   ))}
                   <DropdownMenuSeparator />
                   <DownloadViewsMenuItem />
+                  {/* Spec 027 · US7: el proyecto como grafo de conocimiento estándar. */}
+                  <DropdownMenuItem onClick={() => handleExportKnowledge("jsonld", false)} title="Reglamento y lo dibujado, para editores de ontologías y almacenes de grafos">
+                    Conocimiento (JSON-LD)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExportKnowledge("turtle", false)}>Conocimiento (Turtle)</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExportKnowledge("jsonld", true)} title="Lo deducido va en un grafo nombrado aparte">
+                    Conocimiento (JSON-LD) · incluir deducidos
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExportKnowledge("turtle", true)} title="Lo deducido va en un bloque aparte, declarado">
+                    Conocimiento (Turtle) · incluir deducidos
+                  </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
 
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setReferenceOpen(true)}>
                 <Library className="mr-2 h-4 w-4" /> Contexto
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setProponerOpen(true)} title="La IA lee un documento fuente y propone elementos y relaciones; vos elegís qué entra">
+                <Sparkles className="mr-2 h-4 w-4" /> Proponer hechos con IA…
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setMetaOpen(true)}>
                 <Settings2 className="mr-2 h-4 w-4" /> Metadatos
@@ -6297,6 +6396,16 @@ export const ComponentDesigner: React.FC<{
 
       {/* Contexto de referencia: documentos que alimentan las sugerencias de IA */}
       <ReferenceContextDialog open={referenceOpen} onOpenChange={setReferenceOpen} />
+
+      {/* Spec 027 · US8: la IA propone hechos desde un documento fuente; el humano elige. */}
+      <ProposeFactsDialog
+        open={proponerOpen}
+        onOpenChange={setProponerOpen}
+        docs={graphData?.source_docs ?? []}
+        notation={notationId}
+        modelo={() => (meta ? fromGraphData(buildContent(nodesRef.current, linksRef.current, meta, notationId), notationId) : null)}
+        onIntegrar={integrarPropuestas}
+      />
 
       {/* Ayuda: interacciones y atajos de teclado */}
       <Dialog open={helpOpen} onOpenChange={setHelpOpen}>

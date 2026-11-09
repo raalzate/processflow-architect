@@ -47,7 +47,7 @@ import {
 } from "../../src/lib/update-check";
 
 /** Repo desde donde se publican los releases (el mismo de `build.publish`). */
-const REPO = "cristhianDavidOrbes/processflow-architect-collab-temp-20261101";
+const REPO = "raalzate/processflow-architect";
 const RELEASES_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
 

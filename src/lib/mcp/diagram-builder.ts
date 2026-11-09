@@ -253,6 +253,8 @@ export interface BuilderEdge {
    * la feature 017 no trae la marca, así que su geometría se respeta (FR-017).
    */
   geometriaAuto?: boolean;
+  /** Predicado confirmado de la relación (spec 027) — ver `GraphLink.predicado`. */
+  predicado?: string;
 }
 
 /**
@@ -624,7 +626,7 @@ export function updateEdge(
   from: string,
   to: string,
   patch: Partial<
-    Pick<BuilderEdge, "descripcion" | "dashed" | "arrow" | "routing" | "color" | "relation">
+    Pick<BuilderEdge, "descripcion" | "dashed" | "arrow" | "routing" | "color" | "relation" | "predicado">
   >
 ): DiagramModel {
   // Los extremos pueden llegar como se dibujan en Mermaid (ver `findNode`).
@@ -2370,6 +2372,8 @@ export function toGraphData(input: DiagramModel): GraphData {
       // dibuja como una flecha cualquiera y el modelo pierde la mitad de lo que
       // dice.
       relation: e.relation,
+      // El significado confirmado (spec 027). Sin él no se escribe el campo.
+      ...(e.predicado ? { predicado: e.predicado } : {}),
       // Una relación que cruza de una banda a otra en línea recta atraviesa el
       // diagrama en diagonal y pasa por encima de todo. Ortogonal por defecto;
       // si el modelo ya trae un ruteo explícito, manda el suyo.
@@ -2441,6 +2445,8 @@ const CAMPOS_DE_ARISTA = [
   "color",
   "routing",
   "relation",
+  // Lo que confirmó el humano en la ficha (spec 027).
+  "predicado",
   "midpoints",
   "geometriaAuto",
   "orden",

@@ -118,6 +118,8 @@ export interface DesignerLink {
   arrow?: "end" | "both" | "none";
   /** Relación UML de la arista (marca de cada punta y trazo) — ver `edge-relations.ts`. */
   relation?: EdgeRelationKind;
+  /** Predicado confirmado de la arista (spec 027) — ver `GraphLink.predicado`. */
+  predicado?: string;
   /**
    * Lugar del mensaje en una secuencia UML, denso desde 1 (feature 013).
    * Sólo lo usan los diagramas de secuencia; en las demás notaciones es ruido y
@@ -260,6 +262,8 @@ export function canvasToGraphData(
       routing: l.routing,
       arrow: l.arrow,
       relation: l.relation,
+      // Sólo si alguien lo confirmó: un proyecto viejo no gana el campo (SC-008).
+      ...(l.predicado ? { predicado: l.predicado } : {}),
       sourceAnchor: l.sourceAnchor,
       targetAnchor: l.targetAnchor,
       midpoints: l.midpoints,
@@ -496,6 +500,7 @@ function addLink(
     routing?: DesignerLink["routing"];
     arrow?: DesignerLink["arrow"];
     relation?: DesignerLink["relation"];
+    predicado?: DesignerLink["predicado"];
     sourceAnchor?: DesignerLink["sourceAnchor"];
     targetAnchor?: DesignerLink["targetAnchor"];
     midpoint?: DesignerLink["midpoint"];
@@ -517,6 +522,7 @@ function addLink(
     routing: a.routing,
     arrow: a.arrow,
     relation: a.relation,
+    ...(a.predicado ? { predicado: a.predicado } : {}),
     sourceAnchor: a.sourceAnchor,
     targetAnchor: a.targetAnchor,
     // Compat: grafos viejos guardaban un único `midpoint`.

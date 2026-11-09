@@ -12,11 +12,10 @@ import { kokoroArchivoLocal } from './main/services/kokoro-models';
 import { resumenGpu } from './src/lib/gpu-status';
 import { closeCollaboration } from './main/services/collaboration';
 
-// The collaboration preview has its own identity and storage, including in dev.
-app.setName('Processflow-Architect-Collab');
-app.setPath('userData', process.env.PROCESSFLOW_COLLAB_DATA
-  ? path.resolve(process.env.PROCESSFLOW_COLLAB_DATA)
-  : path.join(app.getPath('appData'), 'Processflow-Architect-Collab'));
+// La app conserva su identidad y su carpeta de datos: quien actualiza sigue
+// viendo sus proyectos, modelos y llaves (#746). PROCESSFLOW_COLLAB_DATA sólo
+// separa perfiles para probar dos participantes en la misma máquina.
+if (process.env.PROCESSFLOW_COLLAB_DATA) app.setPath('userData', path.resolve(process.env.PROCESSFLOW_COLLAB_DATA));
 // Cada perfil sólo puede tener un escritor de sus registros y una identidad de red activa.
 const primaryInstance = app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();

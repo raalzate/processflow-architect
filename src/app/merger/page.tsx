@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import MergeTypeSection from "./components/MergeTypeSection";
+import CompareKnowledgeCard from "./components/CompareKnowledgeCard";
 import DeleteConfirmationDialog from "./components/DeleteConfirmationDialog";
 import EditNodeDialog from "./components/EditNodeDialog";
 import {
@@ -356,6 +357,9 @@ export default function MergerPage() {
                 </p>
               </CardContent>
             </Card>
+
+            {/* Spec 027 · US9: el historial del conocimiento, derivado contra otra versión. */}
+            <CompareKnowledgeCard currentFile={currentFile} />
 
             {allNodesMap.size === 0 && (
               <Card className="max-w-3xl mx-auto">

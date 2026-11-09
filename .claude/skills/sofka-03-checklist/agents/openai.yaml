@@ -1,4 +1,0 @@
-interface:
-  display_name: "Completitud del requisito"
-  short_description: "Flujo SDD local de Processflow Architect"
-  default_prompt: "Usa $sofka-03-checklist para esta fase del proyecto."

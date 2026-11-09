@@ -111,7 +111,20 @@ import { importarMermaid } from "../../src/lib/mcp/import-mermaid-file";
 import { CATEGORIAS, buscarIconos, esIconoValido } from "../../src/lib/icons/catalog";
 import { formatLedger } from "../../src/lib/mcp/import-ledger";
 import { contarModelo, marcasDiagrama, textoConteo } from "../../src/lib/mcp/conteo";
-import { listNotations, describeNotation, isContainerType } from "../../src/lib/mcp/catalog";
+import { listNotations, describeNotation, isContainerType, ontologyMarkdown } from "../../src/lib/mcp/catalog";
+import {
+  askCompetency,
+  conocimientoDeDiagramas,
+  explainFact,
+  findPath,
+  leerVinculos,
+  linkElements,
+  queryKnowledge,
+  setEdgePredicate,
+  vinculosRel,
+} from "../../src/lib/mcp/ontology-tools";
+import { PREGUNTAS_COMPETENCIA } from "../../src/lib/ontology/competency";
+import { exportarConocimiento } from "../../src/lib/ontology/exportar";
 import { toMermaid, idsQueCambian } from "../../src/lib/mcp/to-mermaid";
 import { qualityFindings, formatFindings, MAX_NODES } from "../../src/lib/mcp/quality";
 import { reviewPacket } from "../../src/lib/mcp/review";
@@ -723,9 +736,202 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
             "- Pasado eso, partí en una vista panorámica + vistas de detalle (suggest_views); validate_diagram lo avisa como PRESUPUESTO.",
           ].join("\n")
         : "";
+      // El significado de las flechas (spec 027): sin la lista, el agente rotula
+      // «emite» donde el reglamento dice «dispara» y nadie puede razonar con eso.
+      const predicados = [
+        "",
+        "## Predicados (significado de una flecha; `set_edge_predicate`, detalle en `get_ontology`)",
+        ...n.predicados.map((p) => `- \`${p.id}\` («${p.etiqueta}»): ${p.dominio} → ${p.rango}`),
+      ].join("\n");
       return text(
-        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n${relaciones}${presupuesto}${material}\n\n## Guía\n${n.aiGuidance}`
+        `# ${n.label}\n${n.description}\n\n${groups}${secuencia}\n${relaciones}${predicados}${presupuesto}${material}\n\n## Guía\n${n.aiGuidance}`
       );
+    }
+  );
+
+  server.registerTool(
+    "get_ontology",
+    {
+      title: "Ontología de una notación",
+      description:
+        "Devuelve el REGLAMENTO de una notación (spec 027): jerarquía de clases (general → rol → tipo), predicados con dominio, rango y propiedades lógicas (transitiva, inversa, simétrica) y clases disjuntas. Consultala para elegir el predicado correcto de una flecha.",
+      inputSchema: { notation: NOTATION },
+    },
+    async ({ notation }) => text(ontologyMarkdown(notation))
+  );
+
+  // -- 1a. Consultas al conocimiento (spec 027 · US5) -----------------------------
+  // Todas de LECTURA. Alcance: el diagrama activo, o con scope:"org" todos los
+  // diagramas de la org resuelta (nunca otra: aislamiento de resolveOrg).
+
+  const scopeSchema = z
+    .enum(["diagram", "org"])
+    .default("diagram")
+    .describe('"diagram" (por defecto): el diagrama activo. "org": todos los diagramas de la organización activa, como un solo grafo.');
+
+  async function conocimientoDelAlcance(scope: "diagram" | "org", diagramIdEntrada?: string) {
+    const org = await activeOrg();
+    const ids = scope === "org" ? await listModels(org) : [await activeId(diagramIdEntrada)];
+    const diagramas: { id: string; model: DiagramModel }[] = [];
+    for (const id of ids) {
+      try {
+        diagramas.push({ id, model: await loadModel(id, org) });
+      } catch (e) {
+        // En un barrido de la org, un archivo ilegible no tumba la consulta; el diagrama pedido sí.
+        if (scope === "diagram") throw e;
+      }
+    }
+    return conocimientoDeDiagramas(diagramas, org ?? "sin-org", scope === "org" ? await leerVinculosDe(org) : []);
+  }
+
+  const vinculosPath = (org: string | null) => path.join(PROCESSFLOW_DIR, vinculosRel(org));
+  async function leerVinculosDe(org: string | null) {
+    try {
+      return leerVinculos(await fs.readFile(vinculosPath(org), "utf8"));
+    } catch {
+      return [];
+    }
+  }
+
+  server.registerTool(
+    "export_knowledge",
+    {
+      title: "Exportar el conocimiento (JSON-LD / Turtle)",
+      description:
+        "Devuelve el conocimiento del diagrama activo (o de la org con scope:\"org\") en un formato estándar de la web semántica: el reglamento (clases, predicados, disjunciones, alineación con schema.org) y lo dibujado, con identificadores estables. Con `inferred: true` suma lo deducido por el razonador, separado (grafo nombrado en JSON-LD, bloque declarado en Turtle). Es para otras herramientas: no se reimporta.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        format: z.enum(["jsonld", "turtle"]),
+        inferred: z.boolean().default(false),
+        scope: scopeSchema,
+      },
+    },
+    async ({ diagramId, format, inferred, scope }) => {
+      try {
+        const k = await conocimientoDelAlcance(scope, diagramId);
+        return text(exportarConocimiento(k, format, { deducidos: !!inferred }).contenido);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "link_elements",
+    {
+      title: "Vincular elementos de dos diagramas",
+      description:
+        "Declara que dos elementos de diagramas DISTINTOS de la org son el mismo concepto (`same_as`: el Cliente del Event Storming y la Persona Cliente del C4) o que uno implementa al otro (`realizes`: el Sistema Pagos realiza el Contexto Pagos). Se valida contra el reglamento: un `same_as` entre clases disjuntas (un sistema y una zona, un evento y un actor) se rechaza. Con el vínculo, query_knowledge/find_path/ask_competency con scope:\"org\" consultan los diagramas como un solo grafo.",
+      inputSchema: {
+        a: z.object({ diagram: z.string(), element: z.string().describe("Id o nombre del elemento.") }),
+        b: z.object({ diagram: z.string(), element: z.string() }),
+        kind: z.enum(["same_as", "realizes"]).describe("same_as = el mismo concepto; realizes = a implementa a b."),
+      },
+    },
+    async ({ a, b, kind }) => {
+      try {
+        const org = await activeOrg();
+        const diagramas: { id: string; model: DiagramModel }[] = [];
+        for (const id of [...new Set([a.diagram, b.diagram])]) diagramas.push({ id, model: await loadModel(id, org) });
+        const actuales = await leerVinculosDe(org);
+        const k = conocimientoDeDiagramas(diagramas, org ?? "sin-org");
+        const r = linkElements(k, actuales, org ?? "sin-org", { a, b, kind }, new Date().toISOString());
+        await ensureDir(path.dirname(vinculosPath(org)));
+        await fs.writeFile(vinculosPath(org), JSON.stringify(r.vinculos, null, 2), "utf8");
+        const lectura = r.vinculo.tipo === "es_mismo_que" ? "es el mismo que" : "realiza";
+        return text(
+          `Vinculado: ${a.diagram}/${r.vinculo.a.nodo} ${lectura} ${b.diagram}/${r.vinculo.b.nodo}. Las consultas con scope:"org" ya lo usan.`
+        );
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  const termino = z.string().describe("Nombre de elemento, predicado o clase (o un IRI kb:/pf:). Los nombres repetidos devuelven todas las coincidencias.");
+
+  server.registerTool(
+    "query_knowledge",
+    {
+      title: "Consultar el conocimiento por patrón",
+      description:
+        "Consulta el grafo de conocimiento (spec 027) con patrones sujeto·predicado·objeto: cada término es un nombre, un IRI o una variable `?x`; varios patrones se combinan por sus variables compartidas. Responde sobre lo DIBUJADO y lo DEDUCIDO por el razonador (subclase, inversa, transitiva…): `[[\"Pagar\",\"provoca\",\"?x\"]]` lista todo lo que Pagar termina provocando. Usala ante preguntas de relaciones o de varios saltos en vez de leer el diagrama a ojo. Sin filas = desconocido en el modelo, no falso.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        patterns: z.array(z.tuple([termino, termino, termino])).min(1).max(5),
+        include: z.enum(["explicit", "inferred", "all"]).default("all").describe("explicit = sólo lo dibujado; inferred = sólo lo deducido."),
+        scope: scopeSchema,
+        limit: z.number().int().min(1).max(500).default(50),
+      },
+    },
+    async ({ diagramId, patterns, include, scope, limit }) => {
+      try {
+        return text(queryKnowledge(await conocimientoDelAlcance(scope, diagramId), patterns, include, limit));
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "find_path",
+    {
+      title: "Camino entre elementos",
+      description:
+        "Caminos más cortos en el grafo de conocimiento desde un elemento (hasta otro, o a todo lo alcanzable), siguiendo las flechas. Con `predicate` sólo recorre ese predicado y sus especializaciones (`provoca` recorre dispara, activa, emite, invoca). Cuenta la cadena paso a paso («Pagar —dispara→ PagoRealizado —activa→ Facturar…») y marca los pasos deducidos.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        from: termino,
+        to: termino.optional(),
+        predicate: z.string().optional().describe("Id o nombre del predicado (p. ej. `provoca`, `depende_de`)."),
+        maxHops: z.number().int().min(1).max(12).default(8),
+        scope: scopeSchema,
+      },
+    },
+    async ({ diagramId, from, to, predicate, maxHops, scope }) => {
+      try {
+        return text(findPath(await conocimientoDelAlcance(scope, diagramId), from, { to, predicate, maxHops }));
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "explain_fact",
+    {
+      title: "¿Por qué el modelo afirma esto?",
+      description:
+        "Explica un hecho del grafo de conocimiento: árbol de justificación con la regla del razonador y el axioma de cada paso, hasta los hechos dibujados. Sirve para verificar una deducción antes de afirmarla.",
+      inputSchema: { diagramId: diagramIdSchema, subject: termino, predicate: termino, object: termino, scope: scopeSchema },
+    },
+    async ({ diagramId, subject, predicate, object, scope }) => {
+      try {
+        return text(explainFact(await conocimientoDelAlcance(scope, diagramId), subject, predicate, object));
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "ask_competency",
+    {
+      title: "Pregunta de competencia",
+      description: `Corre una de las preguntas de competencia predefinidas de la ontología (spec 027) sobre el modelo:\n${PREGUNTAS_COMPETENCIA.map((p) => `- ${p.id}${p.parametros.length ? ` (${p.parametros.join(", ")})` : ""}: ${p.titulo}`).join("\n")}`,
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        id: z.enum(PREGUNTAS_COMPETENCIA.map((p) => p.id) as [string, ...string[]]),
+        args: z.record(z.string(), z.string()).optional().describe("Parámetros por nombre, p. ej. {\"comando\":\"Pagar\"}."),
+        scope: scopeSchema,
+      },
+    },
+    async ({ diagramId, id, args, scope }) => {
+      try {
+        return text(askCompetency(await conocimientoDelAlcance(scope, diagramId), id, args ?? {}));
+      } catch (e: any) {
+        return fail(e.message);
+      }
     }
   );
 
@@ -1778,6 +1984,41 @@ export function registerProcessflowTools(server: McpServer, opts: McpToolsOption
         });
         await saveModel(diagramId, next);
         return text(`Relación ${from} → ${to} actualizada.`);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "set_edge_predicate",
+    {
+      title: "Fijar el significado de una relación",
+      description:
+        "Fija el PREDICADO canónico de una relación existente (por sus extremos): lo que la flecha significa para la ontología, independiente de su etiqueta visible. Debe ser un predicado de la notación que admita esos tipos (dominio/rango); si no, se rechaza con los compatibles. `predicate: null` lo quita (vuelve a proponerse solo). Los predicados se listan en describe_notation y get_ontology.",
+      inputSchema: {
+        diagramId: diagramIdSchema,
+        from: z.string(),
+        to: z.string(),
+        predicate: z.string().nullable().describe("Id del predicado (p. ej. `dispara`), o null para quitarlo."),
+      },
+    },
+    async ({ diagramId: diagramIdEntrada, from, to, predicate }) => {
+      let diagramId: string;
+      try {
+        diagramId = await activeId(diagramIdEntrada);
+      } catch (e: any) {
+        return fail(e.message);
+      }
+      const model = await loadModel(diagramId);
+      try {
+        const { model: next } = setEdgePredicate(model, from, to, predicate);
+        await saveModel(diagramId, next);
+        return text(
+          predicate
+            ? `Relación ${from} → ${to}: significa «${predicate}».`
+            : `Relación ${from} → ${to}: predicado quitado (se propondrá desde la etiqueta).`
+        );
       } catch (e: any) {
         return fail(e.message);
       }

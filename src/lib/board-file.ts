@@ -19,7 +19,13 @@
 
 import type { GraphData } from "./types";
 import { validateGraphData } from "./import-diagram";
-import { emptyPersistedViews, type DesignView, type PersistedViews } from "./views-types";
+import {
+  emptyPersistedViews,
+  type DesignView,
+  type ExtremoVinculo,
+  type PersistedViews,
+  type VinculoVistas,
+} from "./views-types";
 import type { SharedProject } from "./collaboration/types";
 export type SharedBoardExtras = Pick<SharedProject, "references" | "agent" | "analysis">;
 
@@ -64,12 +70,43 @@ export function sanitizeViews(raw: unknown): PersistedViews {
     .filter((v) => typeof v.id === "string" && v.id && typeof v.name === "string")
     .map((v) => v as unknown as DesignView);
   const activeViewId = typeof raw.activeViewId === "string" && raw.activeViewId ? raw.activeViewId : "design";
+  const vinculos = sanitizeVinculos(raw.vinculos);
   return {
     customViews,
     activeViewId,
     injectedViewIds: soloStrings(raw.injectedViewIds),
     openViewIds: soloStrings(raw.openViewIds),
+    // Sólo si hay: un tablero viejo vuelve a guardarse con las mismas claves (SC-008).
+    ...(vinculos.length ? { vinculos } : {}),
   };
+}
+
+const esExtremo = (x: unknown): x is ExtremoVinculo =>
+  esObjeto(x) && typeof x.vista === "string" && !!x.vista && typeof x.nodo === "string" && !!x.nodo;
+
+/** Vínculos bien formados; lo demás se descarta (un archivo editado a mano no rompe la carga). */
+export function sanitizeVinculos(raw: unknown): VinculoVistas[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(esObjeto).flatMap((v): VinculoVistas[] => {
+    if (typeof v.id !== "string" || !v.id || !esExtremo(v.a) || !esExtremo(v.b)) return [];
+    if (v.tipo !== "es_mismo_que" && v.tipo !== "realiza") return [];
+    if (v.estado !== "aceptado" && v.estado !== "rechazado") return [];
+    const out: VinculoVistas = {
+      id: v.id,
+      tipo: v.tipo,
+      a: { vista: v.a.vista, nodo: v.a.nodo },
+      b: { vista: v.b.vista, nodo: v.b.nodo },
+      estado: v.estado,
+    };
+    const p = v.procedencia;
+    if (esObjeto(p) && (p.por === "humano" || p.por === "ia" || p.por === "mcp"))
+      out.procedencia = {
+        por: p.por,
+        ...(typeof p.fuente === "string" ? { fuente: p.fuente } : {}),
+        ...(typeof p.fecha === "string" ? { fecha: p.fecha } : {}),
+      };
+    return [out];
+  });
 }
 
 /** Empaqueta el tablero completo para exportar: proyecto + vistas saneadas. */
