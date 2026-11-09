@@ -52,8 +52,14 @@ export type Tripleta = [Termino, Termino, Termino];
 /** Por qué existe un hecho deducido: regla, premisas y ronda (FR-016). */
 export interface Justificacion {
   regla: ReglaId;
+  /** Hechos del grafo de los que sale (los explícitos o deducidos antes). */
   premisas: Tripleta[];
   ronda: number;
+  /**
+   * El axioma del reglamento que se aplicó («pf:dispara ⊑ pf:provoca»). La TBox
+   * no vive en el store, así que no es una premisa navegable: se cita en texto.
+   */
+  axioma?: string;
 }
 
 /** Un hallazgo de la ontología: compatible con `QualityFinding` (level/rule/message). */
