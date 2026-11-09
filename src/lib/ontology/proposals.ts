@@ -66,18 +66,32 @@ export function revisarPropuestas(model: DiagramModel, hechos: readonly HechoPro
   const existente = (nombre: string) => model.nodes.find((n) => plana(n.nombre) === plana(nombre));
   const tipoDeTexto = (t: string) => tipos.find((x) => plana(x) === plana(t));
 
-  // Primero los tipos declarados en el lote: una relación puede apoyarse en un elemento nuevo.
-  const declarados = new Map<string, string>();
-  for (const h of hechos)
+  const lote = hechos.slice(0, MAX_PROPUESTAS);
+  // Primero los tipos declarados en el lote: una relación puede apoyarse en un
+  // elemento nuevo. Un nombre nuevo con DOS tipos distintos es un conflicto: no
+  // se elige uno, porque el humano podría aceptar el otro y la relación validada
+  // contra el primero entraría sin cumplir el reglamento.
+  const declarados = new Map<string, Set<string>>();
+  for (const h of lote)
     if (ES.has(plana(h.p))) {
       const t = tipoDeTexto(h.o);
-      if (t && !existente(h.s) && !declarados.has(plana(h.s))) declarados.set(plana(h.s), t);
+      if (t && !existente(h.s)) declarados.set(plana(h.s), (declarados.get(plana(h.s)) ?? new Set()).add(t));
     }
-  const tipoDe = (nombre: string) => existente(nombre)?.tipo_elemento ?? declarados.get(plana(nombre));
+  const enConflicto = (nombre: string) => (declarados.get(plana(nombre))?.size ?? 0) > 1;
+  const tipoDe = (nombre: string) => {
+    const ya = existente(nombre)?.tipo_elemento;
+    if (ya) return ya;
+    const ts = declarados.get(plana(nombre));
+    return ts?.size === 1 ? [...ts][0] : undefined;
+  };
+  const conflicto = (nombre: string) =>
+    `La IA propone dos tipos distintos para «${nombre}» (${[...declarados.get(plana(nombre))!].join(" y ")}): no se integra nada que dependa de él.`;
+  // Un par, una flecha: la segunda propuesta entre los mismos extremos no puede entrar.
+  const pares = new Set<string>();
 
   const vistos = new Set<string>();
   const out: PropuestaRevisada[] = [];
-  for (const h of hechos.slice(0, MAX_PROPUESTAS)) {
+  for (const h of lote) {
     const id = idDe(h);
     if (vistos.has(id)) continue;
     vistos.add(id);
@@ -86,6 +100,10 @@ export function revisarPropuestas(model: DiagramModel, hechos: readonly HechoPro
     const esTipo = ES.has(plana(h.p));
     if (!h.cita?.trim()) {
       out.push(mal(esTipo ? "tipo" : "relacion", "No cita la fuente: sin el pasaje no hay cómo verificarlo."));
+      continue;
+    }
+    if (esTipo && enConflicto(h.s)) {
+      out.push(mal("tipo", conflicto(h.s)));
       continue;
     }
     if (esTipo) {
@@ -101,6 +119,11 @@ export function revisarPropuestas(model: DiagramModel, hechos: readonly HechoPro
     const pid = predicadoDeTexto(notation, h.p);
     if (!pid) {
       out.push(mal("relacion", `«${h.p}» no es un predicado de esta notación.`));
+      continue;
+    }
+    const choca = [h.s, h.o].find(enConflicto);
+    if (choca) {
+      out.push(mal("relacion", conflicto(choca)));
       continue;
     }
     const ts = tipoDe(h.s);
@@ -121,6 +144,12 @@ export function revisarPropuestas(model: DiagramModel, hechos: readonly HechoPro
       out.push(mal("relacion", `Ya hay una flecha de «${fs.nombre}» a «${fd.nombre}».`));
       continue;
     }
+    const par = `${plana(h.s)}>${plana(h.o)}`;
+    if (pares.has(par)) {
+      out.push(mal("relacion", `De «${h.s}» a «${h.o}» ya se propone otra flecha en este lote: un par lleva una sola.`));
+      continue;
+    }
+    pares.add(par);
     out.push({ ...base, clase: "relacion", valida: true, resuelto: pid, nuevos: [h.s, h.o].filter((x) => !existente(x)) });
   }
   return out;
@@ -166,6 +195,17 @@ export function aplicarPropuestas(
     const fd = nodoDe(p.o);
     if (!fs || !fd) {
       omitidas.push({ id: p.id, motivo: `Falta aceptar qué es «${!fs ? p.s : p.o}».` });
+      continue;
+    }
+    // Se revalida contra el modelo que se recibe AHORA: el veredicto se dio sobre
+    // el de cuando se propuso, y entre medio el humano pudo editar o aceptar otro tipo.
+    const hallazgo = validarPredicado(p.resuelto!, fs.tipo_elemento, fd.tipo_elemento, notation);
+    if (hallazgo) {
+      omitidas.push({ id: p.id, motivo: hallazgo.mensaje });
+      continue;
+    }
+    if (m.edges.some((e) => e.fuente === fs.id && e.destino === fd.id)) {
+      omitidas.push({ id: p.id, motivo: `Ya hay una flecha de «${fs.nombre}» a «${fd.nombre}».` });
       continue;
     }
     const decl = tboxDe(notation).predicados.find((x) => x.id === p.resuelto);

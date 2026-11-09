@@ -140,7 +140,8 @@ export const ProposeFactsDialog: React.FC<{
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Se leen las líneas {desdeLinea}–{hasta} de {lineas.length}.
+              Se leen las líneas {desdeLinea}–{hasta} de {lineas.length}. Es una tarea pesada: en modo híbrido o remoto,
+              ese trozo y los nombres del diagrama viajan al proveedor de nube; en modo local no salen de la máquina.
             </p>
 
             {propuestas && (

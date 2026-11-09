@@ -93,3 +93,37 @@ describe("aplicar sólo lo aceptado (US8-AC3)", () => {
     expect(aplicarPropuestas(modeloES(), r, P).aplicadas).toEqual([]);
   });
 });
+
+// Revisión de F5: lo inválido no puede entrar por ningún camino.
+describe("conflictos dentro del lote y revalidación al aplicar", () => {
+  it("un nombre nuevo con dos tipos distintos: todo lo que depende de él queda en conflicto", () => {
+    const r = revisarPropuestas(modeloES(), [h("Reembolsar", "es", comando), h("Reembolsar", "es", evento), h("Reembolsar", "dispara", "PagoRealizado")]);
+    expect(r.every((x) => !x.valida)).toBe(true);
+    expect(r[0].motivo).toMatch(/dos tipos/);
+    expect(r[2].motivo).toMatch(/dos tipos/);
+  });
+
+  it("aunque se fuerce, una relación inválida contra el modelo real se omite al aplicar", () => {
+    const r = revisarPropuestas(modeloES(), [h("Reembolsar", "es", comando), h("Reembolsar", "dispara", "PagoRealizado")]);
+    // Se fuerza la propuesta de tipo como Evento: el veredicto viejo de la relación ya no vale.
+    const forzado = { ...r[0], resuelto: evento };
+    const { model, aplicadas, omitidas } = aplicarPropuestas(modeloES(), [forzado, r[1]], P);
+    expect(aplicadas).toEqual([forzado.id]);
+    expect(omitidas[0].motivo).toMatch(/dispara/);
+    expect(model.edges.some((e) => e.destino === "pago-realizado" && e.fuente !== "pagar" && e.fuente !== "facturar")).toBe(false);
+  });
+
+  it("dos relaciones entre el mismo par en el lote: la segunda queda marcada, no se pierde en silencio", () => {
+    const r = revisarPropuestas(modeloES(), [h("Nuevo", "es", evento), h("Cancelar", "dispara", "Nuevo"), h("Cancelar", "provoca", "Nuevo")]);
+    expect(r.map((x) => x.valida)).toEqual([true, true, false]);
+    expect(r[2].motivo).toMatch(/ya se propone otra flecha/);
+  });
+
+  it("al aplicar, una flecha que ya existe en el modelo real se omite", () => {
+    const r = revisarPropuestas(modeloES(), [h("Nuevo", "es", evento), h("Cancelar", "dispara", "Nuevo")]);
+    const una = aplicarPropuestas(modeloES(), r, P).model;
+    const otra = aplicarPropuestas(una, r, P);
+    expect(otra.aplicadas).toEqual([]);
+    expect(otra.omitidas.map((o) => o.motivo).join(" ")).toMatch(/Ya hay una flecha/);
+  });
+});

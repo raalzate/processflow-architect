@@ -10,7 +10,7 @@
  * proyecto ni el archivo. La lógica vive en `src/lib/ontology/diff.ts`.
  */
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { GitCompare, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +42,10 @@ export default function CompareKnowledgeCard({ currentFile }: { currentFile: Sav
   const [resumen, setResumen] = useState<{ contra: string; r: ResumenDiff } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const archivo = useRef<HTMLInputElement>(null);
-  const tableros = useMemo(() => otrosTableros(currentFile.id), [currentFile.id]);
+  // Se lee después del montaje (no en el render): localStorage no existe en el
+  // prerender, y así la lista se refresca al volver a la pantalla.
+  const [tableros, setTableros] = useState<SavedFile[]>([]);
+  useEffect(() => setTableros(otrosTableros(currentFile.id)), [currentFile.id]);
 
   const comparar = (contra: string, proyecto: GraphData, vistas: PersistedViews | undefined) => {
     const antes = conocimientoDeTablero(proyecto, vistas);

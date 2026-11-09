@@ -216,6 +216,7 @@ import { buildEmbedMap, wouldCreateCycle } from "@/lib/view-embeds";
 import { ReferenceContextDialog } from "./ReferenceContextDialog";
 import { ProposeFactsDialog } from "./ProposeFactsDialog";
 import { fromGraphData, toGraphData, type DiagramModel } from "@/lib/mcp/diagram-builder";
+import { fusionarEnLienzo } from "@/lib/canvas-merge";
 import { CanvasContextMenu, type CanvasMenuItem } from "./CanvasContextMenu";
 import { adoptarExternos, draftPatch, hasDraftChanges, parseTagList } from "./inspector-draft";
 import { CANVAS_CHROME } from "@/lib/canvas-chrome";
@@ -5010,26 +5011,14 @@ export const ComponentDesigner: React.FC<{
   // historial, así ⌘Z lo deshace entero.
   const integrarPropuestas = useCallback(
     (model: DiagramModel, resumen: { aplicadas: number; omitidas: string[] }) => {
-      const { nodes: n2, links: l2 } = graphDataToCanvas(toGraphData(model));
-      const nodos = new Map(nodesRef.current);
-      const borde = Math.max(0, ...[...nodos.values()].map((n) => (n.x ?? 0) + (n.width ?? 0)));
-      let fila = 0;
-      for (const [id, n] of n2) {
-        const vivo = nodos.get(id);
-        if (vivo) {
-          if (JSON.stringify(vivo.metadata ?? []) !== JSON.stringify(n.metadata ?? [])) nodos.set(id, { ...vivo, metadata: n.metadata });
-        } else nodos.set(id, { ...n, x: borde + 120, y: 60 + fila++ * 120 });
-      }
-      const flechas = new Map(linksRef.current);
-      const hay = new Set([...flechas.values()].map((l) => `${l.sourceId}>${l.targetId}`));
-      for (const [id, l] of n2.size ? l2 : new Map<string, DesignerLink>())
-        if (!hay.has(`${l.sourceId}>${l.targetId}`)) flechas.set(flechas.has(id) ? `${id}-ia` : id, l);
-      setNodes(nodos);
-      setLinks(flechas);
-      pushSnapshot(nodos, flechas);
+      const r = fusionarEnLienzo({ nodes: nodesRef.current, links: linksRef.current }, graphDataToCanvas(toGraphData(model)));
+      setNodes(r.nodes);
+      setLinks(r.links);
+      pushSnapshot(r.nodes, r.links);
+      const omitidas = [...resumen.omitidas, ...(r.omitidas.length ? [`${r.omitidas.length} flecha(s) repetida(s)`] : [])];
       toast({
         title: `${resumen.aplicadas} hecho(s) integrados`,
-        description: resumen.omitidas.length ? `Omitidos: ${resumen.omitidas.join(" ")}` : "Quedaron con su procedencia en la ficha.",
+        description: omitidas.length ? `Omitidos: ${omitidas.join(" · ")}` : "Quedaron con su procedencia en la ficha.",
       });
     },
     [pushSnapshot, toast]
