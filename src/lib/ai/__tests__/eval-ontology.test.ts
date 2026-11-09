@@ -68,6 +68,17 @@ describe("puntuar una respuesta del agente", () => {
     expect(puntuar("Provoca «InventarioActualizado».", [], voc).inexistentes).toEqual(["InventarioActualizado"]);
   });
 
+  it("con el vocabulario extendido, una flecha citada sólo vale si sus DOS extremos son elementos", () => {
+    const k = construirConocimiento({ proyecto: PROYECTO_PEDIDOS, vistas: vistasPedidos() }, { tipo: "proyecto" });
+    const voc = vocabularioEvaluacion(k);
+    const elementos = k.elementos.map((e) => e.nombre);
+    // «Pagar» es elemento y «emite» predicado: no son dos elementos, la cita es un invento.
+    expect(puntuar("Según «Pagar emite Facturita».", [], voc, elementos).inexistentes).toEqual(["Pagar emite Facturita"]);
+    expect(puntuar("Según «Pagar emite PagoRealizado».", ["PagoRealizado"], voc, elementos).acierto).toBe(true);
+    // Sólo la respuesta «desconocido» se perdona; una cita que dice «ningún» no.
+    expect(puntuar("Lo hace «ningún Inventario»", [], voc, elementos).inexistentes).toEqual(["ningún Inventario"]);
+  });
+
   it("resumen: exactitud y respuestas con inexistentes", () => {
     const r = resumir([
       { acierto: true, faltan: [], inexistentes: [] },

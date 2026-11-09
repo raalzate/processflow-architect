@@ -54,12 +54,14 @@ export function nombresCitados(respuesta: string): string[] {
  * Lo citado que NO es un nombre inventado aunque no esté en el vocabulario
  * (#742): la propia respuesta «desconocido en el modelo» puesta en negrita, y la
  * cita de una flecha («Pagar emite PagoRealizado», «pagar → pago-realizado»),
- * que nombra dos elementos que existen. Contarlas como alucinación castigaba
+ * que nombra dos ELEMENTOS que existen. Contarlas como alucinación castigaba
  * justo las respuestas correctas y subestimaba la exactitud en 25–40 puntos.
+ * Se cuentan sólo elementos, no predicados ni tipos: si no, «Pagar emite
+ * Facturita» pasaría por tener «Pagar» y «emite».
  */
-function esCitaLegitima(cita: string, vocabulario: string[]): boolean {
-  if (DESCONOCE.test(plana(cita))) return true;
-  return new Set(vocabulario.filter((v) => contiene(cita, v)).map(plana)).size >= 2;
+function esCitaLegitima(cita: string, elementos: string[]): boolean {
+  if (/^desconocid[oa]\b/.test(plana(cita))) return true;
+  return new Set(elementos.filter((v) => contiene(cita, v)).map(plana)).size >= 2;
 }
 
 /**
@@ -84,11 +86,13 @@ export function vocabularioEvaluacion(k: Pick<Conocimiento, "elementos" | "arist
 /**
  * Acierto: nombra TODOS los esperados (o, si no se espera nada, dice que el
  * modelo no lo sabe) y no inventa elementos. `vocabulario` son los nombres que
- * existen en el modelo (y los términos del reglamento, que se pueden citar).
+ * existen en el modelo (y los términos del reglamento, que se pueden citar);
+ * `elementos`, sólo los nombres de las cajas, cuando el vocabulario es el
+ * extendido de `vocabularioEvaluacion`.
  */
-export function puntuar(respuesta: string, esperado: string[], vocabulario: string[]): PuntajeRespuesta {
+export function puntuar(respuesta: string, esperado: string[], vocabulario: string[], elementos = vocabulario): PuntajeRespuesta {
   const conocidos = new Set(vocabulario.map(plana));
-  const inexistentes = nombresCitados(respuesta).filter((n) => !conocidos.has(plana(n)) && !esCitaLegitima(n, vocabulario));
+  const inexistentes = nombresCitados(respuesta).filter((n) => !conocidos.has(plana(n)) && !esCitaLegitima(n, elementos));
   const faltan = esperado.filter((e) => !contiene(respuesta, e));
   const contesta = esperado.length ? faltan.length === 0 : DESCONOCE.test(plana(respuesta));
   return { acierto: contesta && inexistentes.length === 0, faltan, inexistentes };
