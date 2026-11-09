@@ -14,7 +14,10 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
 } from "react";
+import { mergeLocalFiles } from "@/lib/collaboration/local-files";
+import { aiResultStillApplies } from "@/lib/mcp/branch-policy";
 import { useGraphContext } from "@/context/GraphContext";
 import { useViews } from "@/context/ViewsContext";
 import { useToast } from "@/hooks/use-toast";
@@ -125,6 +128,12 @@ export function readStoredArtifacts(fileId: string): Artifact[] {
   if (!fileId) return [];
   return loadState(fileId).artifacts ?? [];
 }
+export function readStoredSharedArtifacts(fileId: string): Pick<AgentState, "versions" | "lineages" | "artifacts"> {
+  const { versions, lineages, artifacts } = loadState(fileId); return { versions, lineages, artifacts };
+}
+export function writeStoredSharedArtifacts(fileId: string, shared: Pick<AgentState, "versions" | "lineages" | "artifacts">) {
+  localStorage.setItem(storageKey(fileId), JSON.stringify({ ...loadState(fileId), ...shared }));
+}
 
 /** Serializa un artefacto a texto plano para inyectarlo como contexto. */
 export function artifactToText(a: Artifact): string {
@@ -158,6 +167,7 @@ function viewToContext(view: any): { kind: string; title: string; content: strin
 }
 
 export interface AgentContextType {
+  replaceSharedArtifacts: (shared: Pick<AgentState, "versions" | "lineages" | "artifacts">) => void;
   versions: ArtifactVersion[];
   activeVersionId: string;
   lineages: ArtifactLineage[];
@@ -220,7 +230,9 @@ export const useAgent = () => {
 };
 
 export function AgentProvider({ children }: { children: React.ReactNode }) {
-  const { currentFileId, graphData } = useGraphContext();
+  const { currentFileId, graphData, sharedReadOnly, sharedAiReadOnly, sharedStorageScope } = useGraphContext();
+  const aiTarget = useRef({ fileId: currentFileId, scope: sharedStorageScope, readOnly: !!(sharedReadOnly || sharedAiReadOnly) });
+  aiTarget.current = { fileId: currentFileId, scope: sharedStorageScope, readOnly: !!(sharedReadOnly || sharedAiReadOnly) };
   const { views, injectedViews, activeView } = useViews();
   const { toast } = useToast();
 
@@ -229,6 +241,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const [lineages, setLineages] = useState<ArtifactLineage[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hydratedProject, setHydratedProject] = useState<string | null>(null);
+  const lastLocalMessages = useRef<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [contextArtifactIds, setContextArtifactIds] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<AgentDocument[]>([]);
@@ -268,6 +282,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   // Cargar estado al cambiar de proyecto.
   useEffect(() => {
     if (!currentFileId) {
+      setHydratedProject(null); lastLocalMessages.current = [];
       setVersions([]);
       setActiveVersionId("");
       setLineages([]);
@@ -278,6 +293,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const s = loadState(currentFileId);
+    lastLocalMessages.current = s.messages; setHydratedProject(currentFileId);
     setVersions(s.versions);
     // Restaura la versión activa guardada si sigue existiendo; si no, la última.
     const savedActive =
@@ -294,16 +310,21 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
 
   // Persistir.
   useEffect(() => {
-    if (!currentFileId) return;
-    try {
+    if (!currentFileId || hydratedProject !== currentFileId) return;
+    const before = lastLocalMessages.current; lastLocalMessages.current = messages;
+    const persist = async () => { try {
+      const stored = loadState(sharedStorageScope ?? currentFileId);
+      const privateMessages = mergeLocalFiles(stored.messages ?? [], before, messages);
       localStorage.setItem(
-        storageKey(currentFileId),
-        JSON.stringify({ versions, lineages, artifacts, messages, activeVersionId } as AgentState)
+        storageKey(sharedStorageScope ?? currentFileId),
+        JSON.stringify({ versions, lineages, artifacts, messages: privateMessages, activeVersionId } as AgentState)
       );
     } catch {
       /* ignore quota */
-    }
-  }, [currentFileId, versions, lineages, artifacts, messages, activeVersionId]);
+    } };
+    if (navigator.locks) void navigator.locks.request(`processflow-agent-${currentFileId}`, persist).catch(console.error);
+    else void persist();
+  }, [currentFileId, sharedStorageScope, hydratedProject, versions, lineages, artifacts, messages, activeVersionId]);
 
   /**
    * Catálogo para las herramientas de LECTURA del agente (spec 005): el agente ya
@@ -590,6 +611,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
 
   const sendMessage = useCallback(
     async (text: string, requestedKind?: string) => {
+      const startedTarget = { ...aiTarget.current };
+      if (startedTarget.readOnly) return;
       const trimmed = text.trim();
       // Con un artefacto pedido del menú «+» el texto puede ir vacío: el pedido
       // ya dice qué generar.
@@ -758,6 +781,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
 
         // El ingreso decide linaje y revisión (versioning.ts): si el artefacto
         // ya existía, esto es su vN+1 y la anterior queda en el histórico.
+        if (!aiResultStillApplies(startedTarget, aiTarget.current)) return;
         const incoming = (data.artifacts ?? []) as AgentArtifact[];
         const ingested = ingestArtifacts(
           { lineages, artifacts },
@@ -853,6 +877,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
    */
   const resumeRun = useCallback(
     async (messageId: string, decision: ResumeDecision) => {
+      const startedTarget = { ...aiTarget.current };
+      if (startedTarget.readOnly) return;
       if (busy) return;
       const msg = messages.find((m) => m.id === messageId);
       if (!msg?.run) return;
@@ -941,6 +967,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           },
         });
 
+        if (!aiResultStillApplies(startedTarget, aiTarget.current)) return;
         const ingested = ingestArtifacts(
           { lineages, artifacts },
           (data.artifacts ?? []) as AgentArtifact[],
@@ -1012,6 +1039,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value: AgentContextType = {
+    replaceSharedArtifacts: (shared) => {
+      setVersions(shared.versions); setLineages(shared.lineages); setArtifacts(shared.artifacts);
+      setActiveVersionId(previous => shared.versions.some(v => v.id === previous) ? previous : shared.versions[0]?.id ?? "");
+    },
     versions,
     activeVersionId,
     lineages,
@@ -1024,20 +1055,20 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     attachments,
     agentId,
     setAgentId,
-    sendMessage,
-    answerBuilderQuestion,
-    resumeRun,
-    retryWithWiderWindow,
+    sendMessage: async (...args) => { if (!sharedReadOnly && !sharedAiReadOnly) await sendMessage(...args); else toast({ title: "La IA no puede editar esta rama", description: "Cambia a una rama de trabajo. Solo el anfitrión puede usar IA para modificar Principal." }); },
+    answerBuilderQuestion: async (...args) => { if (!sharedReadOnly && !sharedAiReadOnly) await answerBuilderQuestion(...args); },
+    resumeRun: async (...args) => { if (!sharedReadOnly && !sharedAiReadOnly) await resumeRun(...args); },
+    retryWithWiderWindow: async (...args) => { if (!sharedReadOnly && !sharedAiReadOnly) await retryWithWiderWindow(...args); },
     cancelRun,
     historyOf,
-    restoreArtifactRevision,
-    editArtifact,
-    purgeArtifact,
-    attachArtifactTo,
-    detachArtifactRevision,
-    deleteArtifact,
-    clearVersionArtifacts,
-    createVersion,
+    restoreArtifactRevision: (...args) => { if (!sharedReadOnly) restoreArtifactRevision(...args); },
+    editArtifact: (...args) => { if (!sharedReadOnly) editArtifact(...args); },
+    purgeArtifact: (...args) => { if (!sharedReadOnly) purgeArtifact(...args); },
+    attachArtifactTo: (...args) => { if (!sharedReadOnly) attachArtifactTo(...args); },
+    detachArtifactRevision: (...args) => { if (!sharedReadOnly) detachArtifactRevision(...args); },
+    deleteArtifact: (...args) => { if (!sharedReadOnly) deleteArtifact(...args); },
+    clearVersionArtifacts: (...args) => { if (!sharedReadOnly) clearVersionArtifacts(...args); },
+    createVersion: (...args) => { if (!sharedReadOnly) createVersion(...args); },
     setActiveVersion,
     toggleContextArtifact,
     clearContextArtifacts,

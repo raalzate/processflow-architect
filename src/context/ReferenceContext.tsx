@@ -45,8 +45,13 @@ function loadDocs(fileId: string): ReferenceDoc[] {
   }
   return [];
 }
+export const readStoredReferences = loadDocs;
+export function writeStoredReferences(fileId: string, docs: ReferenceDoc[]) {
+  localStorage.setItem(storageKey(fileId), JSON.stringify(docs));
+}
 
 export interface ReferenceContextType {
+  replaceSharedReferences: (docs: ReferenceDoc[]) => void;
   docs: ReferenceDoc[];
   /** Texto de referencia acotado, listo para inyectar en los prompts locales. */
   referenceText: string;
@@ -67,7 +72,7 @@ export const useReference = () => {
 };
 
 export function ReferenceProvider({ children }: { children: React.ReactNode }) {
-  const { currentFileId } = useGraphContext();
+  const { currentFileId, sharedReadOnly, sharedStorageScope } = useGraphContext();
   const { toast } = useToast();
   const [docs, setDocs] = useState<ReferenceDoc[]>([]);
 
@@ -84,11 +89,11 @@ export function ReferenceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!currentFileId) return;
     try {
-      localStorage.setItem(storageKey(currentFileId), JSON.stringify(docs));
+      localStorage.setItem(storageKey(sharedStorageScope ?? currentFileId), JSON.stringify(docs));
     } catch {
       /* ignore quota */
     }
-  }, [currentFileId, docs]);
+  }, [currentFileId, sharedStorageScope, docs]);
 
   const addFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -142,12 +147,13 @@ export function ReferenceProvider({ children }: { children: React.ReactNode }) {
   const referenceText = useMemo(() => buildReferenceText(docs), [docs]);
 
   const value: ReferenceContextType = {
+    replaceSharedReferences: setDocs,
     docs,
     referenceText,
-    addFiles,
-    addText,
-    removeDoc,
-    clear,
+    addFiles: async (...args) => { if (!sharedReadOnly) await addFiles(...args); },
+    addText: (...args) => { if (!sharedReadOnly) addText(...args); },
+    removeDoc: (...args) => { if (!sharedReadOnly) removeDoc(...args); },
+    clear: (...args) => { if (!sharedReadOnly) clear(...args); },
   };
 
   return <ReferenceContext.Provider value={value}>{children}</ReferenceContext.Provider>;

@@ -23,6 +23,12 @@ const vistas = (): PersistedViews => ({
 });
 
 describe("packBoard", () => {
+  it("preserves shared references, revisions and analyses without private chat", () => {
+    const shared = { references: [{ id: "ref", name: "Contrato", text: "Contenido" }], agent: { versions: [], lineages: [], artifacts: [], messages: [{ text: "privado" }] }, analysis: { proposalResult: { value: "analisis" } }, apiKey: "secreto" };
+    const board = packBoard(proyecto(), vistas(), shared as never);
+    const encoded = JSON.stringify(board); const parsed = parseBoardFile(encoded);
+    expect(parsed.compartido?.references[0].id).toBe("ref"); expect(encoded).toContain("analisis"); expect(encoded).not.toContain("privado"); expect(encoded).not.toContain("secreto");
+  });
   it("empaqueta proyecto + vistas con la marca de formato", () => {
     const b = packBoard(proyecto(), vistas());
     expect(b.formato).toBe(BOARD_FORMAT);

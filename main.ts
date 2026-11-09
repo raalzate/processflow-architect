@@ -10,6 +10,19 @@ import { registerIpcHandlers } from './main/ipc';
 import { cancelAllAgentCli } from './main/services/agent-cli';
 import { kokoroArchivoLocal } from './main/services/kokoro-models';
 import { resumenGpu } from './src/lib/gpu-status';
+import { closeCollaboration } from './main/services/collaboration';
+
+// La app conserva su identidad y su carpeta de datos: quien actualiza sigue
+// viendo sus proyectos, modelos y llaves (#746). PROCESSFLOW_COLLAB_DATA sólo
+// separa perfiles para probar dos participantes en la misma máquina.
+if (process.env.PROCESSFLOW_COLLAB_DATA) app.setPath('userData', path.resolve(process.env.PROCESSFLOW_COLLAB_DATA));
+// Cada perfil sólo puede tener un escritor de sus registros y una identidad de red activa.
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
+app.on('second-instance', () => {
+  const win = BrowserWindow.getAllWindows().find(window => !window.isDestroyed());
+  if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+});
 
 // Schemes privilegiados: registrar AQUÍ (tras los imports, antes de ready) para
 // pisar el registro parcial que hace electron-serve al importarse. Ver main/schemes.ts.
@@ -26,6 +39,7 @@ setupProdLogger();
 
 // 2. Lifecycle de Electron
 app.whenReady().then(() => {
+  if (!primaryInstance) return;
   // Sirve userData/models/litert/<archivo>.litertlm vía litert-model://m/<archivo>.
   const litertDir = path.join(app.getPath('userData'), 'models', 'litert');
   protocol.handle('litert-model', (request) => {
@@ -85,4 +99,14 @@ app.on('window-all-closed', () => {
 // proceso ya hubiera salido, y la limpieza no corría nunca.
 app.on('before-quit', () => {
   cancelAllAgentCli();
+});
+
+let collaborationClosed = false;
+app.on('will-quit', event => {
+  if (collaborationClosed) return;
+  event.preventDefault();
+  void closeCollaboration().catch(console.error).finally(() => {
+    collaborationClosed = true;
+    app.quit();
+  });
 });

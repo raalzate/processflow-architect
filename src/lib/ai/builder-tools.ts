@@ -319,6 +319,22 @@ export function describeScope(
   }
 }
 
+function describeCollaborationCall(call: BuilderCall): string {
+  const a = (call.args.action ?? {}) as Record<string, any>;
+  const branch = a.branchId === "main" ? "Principal" : a.branchId === "shared" ? "Trabajo compartido" : String(a.branchId ?? "la solicitud seleccionada");
+  const scopes = Array.isArray(a.scopes) ? a.scopes.map((s: string) => s === "design" ? "Modelo" : s === "project" ? "Datos comunes" : s).join(", ") : "las vistas incluidas en la solicitud";
+  if (call.args.command === "repair-connection") return `Retirar la conexión «${call.args.edgeId}» de la vista «${call.args.viewId}». Sus datos se conservarán para recuperación.`;
+  switch (a.type) {
+    case "permission": return `Cambiar permisos de «${a.memberId}». Editar Principal: ${a.permission?.editMain ? "Sí" : "No"}. Integrar en Principal: ${a.permission?.mergeMain ? "Sí" : "No"}. Restaurar Principal: ${a.permission?.restoreMain ? "Sí" : "No"}. Vigencia: ${a.permission?.until ?? "sin caducidad"}.${a.permission?.proposalId ? ` Solo para la solicitud «${a.permission.proposalId}».` : ""}`;
+    case "restore": return `Restaurar la versión «${a.commitId}» en la rama «${branch}». Vistas: ${scopes}. Se conservará una versión de recuperación del trabajo actual.`;
+    case "pull": return `Traer la versión «${a.commitId}» a la rama «${branch}». Vistas: ${scopes}. Se combinará con su borrador actual.`;
+    case "merge": return `Integrar la solicitud «${a.proposalId}» en su rama de destino. Vistas: ${scopes}. Versión de destino revisada: «${a.expectedHead}».`;
+    case "reject": return `Rechazar la solicitud de integración «${a.proposalId}».`;
+    case "editors": return `Cambiar quién puede editar la rama «${branch}»: ${Array.isArray(a.editors) ? a.editors.join(", ") || "solo el anfitrión" : "todos los participantes con edición"}.`;
+    default: return `Revisar la operación «${a.type}» en la rama «${branch}».`;
+  }
+}
+
 export function judgeCall(entrada: BuilderCall, ctx: JudgeContext): CallVerdict {
   const spec = ctx.tools.find((t) => t.name === entrada.tool);
   if (!spec) {
@@ -332,6 +348,12 @@ export function judgeCall(entrada: BuilderCall, ctx: JudgeContext): CallVerdict 
 
   const problema = validarArgs(spec, call.args);
   if (problema) return { kind: "rechazar", motivo: problema };
+  if (call.tool === "manage_collaboration") {
+    const action = call.args.action as { type?: string } | undefined;
+    const destructive = call.args.command === "history" && ["merge", "restore", "pull", "permission", "editors", "reject"].includes(action?.type ?? "");
+    const removing = call.args.command === "repair-connection" && !call.args.sourceId && !call.args.targetId;
+    if (destructive || removing) return { kind: "confirmar", call, alcance: describeCollaborationCall(call) };
+  }
 
   // Tipos: los de la notación del DIAGRAMA en curso —y sólo si no hay, los de la
   // vista abierta—, nunca una lista cableada (§P6, #331).

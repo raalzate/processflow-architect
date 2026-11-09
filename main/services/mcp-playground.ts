@@ -10,7 +10,7 @@
  */
 
 import path from "node:path";
-import { app, BrowserWindow } from "electron";
+import { app } from "electron";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -18,65 +18,26 @@ import { registerProcessflowTools } from "./mcp-tools";
 import { getAppState } from "./mcp-app-state";
 import { readFromApp } from "./mcp-app-read";
 import { actOnApp } from "./mcp-app-action";
-import type { GraphData } from "../../src/lib/types";
-import type { NotationId } from "../../src/lib/notations";
+import { mcpAppWindow } from "./mcp-app-window";
+import { deliverMcpDiagram } from "./mcp-app-delivery";
 
 /** Mismo workspace que el servidor HTTP embebido (estado compartido en disco). */
 function appWorkspace(): string {
   return path.join(app.getPath("userData"), "mcp-workspace");
 }
 
-/** Igual que en mcp-http: entrega el diagrama exportado al lienzo del renderer. */
-async function exportToApp(
-  name: string,
-  graph: GraphData,
-  target?: { project: string }
-): Promise<boolean> {
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-  if (!win) return false;
-  // `target` presente ⇒ ACTUALIZAR ese proyecto; ausente ⇒ proyecto nuevo.
-  win.webContents.send("mcp-import-diagram", { name, content: graph, target });
-  if (win.isMinimized()) win.restore();
-  win.focus();
-  return true;
-}
-
-/** Igual que en mcp-http: entrega el diagrama como VISTA del proyecto activo. */
-async function exportViewToApp(
-  name: string,
-  graph: GraphData,
-  notation: NotationId,
-  replace?: boolean
-): Promise<boolean> {
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-  if (!win) return false;
-  win.webContents.send("mcp-import-diagram", { name, content: graph, view: { notation, replace } });
-  if (win.isMinimized()) win.restore();
-  win.focus();
-  return true;
-}
-
-/** Igual que en mcp-http: entrega código Mermaid como VISTA Mermaid del proyecto activo. */
-async function exportMermaidToApp(name: string, code: string): Promise<boolean> {
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-  if (!win) return false;
-  win.webContents.send("mcp-import-diagram", { name, content: code, mermaid: true });
-  if (win.isMinimized()) win.restore();
-  win.focus();
-  return true;
-}
-
 /** Cliente conectado a un servidor nuevo por par de transportes en memoria. */
-async function connectedClient(): Promise<{ client: Client; close: () => Promise<void> }> {
+async function connectedClient(preferredWindow?: number): Promise<{ client: Client; close: () => Promise<void> }> {
+  const windowId = mcpAppWindow(preferredWindow)?.webContents.id;
   const server = new McpServer({ name: "processflow-architect", version: "0.1.0" });
   registerProcessflowTools(server, {
     workspace: appWorkspace(),
-    exportToApp,
-    exportViewToApp,
-    exportMermaidToApp,
-    getAppState,
-    readApp: readFromApp,
-    actOnApp,
+    exportToApp: (name, graph, target) => deliverMcpDiagram({ name, content: graph, target }, windowId),
+    exportViewToApp: (name, graph, notation, replace) => deliverMcpDiagram({ name, content: graph, view: { notation, replace } }, windowId),
+    exportMermaidToApp: (name, code) => deliverMcpDiagram({ name, content: code, mermaid: true }, windowId),
+    getAppState: () => getAppState(windowId),
+    readApp: request => readFromApp(request, windowId),
+    actOnApp: (request, options) => actOnApp(request, { ...options, windowId }),
     // El playground corre DENTRO de la app: mismas capacidades que el modo HTTP.
     transport: "http",
   });
@@ -120,9 +81,9 @@ export interface PlaygroundCallResult {
   isError: boolean;
 }
 
-export async function playgroundCallTool(name: string, args: unknown): Promise<PlaygroundCallResult> {
+export async function playgroundCallTool(name: string, args: unknown, windowId?: number): Promise<PlaygroundCallResult> {
   try {
-    const { client, close } = await connectedClient();
+    const { client, close } = await connectedClient(windowId);
     try {
       const res = await client.callTool({ name, arguments: (args ?? {}) as Record<string, unknown> });
       const blocks = ((res.content ?? []) as Array<{ type: string; text?: string }>)

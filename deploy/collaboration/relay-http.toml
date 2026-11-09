@@ -1,0 +1,5 @@
+# Basic relay on an existing machine, without a domain or TLS service.
+enable_relay = true
+http_bind_addr = "0.0.0.0:3340"
+metrics_bind_addr = "127.0.0.1:9090"
+enable_quic_addr_discovery = false

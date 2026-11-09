@@ -12,6 +12,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Play, Loader2, FlaskConical, AlertTriangle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -131,18 +132,15 @@ export function McpPlayground() {
           {/* Selector + argumentos */}
           <div className="space-y-3">
             <div>
-              <label className="text-sm font-medium">Herramienta</label>
-              <select
-                className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                value={toolName}
-                onChange={(e) => selectTool(e.target.value)}
-              >
-                {tools.map((t) => (
-                  <option key={t.name} value={t.name}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+              <label htmlFor="mcp-tool" className="text-sm font-medium">Herramienta</label>
+              <Select value={toolName} onValueChange={selectTool}>
+                <SelectTrigger id="mcp-tool" className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {tools.map((t) => (
+                    <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {tool?.description && (
                 <p className="text-xs text-muted-foreground mt-1.5">{tool.description}</p>
               )}

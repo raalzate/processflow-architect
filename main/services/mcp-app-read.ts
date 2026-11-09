@@ -13,7 +13,8 @@
  * en vez de colgar la sesión del cliente.
  */
 
-import { BrowserWindow, ipcMain } from "electron";
+import { ipcMain } from "electron";
+import { mcpAppWindow } from "./mcp-app-window";
 import type { AppReadRequest, AppReadResult } from "../../src/lib/mcp/app-read";
 
 /** Más allá de esto se asume que el renderer no va a contestar (por intento). */
@@ -30,13 +31,15 @@ const BACKOFF_MS = 300;
 
 let seq = 0;
 const pendientes = new Map<number, (r: AppReadResult) => void>();
+const origins = new Map<number, number>();
 
 /** Registra el canal de respuesta. Lo llama `registerIpc` una sola vez. */
 export function initAppReadBridge(): void {
   ipcMain.on("mcp-app-read-reply", (_e, payload: { id: number; result: AppReadResult }) => {
-    const resolver = pendientes.get(payload?.id);
+    const resolver = origins.get(payload?.id) === _e.sender.id ? pendientes.get(payload?.id) : undefined;
     if (!resolver) return; // llegó tarde (timeout) o duplicada
     pendientes.delete(payload.id);
+    origins.delete(payload.id);
     resolver(payload.result);
   });
 }
@@ -50,12 +53,14 @@ function intentar(
   return new Promise<AppReadResult | null>((resolve) => {
     const timer = setTimeout(() => {
       pendientes.delete(id);
+      origins.delete(id);
       resolve(null);
     }, TIMEOUT_MS);
     pendientes.set(id, (r) => {
       clearTimeout(timer);
       resolve(r);
     });
+    origins.set(id, win.webContents.id);
     win.webContents.send("mcp-app-read", { id, request });
   });
 }
@@ -66,11 +71,12 @@ const esperar = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  * Pide contenido al renderer, con reintentos. Nunca rechaza: el fallo viaja
  * como resultado, y sólo después de agotar los intentos.
  */
-export async function readFromApp(request: AppReadRequest): Promise<AppReadResult> {
+export async function readFromApp(request: AppReadRequest, windowId?: number): Promise<AppReadResult> {
+  const selectedId = windowId ?? mcpAppWindow()?.webContents.id;
   for (let intento = 1; intento <= INTENTOS; intento++) {
     // La ventana se busca en CADA intento: puede aparecer mientras esperamos
     // (arranque de la app) o irse en el medio.
-    const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+    const win = mcpAppWindow(selectedId);
     if (!win) {
       return {
         ok: false,

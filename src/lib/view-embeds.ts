@@ -7,7 +7,34 @@
 // (A embebe B, B embebe A, …), que dejaría la navegación en profundidad atrapada.
 // =============================================================================
 
-import type { GraphData } from "@/lib/types";
+import type { GraphData } from "./types";
+import type { DesignView } from "./views-types";
+
+/** Retira sólo el vínculo, conservando el componente y todos sus demás datos. */
+export function withoutViewReferences(graph: GraphData, remove: (viewId: string) => boolean): GraphData {
+  let changed = false;
+  const node = <T extends { viewRef?: string }>(n: T): T => {
+    if (!n.viewRef || !remove(n.viewRef)) return n;
+    changed = true;
+    const { viewRef: _removed, ...rest } = n;
+    return rest as T;
+  };
+  const bigNodes = (graph.big_picture?.nodos ?? []).map(node);
+  const groups = (graph.agregados ?? []).map(a => ({ ...a, nodos: (a.nodos ?? []).map(node) }));
+  return changed ? { ...graph, big_picture: { ...graph.big_picture, nodos: bigNodes }, agregados: groups } : graph;
+}
+
+/** Borrar una pestaña desenlaza sus llamadas desde Modelo y las demás vistas. */
+export function deleteCustomView(graph: GraphData | null, views: DesignView[], id: string) {
+  if (!views.some(v => v.id === id && !v.builtin)) return { graph, views };
+  return {
+    graph: graph ? withoutViewReferences(graph, ref => ref === id) : graph,
+    views: views.filter(v => v.id !== id).map(v => {
+      const cleaned = v.graph ? withoutViewReferences(v.graph, ref => ref === id) : v.graph;
+      return cleaned === v.graph ? v : { ...v, graph: cleaned };
+    }),
+  };
+}
 
 /** Ids de vistas embebidas (viewRef) presentes en los nodos de un grafo. */
 export function collectViewRefs(graph: GraphData | null | undefined): string[] {

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import path from "node:path";
 import { EventEmitter } from "node:events";
 import {
   cancelAgentCli,
@@ -42,6 +43,7 @@ const deps = (spawn: Spawn, extra: Record<string, unknown> = {}) => ({
   spawn,
   exists: (p: string) => p.endsWith("/.local/bin/claude"),
   home: "/home/u",
+  platform: "linux" as const,
   env: { PATH: "/usr/bin", NODE_ENV: "test" } as NodeJS.ProcessEnv,
   shellLookup: async () => null,
   ...extra,
@@ -49,7 +51,7 @@ const deps = (spawn: Spawn, extra: Record<string, unknown> = {}) => ({
 
 describe("resolveCli / candidateDirs", () => {
   it("busca en el PATH y en los directorios donde se instalan los CLI que una app GUI no ve", () => {
-    const dirs = candidateDirs("/home/u", "/a:/b");
+    const dirs = candidateDirs("/home/u", "/a:/b", "linux");
     expect(dirs.slice(0, 2)).toEqual(["/a", "/b"]);
     expect(dirs).toContain("/home/u/.local/bin");
     expect(dirs).toContain("/opt/homebrew/bin");
@@ -77,7 +79,7 @@ describe("resolveCli en Windows", () => {
   it("encuentra claude.exe y no el shim .cmd ni el script sin extensión", () => {
     const win = (existe: (p: string) => boolean) =>
       resolveCli("claude", { exists: existe, home: "/home/u", env: { PATH: "", NODE_ENV: "test" } as NodeJS.ProcessEnv, platform: "win32" });
-    expect(win((p) => p.endsWith("/.local/bin/claude.exe"))).toBe("/home/u/.local/bin/claude.exe");
+    expect(win((p) => p === path.win32.join("/home/u", ".local", "bin", "claude.exe"))).toBe(path.win32.join("/home/u", ".local", "bin", "claude.exe"));
     expect(win((p) => p.endsWith("claude.cmd") || p.endsWith("/claude"))).toBeNull();
   });
 });

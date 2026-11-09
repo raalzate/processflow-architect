@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { mergeProjectedFiles } from "@/lib/collaboration/local-files";
 import type { SavedFile } from "@/lib/types";
 import {
   STORAGE_SAVED_FILES,
@@ -8,6 +9,8 @@ import {
 import { ORG_TODAS, type OrgFilter } from "@/lib/project-orgs";
 
 export function useSavedFiles(initial: SavedFile[] = []) {
+  const storageProjection = useRef<{ fileId: string; canonical: Partial<SavedFile> } | undefined>(undefined);
+  const setStorageProjection = useCallback((projection?: { fileId: string; canonical: Partial<SavedFile> }) => { storageProjection.current = projection; }, []);
   const [savedFiles, setSavedFiles] = useState<SavedFile[]>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_SAVED_FILES);
@@ -27,15 +30,20 @@ export function useSavedFiles(initial: SavedFile[] = []) {
 
   const [currentFileId, setCurrentFileId] = useState<string | null>(() => {
     try {
+      const requested = new URLSearchParams(window.location.search).get("project");
+      if (requested && savedFiles.some(file => file.id === requested)) return requested;
       return localStorage.getItem(STORAGE_LAST_FILE_ID);
     } catch {
       return null;
     }
   });
 
+  const pendingWrites = useRef(0);
   const saveFilesToStorage = useCallback((files: SavedFile[]) => {
     setSavedFiles(files);
-    try {
+    pendingWrites.current++;
+    const before = savedFiles;
+    const persist = async () => { try {
       // Safe stringify to avoid errors with circular refs or non-serializable values
       const getCircularReplacer = () => {
         const seen = new WeakSet();
@@ -48,14 +56,47 @@ export function useSavedFiles(initial: SavedFile[] = []) {
           return value;
         };
       };
-      const json = JSON.stringify(files, getCircularReplacer());
+      const raw = localStorage.getItem(STORAGE_SAVED_FILES);
+      const parsed = raw ? JSON.parse(raw) : before;
+      const persisted = Array.isArray(parsed) ? parsed : [parsed];
+      const projection = storageProjection.current;
+      const merged = mergeProjectedFiles(persisted, before, files, projection);
+      const json = JSON.stringify(merged, getCircularReplacer());
       localStorage.setItem(STORAGE_SAVED_FILES, json);
       // small debug trace to help diagnose persistence issues
       // (kept as console.debug so it doesn't clutter production logs)
       console.debug("Saved files to localStorage", { count: files.length });
     } catch (e) {
       console.error("Error saving files to localStorage", e);
-    }
+    } finally {
+      pendingWrites.current--;
+      if (!pendingWrites.current) {
+        try {
+          const latest: SavedFile[] = JSON.parse(localStorage.getItem(STORAGE_SAVED_FILES) || "[]");
+          if (Array.isArray(latest)) setSavedFiles(previous => latest.map(file => file.id === selectedRef.current ? previous.find(old => old.id === file.id) ?? file : file));
+        } catch { /* Conservar los cambios locales pendientes. */ }
+      }
+    } };
+    // El bloqueo compartido serializa leer/fusionar/escribir entre ventanas.
+    if (navigator.locks) void navigator.locks.request("processflow-project-catalog", persist).catch(console.error);
+    else void persist();
+  }, [savedFiles]);
+
+  const selectedRef = useRef(currentFileId); selectedRef.current = currentFileId;
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_SAVED_FILES || event.storageArea !== localStorage) return;
+      if (pendingWrites.current) return;
+      try {
+        const incoming: SavedFile[] = event.newValue ? JSON.parse(event.newValue) : [];
+        if (!Array.isArray(incoming)) return;
+        // El proyecto activo recibe su contenido por el CRDT. Sustituirlo desde
+        // otra ventana podría borrar un borrador aún no enviado al servicio.
+        setSavedFiles(previous => incoming.map(file => file.id === selectedRef.current ? previous.find(old => old.id === file.id) ?? file : file));
+        if (selectedRef.current && !incoming.some(file => file.id === selectedRef.current)) setCurrentFileId(null);
+      } catch { /* Conservar la copia visible si otra escritura está dañada. */ }
+    };
+    window.addEventListener("storage", onStorage); return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   // Galería de la organización elegida en el header: abrir un proyecto la cierra.
@@ -146,6 +187,7 @@ export function useSavedFiles(initial: SavedFile[] = []) {
   );
 
   return {
+    setStorageProjection,
     savedFiles,
     setSavedFiles: saveFilesToStorage,
     currentFileId,

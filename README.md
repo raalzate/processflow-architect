@@ -269,3 +269,9 @@ Apache 2.0 — ver [LICENSE](LICENSE).
 
 Desarrollado por **Raúl Andrés Alzate Gómez** ·
 [alzategomez.raul@gmail.com](mailto:alzategomez.raul@gmail.com)
+# Preview de colaboración en repositorio temporal
+
+Esta rama agrega proyectos vinculados, edición compartida, recuperación offline y
+punteros con nombre y color. Conserva la arquitectura de escritorio por capas.
+Consulta [la guía de colaboración](docs/collaboration.md) y [el relay propio](deploy/collaboration/README.md).
+No se publica ni se envían cambios al repositorio original.

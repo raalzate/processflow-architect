@@ -16,6 +16,7 @@ import type { AppReadRequest, AppReadResult } from "@/lib/mcp/app-read";
 import type { AppActionRequest, AppActionResult } from "@/lib/mcp/app-actions";
 import type { ChatEvent, CliStatus } from "@/lib/agent-cli/types";
 import type { GenerateInput, LaunchInput } from "@/lib/agent-cli/args";
+import type { CollaborationCommand, CollaborationEvent, CollaborationResult, PresenceInput } from "@/lib/collaboration/types";
 
 export interface McpServerStatus {
   running: boolean;
@@ -57,6 +58,10 @@ export interface SystemInfo {
 }
 
 export interface ElectronAPI {
+  openProjectWindow?: (fileId: string) => Promise<void>;
+  collaborationCommand?: (command: CollaborationCommand) => Promise<CollaborationResult>;
+  collaborationPresence?: (fileId: string, presence: PresenceInput) => void;
+  onCollaborationEvent?: (callback: (event: CollaborationEvent) => void) => () => void;
   generatePdf: (markdown: string) => Promise<any>;
   navigate: (callback: (event: any, ...args: any[]) => void) => void;
   onDesignerAction: (callback: (action: string) => void) => () => void;
@@ -100,6 +105,8 @@ export interface ElectronAPI {
   mcpOrgDelete?: (slug: string) => Promise<{ ok: boolean; movidos?: string[]; error?: string }>;
   onMcpImportDiagram: (
     callback: (data: {
+      id?: number;
+      expectedContext?: { projectId?: string | null; branchId?: string };
       name: string;
       content: unknown;
       /**
@@ -116,6 +123,7 @@ export interface ElectronAPI {
       target?: { project: string };
     }) => void
   ) => () => void;
+  mcpImportReply?: (id: number, ok: boolean, error?: string) => void;
 
   /**
    * Publica el estado del lienzo (proyecto activo, notación, vistas) para que la
@@ -136,7 +144,7 @@ export interface ElectronAPI {
    * contesta si ocurrió (`src/lib/mcp/app-actions.ts`).
    */
   onMcpAppAction: (
-    handler: (payload: { id: number; request: AppActionRequest }) => void
+    handler: (payload: { id: number; request: AppActionRequest; expectedContext?: { projectId?: string | null; branchId?: string } }) => void
   ) => () => void;
   mcpAppActionReply: (id: number, result: AppActionResult) => void;
 

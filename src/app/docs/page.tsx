@@ -19,6 +19,8 @@ import {
   GitCompareArrows,
   Layers,
   Boxes,
+  Users,
+  GitBranch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppCredits, BetaBadge } from "@/components/layout/AppCredits";
@@ -42,6 +44,8 @@ const SECTIONS = [
   { id: "lienzo", label: "El lienzo", icon: MousePointerSquareDashed },
   { id: "estados", label: "Estados del cambio", icon: GitCompareArrows },
   { id: "vistas", label: "Vistas", icon: Layers },
+  { id: "cooperativo", label: "Trabajo cooperativo", icon: Users },
+  { id: "ramas-versiones", label: "Ramas y versiones", icon: GitBranch },
   ...NOTATION_LIST.map((n) => ({ id: `not-${n.id}`, label: n.label, icon: Boxes })),
 ] as const;
 
@@ -185,11 +189,10 @@ export default function DocsPage() {
       <header className="bg-card border-b shadow-xs w-full p-4 z-10 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold text-foreground font-headline flex items-center gap-2">
-            <BookOpen className="w-5 h-5" /> Documentación del diseñador
+            <BookOpen className="w-5 h-5" /> Documentación de ProcessFlow
           </h1>
           <p className="text-sm text-muted-foreground">
-            El lienzo, los estados del cambio, las vistas y todos los componentes gráficos de cada
-            notación (DDD, BPMN, C4, UML).
+            Cómo diseñar, trabajar con otras personas y gestionar ramas, versiones y permisos.
           </p>
         </div>
         <Button asChild variant="outline">
@@ -203,11 +206,12 @@ export default function DocsPage() {
       <div className="flex-1 flex min-h-0">
         {/* Sidebar de navegación entre secciones (scroll-spy). */}
         <aside className="w-60 shrink-0 border-r bg-card p-4 hidden md:block overflow-y-auto">
-          <nav className="space-y-1">
+          <nav className="space-y-1" aria-label="Secciones de documentación">
             {SECTIONS.map((s) => (
               <button
                 key={s.id}
                 onClick={() => scrollToSection(s.id)}
+                aria-current={activeSection === s.id ? "location" : undefined}
                 className={cn(
                   "w-full flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-left transition-colors",
                   activeSection === s.id
@@ -381,6 +385,322 @@ export default function DocsPage() {
                     al agente</b> de IA (escribe <b>@</b> en el chat) para que analice o genere
                     artefactos sobre ellas.
                   </p>
+                </CardContent>
+              </Card>
+            </section>
+
+            <section id="cooperativo" className="scroll-mt-4" aria-labelledby="cooperativo-title">
+              <Card>
+                <CardHeader>
+                  <CardTitle id="cooperativo-title" className="flex items-center gap-2">
+                    <Users className="w-5 h-5" /> Trabajo cooperativo
+                  </CardTitle>
+                  <CardDescription>
+                    Un mismo proyecto, varias personas y cambios en vivo. Los pasos se realizan desde la pantalla.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6 text-sm text-muted-foreground">
+                  <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+                    <h3 className="font-semibold text-foreground">Para empezar</h3>
+                    <p>
+                      Una persona abre el proyecto y se convierte en <b className="text-foreground">anfitrión</b>.
+                      Las demás se unen mediante una invitación y reciben su propia copia vinculada.
+                      Todos deben utilizar una versión compatible de ProcessFlow en Windows, macOS o Linux.
+                    </p>
+                    <p>
+                      La conexión se configura automáticamente, tanto en la misma red como por Internet.
+                      La interfaz no te pide direcciones IP, puertos ni contratar un proveedor.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Crear el proyecto compartido: anfitrión</h3>
+                    <ol className="list-decimal pl-5 space-y-2">
+                      <li>Abre el proyecto que quieres compartir y pulsa <b className="text-foreground">Colaborar</b> en la cabecera.</li>
+                      <li>Escribe tu nombre en <b className="text-foreground">Nombre que ven los demás</b>.</li>
+                      <li>Pulsa <b className="text-foreground">Vincular este proyecto y ser anfitrión</b>. El panel pasará a mostrar tu rol y el estado del proyecto vinculado.</li>
+                      <li>En <b className="text-foreground">Permiso de la siguiente persona</b>, elige <b>Editar</b> o <b>Solo lectura</b>.</li>
+                      <li>Pulsa <b className="text-foreground">Generar invitación</b> y después <b className="text-foreground">Copiar invitación</b>. Compártela en privado con esa persona.</li>
+                      <li>Genera otra invitación para el siguiente compañero. Cada invitación queda asociada al dispositivo de la primera persona que la utiliza.</li>
+                    </ol>
+                    <p>Mantén la aplicación del anfitrión abierta para recibir participantes y sus cambios.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Unirse: participante invitado</h3>
+                    <ol className="list-decimal pl-5 space-y-2">
+                      <li>Abre ProcessFlow y pulsa <b className="text-foreground">Colaborar</b>.</li>
+                      <li>Escribe el nombre que quieres mostrar a tus compañeros.</li>
+                      <li>Pega la invitación completa en <b className="text-foreground">Invitación de otra persona</b>.</li>
+                      <li>Pulsa <b className="text-foreground">Vincular una copia y unirme</b> y espera a recibir la primera copia.</li>
+                      <li>Cuando aparezca el contenido y se confirme la conexión, elige una rama con permiso de edición y una vista para trabajar.</li>
+                    </ol>
+                    <p>
+                      Se crea una copia vinculada independiente; tu proyecto anterior no se sustituye.
+                      Si te invitaron con <b>Solo lectura</b>, podrás consultar el contenido, pero no publicar ediciones.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Quién está conectado y qué se ve en vivo</h3>
+                    <p>
+                      Abre <b className="text-foreground">Proyecto vinculado</b> para ver <b>Personas conectadas</b>,
+                      sus nombres, permisos y las ramas y vistas donde están. La cabecera también muestra el número de personas conectadas.
+                    </p>
+                    <p>
+                      Los punteros tienen un color y un nombre. Puedes ver selecciones, movimientos y la flecha
+                      que otro compañero está trazando. Para ver esa presencia deben coincidir en <b className="text-foreground">la misma rama y vista</b>.
+                      Si alguien está en otra rama o en otra vista, seguirá apareciendo en la lista de personas,
+                      aunque su puntero no se dibuje en tu lienzo.
+                    </p>
+                    <p>
+                      Cada persona puede navegar sin mover la pantalla de las demás.
+                      <b className="text-foreground"> Abrir proyecto en otra ventana</b> permite consultar o editar otra vista;
+                      una ventana adicional del mismo dispositivo no representa una persona nueva en el cupo.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Desconectarse y continuar otro día</h3>
+                    <p>
+                      Los cambios y el vínculo quedan guardados localmente. Si se pierde la conexión, la copia
+                      invitada reintenta automáticamente cada <b className="text-foreground">5 segundos</b>.
+                      Puedes usar <b className="text-foreground">Reconectar</b>, cuando aparezca, para solicitar un intento inmediato.
+                      No necesitas pegar de nuevo la invitación por una interrupción normal de red.
+                    </p>
+                    <p>
+                      Al reconectar se intercambian las modificaciones pendientes en ambos sentidos. Puedes cerrar
+                      y volver a abrir el mismo proyecto vinculado otro día. El anfitrión debe estar disponible;
+                      un cambio que existe únicamente en un equipo apagado llegará cuando ese equipo vuelva a conectar.
+                    </p>
+                    <p>
+                      Comprueba los avisos <b>Copia local guardada</b>, <b>Guardando cambios…</b> o
+                      <b> Esperando la primera copia</b>. Antes de recibir esa primera copia no des por completa la sincronización.
+                      Las fusiones y los cambios de permisos requieren la conexión con el anfitrión.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Redes y cupo de participantes</h3>
+                    <p>
+                      En una sala pueden convivir conexiones por red local (LAN), conexión directa (P2P) y respaldo
+                      mediante intermediario (relay). La aplicación elige una ruta por persona e intenta mejorarla
+                      sin pedirte configuración. Una red que bloquee todas las rutas puede impedir la conexión.
+                    </p>
+                    <p>
+                      El cupo base mostrado es de <b className="text-foreground">5 personas, incluido el anfitrión</b>.
+                      Para admitir más se evalúan los recursos del anfitrión, el tamaño del proyecto y las rutas de red.
+                      El cupo es una estimación, no una garantía de fluidez para cualquier equipo.
+                      Las rutas pueden combinarse; sus cupos no se suman como grupos de personas independientes.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Qué se comparte y cómo salir</h3>
+                    <p>
+                      Se comparten el modelo, las vistas, sus textos de referencia y adjuntos incluidos,
+                      las versiones y los resultados de análisis del proyecto. Tu chat, llaves de proveedores,
+                      carpetas locales, selección y zoom no se convierten en contenido compartido.
+                    </p>
+                    <p>
+                      Cerrar la aplicación conserva el vínculo para la próxima sesión.
+                      Para desvincular esa copia, abre <b className="text-foreground">Copia de recuperación y vínculo → Salir del proyecto compartido</b>:
+                      se conserva la copia visible, pero deja de sincronizarse. <b>Descargar recuperación</b> guarda
+                      contenido e historial para recuperación; importar la copia no vuelve a crear la conexión automáticamente.
+                    </p>
+                    <p>
+                      El anfitrión puede retirar el acceso desde <b className="text-foreground">Personas con acceso → Revocar</b>.
+                      Si un permiso fue revocado, pulsar Reconectar no lo concede de nuevo.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Si algo no aparece</h3>
+                    <ul className="list-disc pl-5 space-y-2">
+                      <li><b>No veo un puntero:</b> comprueba que ambos estén en la misma rama y vista y que no estés consultando una versión histórica.</li>
+                      <li><b>No puedo escribir:</b> revisa tu rol, los permisos de la rama y si aparece un aviso de Solo lectura.</li>
+                      <li><b>Aparece Sin conexión:</b> comprueba que el anfitrión tenga abierta la aplicación; espera el reintento o pulsa Reconectar.</li>
+                      <li><b>No encuentro las ramas:</b> primero vincula el proyecto; después usa el botón <b>Rama:</b> de la cabecera. Siguen disponibles aunque solo esté conectado el anfitrión.</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
+
+            <section id="ramas-versiones" className="scroll-mt-4" aria-labelledby="ramas-versiones-title">
+              <Card>
+                <CardHeader>
+                  <CardTitle id="ramas-versiones-title" className="flex items-center gap-2">
+                    <GitBranch className="w-5 h-5" /> Ramas y versiones
+                  </CardTitle>
+                  <CardDescription>
+                    Trabajar en paralelo, guardar puntos del historial y revisar qué se incorpora a Principal.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6 text-sm text-muted-foreground">
+                  <p>
+                    Las ramas de esta guía pertenecen a los diagramas de tu proyecto y se administran desde la pantalla.
+                    No necesitas comandos ni una cuenta de GitHub. Se habilitan al vincular el proyecto y siguen
+                    disponibles aunque estés solo en la sala.
+                  </p>
+                  <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full text-left">
+                      <caption className="sr-only">Conceptos de ramas y versiones</caption>
+                      <thead className="bg-muted/30 text-foreground"><tr><th scope="col" className="p-3">Nombre</th><th scope="col" className="p-3">Qué significa</th></tr></thead>
+                      <tbody className="divide-y">
+                        <tr><th scope="row" className="p-3 font-medium text-foreground">Vista</th><td className="p-3">Un diagrama del proyecto. Una rama puede contener varias vistas.</td></tr>
+                        <tr><th scope="row" className="p-3 font-medium text-foreground">Rama</th><td className="p-3">Una línea de trabajo con su propio borrador e historial. Una o varias personas pueden editarla.</td></tr>
+                        <tr><th scope="row" className="p-3 font-medium text-foreground">Autoguardado</th><td className="p-3">Conserva las modificaciones del borrador mientras trabajas.</td></tr>
+                        <tr><th scope="row" className="p-3 font-medium text-foreground">Versión o commit</th><td className="p-3">Un punto del historial con nombre, autor y fecha. Incluye las vistas que seleccionaste al guardarlo.</td></tr>
+                        <tr><th scope="row" className="p-3 font-medium text-foreground">Solicitud de fusión o pull request</th><td className="p-3">Pide revisar una versión guardada para incorporarla a Principal. Enviarla no la aprueba.</td></tr>
+                        <tr><th scope="row" className="p-3 font-medium text-foreground">Fusionar o merge</th><td className="p-3">Incorporar los cambios revisados a la rama de destino.</td></tr>
+                        <tr><th scope="row" className="p-3 font-medium text-foreground">Traer cambios o pull</th><td className="p-3">Combinar una versión de Principal con el trabajo de tu rama, revisando las diferencias.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Principal y Trabajo compartido</h3>
+                    <p>
+                      <b className="text-foreground">Principal</b> conserva lo aprobado. El anfitrión controla quién
+                      puede editarla, aprobar fusiones o restaurarla. Un invitado sin esos permisos la consulta en solo lectura.
+                    </p>
+                    <p>
+                      <b className="text-foreground">Trabajo compartido</b> es la rama inicial para editar en vivo.
+                      Si varias personas están en ella, sus cambios forman parte del mismo borrador.
+                      Para revisar aportes por separado, crea una rama por tarea o por persona.
+                      Cambiar de rama conserva el borrador de la anterior; editar una rama no modifica automáticamente las otras.
+                    </p>
+                    <p>
+                      Ejemplo: Ana trabaja en <b>Mejorar pedidos</b> y Luis en <b>Ajustar acceso</b>.
+                      Cada uno guarda una versión y la envía a revisión. Principal recibe los cambios cuando una persona autorizada los fusiona.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Crear o elegir una rama</h3>
+                    <ol className="list-decimal pl-5 space-y-2">
+                      <li>Abre el botón <b className="text-foreground">Rama:</b> en la cabecera.</li>
+                      <li>Para continuar en otra existente, selecciónala en <b className="text-foreground">Rama activa</b>.</li>
+                      <li>Para crear una, pulsa <b className="text-foreground">Nueva</b>, escribe su nombre y pulsa <b className="text-foreground">Crear rama</b>.</li>
+                    </ol>
+                    <p>
+                      La nueva rama parte de una versión guardada. Guarda primero si quieres incluir tus cambios recientes en ese punto de partida.
+                      Desde Historial también puedes elegir una versión concreta y usar <b>Crear rama desde aquí</b>.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Guardar una versión y elegir las vistas</h3>
+                    <ol className="list-decimal pl-5 space-y-2">
+                      <li>En la rama que estás editando, abre <b className="text-foreground">Rama: → Guardar versión</b>.</li>
+                      <li>Escribe un <b className="text-foreground">Nombre corto del cambio</b> que explique lo realizado; por ejemplo, <b>Aclarar el flujo de pedidos</b>.</li>
+                      <li>Abre <b className="text-foreground">Vistas incluidas</b>. Marca todas o solo las que quieras guardar. <b>Datos comunes</b> incluye nombre, referencias, artefactos y análisis.</li>
+                      <li>Pulsa <b className="text-foreground">Guardar</b>. Comprueba el aviso <b>Versión guardada</b> y consulta el resultado en Historial.</li>
+                    </ol>
+                    <p>
+                      Lo que no selecciones continúa en el borrador. Si varias personas editan la misma rama,
+                      la versión incluye las contribuciones visibles de todos en las vistas seleccionadas.
+                      <b className="text-foreground"> Guardar una versión todavía no cambia Principal.</b>
+                    </p>
+                    <p>
+                      Los vínculos a vistas que ya fueron borradas se retiran automáticamente al guardar o preparar una fusión,
+                      sin eliminar sus componentes. Si una vista vinculada todavía existe pero quedó fuera de la selección,
+                      inclúyela para conservar el subproceso completo; su enlace no se elimina como si estuviera borrada.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Enviar el trabajo al anfitrión</h3>
+                    <ol className="list-decimal pl-5 space-y-2">
+                      <li>Guarda una versión. El botón de envío permanece deshabilitado mientras solo exista la versión inicial.</li>
+                      <li>Pulsa <b className="text-foreground">Enviar al anfitrión para fusionar</b>.</li>
+                      <li>Comprueba la versión indicada y ajusta <b className="text-foreground">Vistas a enviar</b> si quieres enviar solo una parte.</li>
+                      <li>Pulsa <b className="text-foreground">Enviar solicitud</b>. El anfitrión verá el aviso y el contador de solicitudes pendientes.</li>
+                    </ol>
+                    <p>
+                      Puedes seguir trabajando. Los cambios realizados después de la versión enviada no entran en esa solicitud;
+                      guarda otra versión para proponerlos después. Si eres el anfitrión, la acción se llama
+                      <b className="text-foreground"> Fusionar rama en Principal</b> y continúa con <b>Revisar y fusionar ahora</b>.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Revisar y fusionar: anfitrión o persona autorizada</h3>
+                    <ol className="list-decimal pl-5 space-y-2">
+                      <li>Abre el aviso de solicitud o entra en <b className="text-foreground">Rama: → Solicitudes</b>.</li>
+                      <li>Elige la solicitud y pulsa <b className="text-foreground">Revisar y fusionar</b>.</li>
+                      <li>Comprueba las vistas y la comparación antes/después. Si hay un conflicto, elige qué valor conservar antes de confirmar.</li>
+                      <li>Confirma la fusión desde la revisión. También puedes cancelar o rechazar la solicitud sin incorporarla.</li>
+                    </ol>
+                    <p>
+                      Hasta confirmar, la revisión no cambia el destino. Si alguien modificó el destino durante la revisión,
+                      vuelve a compararlo antes de aplicar. Una fusión parcial no da por aprobadas las vistas restantes.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Traer Principal conservando tu trabajo</h3>
+                    <ol className="list-decimal pl-5 space-y-2">
+                      <li>Entra en tu rama de trabajo y abre <b className="text-foreground">Rama: → Traer cambios</b>.</li>
+                      <li>Revisa la última versión guardada de Principal y las vistas seleccionadas; por defecto se ofrecen todas.</li>
+                      <li>Examina la combinación propuesta. Se conservan las modificaciones compatibles de tu borrador, incluso las que aún no tienen commit.</li>
+                      <li>Resuelve las diferencias que afecten el mismo campo o la eliminación de componentes conectados, y confirma cuando el resultado sea correcto.</li>
+                    </ol>
+                    <p>
+                      Traer cambios combina el trabajo; no sustituye todo tu borrador por una copia sin revisar.
+                      Se crea un punto de recuperación antes de aplicar. Si cancelas la revisión, tu rama continúa como estaba.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Consultar el árbol, volver y restaurar</h3>
+                    <p>
+                      <b className="text-foreground">Historial</b> muestra versiones con nombre, autor, fecha y sus conexiones en el árbol.
+                      Haz clic en una versión para verla o elige un momento para consultar la última versión guardada hasta esa fecha.
+                      El historial registra versiones guardadas, no cada movimiento del ratón.
+                    </p>
+                    <p>
+                      Al mirar una versión anterior aparece <b>Solo lectura</b>. Tu borrador sigue guardado:
+                      pulsa <b className="text-foreground">Volver a mi rama actual</b> para continuar editando y ver los punteros de esa rama.
+                    </p>
+                    <p>
+                      Para recuperar contenido, selecciona la versión, revisa las vistas y usa <b className="text-foreground">Restaurar versión</b>.
+                      La restauración crea una nueva versión y conserva el historial posterior; no lo borra.
+                      También puedes usar <b>Crear rama desde aquí</b> para continuar desde ese punto en otra rama.
+                      Restaurar Principal requiere su permiso específico.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">Permisos y asistentes de IA</h3>
+                    <p>
+                      El anfitrión administra <b className="text-foreground">Rama: → Permisos</b>.
+                      Puede permitir edición en una rama a todos los editores o asignar personas concretas.
+                      Los permisos especiales de Principal son independientes: <b>aprobar fusiones</b>,
+                      <b> editar directamente</b> y <b>restaurar versiones</b>. Pueden tener vencimiento;
+                      el permiso de fusión también puede limitarse a una solicitud concreta.
+                    </p>
+                    <p>
+                      El chat del proyecto y los asistentes conectados por MCP pueden consultar ramas, trabajar en ellas,
+                      guardar versiones y ayudar a revisar cambios según sus permisos.
+                      <b className="text-foreground"> Una IA de un invitado no puede modificar Principal</b>,
+                      aunque esa persona tenga permiso para editarla manualmente. Para trabajar con IA en Principal debe actuar el anfitrión.
+                      El asistente limitado a una caja no administra el historial completo del proyecto.
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+                    <h3 className="font-semibold text-foreground">Recorrido habitual</h3>
+                    <p>
+                      Unirse → elegir o crear rama → editar → Guardar versión → Enviar solicitud →
+                      revisión del anfitrión → fusión en Principal → Traer cambios a las otras ramas.
+                    </p>
+                    <p>
+                      Usa el autoguardado para conservar el trabajo en curso, las versiones para marcar avances
+                      y las solicitudes para decidir qué se aprueba. Son tres pasos distintos.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </section>

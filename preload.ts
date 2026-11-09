@@ -2,8 +2,16 @@
 // (LiteRT-LM / WebGPU); aquí solo: navegación, PDF, portapapeles y gestión de
 // modelos .litertlm (descarga/estado/borrado, servidos por litert-model://).
 import { contextBridge, ipcRenderer } from 'electron';
+import type { CollaborationCommand, CollaborationEvent, PresenceInput } from './src/lib/collaboration/types';
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  collaborationCommand: (command: CollaborationCommand) => ipcRenderer.invoke('collaboration-command', command),
+  collaborationPresence: (fileId: string, presence: PresenceInput) => ipcRenderer.send('collaboration-presence', fileId, presence),
+  onCollaborationEvent: (callback: (event: CollaborationEvent) => void) => {
+    const listener = (_event: unknown, value: CollaborationEvent) => callback(value);
+    ipcRenderer.on('collaboration-event', listener);
+    return () => ipcRenderer.removeListener('collaboration-event', listener);
+  },
   generatePdf: (markdown: string) => ipcRenderer.invoke('convert-md-to-pdf', markdown),
   navigate: (callback: any) => ipcRenderer.on('navigate', callback),
   onDesignerAction: (callback: (action: string) => void) => {
@@ -55,6 +63,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('mcp-server-status'),
   /** Abre el menú de la app desde la barra de título propia. */
   windowMenuPopup: (x?: number, y?: number): void => ipcRenderer.send('window-menu-popup', x, y),
+  openProjectWindow: (fileId: string): Promise<void> => ipcRenderer.invoke('project-window-open', fileId),
   mcpOrgsStatus: (): Promise<{ pinned: string | null; orgs: { slug: string; nombre: string }[] }> =>
     ipcRenderer.invoke('mcp-orgs-status'),
   mcpOrgCreate: (nombre: string): Promise<{ ok: boolean; slug?: string; error?: string }> =>
@@ -65,6 +74,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('mcp-org-delete', slug),
   onMcpImportDiagram: (
     callback: (data: {
+      id?: number;
+      expectedContext?: { projectId?: string | null; branchId?: string };
       name: string;
       content: any;
       view?: { notation?: string; replace?: boolean };
@@ -76,13 +87,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('mcp-import-diagram', listener);
     return () => ipcRenderer.removeListener('mcp-import-diagram', listener);
   },
+  mcpImportReply: (id: number, ok: boolean, error?: string) => ipcRenderer.send('mcp-import-reply', { id, ok, error }),
 
   // Lectura bajo demanda: el main pide contenido (artefactos, vistas, otro
   // proyecto) y el renderer contesta por el canal de respuesta con el mismo id.
   // Acciones sobre el proyecto pedidas por MCP (borrar/renombrar una vista): el
   // main pide, el renderer aplica y contesta por el canal de respuesta.
   onMcpAppAction: (
-    handler: (payload: { id: number; request: any }) => void
+    handler: (payload: { id: number; request: any; expectedContext?: { projectId?: string | null; branchId?: string } }) => void
   ) => {
     const listener = (_e: any, payload: any) => handler(payload);
     ipcRenderer.on('mcp-app-action', listener);

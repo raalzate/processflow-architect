@@ -26,6 +26,8 @@ import {
   type PersistedViews,
   type VinculoVistas,
 } from "./views-types";
+import type { SharedProject } from "./collaboration/types";
+export type SharedBoardExtras = Pick<SharedProject, "references" | "agent" | "analysis">;
 
 /** Marca de formato del archivo del tablero. Versionada para poder migrar. */
 export const BOARD_FORMAT = "processflow-board/v1";
@@ -35,10 +37,12 @@ export interface BoardFile {
   formato: string;
   proyecto: GraphData;
   vistas: PersistedViews;
+  compartido?: SharedBoardExtras;
 }
 
 /** Resultado de leer un archivo importado, venga en formato tablero o viejo. */
 export interface ParsedBoard {
+  compartido?: SharedBoardExtras;
   /** Nombre propuesto para el proyecto. */
   name: string;
   /** GraphData de la vista «Modelo». */
@@ -106,8 +110,22 @@ export function sanitizeVinculos(raw: unknown): VinculoVistas[] {
 }
 
 /** Empaqueta el tablero completo para exportar: proyecto + vistas saneadas. */
-export function packBoard(proyecto: GraphData, vistas: PersistedViews): BoardFile {
-  return { formato: BOARD_FORMAT, proyecto, vistas: sanitizeViews(vistas) };
+export function packBoard(proyecto: GraphData, vistas: PersistedViews, compartido?: SharedBoardExtras): BoardFile {
+  return { formato: BOARD_FORMAT, proyecto, vistas: sanitizeViews(vistas), ...(compartido ? { compartido: sanitizeSharedExtras(compartido) } : {}) };
+}
+
+export function sanitizeSharedExtras(raw: unknown): SharedBoardExtras | undefined {
+  if (!esObjeto(raw)) return undefined;
+  const agent = esObjeto(raw.agent) ? raw.agent : {};
+  const analysis = esObjeto(raw.analysis) ? raw.analysis : {};
+  const list = (v: unknown) => Array.isArray(v) ? v.filter(esObjeto).filter(item => typeof item.id === "string") : [];
+  const references = list(raw.references).filter(doc => typeof doc.name === "string" && typeof doc.text === "string").map(doc => ({
+    id: doc.id, name: doc.name, text: doc.text, kind: doc.kind === "file" ? "file" : "text", chars: (doc.text as string).length, addedAt: typeof doc.addedAt === "string" ? doc.addedAt : "",
+  }));
+  return { references, agent: { versions: list(agent.versions), lineages: list(agent.lineages), artifacts: list(agent.artifacts) }, analysis: {
+    ...(analysis.driversResult ? { driversResult: analysis.driversResult } : {}), ...(analysis.constraintsResult ? { constraintsResult: analysis.constraintsResult } : {}),
+    ...(analysis.roadmapResult ? { roadmapResult: analysis.roadmapResult } : {}), ...(analysis.proposalResult ? { proposalResult: analysis.proposalResult } : {}),
+  } } as unknown as SharedBoardExtras;
 }
 
 /** ¿El objeto parseado es un archivo de tablero (y no un GraphData plano)? */
@@ -131,7 +149,7 @@ export function parseBoardFile(raw: string, fileName = ""): ParsedBoard {
   }
   if (esTablero(data)) {
     const { name, content } = validateGraphData(data.proyecto, fileName);
-    return { name, content, vistas: sanitizeViews(data.vistas) };
+    return { name, content, vistas: sanitizeViews(data.vistas), ...(data.compartido ? { compartido: sanitizeSharedExtras(data.compartido) } : {}) };
   }
   // Formato viejo: un GraphData plano (una sola vista).
   const { name, content } = validateGraphData(data, fileName);

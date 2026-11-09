@@ -135,6 +135,12 @@ export function parseHookCommand(comando) {
  * interpolar datos del config en una línea de comandos.
  */
 export function resolverEjecutable(cmd) {
+  if (process.platform === "win32" && cmd === "bash") {
+    for (const root of [process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter(Boolean)) {
+      const gitBash = path.join(root, "Git", "bin", "bash.exe");
+      if (fs.existsSync(gitBash)) return gitBash;
+    }
+  }
   if (process.platform !== "win32" || path.extname(cmd)) return cmd;
   const exts = (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);
   const dirs = [REPO_ROOT, ...(process.env.PATH ?? "").split(path.delimiter).filter(Boolean)];
@@ -145,4 +151,14 @@ export function resolverEjecutable(cmd) {
     }
   }
   return cmd; // que falle con su propio mensaje: adivinar acá sería peor
+}
+
+/** Run npm's JavaScript CLI with Node: Windows cannot spawn .cmd without a shell. */
+export function resolverComando(argv) {
+  if (process.platform === "win32" && ["npm", "npx"].includes(argv[0])) {
+    const name = argv[0] === "npm" ? "npm-cli.js" : "npx-cli.js";
+    const cli = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", name);
+    if (fs.existsSync(cli)) return [process.execPath, cli, ...argv.slice(1)];
+  }
+  return [resolverEjecutable(argv[0]), ...argv.slice(1)];
 }

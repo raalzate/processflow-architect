@@ -15,6 +15,7 @@
 import type { NotationId } from "../notations";
 import type { GraphData, SavedFile } from "../types";
 import type { DesignView } from "../views-types";
+import type { AiBranchContext } from "./branch-policy";
 
 export interface AppViewInfo {
   id: string;
@@ -45,6 +46,8 @@ export interface AppFocus {
 }
 
 export interface AppState {
+  projectId?: string | null;
+  collaboration?: AiBranchContext;
   /** Proyecto ACTIVO en el lienzo (null = la app está en la pantalla de bienvenida). */
   projectName: string | null;
   /** Elemento con la ficha abierta, o null si no hay ninguna. */
@@ -92,6 +95,8 @@ export function countGraph(graph: GraphData | null | undefined): AppState["count
 
 /** Arma el retrato desde lo que el renderer ya tiene en memoria. */
 export function describeAppState(input: {
+  projectId?: string | null;
+  collaboration?: AiBranchContext;
   graph: GraphData | null;
   views: DesignView[];
   savedFiles?: Pick<SavedFile, "name" | "orgId">[];
@@ -113,6 +118,8 @@ export function describeAppState(input: {
   const visibles =
     org === undefined ? savedFiles : savedFiles.filter((f) => (f.orgId ?? null) === org);
   return {
+    ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+    ...(input.collaboration ? { collaboration: input.collaboration } : {}),
     projectName: graph?.nombre_proyecto ?? null,
     focus: focus ?? null,
     notation: graph?.notation as NotationId | undefined,
@@ -170,6 +177,11 @@ export function formatAppState(state: AppState | null, extra: { mcpOrg?: string 
 
   const custom = state.views.filter((v) => !v.builtin);
   const lines: string[] = [];
+  if (state.collaboration) {
+    const c = state.collaboration;
+    lines.push(`Rama activa: "${c.branchName ?? c.branchId}". Dispositivo: ${c.owner ? "anfitrión" : c.role === "viewer" ? "lectura" : "huésped editor"}.`);
+    lines.push(c.branchId === "main" && !c.owner ? "La IA de este dispositivo no puede modificar Principal. Selecciona una rama de trabajo autorizada." : c.canEdit && !c.preview ? "La IA puede editar esta rama usando las herramientas MCP." : "Rama de solo lectura o versión histórica: no publicar modificaciones.");
+  }
 
   // Dos organizaciones que antes no se veían (#534): la que mira el humano y la que
   // usa el MCP para crear. Si difieren, lo creado no aparece en la pantalla del humano.

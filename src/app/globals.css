@@ -356,6 +356,11 @@ body[data-titlebar="on"] .fixed.inset-y-0 {
   scrollbar-color: hsl(var(--border)) transparent;
 }
 
+/* Radix oculta la barra del selector por defecto. Permitir arrastrarla. */
+[data-radix-select-viewport] {
+  scrollbar-width: thin !important;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

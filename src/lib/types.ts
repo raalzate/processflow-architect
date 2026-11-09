@@ -163,6 +163,8 @@ export interface GraphNode extends SimulationNodeDatum {
 }
 
 export interface GraphLink extends SimulationLinkDatum<GraphNode> {
+  /** Identidad persistente; opcional al leer tableros anteriores a colaboración. */
+  id?: string;
   fuente: string;
   destino: string;
   descripcion?: string;
@@ -223,6 +225,8 @@ export interface GraphLink extends SimulationLinkDatum<GraphNode> {
 }
 
 export interface Agregado {
+  /** Renombrar el contenedor conserva esta identidad. */
+  id?: string;
   nombre_agregado: string;
   entidad_raiz: string;
   descripcion: string;

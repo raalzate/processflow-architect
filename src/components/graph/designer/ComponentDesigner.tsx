@@ -1,4 +1,7 @@
 "use client";
+import { useCollaboration } from "@/context/CollaborationContext";
+import { applyRecordDelta } from "@/lib/collaboration/canvas-merge";
+import { PresenceLayer } from "@/components/collaboration/PresenceLayer";
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
@@ -207,6 +210,7 @@ import {
 } from "@/lib/element-docs";
 import { ACCEPTED_REFERENCE_TYPES, extractFileText } from "@/lib/pdf-text";
 import { applyGraphFilters, hasActiveFilters } from "@/lib/graph-filters";
+import { DownloadViewsMenuItem } from "@/components/views/ViewsArchive";
 import { useViews } from "@/context/ViewsContext";
 import { useReference } from "@/context/ReferenceContext";
 import { readMcpPrefs } from "@/lib/mcp-settings";
@@ -1509,6 +1513,7 @@ const EditNodeDialog: React.FC<{
       const adoptado = original && borrador ? adoptarExternos(original, borrador, node) : null;
       if (adoptado) {
         originalRef.current = adoptado.original;
+        draftRef.current = adoptado.borrador;
         setDraft(adoptado.borrador);
       }
       return;
@@ -3042,7 +3047,11 @@ export const ComponentDesigner: React.FC<{
 
   // Modo vista: editar el grafo de una vista custom; si no, el proyecto activo.
   const isViewMode = value !== undefined;
-  const sourceKey = isViewMode ? `view:${sourceId ?? "?"}` : currentFileId;
+  const collaboration = useCollaboration();
+  const sourceKey = `${isViewMode ? `view:${sourceId ?? "?"}` : currentFileId}:${collaboration?.branchId ?? "shared"}:${collaboration?.previewCommitId ?? "live"}`;
+  const sharedProject = !!collaboration?.status;
+  const readOnlyRef = useRef(false);
+  readOnlyRef.current = !!collaboration?.readOnly;
   const sourceContent: GraphData | undefined = isViewMode
     ? value
     : savedFiles.find((f) => f.id === currentFileId)?.content;
@@ -3208,6 +3217,7 @@ export const ComponentDesigner: React.FC<{
   // Conexión por arrastre: nodo origen + posición actual del cursor (línea guía).
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const [connectCursor, setConnectCursor] = useState<{ x: number; y: number } | null>(null);
+  const [connectAnchor, setConnectAnchor] = useState<{ x: number; y: number } | null>(null);
   // Arrastre en curso: mover (posiblemente varios nodos a la vez, guardando su
   // posición inicial) o redimensionar un contenedor concreto.
   const [draggingInfo, setDraggingInfo] = useState<
@@ -3401,6 +3411,8 @@ export const ComponentDesigner: React.FC<{
   const nodesRef = useRef(nodes);
   const linksRef = useRef(links);
   const connectFromRef = useRef<string | null>(null);
+  const connectAnchorRef = useRef<{ x: number; y: number } | null>(null);
+  const connectDraftIdRef = useRef<string | null>(null);
   const selectedIdsRef = useRef(selectedIds);
   // ¿Hay un inspector (nodo o enlace) abierto? Lo leen los handlers de clic para
   // hacer que la edición SIGA a la selección sin recrearse en cada cambio.
@@ -3517,6 +3529,7 @@ export const ComponentDesigner: React.FC<{
 
   const updateNodes = useCallback(
     (updater: (prev: Map<string, DesignerNode>) => Map<string, DesignerNode>) => {
+      if (readOnlyRef.current) return;
       const next = updater(new Map(nodesRef.current));
       setNodes(next);
       pushSnapshot(next, linksRef.current);
@@ -3549,6 +3562,7 @@ export const ComponentDesigner: React.FC<{
   );
   const updateLinks = useCallback(
     (updater: (prev: Map<string, DesignerLink>) => Map<string, DesignerLink>) => {
+      if (readOnlyRef.current) return;
       const next = updater(new Map(linksRef.current));
       setLinks(next);
       pushSnapshot(nodesRef.current, next);
@@ -3565,10 +3579,12 @@ export const ComponentDesigner: React.FC<{
   }, []);
 
   const doUndo = useCallback(() => {
+    if (readOnlyRef.current) return;
     const h = historyRef.current;
     if (h.index > 0) applySnapshot(h.index - 1);
   }, [applySnapshot]);
   const doRedo = useCallback(() => {
+    if (readOnlyRef.current) return;
     const h = historyRef.current;
     if (h.index < h.snapshots.length - 1) applySnapshot(h.index + 1);
   }, [applySnapshot]);
@@ -3703,6 +3719,7 @@ export const ComponentDesigner: React.FC<{
   }, [pushSnapshot, clearSelection, esLineaDeVida]);
 
   const cancelOrDeselect = useCallback(() => {
+    connectFromRef.current = null; connectAnchorRef.current = null; connectDraftIdRef.current = null; setConnectAnchor(null);
     setConnectFrom(null);
     setConnectCursor(null);
     setMarquee(null);
@@ -3878,6 +3895,25 @@ export const ComponentDesigner: React.FC<{
     // Se re-siembra si cambió la fuente O si el contenido entrante es uno que este
     // lienzo NO produjo (reemplazo externo). La decisión es pura y está probada.
     const mismaFuente = loadedFileId.current === sourceKey;
+    if (mismaFuente && sharedProject && sourceContent !== lastEmittedRef.current && sourceContent !== seededContentRef.current) {
+      const previous = lastEmittedRef.current ?? seededContentRef.current;
+      if (previous) {
+        const before = graphDataToCanvas(previous), after = graphDataToCanvas(sourceContent);
+        const nextNodes = applyRecordDelta(nodesRef.current, before.nodes, after.nodes, true);
+        const nextLinks = applyRecordDelta(linksRef.current, before.links, after.links, true);
+        for (const snapshot of historyRef.current.snapshots) {
+          snapshot.nodes = [...applyRecordDelta(new Map(snapshot.nodes), before.nodes, after.nodes)];
+          snapshot.links = [...applyRecordDelta(new Map(snapshot.links), before.links, after.links)];
+        }
+        nodesRef.current = nextNodes; linksRef.current = nextLinks;
+        setNodes(nextNodes); setLinks(nextLinks);
+        seededContentRef.current = sourceContent; lastEmittedRef.current = null;
+        skipFirstSave.current = true; setMeta(metaFromContent(sourceContent));
+        setSaveState("saved");
+        // Keep viewport, selection, active text drafts and local undo position.
+        return;
+      }
+    }
     if (
       !debeResembrar({
         loadedKey: loadedFileId.current,
@@ -3923,7 +3959,7 @@ export const ComponentDesigner: React.FC<{
       }
     }
     // Lienzo nuevo y vacío: sembrar un contenedor inicial de la notación activa.
-    if (n.size === 0 && seedContainerType) {
+    if (n.size === 0 && seedContainerType && !sharedProject && !collaboration?.busy) {
       const seedName = `${seedContainerType} Principal`;
       const id = `agg-${seedName}`;
       n.set(id, {
@@ -3947,7 +3983,7 @@ export const ComponentDesigner: React.FC<{
       index: 0,
     };
     clearSelection();
-  }, [sourceKey, sourceContent, isViewMode]);
+  }, [sourceKey, sourceContent, isViewMode, sharedProject]);
 
   // Encuadra el contenido al ABRIR el documento/vista: sin esto un modelo
   // importado o recién sembrado aparece diminuto en una esquina del lienzo.
@@ -4072,7 +4108,7 @@ export const ComponentDesigner: React.FC<{
         cancelOrDeselect();
         return;
       }
-      if (typing) return;
+      if (typing || readOnlyRef.current) return;
       // El tirador de ancho de la paleta ya mueve con las flechas cuando tiene
       // el foco. Este listener vive en `window`, así que sin esta guarda una
       // flecha cambiaba el ancho Y movía las cajas de un saque.
@@ -4159,6 +4195,31 @@ export const ComponentDesigner: React.FC<{
     pt.y = clientY;
     return pt.matrixTransform(svg.getScreenCTM()!.inverse());
   };
+  const presencePoint = useRef<{ x: number; y: number } | null>(null);
+  const presenceSent = useRef(0);
+  const presenceNodes = useMemo(() => new Map([...nodes].map(([id, node]) => {
+    const { w, h } = nodeBox(node, notationId);
+    return [id, { x: node.x, y: node.y, width: w, height: h }] as const;
+  })), [nodes, notationId]);
+  const presenceSender = collaboration?.publishPresence;
+  const presenceState = useRef({ selectedIds, draggingInfo, connectFrom, connectCursor, connectAnchor, viewId: isViewMode ? sourceId ?? "design" : "design" });
+  presenceState.current = { selectedIds, draggingInfo, connectFrom, connectCursor, connectAnchor, viewId: isViewMode ? sourceId ?? "design" : "design" };
+  const sendCanvasPresence = useCallback(() => {
+    const state = presenceState.current;
+    presenceSender?.({ viewId: state.viewId, pointer: presencePoint.current, selectedIds: [...state.selectedIds],
+      connecting: state.connectFrom && state.connectCursor ? { sourceId: state.connectFrom, ...state.connectCursor, ...(state.connectAnchor ? { anchor: state.connectAnchor } : {}), ...(connectDraftIdRef.current ? { id: connectDraftIdRef.current } : {}) } : undefined,
+      moving: state.draggingInfo ? [...state.selectedIds].slice(0, 2).flatMap(id => {
+        const node = nodesRef.current.get(id);
+        if (!node) return [];
+        const { w, h } = nodeBox(node, notationIdRef.current);
+        return [{ id, x: node.x, y: node.y, width: w, height: h }];
+      }) : [] });
+  }, [presenceSender]);
+  useEffect(() => { sendCanvasPresence(); }, [connectFrom, draggingInfo, sendCanvasPresence]);
+  useEffect(() => {
+    sendCanvasPresence(); const timer = setInterval(sendCanvasPresence, 2000);
+    return () => { clearInterval(timer); presenceSender?.({ viewId: presenceState.current.viewId, pointer: null, selectedIds: [], moving: [] }); };
+  }, [sendCanvasPresence, presenceSender, sourceKey]);
 
   /** Crea el elemento soltado desde la paleta en `p` (dentro del contenedor bajo el punto). */
   const soltarNuevo = useCallback(
@@ -4484,6 +4545,7 @@ export const ComponentDesigner: React.FC<{
   const handleCanvasMouseUp = useCallback(() => {
     // Soltar sobre lienzo vacío durante una conexión → cancelar (sin enlace).
     if (connectFromRef.current) {
+      connectFromRef.current = null; connectAnchorRef.current = null; connectDraftIdRef.current = null; setConnectAnchor(null);
       setConnectFrom(null);
       setConnectCursor(null);
       return;
@@ -4774,21 +4836,35 @@ export const ComponentDesigner: React.FC<{
       e.preventDefault();
       const node = nodesRef.current.get(nodeId);
       if (!node || !svgRef.current) return;
-      const p = toSvgPoint(e.clientX, e.clientY);
+      let p = toSvgPoint(e.clientX, e.clientY);
+      const port = e.currentTarget.querySelector("circle");
+      if (port instanceof SVGCircleElement) {
+        const point = svgRef.current.createSVGPoint(); point.x = port.cx.baseVal.value; point.y = port.cy.baseVal.value;
+        const screen = point.matrixTransform(port.getScreenCTM()!); p = toSvgPoint(screen.x, screen.y);
+      }
+      const { w, h } = nodeBox(node, notationId);
+      const anchor = { x: Math.min(1, Math.max(0, (p.x - node.x) / w)), y: Math.min(1, Math.max(0, (p.y - node.y) / h)) };
+      connectFromRef.current = nodeId; connectAnchorRef.current = anchor; setConnectAnchor(anchor);
+      connectDraftIdRef.current = `link-${crypto.randomUUID()}`;
       clearSelection();
       setConnectFrom(nodeId);
       setConnectCursor({ x: p.x, y: p.y });
     },
-    [clearSelection]
+    [clearSelection, notationId]
   );
 
   const finishConnect = useCallback(
     (targetId: string) => {
       const from = connectFromRef.current;
+      const sourceAnchor = connectAnchorRef.current ?? undefined;
+      const draftId = connectDraftIdRef.current; connectDraftIdRef.current = null;
+      // Consumir la sesión inmediatamente: dos mouseup antes del siguiente
+      // render no pueden crear dos aristas por una sola acción.
+      connectFromRef.current = null; connectAnchorRef.current = null; setConnectAnchor(null);
       setConnectFrom(null);
       setConnectCursor(null);
       if (!from) return;
-      const id = `link-${from}-${targetId}-${crypto.randomUUID()}`;
+      const id = draftId ?? `link-${from}-${targetId}-${crypto.randomUUID()}`;
       // Una auto-llamada (mismo participante) es válida en secuencia: es cuando
       // un objeto se llama a sí mismo. En el resto de las notaciones sigue sin
       // tener sentido, así que ahí se descarta como antes.
@@ -4808,6 +4884,7 @@ export const ComponentDesigner: React.FC<{
         n.set(id, {
           id,
           sourceId: from,
+          sourceAnchor,
           targetId,
           descripcion: "interactúa",
           routing: newLinkRouting,
@@ -5591,24 +5668,25 @@ export const ComponentDesigner: React.FC<{
               </DropdownMenuSub>
 
               <DropdownMenuSub>
-                <DropdownMenuSubTrigger disabled={nodes.size === 0}>
+                <DropdownMenuSubTrigger>
                   <Download className="mr-2 h-4 w-4" /> Exportar
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-56">
-                  <DropdownMenuItem onClick={handleExportSvg}>
+                  <DropdownMenuItem disabled={nodes.size === 0} onClick={handleExportSvg}>
                     SVG · vectorial (calidad infinita)
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExportPng}>
+                  <DropdownMenuItem disabled={nodes.size === 0} onClick={handleExportPng}>
                     PNG · imagen (para pegar en documentos)
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {/* Página autocontenida (spec 024): un preset por destino. */}
                   {PRESET_LIST.map((p) => (
-                    <DropdownMenuItem key={p.id} onClick={() => handleExportHtml(p.id)} title={p.descripcion}>
+                    <DropdownMenuItem key={p.id} disabled={nodes.size === 0} onClick={() => handleExportHtml(p.id)} title={p.descripcion}>
                       HTML · {p.label.toLowerCase()} (página que se abre sola)
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuSeparator />
+                  <DownloadViewsMenuItem />
                   {/* Spec 027 · US7: el proyecto como grafo de conocimiento estándar. */}
                   <DropdownMenuItem onClick={() => handleExportKnowledge("jsonld", false)} title="Reglamento y lo dibujado, para editores de ontologías y almacenes de grafos">
                     Conocimiento (JSON-LD)
@@ -5775,10 +5853,18 @@ export const ComponentDesigner: React.FC<{
           className="absolute inset-0 overflow-auto bg-canvas"
           onScroll={syncViewport}
           onDragOver={handleDragOver}
-          onDrop={handleDrop}
+          onDrop={event => { if (!readOnlyRef.current) handleDrop(event); else event.preventDefault(); }}
+          onMouseDownCapture={event => { if (readOnlyRef.current) event.stopPropagation(); }}
+          onDoubleClickCapture={event => { if (readOnlyRef.current) event.stopPropagation(); }}
           onMouseDown={handleCanvasMouseDown}
           onContextMenu={(e) => openContextMenu(e, { kind: "canvas" })}
           onMouseMove={handleCanvasMouseMove}
+          onPointerMove={event => {
+            if (!svgRef.current || !sharedProject) return;
+            const point = toSvgPoint(event.clientX, event.clientY); presencePoint.current = { x: point.x, y: point.y };
+            if (performance.now() - presenceSent.current >= 40) { presenceSent.current = performance.now(); sendCanvasPresence(); }
+          }}
+          onPointerLeave={() => { presencePoint.current = null; sendCanvasPresence(); }}
           onMouseUp={handleCanvasMouseUp}
           onMouseLeave={handleCanvasMouseUp}
         >
@@ -5996,10 +6082,11 @@ export const ComponentDesigner: React.FC<{
                 const s = nodes.get(connectFrom);
                 if (!s) return null;
                 const { w: sw, h: sh } = nodeBox(s, notationId);
-                const sx = s.x + sw / 2;
-                const sy = s.y + sh / 2;
+                const sx = s.x + sw * (connectAnchor?.x ?? .5);
+                const sy = s.y + sh * (connectAnchor?.y ?? .5);
                 return (
                   <path
+                    data-connection-draft=""
                     d={`M${sx},${sy} L${connectCursor.x},${connectCursor.y}`}
                     className="stroke-blue-500"
                     strokeWidth={2}
@@ -6128,6 +6215,7 @@ export const ComponentDesigner: React.FC<{
                 pointerEvents="none"
               />
             )}
+            {!capturing && collaboration ? <PresenceLayer peers={collaboration.peers} viewId={isViewMode ? sourceId ?? "design" : "design"} nodes={presenceNodes} links={links} zoom={zoom} /> : null}
           </svg>
           </SkinContext.Provider>
           </div>

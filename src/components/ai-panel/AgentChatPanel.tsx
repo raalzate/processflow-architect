@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
 import { accion } from "@/lib/action-labels";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Accordion,
@@ -871,9 +872,67 @@ export function AgentChatPanel() {
           onChange={onPickFiles}
         />
         <div className="relative rounded-2xl border border-input bg-background shadow-xs transition-shadow focus-within:border-primary focus-within:ring-1 focus-within:ring-primary focus-within:ring-offset-0">
-          {/* Menú de mención "@" → incluir vistas como contexto */}
-          {mentionQuery !== null && (
-            <div className="absolute bottom-full left-2 z-30 mb-1 max-h-56 w-64 overflow-auto rounded-lg border bg-popover p-1 shadow-lg">
+          {/* Pedido explícito: el chip dice qué va a generar y se saca con la X. */}
+          {requestedKind && (
+            <div className="flex flex-wrap items-center gap-1 px-2 pt-2">
+              <Badge
+                variant="outline"
+                className="gap-1 border-primary/50 bg-primary/10 text-2xs text-primary"
+              >
+                {React.createElement(iconForArtifactKind(requestedKind), {
+                  className: "h-3 w-3",
+                })}
+                Generar: {getDefinition(requestedKind).label}
+                <button
+                  onClick={() => setRequestedKind(null)}
+                  className="ml-1 opacity-70 hover:opacity-100"
+                  title="Cancelar el pedido"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+              <span className="text-2xs text-muted-foreground">
+                el texto es opcional: son instrucciones extra
+              </span>
+            </div>
+          )}
+          <Popover open={mentionQuery !== null} onOpenChange={open => !open && setMentionQuery(null)}>
+            <PopoverAnchor asChild>
+              <Textarea
+                value={input}
+                onChange={(e) => onInputChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (mentionQuery !== null && mentionMatches.length && (e.key === "Enter" || e.key === "Tab")) {
+                    e.preventDefault();
+                    applyMention(mentionMatches[0].id);
+                    return;
+                  }
+                  if (mentionQuery !== null && e.key === "Escape") {
+                    setMentionQuery(null);
+                    return;
+                  }
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    submit();
+                  }
+                }}
+                placeholder={
+                  perfil.escribe
+                    ? `Pedile que construya: «${perfil.bienvenida.ejemplos[0]}»`
+                    : "Pregunta, conversa o pide que diseñe/analice…  (@ para incluir una vista · + para pedir un artefacto)"
+                }
+                className="min-h-[52px] max-h-36 w-full resize-none border-0 bg-transparent px-3 py-2.5 text-sm shadow-none outline-hidden focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0"
+                disabled={busy}
+              />
+            </PopoverAnchor>
+            <PopoverContent
+              aria-label="Incluir vista en el contexto"
+              side="top"
+              align="start"
+              className="w-64 p-1"
+              onOpenAutoFocus={e => e.preventDefault()}
+              onCloseAutoFocus={e => e.preventDefault()}
+            >
               <div className="px-2 py-1 text-2xs text-muted-foreground">Incluir vista en el contexto</div>
               {mentionMatches.length === 0 ? (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">Sin vistas que coincidan.</div>
@@ -899,58 +958,8 @@ export function AgentChatPanel() {
                   );
                 })
               )}
-            </div>
-          )}
-          {/* Pedido explícito: el chip dice qué va a generar y se saca con la X. */}
-          {requestedKind && (
-            <div className="flex flex-wrap items-center gap-1 px-2 pt-2">
-              <Badge
-                variant="outline"
-                className="gap-1 border-primary/50 bg-primary/10 text-2xs text-primary"
-              >
-                {React.createElement(iconForArtifactKind(requestedKind), {
-                  className: "h-3 w-3",
-                })}
-                Generar: {getDefinition(requestedKind).label}
-                <button
-                  onClick={() => setRequestedKind(null)}
-                  className="ml-1 opacity-70 hover:opacity-100"
-                  title="Cancelar el pedido"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-              <span className="text-2xs text-muted-foreground">
-                el texto es opcional: son instrucciones extra
-              </span>
-            </div>
-          )}
-          <Textarea
-            value={input}
-            onChange={(e) => onInputChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (mentionQuery !== null && mentionMatches.length && (e.key === "Enter" || e.key === "Tab")) {
-                e.preventDefault();
-                applyMention(mentionMatches[0].id);
-                return;
-              }
-              if (mentionQuery !== null && e.key === "Escape") {
-                setMentionQuery(null);
-                return;
-              }
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            placeholder={
-              perfil.escribe
-                ? `Pedile que construya: «${perfil.bienvenida.ejemplos[0]}»`
-                : "Pregunta, conversa o pide que diseñe/analice…  (@ para incluir una vista · + para pedir un artefacto)"
-            }
-            className="min-h-[52px] max-h-36 w-full resize-none border-0 bg-transparent px-3 py-2.5 text-sm shadow-none outline-hidden focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0"
-            disabled={busy}
-          />
+            </PopoverContent>
+          </Popover>
 
           {/* Barra inferior: pedir artefacto · adjuntar · enviar */}
           <div className="flex items-center gap-1 px-2 pb-2">
@@ -969,7 +978,7 @@ export function AgentChatPanel() {
               </DropdownMenuTrigger>
               {/* Sólo documentos: los diagramas se diseñan en el lienzo o llegan
                   por MCP, no hacía falta pedirlos desde acá. */}
-              <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
+              <DropdownMenuContent align="start" className="w-72">
                 <DropdownMenuLabel className="flex items-center gap-2">
                   <FileText className="h-3.5 w-3.5" /> Documentos
                 </DropdownMenuLabel>

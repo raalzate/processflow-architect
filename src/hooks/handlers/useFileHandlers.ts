@@ -2,7 +2,9 @@ import { useCallback } from "react";
 import type { SavedFile, GraphData, ArchitectureDriversOutput, ConstraintsRisksOutput, RoadmapOutput, TechnicalElementsOutput } from "@/lib/types";
 import { emptyGraphData } from "@/components/graph/designer/serialize";
 import { normalizeImportedGraphData } from "@/lib/import-diagram";
-import { packBoard } from "@/lib/board-file";
+import { packBoard, type SharedBoardExtras } from "@/lib/board-file";
+import { readStoredReferences, writeStoredReferences } from "@/context/ReferenceContext";
+import { readStoredSharedArtifacts, writeStoredSharedArtifacts } from "@/context/AgentContext";
 import { emptyPersistedViews, type PersistedViews } from "@/lib/views-types";
 import { readStoredViews, writeStoredViews } from "@/context/ViewsContext";
 import { normalizeProjectName, renameSavedFile } from "@/lib/project-rename";
@@ -10,6 +12,7 @@ import type { NotationId } from "@/lib/notations";
 import { orgForNewProject, type OrgFilter } from "@/lib/project-orgs";
 
 type FileHandlersDeps = {
+    sharedStorageScope?: string;
     savedFiles: SavedFile[];
     setSavedFiles: (files: SavedFile[]) => void;
     currentFileId: string | null;
@@ -29,6 +32,7 @@ type FileHandlersDeps = {
 
 export function useFileHandlers(deps: FileHandlersDeps) {
     const {
+        sharedStorageScope,
         savedFiles,
         setSavedFiles,
         currentFileId,
@@ -79,7 +83,7 @@ export function useFileHandlers(deps: FileHandlersDeps) {
     // vacío, como antes.
     // `orgId` lo pasa el MCP (#534): el proyecto nace en su organización. Asignarla
     // después con setFileOrg trabajaría sobre la lista de ANTES de crearlo.
-    const handleCreateProjectFromContent = useCallback((nombre: string, content: GraphData, vistas?: PersistedViews, orgId?: string | null) => {
+    const handleCreateProjectFromContent = useCallback((nombre: string, content: GraphData, vistas?: PersistedViews, orgId?: string | null, compartido?: SharedBoardExtras) => {
         const name = (nombre || "").trim() || "Diseño IA";
         // Rellena defaults SIN perder campos: un GraphData exportado completo
         // (con `defaultRouting`/`source_docs`) o el modelo parcial de la IA
@@ -94,11 +98,16 @@ export function useFileHandlers(deps: FileHandlersDeps) {
             name: `${name}.json`,
             content: fullContent,
             ...(org ? { orgId: org } : {}),
+            ...compartido?.analysis,
         };
         try {
             // Sembrar las vistas ANTES de activar el proyecto: el efecto de carga de
             // ViewsContext lee por fileId, así las tabs aparecen como propias.
             writeStoredViews(newFile.id, vistas ?? emptyPersistedViews());
+            if (compartido) {
+              writeStoredReferences(newFile.id, compartido.references);
+              writeStoredSharedArtifacts(newFile.id, compartido.agent);
+            }
             const res = loadFile(newFile);
             addFile(newFile);
             setCurrentFileId(newFile.id);
@@ -190,11 +199,14 @@ export function useFileHandlers(deps: FileHandlersDeps) {
         // Exporta el TABLERO completo: el GraphData del Modelo + TODAS las vistas
         // (las tabs viven en localStorage por proyecto). Antes sólo salía el Modelo
         // y al reimportar se perdían las demás vistas (#428).
-        const board = packBoard(graphData, readStoredViews(currentFileId));
+        const scope = sharedStorageScope ?? currentFileId;
+        const board = packBoard(graphData, readStoredViews(scope), { references: readStoredReferences(scope), agent: readStoredSharedArtifacts(scope), analysis: {
+            driversResult: currentFile.driversResult, constraintsResult: currentFile.constraintsResult, roadmapResult: currentFile.roadmapResult, proposalResult: currentFile.proposalResult,
+        } });
         const blob = new Blob([JSON.stringify(board, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = currentFile.name; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         toast({ title: "Descarga Iniciada", description: `Se está descargando "${currentFile.name}".` });
-    }, [graphData, currentFileId, savedFiles, toast]);
+    }, [graphData, currentFileId, sharedStorageScope, savedFiles, toast]);
 
     return {
         handleCreateProject,

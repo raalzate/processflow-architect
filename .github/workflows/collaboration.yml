@@ -1,0 +1,92 @@
+name: Native collaboration
+# Matriz de 4 sistemas (2 de macOS) y un job con relay: sólo cuando cambia la
+# colaboración, no en cada PR (#746).
+on:
+  pull_request:
+    paths:
+      - "main/services/collaboration/**"
+      - "main/services/collaboration.ts"
+      - "src/lib/collaboration/**"
+      - "scripts/collaboration-*.ts"
+      - "scripts/prepare-iroh-native.mjs"
+      - "deploy/collaboration/**"
+      - ".github/workflows/collaboration.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run collaboration:prepare-native
+      - run: npm run harness:selftest
+      - run: npm run test:collaboration
+      - name: Ramas, versiones, permisos y recuperación nativos
+        run: node --import tsx scripts/collaboration-branches-smoke.ts
+  relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Relay propio local con binario oficial
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -E
+          exec > >(tee "$RUNNER_TEMP/relay-step.log") 2>&1
+          trap 'echo "::error::Relay preparation failed at line $LINENO: $BASH_COMMAND"; tail -c 1800 "$RUNNER_TEMP/relay-step.log" | tr "\n" " " | sed "s/^/::error::Relay diagnostic: /"' ERR
+          mkdir -p "$RUNNER_TEMP/pf-relay"
+          gh release download v1.4.1 --repo n0-computer/iroh --pattern 'iroh-relay-v1.4.1-x86_64-unknown-linux-gnu.tar.gz' --dir "$RUNNER_TEMP/pf-relay"
+          tar -xzf "$RUNNER_TEMP/pf-relay/iroh-relay-v1.4.1-x86_64-unknown-linux-gnu.tar.gz" -C "$RUNNER_TEMP/pf-relay"
+          relay_binary=$(find "$RUNNER_TEMP/pf-relay" -type f -name iroh-relay | head -n 1)
+          "$relay_binary" --dev > "$RUNNER_TEMP/pf-relay/relay.log" 2>&1 &
+          relay_pid=$!
+          trap 'kill "$relay_pid"' EXIT
+          npx tsx scripts/collaboration-relay-smoke.ts 'http://[::1]:3340'
+          # Proceso dedicado sin UDP: asegura relay sostenido, no un P2P local camuflado.
+          sudo useradd --system --no-create-home pf-relay-test
+          test_uid=$(id -u pf-relay-test)
+          sudo iptables -I OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP
+          sudo ip6tables -I OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP
+          # Dos tramos de relay de 30 ms cada uno, con variación, en un runner efímero.
+          sudo tc qdisc add dev lo root netem delay 30ms 5ms rate 20mbit
+          # Node busca package.json en los ancestros: el usuario aislado no debe
+          # necesitar acceso al home privado del runner ni a sus credenciales Git.
+          test_project=$(mktemp -d /tmp/pf-relay-project-XXXXXX)
+          chmod 755 "$test_project"
+          cp package.json tsconfig.json "$test_project/"
+          for directory in scripts main src node_modules; do
+            mkdir "$test_project/$directory"
+            sudo mount --bind "$GITHUB_WORKSPACE/$directory" "$test_project/$directory"
+            sudo mount -o remount,bind,ro "$test_project/$directory"
+          done
+          trap 'for directory in scripts main src node_modules; do sudo umount "$test_project/$directory"; done; sudo tc qdisc del dev lo root; sudo iptables -D OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP; sudo ip6tables -D OUTPUT -m owner --uid-owner "$test_uid" -p udp -j DROP; kill "$relay_pid"' EXIT
+          sudo install -d -m 0777 "$RUNNER_TEMP/pf-load-results"
+          sudo install -d -m 0777 "$test_project/results"
+          cd "$test_project"
+          load_status=0
+          sudo -u pf-relay-test env PATH="$PATH" node --import tsx scripts/collaboration-load.ts "$test_project/results/relay.json" 20 'http://[::1]:3340' || load_status=$?
+          cp "$test_project/results/"*.json "$RUNNER_TEMP/pf-load-results/"
+          # Resumen legible también por la API de checks, sin tokens ni proyectos reales.
+          node -e 'const r=require(process.argv[1]);for(const p of r.phases)console.log("::notice::Relay load: "+JSON.stringify(p))' "$RUNNER_TEMP/pf-load-results/relay.json"
+          exit "$load_status"
+      - name: Resultados de carga por relay
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relay-load
+          path: ${{ runner.temp }}/pf-load-results/*.json
+          if-no-files-found: warn

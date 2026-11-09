@@ -1,6 +1,7 @@
 import { app, ipcMain, IpcMainInvokeEvent, clipboard, BrowserWindow, dialog } from 'electron';
+import { registerCollaboration } from './services/collaboration';
 import { handleMdToPdf } from './services/pdf';
-import { popupAppMenu } from './window';
+import { popupAppMenu, createMainWindow } from './window';
 import {
   listLitertModels,
   downloadLitertModel,
@@ -55,6 +56,7 @@ import type { ChatEvent } from '../src/lib/agent-cli/types';
  * exportación a PDF y portapapeles.
  */
 export function registerIpcHandlers() {
+  registerCollaboration();
   ipcMain.handle('convert-md-to-pdf', handleMdToPdf);
 
   // Estado de la GPU: la MISMA información de `chrome://gpu`. Sirve para explicar
@@ -171,6 +173,10 @@ export function registerIpcHandlers() {
     const win = BrowserWindow.fromWebContents(e.sender);
     if (win) popupAppMenu(win, x, y);
   });
+  ipcMain.handle('project-window-open', (_e, fileId: unknown) => {
+    if (typeof fileId !== 'string' || !fileId || fileId.length > 200) throw new Error('Proyecto inválido.');
+    createMainWindow(fileId);
+  });
   ipcMain.handle('mcp-orgs-status', async () => mcpOrgsStatus());
   // CRUD de organizaciones desde el header. Eliminar SUELTA los diagramas a la
   // carpeta plana: quitar una etiqueta no puede costar trabajo.
@@ -181,7 +187,7 @@ export function registerIpcHandlers() {
   // Estado del lienzo publicado por el renderer: lo lee `get_app_state` para que
   // el agente externo no diseñe ni exporte a ciegas. Es `on` (fire-and-forget):
   // publicar no debe bloquear el render.
-  ipcMain.on('mcp-app-state', (_e, state: AppState | null) => setAppState(state));
+  ipcMain.on('mcp-app-state', (_e, state: AppState | null) => setAppState(state, _e.sender.id));
   // Canal de respuesta del renderer para la lectura bajo demanda (artefactos, vistas).
   initAppReadBridge();
   initAppActionBridge();
@@ -190,7 +196,7 @@ export function registerIpcHandlers() {
   // --- Playground MCP (guía /mcp): ejecutar herramientas por transporte en memoria ---
   ipcMain.handle('mcp-playground-list-tools', async () => playgroundListTools());
   ipcMain.handle('mcp-playground-call', async (_e, name: string, args: unknown) =>
-    playgroundCallTool(name, args)
+    playgroundCallTool(name, args, _e.sender.id)
   );
 
   // --- Información del sistema (vista de Configuración) ---

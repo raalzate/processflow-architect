@@ -127,16 +127,17 @@ function terminar(p: Proceso, deps: Deps): void {
 }
 
 /** Directorios donde suelen instalarse los CLI y que una app GUI no ve en su PATH. */
-export function candidateDirs(home: string, envPath = ""): string[] {
+export function candidateDirs(home: string, envPath = "", platform: NodeJS.Platform = process.platform): string[] {
+  const paths = platform === "win32" ? path.win32 : path.posix;
   const propios = [
-    path.join(home, ".local", "bin"),
-    path.join(home, ".npm-global", "bin"),
-    path.join(home, ".volta", "bin"),
+    paths.join(home, ".local", "bin"),
+    paths.join(home, ".npm-global", "bin"),
+    paths.join(home, ".volta", "bin"),
     "/opt/homebrew/bin",
     "/usr/local/bin",
     "/usr/bin",
   ];
-  const delPath = envPath.split(path.delimiter).filter(Boolean);
+  const delPath = envPath.split(platform === "win32" ? ";" : ":").filter(Boolean);
   return [...new Set([...delPath, ...propios])];
 }
 
@@ -149,9 +150,9 @@ export function resolveCli(cli: CliId, deps: Deps = {}): string | null {
   // npm global NO se buscan: lanzarlos exige `shell: true`, y eso abriría
   // inyección por el prompt. Sin `.exe`, el CLI figura «no instalado».
   const nombres = (deps.platform ?? process.platform) === "win32" ? [`${CLI_INFO[cli].command}.exe`] : [CLI_INFO[cli].command];
-  for (const dir of candidateDirs(home, env.PATH)) {
+  for (const dir of candidateDirs(home, env.PATH, deps.platform ?? process.platform)) {
     for (const nombre of nombres) {
-      const p = path.join(dir, nombre);
+      const p = (deps.platform === "win32" || (!deps.platform && process.platform === "win32") ? path.win32 : path.posix).join(dir, nombre);
       if (exists(p)) return p;
     }
   }
@@ -162,7 +163,7 @@ export function resolveCli(cli: CliId, deps: Deps = {}): string | null {
 function envConPath(deps: Deps): NodeJS.ProcessEnv {
   const env = { ...(deps.env ?? process.env) };
   const home = deps.home ?? os.homedir();
-  env.PATH = candidateDirs(home, env.PATH).join(path.delimiter);
+  env.PATH = candidateDirs(home, env.PATH, deps.platform ?? process.platform).join((deps.platform ?? process.platform) === "win32" ? ";" : ":");
   return env;
 }
 

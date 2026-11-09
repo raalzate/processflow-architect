@@ -43,12 +43,20 @@ import {
   STORAGE_TOKEN_USAGE,
 } from "@/lib/graph-constants";
 import { hostBridge } from "@/lib/host-bridge";
+import type { SharedProject } from "@/lib/collaboration/types";
 
 interface GraphDataProviderProps {
   children: ReactNode;
 }
 
 export function GraphDataProvider({ children }: GraphDataProviderProps) {
+  const [sharedStorageScope, updateSharedStorageScope] = useState<string>();
+  const [readOnlyFiles, setReadOnlyFiles] = useState<Record<string, boolean>>({});
+  const [aiReadOnlyFiles, setAiReadOnlyFiles] = useState<Record<string, boolean>>({});
+  const setSharedReadOnly = useCallback((fileId: string, value: boolean, aiReadOnly = value) => {
+    setReadOnlyFiles(previous => previous[fileId] === value ? previous : { ...previous, [fileId]: value });
+    setAiReadOnlyFiles(previous => previous[fileId] === aiReadOnly ? previous : { ...previous, [fileId]: aiReadOnly });
+  }, []);
   // --- Core Hooks & Refs ---
   const { toast } = useToast();
   const router = useRouter();
@@ -69,7 +77,12 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     setOrgOverview,
     setFileOrg,
     clearOrgFromProjects,
+    setStorageProjection,
   } = useSavedFiles();
+  const setSharedStorageScope = useCallback((scope?: string, canonical?: SharedProject) => {
+    updateSharedStorageScope(scope);
+    setStorageProjection(scope && canonical && currentFileId ? { fileId: currentFileId, canonical: { name: canonical.name, content: canonical.content, ...canonical.analysis } } : undefined);
+  }, [currentFileId, setStorageProjection]);
 
   // Gestiona el parsing del JSON y deriva datos base (nodos, links, etc.)
   const {
@@ -183,6 +196,7 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
 
   // --- Handlers Hooks ---
   const fileHandlers = useFileHandlers({
+    sharedStorageScope,
     savedFiles,
     setSavedFiles,
     currentFileId,
@@ -280,7 +294,8 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
           const files: SavedFile[] = filesParsed;
           setSavedFiles(files);
 
-          const lastFileId = localStorage.getItem(STORAGE_LAST_FILE_ID);
+          const requested = new URLSearchParams(window.location.search).get("project");
+          const lastFileId = requested && files.some(file => file.id === requested) ? requested : localStorage.getItem(STORAGE_LAST_FILE_ID);
           let fileToLoad: SavedFile | undefined = lastFileId
             ? files.find((f) => f.id === lastFileId)
             : files[0]; // Carga el último o el primero
@@ -363,8 +378,26 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
   }, [router]);
 
   // --- Context Provider Value ---
+  const applySharedFile = useCallback((fileId: string, shared: Pick<SavedFile, "name" | "content" | "driversResult" | "constraintsResult" | "roadmapResult" | "proposalResult">) => {
+    const next = savedFiles.map(file => file.id === fileId ? { ...file, ...shared } : file);
+    setSavedFiles(next);
+    if (fileId === currentFileId) {
+      const file = next.find(value => value.id === fileId);
+      if (file) loadFile(file);
+      setDriversResult(shared.driversResult ?? null);
+      setConstraintsResult(shared.constraintsResult ?? null);
+      setRoadmapResult(shared.roadmapResult ?? null);
+      setProposalResult(shared.proposalResult ?? null);
+    }
+  }, [savedFiles, currentFileId, setSavedFiles, loadFile]);
   // Ensambla el valor final para el GraphContext.Provider
   const contextValue: GraphContextType = {
+    sharedStorageScope,
+    setSharedStorageScope,
+    sharedReadOnly: !!(currentFileId && readOnlyFiles[currentFileId]),
+    sharedAiReadOnly: !!(currentFileId && aiReadOnlyFiles[currentFileId]),
+    setSharedReadOnly,
+    applySharedFile,
     // Datos del Grafo
     graphData,
     allNodes,
@@ -415,6 +448,10 @@ export function GraphDataProvider({ children }: GraphDataProviderProps) {
     ...analysisHandlers,
     ...pdfHandlers,
     ...uiHandlers,
+    handleDesignUpdate: (id, content) => { if (!readOnlyFiles[id]) fileHandlers.handleDesignUpdate(id, content); },
+    handleRenameProject: (id, name) => !readOnlyFiles[id] && fileHandlers.handleRenameProject(id, name),
+    handleNodeUpdate: node => { if (!currentFileId || !readOnlyFiles[currentFileId]) uiHandlers.handleNodeUpdate(node); },
+    handleRunAnalysis: async (type, options) => { if (!currentFileId || !readOnlyFiles[currentFileId]) await analysisHandlers.handleRunAnalysis(type, options); },
   };
 
   return (

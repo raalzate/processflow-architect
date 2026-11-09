@@ -519,7 +519,7 @@ describe("canvasToGraphData", () => {
       BASE
     );
     expect(g.agregados[0].aristas).toEqual([
-      { fuente: "a", destino: "b", descripcion: "emits" },
+      { id: "l1", fuente: "a", destino: "b", descripcion: "emits" },
     ]);
     expect(g.politicas_inter_agregados).toEqual([]);
     expect(g.big_picture.aristas).toEqual([]);
@@ -543,7 +543,7 @@ describe("canvasToGraphData", () => {
     const link = makeLink({ id: "l1", sourceId: "a", targetId: "b" });
     const g = canvasToGraphData(nodesMap(c1, c2, a, b), linksMap(link), BASE);
     expect(g.politicas_inter_agregados).toEqual([
-      { fuente: "a", destino: "b", descripcion: "" },
+      { id: "l1", fuente: "a", destino: "b", descripcion: "" },
     ]);
     expect(g.agregados[0].aristas).toEqual([]);
     expect(g.agregados[1].aristas).toEqual([]);
@@ -564,13 +564,13 @@ describe("canvasToGraphData", () => {
 
     const interna = canvasToGraphData(nodes, linksMap(link), BASE);
     expect(interna.agregados.find((ag) => ag.nombre_agregado === "Pedidos")!.aristas).toEqual([
-      { fuente: "a", destino: "b", descripcion: "emits" },
+      { id: "l1", fuente: "a", destino: "b", descripcion: "emits" },
     ]);
 
     const reapuntada = reconnectLink(link, "target", "c")!;
     const cruzada = canvasToGraphData(nodes, linksMap(reapuntada), BASE);
     expect(cruzada.politicas_inter_agregados).toEqual([
-      { fuente: "a", destino: "c", descripcion: "emits" },
+      { id: "l1", fuente: "a", destino: "c", descripcion: "emits" },
     ]);
     expect(cruzada.agregados.every((ag) => ag.aristas.length === 0)).toBe(true);
   });
@@ -587,7 +587,7 @@ describe("canvasToGraphData", () => {
     const link = makeLink({ id: "l1", sourceId: "o", targetId: "a" });
     const g = canvasToGraphData(nodesMap(c1, inAgg, orphan), linksMap(link), BASE);
     expect(g.big_picture.aristas).toEqual([
-      { fuente: "o", destino: "a", descripcion: "" },
+      { id: "l1", fuente: "o", destino: "a", descripcion: "" },
     ]);
     expect(g.politicas_inter_agregados).toEqual([]);
     expect(g.agregados[0].aristas).toEqual([]);
@@ -599,7 +599,7 @@ describe("canvasToGraphData", () => {
     const link = makeLink({ id: "l1", sourceId: "o1", targetId: "o2" });
     const g = canvasToGraphData(nodesMap(o1, o2), linksMap(link), BASE);
     expect(g.big_picture.aristas).toEqual([
-      { fuente: "o1", destino: "o2", descripcion: "" },
+      { id: "l1", fuente: "o1", destino: "o2", descripcion: "" },
     ]);
   });
 
@@ -616,7 +616,7 @@ describe("canvasToGraphData", () => {
     const g = canvasToGraphData(nodesMap(c1, inAgg), linksMap(link), BASE);
     // both endpoints resolve to "Pedidos" -> internal arista
     expect(g.agregados[0].aristas).toEqual([
-      { fuente: "c1", destino: "a", descripcion: "" },
+      { id: "l1", fuente: "c1", destino: "a", descripcion: "" },
     ]);
   });
 

@@ -12,6 +12,8 @@
  * geometría, que la ficha no edita, queda como la dejó el lienzo.
  */
 
+import { emptySpec } from "@/lib/element-spec";
+
 /** Comparación por valor, suficiente para los campos de la ficha (planos o arrays). */
 const igual = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
@@ -68,8 +70,32 @@ export function adoptarExternos<T extends object>(
 ): { original: T; borrador: T } | null {
   const tocados = new Set(changedKeys(original, borrador));
   const externos = changedKeys(original, vivo).filter((k) => !tocados.has(k));
-  if (!externos.length) return null;
   const parche: Partial<T> = {};
   for (const k of externos) parche[k] = vivo[k];
-  return { original: { ...original, ...parche }, borrador: { ...borrador, ...parche } };
+  let nuevoOriginal = { ...original, ...parche };
+  let nuevoBorrador = { ...borrador, ...parche };
+  let cambio = externos.length > 0;
+  // La spec tiene varios campos: escribir su nombre no significa haber tocado
+  // también el flujo y los requisitos. Adoptar por el campo `spec` entero
+  // ocultaba el contrato del MCP y el siguiente autoguardado lo borraba.
+  const o = original as { spec?: object };
+  const b = borrador as { spec?: object };
+  const v = vivo as { spec?: object };
+  if (b.spec && v.spec && !igual(o.spec, b.spec) && !igual(o.spec, v.spec)) {
+    const base = { ...emptySpec(), ...o.spec };
+    const local = { ...emptySpec(), ...b.spec };
+    const remoto = { ...emptySpec(), ...v.spec };
+    const editados = new Set(changedKeys(base, local));
+    const adoptados = changedKeys(base, remoto).filter((k) => !editados.has(k));
+    if (adoptados.length) {
+      for (const k of adoptados) {
+        Object.assign(base, { [k]: remoto[k] });
+        Object.assign(local, { [k]: remoto[k] });
+      }
+      nuevoOriginal = { ...nuevoOriginal, spec: base };
+      nuevoBorrador = { ...nuevoBorrador, spec: local };
+      cambio = true;
+    }
+  }
+  return cambio ? { original: nuevoOriginal, borrador: nuevoBorrador } : null;
 }

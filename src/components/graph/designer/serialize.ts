@@ -198,6 +198,7 @@ export function canvasToGraphData(
   const agregados: Agregado[] = nodeList
     .filter((n) => isContainerType(n.tipo_elemento))
     .map((c) => ({
+      id: c.id,
       nombre_agregado: c.nombre,
       entidad_raiz: (c.descripcion || "").trim() || c.nombre,
       descripcion: c.descripcion || "",
@@ -252,6 +253,7 @@ export function canvasToGraphData(
   for (const l of links.values()) {
     if (!nodes.has(l.sourceId) || !nodes.has(l.targetId)) continue;
     const arista = {
+      id: l.id,
       fuente: l.sourceId,
       destino: l.targetId,
       descripcion: l.descripcion || "",
@@ -379,7 +381,7 @@ export function graphDataToCanvas(content: GraphData | null | undefined): {
     const pos = placeAgg(agg);
     const w = agg.width || AGG_W;
     const h = agg.height || AGG_H;
-    const containerId = `agg-${agg.nombre_agregado}`;
+    const containerId = agg.id || `agg-${agg.nombre_agregado}`;
     nodes.set(containerId, {
       id: containerId,
       nombre: agg.nombre_agregado,
@@ -489,6 +491,7 @@ function hydrateNode(
 function addLink(
   links: Map<string, DesignerLink>,
   a: {
+    id?: string;
     fuente: string;
     destino: string;
     descripcion?: string;
@@ -508,7 +511,7 @@ function addLink(
     messageKind?: DesignerLink["messageKind"];
   }
 ) {
-  const id = `link-${a.fuente}-${a.destino}-${crypto.randomUUID()}`;
+  const id = a.id || `link-${a.fuente}-${a.destino}-${crypto.randomUUID()}`;
   links.set(id, {
     id,
     sourceId: a.fuente,
