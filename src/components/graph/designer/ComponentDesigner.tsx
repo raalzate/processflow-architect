@@ -74,6 +74,7 @@ import { CATEGORIAS, buscarIconos, iconoDeCatalogo, iconoPorTecnologia } from "@
 import { useBrandProfiles } from "@/hooks/use-brand-profiles";
 import { Button } from "@/components/ui/button";
 import { IconAction } from "@/components/ui/icon-action";
+import { PredicateSelect } from "./PredicateSelect";
 import { ColumnsField } from "./ColumnsField";
 import {
   agregarColumna,
@@ -2552,6 +2553,16 @@ const EditLinkDialog: React.FC<{
             </Select>
             <p className="text-xs text-muted-foreground">{relationStyle(draft.relation).hint}</p>
           </div>
+
+          {/* Significado para la ontología (spec 027): se propone desde la
+              etiqueta y los tipos; sólo se guarda al confirmarlo o cambiarlo. */}
+          <PredicateSelect
+            link={draft}
+            source={nodes.get(draft.sourceId)}
+            target={nodes.get(draft.targetId)}
+            notation={notation}
+            onChange={(predicado) => setDraft((d) => (d ? { ...d, predicado } : d))}
+          />
 
           {/* Tipo de MENSAJE (secuencia UML). Sólo aparece si las dos puntas son
               líneas de vida: en cualquier otro diagrama sería una opción que no

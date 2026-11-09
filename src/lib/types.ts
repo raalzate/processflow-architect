@@ -185,6 +185,13 @@ export interface GraphLink extends SimulationLinkDatum<GraphNode> {
    */
   relation?: EdgeRelationKind;
   /**
+   * Significado CANÓNICO de la arista (spec 027): id de un predicado del
+   * catálogo de la notación (`notationPredicates`). La etiqueta (`descripcion`)
+   * sigue siendo libre. Ausente = nadie lo confirmó: se propone en memoria al
+   * abrir y sólo se escribe cuando el humano lo confirma (FR-013).
+   */
+  predicado?: string;
+  /**
    * Lugar del mensaje en una secuencia UML, denso desde 1 (feature 013).
    * Sólo lo usan los diagramas de secuencia; en las demás notaciones es ruido y
    * no se escribe. Ausente = diagrama anterior a la feature: `sequence/migrate.ts`
