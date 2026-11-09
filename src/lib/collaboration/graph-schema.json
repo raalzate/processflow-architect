@@ -1093,6 +1093,13 @@
             }
           ]
         },
+        "predicado": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
         "orden": {
           "anyOf": [
             {
@@ -1933,6 +1940,13 @@
             },
             {
               "literal": "cardinalidad_n_m"
+            }
+          ]
+        },
+        "predicado": {
+          "anyOf": [
+            {
+              "type": "string"
             }
           ]
         },
