@@ -26,7 +26,7 @@ hay cambios funcionales, decilo acá y aclará que actualizar es opcional.>
 | Sistema | Archivo |
 |---|---|
 | macOS (Apple Silicon) | `Processflow-Architect-<versión>-arm64.dmg` |
-| Windows | `Processflow-Architect.Setup.<versión>.exe` |
+| Windows | `Processflow-Architect-Setup-<versión>.exe` |
 | Linux | `Processflow-Architect-<versión>.AppImage` |
 
 Los binarios **no están firmados con certificado de confianza**, así que la primera

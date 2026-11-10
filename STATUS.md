@@ -1,18 +1,16 @@
-<!-- Collaboration preview: upstream historical status follows below. -->
-
-Colaboracion temporal (2026-11-01): se conserva la arquitectura de capas. Se agregan Yjs y el binding nativo @number0/iroh. La CLI Tessl no esta disponible: `npx tessl search yjs --json` intento instalar 0.119.0 y fallo descargando el binario (`fetch failed`). Las dos dependencias quedan declaradas temporalmente en `tiles.allow`, con API comprobada contra sus declaraciones instaladas y pruebas reales de QUIC. No se afirma que existan tiles publicados. Retirar esta excepcion cuando pueda consultarse e instalarse documentacion del registro. El kit privado Sofka no se copia: esta rama incluye un kit SDD local original con ocho fases compatibles, verificado por el self-test tambien en CI. El ayudante de integridad SHA-256 y sus pruebas no dependen de servicios externos.
-
 # STATUS — estado verificado
 
 Lo imprime el hook `SessionStart`. Sirve para no releer el repo entero para responder "¿esto anda?".
 Se actualiza cuando cambia el veredicto, no en cada commit. **Sólo va lo verificado con un comando**;
 lo que se supone va en "deuda conocida".
 
-- **Fecha del último gate completo:** 2026-11-05 (local y CI del PR #688)
-- **Rama:** `main` (286a4a7, merge del PR #688)
+- **Fecha del último gate completo:** 2026-11-09 (local y CI del PR #747, release 0.23.0)
+- **Rama:** `main` (456c570, merge del PR #747)
 - **Veredicto:** VERDE (`npm run gate`)
-- **Versión publicada:** 0.22.0 — publicada el 2026-11-06 y `latest` de la API, con sus 8 artefactos (dmg arm64, exe, AppImage, blockmaps y los tres `latest*.yml`). Arregla «Descargar PDF» en la app instalada: `md-to-pdf` lanzaba Puppeteer, que busca un Chrome en `~/.cache/puppeteer` y en la máquina del cliente no existe; ahora imprime `printToPDF` del Chromium de Electron (`main/services/pdf.ts`, candado en `pdf-html.test.ts`). Trae además la skin «Plano» del lienzo (feature 026, #678). **0.21.0 y 0.19.1 quedaron en borrador y nunca se publicaron**: quien actualiza viene de 0.20.0, por eso las notas de 0.22.0 incluyen lo de 0.21.0
-- **Versión en el repo:** 0.22.0 — notas en `docs/releases/0.22.0.md`
+- **Versión publicada:** 0.23.0 — publicada el 2026-11-10 y `latest` de la API (`gh api repos/raalzate/processflow-architect/releases/latest` → `v0.23.0`, 8 artefactos). Trae la ontología del modelo (feature 027, #697), las correcciones de la evaluación de caja negra (#744) y la colaboración en tiempo real con ramas y versiones (#743): CI nativo verde en ubuntu, windows, macos-latest y macos-15-intel más el relay
+- **Deuda abierta de 0.23.0:** el ADR de red y relay (#749: por defecto se usan los relays públicos de n0) y el cupo de colaboración en macOS limitado por `os.freemem()` (#750). Q14 de la 027 —medir el agente con Gemma en la app— sigue sin medirse
+- **Versión anterior publicada:** 0.22.0 — publicada el 2026-11-06 y `latest` de la API, con sus 8 artefactos (dmg arm64, exe, AppImage, blockmaps y los tres `latest*.yml`). Arregla «Descargar PDF» en la app instalada: `md-to-pdf` lanzaba Puppeteer, que busca un Chrome en `~/.cache/puppeteer` y en la máquina del cliente no existe; ahora imprime `printToPDF` del Chromium de Electron (`main/services/pdf.ts`, candado en `pdf-html.test.ts`). Trae además la skin «Plano» del lienzo (feature 026, #678). **0.21.0 y 0.19.1 quedaron en borrador y nunca se publicaron**: quien actualiza viene de 0.20.0, por eso las notas de 0.22.0 incluyen lo de 0.21.0
+- **Versión en el repo:** 0.23.0 — notas en `docs/releases/0.23.0.md`
 - **Sin verificar (0.22.0):** el PDF generado en una máquina **sin** Chrome de Puppeteer instalado, que es el caso del cliente. Lo verificado es el flujo con Electron en desarrollo (PDF con tabla y diagrama mermaid dibujado) y el empaquetado `--dir`, donde `marked`, `mermaid.min.js` y los módulos nuevos viajan dentro del `app.asar`
 - **Cierres verificados el 2026-09-02:** #239 (el agente lee la ficha de la caja: `read_element`, la marca `{spec,props,desc+}` en el digest, `set_element_spec { merge: true }` y un `review_specs` que marca criterios sin número y requisitos con tecnología) y la **feature 012 completa** (#240 con sus 10 tareas #241–#250): el documento fuente viaja dentro del proyecto y la cita de una caja resuelve a su fragmento. Gate completo verde en local y en CI; mergeado en `main` por el PR #251 (e52c593). El tracker quedó **sin issues abiertos**
 - **Cierres verificados el 2026-09-01:** #227 (pegar con ⌘V: el menú «Diseño» ya no declara aceleradores de edición nativa; prueba en `designer-actions.test.ts`), #231 (aviso de actualización en el pie + menú Ayuda + descarga del `.dmg` en macOS), #235 (el `.exe` de Windows se llama como dice `latest.yml`: `release-updater-check` verde en las tres plataformas) y con ellos **la feature 011 completa** (#208 y su última tarea #217). El tracker quedó **sin issues abiertos**
