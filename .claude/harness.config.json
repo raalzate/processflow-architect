@@ -345,6 +345,12 @@
       "qu[eé] archivos?"
     ]
   },
+  "licenses": {
+    "$comment": "Regla LICENCIAS de scripts/repo-lint.mjs: dependencias de producción sin licencia declarada que se revisaron a mano y se pueden distribuir. Cada una con su motivo; la lista sólo crece con revisión (ver THIRD_PARTY_LICENSES.md).",
+    "allow": [
+      { "package": "khroma", "license": "MIT", "motivo": "dependencia de mermaid; su package.json no declara `license`, pero el paquete trae el archivo `license` MIT (revisado 2026-11-10, #753)" }
+    ]
+  },
   "release": {
     "$comment": "Las notas de cada versión viven EN EL REPO, no en el cuadro de texto de GitHub: `release-build.yml` las usa como cuerpo del release (body_path), así que el borrador nace escrito y el gate puede juzgarlas. Un `version` nuevo en package.json sin su archivo de notas es gate rojo.",
     "notesDir": "docs/releases",
