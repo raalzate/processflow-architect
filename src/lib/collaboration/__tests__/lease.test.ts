@@ -35,8 +35,8 @@ describe("estado del préstamo", () => {
   it("el anfitrión nunca queda bloqueado ni vencido", () => {
     expect(leaseState({ ...base, owner: true, sessionContact: false, revoked: true, clock: clock(0), now: 10 * HOUR }).state).toBe("active");
   });
-  it("con contacto reciente en esta sesión: vigente", () => {
-    expect(leaseState({ ...base, clock: clock(1_000), now: 1_000 + LOCK_AFTER_MS - 1 }).state).toBe("active");
+  it("recién sincronizado en esta sesión: vigente con todo el plazo", () => {
+    expect(leaseState({ ...base, clock: clock(1_000), now: 1_000 })).toEqual({ state: "active", remainingMs: HOUR });
   });
   it("un corte menor al umbral no bloquea", () => {
     expect(leaseState({ ...base, clock: clock(1_000), now: 1_000 + LOCK_AFTER_MS - 1 }).state).toBe("active");
