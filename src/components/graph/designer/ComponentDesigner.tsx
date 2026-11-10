@@ -5668,7 +5668,8 @@ export const ComponentDesigner: React.FC<{
               </DropdownMenuSub>
 
               <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
+                {/* #756: en una copia prestada exportar lo decide el anfitrión (los helpers también frenan). */}
+                <DropdownMenuSubTrigger disabled={collaboration ? !collaboration.canExport : false}>
                   <Download className="mr-2 h-4 w-4" /> Exportar
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-56">

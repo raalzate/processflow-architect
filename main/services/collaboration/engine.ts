@@ -7,7 +7,7 @@ import {
   type WatchHandle,
   type PathSnapshot,
 } from "@number0/iroh";
-import { existsSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes, randomUUID, createHash, timingSafeEqual } from "node:crypto";
 import { freemem, networkInterfaces } from "node:os";
@@ -26,6 +26,8 @@ import type {
   Role,
   RoomOptions,
   SharedProject,
+  CollaborationPurge,
+  PurgeReason,
 } from "../../../src/lib/collaboration/types";
 import { Journal, writePrivateJson } from "./journal";
 import { deadline, readFrame, sendFrame } from "./wire";
@@ -40,6 +42,15 @@ import { canEditBranch, type HistoryActor } from "../../../src/lib/collaboration
 import { RecurringServiceCost, RecentCongestion } from "../../../src/lib/collaboration/session-stability";
 import { participantsForRoom, type Participant } from "../../../src/lib/collaboration/participants";
 import { PresenceChannel } from "./presence-channel";
+import {
+  DEFAULT_LEASE_POLICY,
+  leaseState,
+  observeClock,
+  recordContact,
+  sanitizeLeasePolicy,
+  type LeaseClock,
+  type LeasePolicy,
+} from "../../../src/lib/collaboration/lease";
 
 // En macOS `os.freemem()` subestima la memoria (sólo páginas libres) y el cupo
 // quedaba en el mínimo (#750): se lee `vm_stat`. El cupo se recalcula seguido,
@@ -89,12 +100,24 @@ interface StoredRoom {
   options: RoomOptions;
   invitation?: Invitation;
   grants: Record<string, InviteGrant>;
+  /** Anfitrión: la política que dicta. Invitado: la última que recibió (#756). */
+  policy?: LeasePolicy;
+  /** Invitado: reloj del préstamo, persistido para que el plazo corra con la app cerrada. */
+  clock?: LeaseClock;
+  /** Invitado: el anfitrión rechazó su acceso por revocación. */
+  revoked?: boolean;
 }
 interface Config {
   key: number[];
   port?: number;
   rooms: StoredRoom[];
+  /** Copias prestadas ya borradas del disco que el renderer aún no quitó del catálogo. */
+  purges?: CollaborationPurge[];
 }
+/** El reloj se persiste con esta granularidad: perder hasta este tramo sólo acorta el préstamo. */
+const CLOCK_SAVE_MS = 30_000;
+class RevokedAccess extends Error {}
+const EXPORT_DENIED = "El anfitrión no permite exportar este proyecto.";
 interface Request {
   presenceMode?: "stream-v1";
   version: 1;
@@ -116,6 +139,8 @@ interface Response {
   capacity?: Capacity;
   peers?: number;
   branches?: BranchResponse;
+  policy?: LeasePolicy;
+  revoked?: boolean;
 }
 interface Room {
   stored: StoredRoom;
@@ -142,6 +167,9 @@ interface Room {
   quarantined?: boolean;
   branches?: BranchStore;
   name?: string;
+  /** Hubo contacto con el anfitrión desde que arrancó la app: sin él el préstamo no se presume. */
+  sessionContact?: boolean;
+  clockSavedAt?: number;
 }
 
 /** Native transport/persistence service. Existing contexts remain the UI's API. */
@@ -207,11 +235,14 @@ export class CollaborationEngine {
         this.failedRooms.set(stored.fileId, { stored, status });
       }
     }
+    // Un plazo vencido con la app cerrada se aplica antes de mostrar nada.
+    this.enforceLeases();
     if (this.rooms.size) await this.endpointReady();
     for (const room of this.rooms.values()) if (room.stored.owner && room.status.saved && room.branches && !room.branches.enabled) room.branches.activate(this.actor(room));
     for (const room of this.rooms.values())
       if (!room.stored.owner && room.status.saved) this.schedule(room, 0);
     this.monitor = setInterval(() => {
+      this.enforceLeases();
       for (const room of this.rooms.values())
         if (room.stored.owner && room.status.saved) {
           this.refreshCapacity(room);
@@ -566,6 +597,8 @@ export class CollaborationEngine {
         throw new Error("Proyecto inválido.");
       const failed = this.failedRooms.get(command.fileId);
       if (failed) {
+        if (command.type === "recover" && !failed.stored.owner && !failed.stored.policy?.allowExport)
+          throw new Error(EXPORT_DENIED);
         if (command.type === "recover")
           return {
             status: failed.status,
@@ -580,12 +613,23 @@ export class CollaborationEngine {
           };
         if (command.type === "leave") {
           this.failedRooms.delete(command.fileId);
+          if (!failed.stored.owner) this.removeLocalCopy(failed.stored);
           this.config.rooms = this.config.rooms.filter(r => r.fileId !== command.fileId);
           this.saveConfig();
           return {};
         }
         if (command.type === "open") return { status: failed.status };
         throw new Error(failed.status.error);
+      }
+      if (command.type === "borrowed")
+        return {
+          sealed: this.config.rooms.filter(r => !r.owner && !r.policy?.allowExport).map(r => r.fileId),
+        };
+      if (command.type === "take-purges") {
+        const purges = this.config.purges ?? [];
+        this.config.purges = [];
+        this.saveConfig();
+        return { purges };
       }
       let room = this.rooms.get(command.fileId);
       if (command.type === "open") {
@@ -785,6 +829,8 @@ export class CollaborationEngine {
         else room.document.redo();
         this.emit(room, true);
       } else if (command.type === "recover") {
+        // La recuperación es el historial entero: para un invitado, sacarla es exportar.
+        if (!room.stored.owner && !this.lease(room).policy.allowExport) throw new Error(EXPORT_DENIED);
         const raw = {
           format: "processflow-raw-recovery/v1",
           projectId: room.stored.projectId,
@@ -820,18 +866,18 @@ export class CollaborationEngine {
         this.saveConfig();
         room.clients.get(command.memberId)?.close(BigInt(1), [...Buffer.from("Invitación revocada.")]);
         room.seats.leave(command.memberId);
+      } else if (command.type === "policy") {
+        if (!room.stored.owner) throw new Error("Solo el anfitrión fija la política del préstamo.");
+        room.stored.policy = sanitizeLeasePolicy(command.policy);
+        this.saveConfig();
       } else if (command.type === "leave") {
-        room.disposed = true;
-        await room.pathWatch?.stop();
-        room.pathWatch = undefined;
-        if (room.timer) clearTimeout(room.timer);
-        this.closePresenceStream(room.connection); room.connection?.close(BigInt(0), []);
-        for (const connection of room.clients.values()) connection.close(BigInt(0), []);
-        await room.syncTask;
-        room.branches?.close();
-        room.journal.close();
-        room.document.destroy();
-        this.rooms.delete(command.fileId);
+        // El invitado no se lleva la copia: salir es devolver el préstamo.
+        if (!room.stored.owner) {
+          await this.dispose(room);
+          this.removeLocalCopy(room.stored);
+          return {};
+        }
+        await this.dispose(room);
         this.config.rooms = this.config.rooms.filter(r => r.fileId !== command.fileId);
         this.saveConfig();
         return {};
@@ -884,6 +930,7 @@ export class CollaborationEngine {
   private refreshStatusDetails(room: Room) {
     if (room.stored.owner) room.status.routeCounts = room.seats.countsByRoute();
     if (room.stored.owner) room.status.participants = participantsForRoom({ ownId: this.endpoint?.id().toString() ?? "host", ownName: room.name ?? "Anfitrión", owner: true, connected: true, members: room.status.members ?? [], locations: [...room.locations.values()] });
+    room.status.lease = this.lease(room);
     room.status.discardedEdits =
       !room.quarantined && !room.branches?.enabled && room.document.isInitialized()
         ? room.document.discardedEdits()
@@ -1015,7 +1062,10 @@ export class CollaborationEngine {
             !timingSafeEqual(Buffer.from(grant.hash), Buffer.from(tokenHash)) ||
             (grant.member && grant.member !== member)
           )
-            throw new Error("Invitación inválida, revocada o ya utilizada.");
+            // Sólo al dueño del asiento revocado se le ordena purgar: un token ajeno no lo dispara.
+            throw grant?.revoked && grant.member === member
+              ? new RevokedAccess("Acceso revocado por el anfitrión.")
+              : new Error("Invitación inválida, revocada o ya utilizada.");
           if (!active) this.refreshCapacity(room);
           let route = this.classifyPaths(connection.paths());
           // En Iroh el primer paquete suele llegar por relay mientras perfora NAT (P2P).
@@ -1113,6 +1163,7 @@ export class CollaborationEngine {
             participants: room.status.participants,
             presenceMode: request.presenceMode === "stream-v1" ? "stream-v1" : undefined,
             branches,
+            policy: sanitizeLeasePolicy(room.stored.policy),
           } satisfies Response;
           const serviceMs = performance.now() - serviceStart;
           if (request.stage === "sync") room.serviceCost.record(serviceMs, Date.now());
@@ -1122,6 +1173,7 @@ export class CollaborationEngine {
           await sendFrame(stream, {
             ok: false,
             error: error instanceof Error ? error.message : String(error),
+            ...(error instanceof RevokedAccess ? { revoked: true } : {}),
           } satisfies Response);
           await deadline(stream.send.stopped(), 2000).catch(() => {});
           break;
@@ -1254,7 +1306,17 @@ export class CollaborationEngine {
       await deadline(sendFrame(stream, request));
       const response = await deadline(readFrame<Response>(stream), authenticated ? 20_000 : 180_000);
       if (room.disposed || this.closed) return;
-      if (!response.ok) throw new Error(response.error ?? "No se pudo sincronizar.");
+      if (!response.ok) {
+        if (response.revoked) {
+          room.stored.revoked = true;
+          this.saveConfig();
+          // Sin await: la purga espera a esta misma sincronización.
+          void this.purge(room, "revoked").catch(error => console.error("Purga de copia prestada:", error));
+          return;
+        }
+        throw new Error(response.error ?? "No se pudo sincronizar.");
+      }
+      this.touchLease(room, response.policy);
       if (response.presenceMode === "stream-v1") this.enablePresenceStream(room.connection, room, room.connection.remoteId().toString(), false);
       const before = room.revision;
       if (!response.branches) room.document.receiveRemote(decode(response.update!));
@@ -1288,6 +1350,94 @@ export class CollaborationEngine {
     } finally {
       room.syncing = false;
     }
+  }
+  /** Cierra la sala y suelta el historial; no decide qué pasa con los archivos. */
+  private async dispose(room: Room) {
+    room.disposed = true;
+    await room.pathWatch?.stop();
+    room.pathWatch = undefined;
+    if (room.timer) clearTimeout(room.timer);
+    this.closePresenceStream(room.connection); room.connection?.close(BigInt(0), []);
+    for (const connection of room.clients.values()) connection.close(BigInt(0), []);
+    await room.syncTask;
+    room.branches?.close();
+    room.journal.close();
+    room.document.destroy();
+    if (this.rooms.get(room.stored.fileId) === room) this.rooms.delete(room.stored.fileId);
+  }
+  /** Borra el historial y el vínculo de una copia prestada. Nunca se llama con una sala propia. */
+  private removeLocalCopy(stored: StoredRoom) {
+    if (stored.owner) throw new Error("Una sala propia no se purga.");
+    rmSync(join(this.root, stored.projectId), { recursive: true, force: true });
+    this.config.rooms = this.config.rooms.filter(r => r.fileId !== stored.fileId);
+    this.saveConfig();
+  }
+  /**
+   * Purga automática (revocación o plazo vencido). Queda anotada hasta que el renderer
+   * quite la copia del catálogo: si la app estaba cerrada, la toma al arrancar.
+   */
+  private async purge(room: Room, reason: PurgeReason) {
+    if (room.disposed || room.stored.owner) return;
+    await this.dispose(room);
+    this.removeLocalCopy(room.stored);
+    this.recordPurge(room.stored.fileId, reason);
+  }
+  private recordPurge(fileId: string, reason: PurgeReason) {
+    const purge = { fileId, reason };
+    this.config.purges = [...(this.config.purges ?? []).filter(p => p.fileId !== fileId), purge];
+    this.saveConfig();
+    this.event({ fileId, purges: [purge] });
+  }
+  /** Contacto válido con el anfitrión: renueva el préstamo y adopta su política. */
+  private touchLease(room: Room, policy: unknown) {
+    const now = Date.now(),
+      next = sanitizeLeasePolicy(policy),
+      changed = JSON.stringify(next) !== JSON.stringify(room.stored.policy);
+    room.stored.policy = next;
+    room.stored.clock = recordContact(room.stored.clock ?? { lastContact: now, observed: now }, now);
+    room.sessionContact = true;
+    if (changed || now - (room.clockSavedAt ?? 0) >= CLOCK_SAVE_MS) {
+      room.clockSavedAt = now;
+      this.saveConfig();
+    }
+  }
+  private lease(room: Room, now = Date.now()) {
+    const policy = room.stored.owner ? sanitizeLeasePolicy(room.stored.policy) : (room.stored.policy ?? DEFAULT_LEASE_POLICY);
+    return {
+      ...leaseState({
+        owner: room.stored.owner,
+        sessionContact: !!room.sessionContact,
+        revoked: !!room.stored.revoked,
+        policy,
+        clock: room.stored.clock ?? { lastContact: now, observed: now },
+        now,
+      }),
+      policy,
+    };
+  }
+  /** Aplica el préstamo de cada copia prestada: refresca el aviso y purga lo vencido o revocado. */
+  private enforceLeases() {
+    const now = Date.now();
+    let dirty = false;
+    for (const room of [...this.rooms.values()]) {
+      if (room.stored.owner || room.disposed) continue;
+      room.stored.clock = observeClock(room.stored.clock ?? { lastContact: now, observed: now }, now);
+      if (now - (room.clockSavedAt ?? 0) >= CLOCK_SAVE_MS) { room.clockSavedAt = now; dirty = true; }
+      const { state } = this.lease(room, now);
+      if (state === "expired" || state === "revoked") void this.purge(room, state).catch(error => console.error("Purga de copia prestada:", error));
+      else this.emit(room);
+    }
+    for (const [fileId, failed] of [...this.failedRooms]) {
+      if (failed.stored.owner) continue;
+      failed.stored.clock = observeClock(failed.stored.clock ?? { lastContact: now, observed: now }, now);
+      const { state } = leaseState({ owner: false, sessionContact: false, revoked: !!failed.stored.revoked, policy: failed.stored.policy ?? DEFAULT_LEASE_POLICY, clock: failed.stored.clock, now });
+      if (state === "expired" || state === "revoked") {
+        this.failedRooms.delete(fileId);
+        this.removeLocalCopy(failed.stored);
+        this.recordPurge(fileId, state);
+      }
+    }
+    if (dirty) this.saveConfig();
   }
   async close() {
     this.closed = true;

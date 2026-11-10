@@ -8,6 +8,8 @@ import {
   formatViewList,
   normalizeRef,
   resolveAppRead,
+  sealAppReadContext,
+  SEALED_PROJECT_ERROR,
   pickByName,
   selectArtifact,
   selectView,
@@ -475,5 +477,41 @@ describe("la ficha dice a qué vista entra un subproceso (#638)", () => {
   it("un enlace a una vista que ya no existe no se informa", () => {
     const r = resolveAppRead({ kind: "element", name: "Validar póliza" }, conSub("borrada"));
     expect(r.ok && r.kind === "element" && r.element.subview).toBeUndefined();
+  });
+});
+
+// #756: una copia prestada sin permiso de exportar no sale por el MCP.
+describe("sealAppReadContext", () => {
+  const base: AppReadContext = {
+    active: { id: "prestado", name: "Ajeno" },
+    projects: [
+      { id: "prestado", name: "Ajeno" },
+      { id: "mio", name: "Propio" },
+    ],
+    viewsOf: () => [{ name: "Modelo", kind: "design", builtin: true, graph: graph(1) }],
+    artifactsOf: () => [art()],
+    focus: { viewId: "design", elementId: "n0" } as AppReadContext["focus"],
+    sourceBaseOf: () => "/ruta",
+  };
+  it("sin sellados devuelve el mismo contexto", () => {
+    expect(sealAppReadContext(base, [])).toBe(base);
+  });
+  it("oculta el proyecto activo sellado, su ficha y lo quita del catálogo", () => {
+    const c = sealAppReadContext(base, ["prestado"]);
+    expect(c.active).toBeNull();
+    expect(c.focus).toBeNull();
+    expect(c.projects.map(p => p.id)).toEqual(["mio"]);
+  });
+  it("ninguna lectura por id alcanza al sellado; los demás siguen igual", () => {
+    const c = sealAppReadContext(base, ["prestado"]);
+    expect(() => c.viewsOf("prestado")).toThrow(SEALED_PROJECT_ERROR);
+    expect(() => c.artifactsOf("prestado")).toThrow(SEALED_PROJECT_ERROR);
+    expect(() => c.sourceBaseOf!("prestado")).toThrow(SEALED_PROJECT_ERROR);
+    expect(c.viewsOf("mio")).toHaveLength(1);
+    expect(c.artifactsOf("mio")).toHaveLength(1);
+  });
+  it("list_projects ya no lo nombra", () => {
+    const r = resolveAppRead({ kind: "projects" }, sealAppReadContext(base, ["prestado"]));
+    expect(r.ok && r.kind === "projects" && r.projects.map(p => p.name)).toEqual(["Propio"]);
   });
 });

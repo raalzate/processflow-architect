@@ -113,8 +113,16 @@ export function describeAppState(input: {
   focus?: AppFocus | null;
   /** Organización del proyecto activo (`SavedFile.orgId`). */
   projectOrg?: string | null;
+  /**
+   * El proyecto activo es una copia prestada sin permiso de exportar (#756): el
+   * retrato no lleva su contenido. Los demás sellados ya vienen fuera de `savedFiles`.
+   */
+  sealed?: boolean;
 }): AppState {
-  const { graph, views, savedFiles = [], viewsLimit, now, org, focus, projectOrg } = input;
+  const { savedFiles = [], viewsLimit, now, org, projectOrg } = input;
+  const graph = input.sealed ? null : input.graph,
+    views = input.sealed ? [] : input.views,
+    focus = input.sealed ? null : input.focus;
   const visibles =
     org === undefined ? savedFiles : savedFiles.filter((f) => (f.orgId ?? null) === org);
   return {

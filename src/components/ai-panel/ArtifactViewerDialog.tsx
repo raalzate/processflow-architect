@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { exportAllowed, guardExport } from "@/lib/export-gate";
 import { useGraphContext } from "@/context/GraphContext";
 import { useAgent } from "@/context/AgentContext";
 import { artifactBodyMarkdown } from "@/lib/artifacts/to-markdown";
@@ -70,6 +71,7 @@ function clearDraft(id: string): void {
 
 /** Descarga un texto como archivo (mismo patrón que el export del lienzo). */
 function downloadText(content: string, filename: string, mime = "text/markdown;charset=utf-8"): void {
+  if (!guardExport()) return;
   const url = URL.createObjectURL(new Blob([content], { type: mime }));
   const a = document.createElement("a");
   a.href = url;
@@ -174,7 +176,7 @@ export function ArtifactViewerDialog({
   };
 
   const descargar = () => {
-    if (!artifact) return;
+    if (!artifact || !exportAllowed()) return void guardExport();
     const rev = revisionLabel(artifact);
     const cuerpo = editing ? draft : source;
     downloadText(`# ${artifact.title}${rev ? ` · ${rev}` : ""}\n\n${cuerpo}\n`, artifactFileName(artifact));

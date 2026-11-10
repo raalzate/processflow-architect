@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { guardExport } from "@/lib/export-gate";
 import type { SavedFile, GraphData, ArchitectureDriversOutput, ConstraintsRisksOutput, RoadmapOutput, TechnicalElementsOutput } from "@/lib/types";
 import { emptyGraphData } from "@/components/graph/designer/serialize";
 import { normalizeImportedGraphData } from "@/lib/import-diagram";
@@ -196,6 +197,7 @@ export function useFileHandlers(deps: FileHandlersDeps) {
     const handleDownloadJson = useCallback(() => {
         if (!graphData || !currentFileId) { toast({ variant: "destructive", title: "No hay archivo para descargar", description: "Carga o selecciona un archivo primero." }); return; }
         const currentFile = savedFiles.find(f => f.id === currentFileId); if (!currentFile) return;
+        if (!guardExport()) return;
         // Exporta el TABLERO completo: el GraphData del Modelo + TODAS las vistas
         // (las tabs viven en localStorage por proyecto). Antes sólo salía el Modelo
         // y al reimportar se perdían las demás vistas (#428).

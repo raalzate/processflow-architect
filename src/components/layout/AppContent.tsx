@@ -16,7 +16,8 @@ import { isJsonFile } from "@/lib/import-diagram";
 import { parseBoardFile } from "@/lib/board-file";
 import { readMcpPrefs } from "@/lib/mcp-settings";
 import { describeAppState } from "@/lib/mcp/app-state";
-import { resolveAppRead, type AppReadContext } from "@/lib/mcp/app-read";
+import { resolveAppRead, sealAppReadContext, type AppReadContext } from "@/lib/mcp/app-read";
+import { BorrowedLockOverlay } from "@/components/collaboration/BorrowedLockOverlay";
 import { mergeProjectMeta, describeMetaAgregada } from "@/lib/mcp/project-meta";
 import { buscarProyectoGuardado, claveProyecto, mergeProjectGraph, nombreVisible, resolveViewRef } from "@/lib/mcp/project-update";
 import { fundir, reconciliarIds } from "@/lib/mcp/view-edit";
@@ -117,6 +118,7 @@ const MemoizedAppHeader = React.memo(() => {
 // 3) Publica el estado del lienzo (proyecto activo, notación, vistas) para que
 //    `get_app_state` lo sirva al agente: sin esa ingesta previa, el agente
 //    exporta a ciegas y duplica o pisa el trabajo del humano.
+const NO_SEALED: readonly string[] = [];
 const McpImportBridge = () => {
   const collaboration = useCollaboration();
   const {
@@ -141,6 +143,9 @@ const McpImportBridge = () => {
   liveCollaboration.current = collaboration;
   const branchName = collaboration?.workspace?.history.branches.find(b => b.id === collaboration.branchId)?.name;
   const aiContext = React.useMemo(() => status ? { branchId: collaboration?.branchId ?? "shared", branchName, owner: status.owner, role: status.role, canEdit: !sharedReadOnly && !collaboration?.readOnly, saved: status.saved, initialized: status.initialized, preview: !!collaboration?.previewCommitId } : undefined, [status?.owner, status?.role, status?.saved, status?.initialized, collaboration?.branchId, branchName, collaboration?.readOnly, collaboration?.previewCommitId, sharedReadOnly]);
+  // #756: las copias prestadas sin permiso de exportar no salen por el MCP.
+  const sealedIds = collaboration?.sealedFileIds ?? NO_SEALED;
+  const activeSealed = !!currentFileId && sealedIds.includes(currentFileId);
   const assertAiEdit = (expected?: { projectId?: string | null; branchId?: string }) => {
     if (expected && ((expected.projectId !== undefined && expected.projectId !== currentFileId) || (expected.branchId !== undefined && expected.branchId !== collaboration?.branchId))) throw new Error("La ventana cambió de proyecto o rama. Consulta get_app_state y vuelve a intentar.");
     const policy = aiBranchPolicy(aiContext); if (!policy.allowed) throw new Error(policy.error);
@@ -155,7 +160,8 @@ const McpImportBridge = () => {
         projectId: currentFileId,
         collaboration: aiContext,
         views,
-        savedFiles,
+        savedFiles: savedFiles.filter((f) => !sealedIds.includes(f.id)),
+        sealed: activeSealed,
         viewsLimit: MAX_CUSTOM_VIEWS,
         now: new Date().toISOString(),
         // El agente ve lo mismo que el humano tiene filtrado: si el header está en
@@ -167,7 +173,7 @@ const McpImportBridge = () => {
         projectOrg: savedFiles.find((f) => f.id === currentFileId)?.orgId ?? null,
       })
     );
-  }, [graphData, views, savedFiles, orgFilter, focus, currentFileId, aiContext]);
+  }, [graphData, views, savedFiles, orgFilter, focus, currentFileId, aiContext, sealedIds, activeSealed]);
 
   // Lectura bajo demanda (`list_artifacts`, `get_artifact`, `list_views`,
   // `get_view`): el main pregunta y este efecto contesta. El proyecto activo sale
@@ -251,7 +257,7 @@ const McpImportBridge = () => {
 
     const off = electron.onMcpAppRead(({ id, request }) => {
       try {
-        electron.mcpAppReadReply?.(id, resolveAppRead(request, ctx));
+        electron.mcpAppReadReply?.(id, resolveAppRead(request, sealAppReadContext(ctx, sealedIds)));
       } catch (e: any) {
         electron.mcpAppReadReply?.(id, {
           ok: false,
@@ -260,7 +266,7 @@ const McpImportBridge = () => {
       }
     });
     return off;
-  }, [currentFileId, graphData, savedFiles, views, allNodes, focus]);
+  }, [currentFileId, graphData, savedFiles, views, allNodes, focus, sealedIds]);
 
   // Acciones del agente sobre las pestañas del proyecto (borrar, renombrar). La
   // regla —qué vista toca y cuándo NO se hace nada— es pura y vive en
@@ -951,6 +957,7 @@ export function AppContent() {
 
         <main className="grow relative graph-visualization-container">
           <GraphArea />
+          <BorrowedLockOverlay />
         </main>
 
         <MemoizedNodeModal />

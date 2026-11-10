@@ -454,6 +454,33 @@ const nombrePorId = (vistas: ViewInput[]) => (id: string) => vistas.find((v) => 
 /** Nombres disponibles, para que el error diga qué SÍ se puede pedir. */
 const nombres = <T>(items: T[], nameOf: (i: T) => string) => items.map(nameOf);
 
+/** Mensaje único: el agente debe entender que es una decisión del anfitrión, no un error. */
+export const SEALED_PROJECT_ERROR =
+  "Este proyecto es una copia compartida y el anfitrión no permite exportarla: su contenido no sale de la app.";
+
+/**
+ * Copias prestadas sin permiso de exportar (#756): el agente externo no las ve. Se
+ * recortan en el contexto —no al formatear— para que ninguna lectura las alcance.
+ */
+export function sealAppReadContext(ctx: AppReadContext, sealed: readonly string[]): AppReadContext {
+  if (!sealed.length) return ctx;
+  const isSealed = (id: string) => sealed.includes(id);
+  const guard = <T>(read: (id: string) => T) => (id: string): T => {
+    if (isSealed(id)) throw new Error(SEALED_PROJECT_ERROR);
+    return read(id);
+  };
+  const activeSealed = !!ctx.active && isSealed(ctx.active.id);
+  return {
+    ...ctx,
+    active: activeSealed ? null : ctx.active,
+    focus: activeSealed ? null : ctx.focus,
+    projects: ctx.projects.filter(p => !isSealed(p.id)),
+    viewsOf: guard(ctx.viewsOf),
+    artifactsOf: guard(ctx.artifactsOf),
+    sourceBaseOf: ctx.sourceBaseOf && guard(ctx.sourceBaseOf),
+  };
+}
+
 export function resolveAppRead(req: AppReadRequest, ctx: AppReadContext): AppReadResult {
   // El catálogo no depende de un proyecto: sirve también en la bienvenida.
   if (req.kind === "projects") {

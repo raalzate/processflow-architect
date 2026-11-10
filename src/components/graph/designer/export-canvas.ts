@@ -14,6 +14,7 @@
 // canvas y `toDataURL` falla. Para PNG conviene la vía Puppeteer del main.
 // =============================================================================
 
+import { guardExport } from "@/lib/export-gate";
 import type { ContentBounds } from "./serialize";
 import {
   COLORES_POR_DEFECTO,
@@ -67,6 +68,7 @@ function inlineComputedStyles(src: Element, dst: Element): void {
 
 /** Dispara la descarga de un data URL (p. ej. el PNG que devuelve capturePage). */
 export function downloadDataUrl(dataUrl: string, filename: string): void {
+  if (!guardExport()) return;
   const a = document.createElement("a");
   a.href = dataUrl;
   a.download = filename;
@@ -83,6 +85,8 @@ export function downloadText(content: string, filename: string, mime: string): v
 }
 
 export function downloadBlob(blob: Blob, filename: string): void {
+  // El freno de copias prestadas (#756) vive acá: todo lo que descarga pasa por este helper.
+  if (!guardExport()) return;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
