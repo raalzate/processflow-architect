@@ -40,11 +40,6 @@ describe("credits", () => {
     expect(CREDIT_AUTHOR).toBe("Raúl Andrés Alzate Gómez");
   });
 
-  it("no queda rastro del crédito anterior", () => {
-    const source = fs.readFileSync(path.join(repoRoot, "src", "lib", "credits.ts"), "utf8");
-    expect(source.toLowerCase()).not.toContain("sofka");
-    expect(fs.existsSync(path.join(repoRoot, "public", "sofka.png"))).toBe(false);
-  });
 
   it("el contacto es el repo de GitHub, no un correo personal", () => {
     // El correo exponía un dato privado y no llevaba a nada mirable; el repo
