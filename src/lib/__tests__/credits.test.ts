@@ -59,6 +59,8 @@ describe("credits", () => {
       expect(link.title).toContain(CREDIT_AUTHOR);
     }
     expect(CREDIT_LINKS.some((l) => l.href === CREDIT_REPO_URL)).toBe(true);
+    // #753: el aviso de privacidad se alcanza desde la app.
+    expect(CREDIT_LINKS.some((l) => l.href === `${CREDIT_REPO_URL}/blob/main/PRIVACY.md`)).toBe(true);
     expect(CREDIT_LINKS.some((l) => l.href.startsWith("mailto:"))).toBe(false);
   });
 });
