@@ -2,6 +2,27 @@ import type { Capacity, PeerRoute } from "./types";
 
 export const MIN_ROOM_CAPACITY = 5; // Incluye al anfitrión.
 
+/**
+ * Memoria reutilizable en macOS a partir de la salida de `vm_stat` (#750).
+ * `os.freemem()` allí cuenta sólo las páginas libres —decenas de MB en una Mac
+ * con 16 GB, porque el sistema llena la RAM de caché— y el cupo de la sala caía
+ * siempre al mínimo. Las inactivas, especulativas y purgables se recuperan sin
+ * presión de memoria, así que cuentan como disponibles. `undefined` si la salida
+ * no se puede leer: quien llama cae a `os.freemem()`.
+ */
+export function availableMemoryFromVmStat(salida: string): number | undefined {
+  const pagina = /page size of (\d+) bytes/.exec(salida);
+  if (!pagina) return undefined;
+  const paginas = (nombre: string) => {
+    const m = new RegExp(`^Pages ${nombre}:\\s+(\\d+)\\.`, "m").exec(salida);
+    return m ? Number(m[1]) : undefined;
+  };
+  const libres = paginas("free");
+  if (libres === undefined) return undefined;
+  const total = libres + (paginas("inactive") ?? 0) + (paginas("speculative") ?? 0) + (paginas("purgeable") ?? 0);
+  return total * Number(pagina[1]);
+}
+
 export interface RoutePathMeasurement {
   route: PeerRoute;
   cwnd: number;

@@ -13,7 +13,8 @@ import { randomBytes, randomUUID, createHash, timingSafeEqual } from "node:crypt
 import { freemem, networkInterfaces } from "node:os";
 import { performance } from "node:perf_hooks";
 import { SharedDocument } from "../../../src/lib/collaboration/document";
-import { estimateCapacity, Seats, NetworkLoad, MIN_ROOM_CAPACITY } from "../../../src/lib/collaboration/capacity";
+import { estimateCapacity, Seats, NetworkLoad, MIN_ROOM_CAPACITY, availableMemoryFromVmStat } from "../../../src/lib/collaboration/capacity";
+import { execFileSync } from "node:child_process";
 import { withStableGraphIds } from "../../../src/lib/collaboration/identity";
 import type {
   Capacity,
@@ -40,7 +41,26 @@ import { RecurringServiceCost, RecentCongestion } from "../../../src/lib/collabo
 import { participantsForRoom, type Participant } from "../../../src/lib/collaboration/participants";
 import { PresenceChannel } from "./presence-channel";
 
-const ALPN = [...Buffer.from("processflow/collaboration/1")];
+// En macOS `os.freemem()` subestima la memoria (sólo páginas libres) y el cupo
+// quedaba en el mínimo (#750): se lee `vm_stat`. El cupo se recalcula seguido,
+// así que la lectura se guarda 10 s; cualquier fallo cae a `os.freemem()`.
+let memoriaCache: { valor: number; hasta: number } | undefined;
+function memoriaDelSistema(): number {
+  if (process.platform !== "darwin") return freemem();
+  const ahora = Date.now();
+  if (memoriaCache && memoriaCache.hasta > ahora) return memoriaCache.valor;
+  let valor = freemem();
+  try {
+    const leida = availableMemoryFromVmStat(execFileSync("vm_stat", { encoding: "utf8", timeout: 1000 }));
+    if (leida !== undefined) valor = Math.max(valor, leida);
+  } catch {
+    /* sin vm_stat: os.freemem() */
+  }
+  memoriaCache = { valor, hasta: ahora + 10_000 };
+  return valor;
+}
+
+const ALPN =[...Buffer.from("processflow/collaboration/1")];
 const encode = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
 const decode = (text: string) => new Uint8Array(Buffer.from(text, "base64"));
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -157,7 +177,7 @@ export class CollaborationEngine {
     this.saveConfig();
   }
   private freeMemory(): number {
-    return this.dependencies.freeMemory?.() ?? freemem();
+    return this.dependencies.freeMemory?.() ?? memoriaDelSistema();
   }
   private saveConfig() {
     writePrivateJson(join(this.root, "device.json"), this.config);
