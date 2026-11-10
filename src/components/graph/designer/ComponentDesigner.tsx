@@ -1,5 +1,7 @@
 "use client";
 import { useCollaboration } from "@/context/CollaborationContext";
+import { exportAllowed } from "@/lib/export-gate";
+import { SEALED_PROJECT_ERROR } from "@/lib/mcp/app-read";
 import { applyRecordDelta } from "@/lib/collaboration/canvas-merge";
 import { PresenceLayer } from "@/components/collaboration/PresenceLayer";
 
@@ -5229,6 +5231,8 @@ export const ComponentDesigner: React.FC<{
     const api = hostBridge();
     if (!api?.onMcpAppCapture) return;
     return api.onMcpAppCapture(async ({ id }) => {
+      // #756: una imagen del lienzo también es sacar el contenido de una copia prestada.
+      if (!exportAllowed()) return api.mcpAppCaptureReply(id, { ok: false, error: SEALED_PROJECT_ERROR });
       try {
         const dataUrl = await capturarRef.current();
         api.mcpAppCaptureReply(id, { ok: true, view: nombreVistaRef.current, dataUrl });
@@ -5668,7 +5672,8 @@ export const ComponentDesigner: React.FC<{
               </DropdownMenuSub>
 
               <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
+                {/* #756: en una copia prestada exportar lo decide el anfitrión (los helpers también frenan). */}
+                <DropdownMenuSubTrigger disabled={collaboration ? !collaboration.canExport : false}>
                   <Download className="mr-2 h-4 w-4" /> Exportar
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-56">

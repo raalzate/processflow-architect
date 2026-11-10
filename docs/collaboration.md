@@ -271,6 +271,30 @@ los punteros aparecen al coincidir en rama y vista. Al cerrar y abrir la aplicac
 se recupera el vínculo y se reintenta la conexión automáticamente. **Desvincular**
 es una acción distinta: elimina deliberadamente ese vínculo.
 
+## La copia del invitado es un préstamo (#756)
+
+El anfitrión es la única fuente de verdad. Lo que tiene el invitado existe mientras el
+anfitrión lo comparte:
+
+| Situación | Qué pasa en el equipo del invitado |
+|---|---|
+| El anfitrión no responde más de 10 s | Solo lectura y contenido tapado con el aviso y el tiempo restante |
+| Vuelve dentro del plazo | Se resincroniza y recupera su rol |
+| Vence el plazo (lo fija el anfitrión: 0, 15 min, 1 h, 24 h —defecto— o 7 días) | Se borran el historial local y el proyecto del catálogo, también si la app estaba cerrada |
+| El invitado sale | Se elimina la copia (con confirmación y aviso de cambios sin entregar) |
+| El anfitrión lo revoca | Se elimina la copia al primer rechazo por revocación |
+
+Exportar (imagen, HTML, JSON, PDF, recuperación) y leer el proyecto desde el servidor
+MCP están cerrados para invitados salvo que el anfitrión active «Permitir exportar a
+los invitados». Toda descarga del renderer pasa por `src/lib/export-gate.ts`; la decisión
+del préstamo es `src/lib/collaboration/lease.ts` y la aplica el motor del main.
+
+**No es DRM.** Capturas de pantalla, la memoria del proceso o un cliente modificado
+quedan fuera de alcance: lo que se garantiza es que la aplicación legítima no deja una
+copia durable ni utilizable. El tiempo se mide desde el máximo reloj observado, así que
+atrasar la hora del sistema no prolonga el préstamo. Pendiente: cifrar en reposo la
+copia del invitado con una llave que entregue el anfitrión por sesión.
+
 Las flechas que apuntan a identificadores ausentes se conservan en el documento
 compartido. Si el componente llega después de una desconexión, la flecha reaparece
 al sincronizar.

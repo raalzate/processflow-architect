@@ -504,9 +504,11 @@ export default function DocsPage() {
                     </p>
                     <p>
                       Cerrar la aplicación conserva el vínculo para la próxima sesión.
-                      Para desvincular esa copia, abre <b className="text-foreground">Copia de recuperación y vínculo → Salir del proyecto compartido</b>:
-                      se conserva la copia visible, pero deja de sincronizarse. <b>Descargar recuperación</b> guarda
-                      contenido e historial para recuperación; importar la copia no vuelve a crear la conexión automáticamente.
+                      Para el anfitrión, <b className="text-foreground">Copia de recuperación y vínculo → Salir del proyecto compartido</b>
+                      conserva su proyecto y deja de compartirlo. Para un invitado, la copia es un <b>préstamo</b>: salir
+                      la elimina de su equipo, igual que ser revocado. Si el anfitrión deja de responder, la copia del
+                      invitado se bloquea y, al vencer el plazo que fijó el anfitrión (24 horas por defecto), se elimina.
+                      Exportar, descargar la recuperación o leerla desde el servidor MCP requiere que el anfitrión lo permita.
                     </p>
                     <p>
                       El anfitrión puede retirar el acceso desde <b className="text-foreground">Personas con acceso → Revocar</b>.
