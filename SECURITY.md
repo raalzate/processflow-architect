@@ -25,7 +25,11 @@ actualiza sola desde Ajustes → Actualizaciones.
 ## Qué protege la app hoy
 
 Es una app de escritorio sin backend propio: los proyectos viven en el equipo del
-usuario. Los controles que existen, y lo que los hace cumplir:
+usuario. La colaboración en tiempo real es opcional. Cuando se activa, los equipos se
+conectan de punta a punta con QUIC cifrado. Si no hay ruta directa, el tráfico pasa por
+un relay: los públicos de n0 o uno propio. El relay ve metadatos de la conexión, pero ni
+guarda ni puede leer el proyecto ([ADR 0008](docs/decisions/0008-colaboracion-red-y-relay.md)).
+Los controles que existen, y lo que los hace cumplir:
 
 | Control | Mecanismo |
 |---|---|

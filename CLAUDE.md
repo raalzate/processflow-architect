@@ -33,6 +33,9 @@
 **Processflow Architect** es una app de escritorio (Electron + Next.js) para Event
 Storming Big Picture con asistencia de IA **local por defecto** (LiteRT-LM sobre
 WebGPU). No hay backend propio: la IA local corre en la máquina del usuario.
+La colaboración en tiempo real es opt-in y P2P (Iroh): sin servidor que guarde
+proyectos, con relays públicos de terceros sólo como respaldo de transporte cifrado
+y relay propio opcional (ADR 0008, `docs/decisions/0008-colaboracion-red-y-relay.md`).
 Opcionalmente el usuario puede activar un proveedor de **IA remota** (nube) — ver
 la regla de IA abajo — pero está **apagado por defecto** y requiere que el usuario
 configure su propia llave.
