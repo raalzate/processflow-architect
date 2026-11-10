@@ -56,8 +56,11 @@ export class Journal {
     fsyncSync(this.fd);
     this.size += frame.length;
   }
+  /** Idempotente: un segundo close cerraría el fd que el sistema ya reasignó a otro archivo. */
   close() {
+    if (this.fd < 0) return;
     closeSync(this.fd);
+    this.fd = -1;
   }
 }
 

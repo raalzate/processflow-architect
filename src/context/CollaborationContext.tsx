@@ -34,7 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 import { canExportShared, type LeasePolicy } from "@/lib/collaboration/lease";
 import { purgeBorrowedStorage } from "@/lib/collaboration/borrowed-storage";
 import { EXPORT_DENIED_MESSAGE, setExportDeniedNotifier, setExportRule } from "@/lib/export-gate";
-import type { PurgeReason } from "@/lib/collaboration/types";
+import type { CollaborationPurge, PurgeReason } from "@/lib/collaboration/types";
 
 const PURGE_MESSAGES: Record<PurgeReason, string> = {
   left: "Saliste del proyecto compartido: su copia se eliminó de este equipo.",
@@ -403,16 +403,22 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     const host = hostBridge();
     if (!host?.collaborationCommand) return;
-    // Purgas que ocurrieron con la ventana cerrada (plazo vencido al arrancar, revocación).
+    // El main olvida una purga sólo cuando la copia ya salió del catálogo: si la app se
+    // cierra en medio, al arrancar se vuelve a aplicar en vez de dejar un proyecto huérfano.
+    const apply = (purges: CollaborationPurge[] = []) => {
+      if (!purges.length) return;
+      for (const p of purges) removeBorrowed(p.fileId, p.reason);
+      void host.collaborationCommand!({ type: "ack-purges", fileId: "", fileIds: purges.map(p => p.fileId) }).catch(
+        () => {},
+      );
+    };
     void host
       .collaborationCommand({ type: "take-purges", fileId: "" })
-      .then(r => r.purges?.forEach(p => removeBorrowed(p.fileId, p.reason)))
+      .then(r => apply(r.purges))
       .catch(() => {});
     return host.onCollaborationEvent?.(event => {
-      if (!event.purges?.length) return;
-      for (const p of event.purges) removeBorrowed(p.fileId, p.reason);
-      // Ya se aplicaron: que no vuelvan a aparecer en el próximo arranque.
-      void host.collaborationCommand!({ type: "take-purges", fileId: "" }).catch(() => {});
+      if (event.sealed) setSealedFileIds(event.sealed);
+      apply(event.purges);
     });
   }, [removeBorrowed]);
   const run = useCallback(

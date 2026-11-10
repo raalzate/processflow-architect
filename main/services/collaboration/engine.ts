@@ -42,6 +42,7 @@ import { canEditBranch, type HistoryActor } from "../../../src/lib/collaboration
 import { RecurringServiceCost, RecentCongestion } from "../../../src/lib/collaboration/session-stability";
 import { participantsForRoom, type Participant } from "../../../src/lib/collaboration/participants";
 import { PresenceChannel } from "./presence-channel";
+import { EXPORT_DENIED_MESSAGE as EXPORT_DENIED } from "../../../src/lib/export-gate";
 import {
   DEFAULT_LEASE_POLICY,
   leaseState,
@@ -117,7 +118,7 @@ interface Config {
 /** El reloj se persiste con esta granularidad: perder hasta este tramo sólo acorta el préstamo. */
 const CLOCK_SAVE_MS = 30_000;
 class RevokedAccess extends Error {}
-const EXPORT_DENIED = "El anfitrión no permite exportar este proyecto.";
+
 interface Request {
   presenceMode?: "stream-v1";
   version: 1;
@@ -170,6 +171,8 @@ interface Room {
   /** Hubo contacto con el anfitrión desde que arrancó la app: sin él el préstamo no se presume. */
   sessionContact?: boolean;
   clockSavedAt?: number;
+  /** Cierre en curso: salir, purgar y cerrar la app pueden coincidir y deben compartirlo. */
+  disposing?: Promise<void>;
 }
 
 /** Native transport/persistence service. Existing contexts remain the UI's API. */
@@ -236,13 +239,13 @@ export class CollaborationEngine {
       }
     }
     // Un plazo vencido con la app cerrada se aplica antes de mostrar nada.
-    this.enforceLeases();
+    await this.enforceLeases();
     if (this.rooms.size) await this.endpointReady();
     for (const room of this.rooms.values()) if (room.stored.owner && room.status.saved && room.branches && !room.branches.enabled) room.branches.activate(this.actor(room));
     for (const room of this.rooms.values())
       if (!room.stored.owner && room.status.saved) this.schedule(room, 0);
     this.monitor = setInterval(() => {
-      this.enforceLeases();
+      void this.enforceLeases().catch(error => console.error("Préstamos de copias compartidas:", error));
       for (const room of this.rooms.values())
         if (room.stored.owner && room.status.saved) {
           this.refreshCapacity(room);
@@ -621,15 +624,13 @@ export class CollaborationEngine {
         if (command.type === "open") return { status: failed.status };
         throw new Error(failed.status.error);
       }
-      if (command.type === "borrowed")
-        return {
-          sealed: this.config.rooms.filter(r => !r.owner && !r.policy?.allowExport).map(r => r.fileId),
-        };
-      if (command.type === "take-purges") {
-        const purges = this.config.purges ?? [];
-        this.config.purges = [];
+      if (command.type === "borrowed") return { sealed: this.sealed() };
+      // Se entregan sin borrar: sólo se olvidan cuando el renderer confirma que quitó cada copia.
+      if (command.type === "take-purges") return { purges: this.config.purges ?? [] };
+      if (command.type === "ack-purges") {
+        this.config.purges = (this.config.purges ?? []).filter(p => !command.fileIds.includes(p.fileId));
         this.saveConfig();
-        return { purges };
+        return {};
       }
       let room = this.rooms.get(command.fileId);
       if (command.type === "open") {
@@ -1352,18 +1353,20 @@ export class CollaborationEngine {
     }
   }
   /** Cierra la sala y suelta el historial; no decide qué pasa con los archivos. */
-  private async dispose(room: Room) {
+  private dispose(room: Room): Promise<void> {
     room.disposed = true;
-    await room.pathWatch?.stop();
-    room.pathWatch = undefined;
-    if (room.timer) clearTimeout(room.timer);
-    this.closePresenceStream(room.connection); room.connection?.close(BigInt(0), []);
-    for (const connection of room.clients.values()) connection.close(BigInt(0), []);
-    await room.syncTask;
-    room.branches?.close();
-    room.journal.close();
-    room.document.destroy();
-    if (this.rooms.get(room.stored.fileId) === room) this.rooms.delete(room.stored.fileId);
+    return (room.disposing ??= (async () => {
+      await room.pathWatch?.stop();
+      room.pathWatch = undefined;
+      if (room.timer) clearTimeout(room.timer);
+      this.closePresenceStream(room.connection); room.connection?.close(BigInt(0), []);
+      for (const connection of room.clients.values()) connection.close(BigInt(0), []);
+      await room.syncTask;
+      room.branches?.close();
+      room.journal.close();
+      room.document.destroy();
+      if (this.rooms.get(room.stored.fileId) === room) this.rooms.delete(room.stored.fileId);
+    })());
   }
   /** Borra el historial y el vínculo de una copia prestada. Nunca se llama con una sala propia. */
   private removeLocalCopy(stored: StoredRoom) {
@@ -1378,6 +1381,8 @@ export class CollaborationEngine {
    */
   private async purge(room: Room, reason: PurgeReason) {
     if (room.disposed || room.stored.owner) return;
+    // Una sala en cuarentena también figura en failedRooms: que no se purgue dos veces.
+    this.failedRooms.delete(room.stored.fileId);
     await this.dispose(room);
     this.removeLocalCopy(room.stored);
     this.recordPurge(room.stored.fileId, reason);
@@ -1386,7 +1391,10 @@ export class CollaborationEngine {
     const purge = { fileId, reason };
     this.config.purges = [...(this.config.purges ?? []).filter(p => p.fileId !== fileId), purge];
     this.saveConfig();
-    this.event({ fileId, purges: [purge] });
+    this.event({ fileId, purges: [purge], sealed: this.sealed() });
+  }
+  private sealed(): string[] {
+    return this.config.rooms.filter(r => !r.owner && !r.policy?.allowExport).map(r => r.fileId);
   }
   /** Contacto válido con el anfitrión: renueva el préstamo y adopta su política. */
   private touchLease(room: Room, policy: unknown) {
@@ -1400,9 +1408,12 @@ export class CollaborationEngine {
       room.clockSavedAt = now;
       this.saveConfig();
     }
+    // Cambió el permiso de exportar: el renderer debe sellar o liberar aunque no sea el activo.
+    if (changed) this.event({ fileId: room.stored.fileId, sealed: this.sealed() });
   }
   private lease(room: Room, now = Date.now()) {
-    const policy = room.stored.owner ? sanitizeLeasePolicy(room.stored.policy) : (room.stored.policy ?? DEFAULT_LEASE_POLICY);
+    // También la del invitado: `device.json` se puede editar a mano y no debe alargar el préstamo.
+    const policy = room.stored.owner || room.stored.policy ? sanitizeLeasePolicy(room.stored.policy) : DEFAULT_LEASE_POLICY;
     return {
       ...leaseState({
         owner: room.stored.owner,
@@ -1416,11 +1427,11 @@ export class CollaborationEngine {
     };
   }
   /** Aplica el préstamo de cada copia prestada: refresca el aviso y purga lo vencido o revocado. */
-  private enforceLeases() {
+  private async enforceLeases() {
     const now = Date.now();
     let dirty = false;
     for (const room of [...this.rooms.values()]) {
-      if (room.stored.owner || room.disposed) continue;
+      if (room.stored.owner || room.disposed || room.quarantined) continue;
       room.stored.clock = observeClock(room.stored.clock ?? { lastContact: now, observed: now }, now);
       if (now - (room.clockSavedAt ?? 0) >= CLOCK_SAVE_MS) { room.clockSavedAt = now; dirty = true; }
       const { state } = this.lease(room, now);
@@ -1430,9 +1441,11 @@ export class CollaborationEngine {
     for (const [fileId, failed] of [...this.failedRooms]) {
       if (failed.stored.owner) continue;
       failed.stored.clock = observeClock(failed.stored.clock ?? { lastContact: now, observed: now }, now);
-      const { state } = leaseState({ owner: false, sessionContact: false, revoked: !!failed.stored.revoked, policy: failed.stored.policy ?? DEFAULT_LEASE_POLICY, clock: failed.stored.clock, now });
+      const { state } = leaseState({ owner: false, sessionContact: false, revoked: !!failed.stored.revoked, policy: sanitizeLeasePolicy(failed.stored.policy), clock: failed.stored.clock, now });
       if (state === "expired" || state === "revoked") {
         this.failedRooms.delete(fileId);
+        const partial = this.rooms.get(fileId);
+        if (partial) await this.dispose(partial);
         this.removeLocalCopy(failed.stored);
         this.recordPurge(fileId, state);
       }
@@ -1454,7 +1467,10 @@ export class CollaborationEngine {
     for (const connection of this.incoming) connection.close(BigInt(0), []);
     if (this.endpoint) await this.endpoint.close();
     await Promise.allSettled([...this.rooms.values()].map(room => room.syncTask));
+    // Una purga en curso ya cierra su sala: esperarla en vez de cerrar dos veces.
+    await Promise.allSettled([...this.rooms.values()].map(room => room.disposing));
     for (const room of this.rooms.values()) {
+      if (room.disposing) continue;
       room.branches?.close();
       room.journal.close();
       room.document.destroy();

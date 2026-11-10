@@ -16,7 +16,7 @@ import { isJsonFile } from "@/lib/import-diagram";
 import { parseBoardFile } from "@/lib/board-file";
 import { readMcpPrefs } from "@/lib/mcp-settings";
 import { describeAppState } from "@/lib/mcp/app-state";
-import { resolveAppRead, sealAppReadContext, type AppReadContext } from "@/lib/mcp/app-read";
+import { resolveAppRead, sealAppReadContext, SEALED_PROJECT_ERROR, type AppReadContext } from "@/lib/mcp/app-read";
 import { BorrowedLockOverlay } from "@/components/collaboration/BorrowedLockOverlay";
 import { mergeProjectMeta, describeMetaAgregada } from "@/lib/mcp/project-meta";
 import { buscarProyectoGuardado, claveProyecto, mergeProjectGraph, nombreVisible, resolveViewRef } from "@/lib/mcp/project-update";
@@ -357,6 +357,8 @@ const McpImportBridge = () => {
             if (!collaboration?.workspace || !collaboration.status || !currentFileId) throw new Error("Abre un proyecto vinculado para gestionar ramas y versiones.");
             if (expectedContext && (expectedContext.projectId !== currentFileId || expectedContext.branchId !== collaboration.branchId)) throw new Error("La ventana cambió de proyecto o rama. Consulta el estado y reintenta.");
             const w = collaboration.workspace, history = w.history;
+            // #756: el contenido de una versión (o de una mezcla) de una copia prestada no sale por el MCP.
+            if (!collaboration.canExport && ((request.command === "inspect" && request.commitId) || request.command === "preview-merge")) throw new Error(SEALED_PROJECT_ERROR);
             if (request.command === "inspect") return reply({ ok: true, message: "Ramas, versiones, solicitudes y alternativas de edición.", data: {
               branchId: collaboration.branchId, previewCommitId: collaboration.previewCommitId, actor: w.actor,
               branches: history.branches, commits: history.commits.map(({ snapshot: _snapshot, ...commit }) => commit), proposals: history.proposals, permissions: history.permissions,

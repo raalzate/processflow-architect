@@ -48,4 +48,19 @@ describe("rastro local de una copia prestada", () => {
     const store = memory({ source_base_by_project: "{", [`views_${id}`]: "[]" });
     expect(purgeBorrowedStorage(store, id)).toEqual([`views_${id}`]);
   });
+  it("saca la copia del catálogo y del último abierto en el acto, sin esperar al guardado asíncrono", () => {
+    const store = memory({
+      saved_json_files: JSON.stringify([{ id, name: "Ajeno" }, { id: "mio-1", name: "Propio" }]),
+      last_opened_file_id: id,
+    });
+    const removed = purgeBorrowedStorage(store, id);
+    expect(JSON.parse(store.data.get("saved_json_files")!)).toEqual([{ id: "mio-1", name: "Propio" }]);
+    expect(store.data.has("last_opened_file_id")).toBe(false);
+    expect(removed).toContain(`saved_json_files[${id}]`);
+  });
+  it("el último abierto de otro proyecto se respeta", () => {
+    const store = memory({ last_opened_file_id: "mio-1", saved_json_files: "[]" });
+    purgeBorrowedStorage(store, id);
+    expect(store.data.get("last_opened_file_id")).toBe("mio-1");
+  });
 });

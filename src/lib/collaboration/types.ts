@@ -103,6 +103,7 @@ export type CollaborationCommand =
   | { type: "policy"; fileId: string; policy: LeasePolicy }
   | { type: "take-purges"; fileId: string }
   | { type: "borrowed"; fileId: string }
+  | { type: "ack-purges"; fileId: string; fileIds: string[] }
   | { type: "revoke"; fileId: string; memberId: string };
 export interface CollaborationResult {
   workspace?: CollaborationWorkspace;
