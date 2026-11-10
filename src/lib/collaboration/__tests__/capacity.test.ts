@@ -1,5 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { estimateCapacity, Seats, NetworkLoad } from "../capacity";
+import { estimateCapacity, Seats, NetworkLoad, availableMemoryFromVmStat } from "../capacity";
+
+// #750: en macOS `os.freemem()` sólo cuenta las páginas libres (65 MB de 16 GB en
+// una Mac real) y el cupo caía siempre al mínimo. Lo reutilizable sin presión es
+// libre + inactiva + especulativa + purgable, que es lo que reporta `vm_stat`.
+const VM_STAT = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                                2895.
+Pages active:                            156461.
+Pages inactive:                          155076.
+Pages speculative:                          728.
+Pages throttled:                              0.
+Pages wired down:                        248941.
+Pages purgeable:                              2.
+"Translation faults":               30718513097.
+File-backed pages:                       107323.`;
+
+describe("memoria disponible en macOS (vm_stat)", () => {
+  it("suma libre, inactiva, especulativa y purgable con el tamaño de página real", () => {
+    expect(availableMemoryFromVmStat(VM_STAT)).toBe((2895 + 155076 + 728 + 2) * 16384);
+  });
+
+  it("con esa memoria el cupo deja de caer al mínimo de 5", () => {
+    const free = availableMemoryFromVmStat(VM_STAT)!;
+    expect(estimateCapacity({ freeMemoryBytes: free, projectBytes: 0, mergeMs: 1 }).limit).toBeGreaterThan(5);
+    expect(estimateCapacity({ freeMemoryBytes: 65 * 1024 ** 2, projectBytes: 0, mergeMs: 1 }).limit).toBe(5);
+  });
+
+  it("toma el tamaño de página de la cabecera (4 KiB en Intel)", () => {
+    const intel = VM_STAT.replace("16384", "4096");
+    expect(availableMemoryFromVmStat(intel)).toBe((2895 + 155076 + 728 + 2) * 4096);
+  });
+
+  it("salida ilegible o vacía: undefined, para caer a os.freemem()", () => {
+    expect(availableMemoryFromVmStat("")).toBeUndefined();
+    expect(availableMemoryFromVmStat("command not found")).toBeUndefined();
+    expect(availableMemoryFromVmStat("Mach Virtual Memory Statistics: (page size of 16384 bytes)\n")).toBeUndefined();
+  });
+});
 
 describe("room capacity", () => {
   it("uses the smallest measured resource budget and includes the host", () => {
