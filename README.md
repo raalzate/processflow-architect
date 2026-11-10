@@ -259,9 +259,24 @@ Reglas de fondo: la lógica pura vive en `src/lib/` y va con prueba (TDD); la su
 
 ---
 
-## Licencia
+## Colaboración en tiempo real
 
-Apache 2.0 — ver [LICENSE](LICENSE).
+Un proyecto se puede compartir con una invitación y editar a la vez: por red local, de equipo a
+equipo por Internet o a través de un relay. Hay ramas, versiones y permisos. Ver
+[la guía de colaboración](docs/collaboration.md), [el relay propio](deploy/collaboration/README.md)
+y la decisión de red en el [ADR 0008](docs/decisions/0008-colaboracion-red-y-relay.md).
+
+## Privacidad
+
+Sin cuenta, sin servidor propio y sin telemetría. Qué datos salen del equipo y a quién, función
+por función: [PRIVACY.md](PRIVACY.md).
+
+## Licencia y contribuciones
+
+Apache 2.0 — ver [LICENSE](LICENSE) y [NOTICE](NOTICE). Las licencias de las dependencias, los
+modelos descargables y las bibliotecas del CDN están en
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md). Para aportar, lee
+[CONTRIBUTING.md](CONTRIBUTING.md): cada commit lleva `Signed-off-by` (DCO).
 
 ---
 
@@ -269,9 +284,3 @@ Apache 2.0 — ver [LICENSE](LICENSE).
 
 Desarrollado por **Raúl Andrés Alzate Gómez** ·
 [alzategomez.raul@gmail.com](mailto:alzategomez.raul@gmail.com)
-# Preview de colaboración en repositorio temporal
-
-Esta rama agrega proyectos vinculados, edición compartida, recuperación offline y
-punteros con nombre y color. Conserva la arquitectura de escritorio por capas.
-Consulta [la guía de colaboración](docs/collaboration.md) y [el relay propio](deploy/collaboration/README.md).
-No se publica ni se envían cambios al repositorio original.

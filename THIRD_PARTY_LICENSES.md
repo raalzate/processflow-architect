@@ -1,7 +1,47 @@
 # Licencias de terceros
 
-Material de terceros que viaja DENTRO del repo (no como dependencia de npm). Lo que entra por
-`package.json` tiene su licencia en cada paquete.
+Qué material de terceros usa la app y bajo qué licencia. El proyecto se distribuye bajo
+[Apache 2.0](LICENSE); los avisos de atribución están en [`NOTICE`](NOTICE).
+
+## Dependencias de npm (dentro de los instaladores)
+
+Cada paquete trae su licencia. El build genera **`THIRD_PARTY_NOTICES.txt`**
+(`npm run licenses:notices`, `scripts/third-party-notices.mjs`) con el nombre, la versión, la
+licencia y el texto de licencia de **cada dependencia de producción**. Ese archivo viaja dentro de
+cada instalador (`extraResources`), como piden MIT, BSD e ISC (conservar el aviso de copyright) y
+Apache 2.0 (propagar `NOTICE`).
+
+La regla **LICENCIAS** de `scripts/repo-lint.mjs` hace fallar el gate si entra una dependencia de
+producción con licencia copyleft fuerte (GPL, AGPL o SSPL) o sin licencia declarada, salvo las
+excepciones revisadas de `licenses.allow` en `.claude/harness.config.json`. Hoy son:
+
+| Paquete | Licencia | Por qué se admite |
+|---|---|---|
+| `@img/sharp-libvips-*` (libvips) | LGPL-3.0-or-later | Llega con `sharp` y se enlaza como biblioteca dinámica separada, que es el uso que permite la LGPL. Su licencia va en `THIRD_PARTY_NOTICES.txt` |
+| `khroma` (dependencia de `mermaid`) | MIT | El `package.json` del paquete no declara el campo `license`, pero el paquete trae su archivo `license` MIT |
+
+## Modelos que la app descarga (no viajan en el instalador)
+
+Se bajan de Hugging Face sólo cuando el usuario pulsa «Descargar» en Ajustes. Las licencias se
+verificaron en la ficha de cada repositorio el 2026-11-10.
+
+| Modelo | Repositorio | Licencia | Uso |
+|---|---|---|---|
+| Gemma 4 E2B (it, LiteRT-LM) | `litert-community/gemma-4-E2B-it-litert-lm` | Apache-2.0 | IA local liviana |
+| Gemma 4 E4B (it, LiteRT-LM) | `litert-community/gemma-4-E4B-it-litert-lm` | Apache-2.0 | IA local completa |
+| Kokoro 82M v1.0 (ONNX) | `onnx-community/Kokoro-82M-v1.0-ONNX` | Apache-2.0 | voz (lectura en voz alta) |
+
+Si un modelo nuevo trae otra licencia (por ejemplo, términos de uso con usos prohibidos), hay que
+mostrarla en Ajustes antes de la descarga y agregarla a esta tabla.
+
+## Bibliotecas que la app carga desde el CDN (jsDelivr)
+
+| Biblioteca | Licencia | Uso |
+|---|---|---|
+| `@litert-lm/core` | Apache-2.0 | motor de IA local (WebGPU) |
+| `@huggingface/transformers` | Apache-2.0 | voz (Kokoro) |
+| `pdfjs-dist` (PDF.js) | Apache-2.0 | leer PDF adjuntos |
+| `tesseract.js` y sus datos de idioma | Apache-2.0 | leer texto de imágenes (OCR) |
 
 ## Catálogo de iconos de tecnología (`src/lib/icons/catalog.generated.ts`)
 

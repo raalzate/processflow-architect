@@ -3,12 +3,17 @@
 Spec-Driven Development **no es el modo por defecto** de este repo: es la ruta para el trabajo que
 crea superficie nueva (una notación, una pantalla, un flujo, un handler IPC, un formato de export).
 
-El kit que se usa aquí son las skills **`sofka-0x`** del entorno del desarrollador
-(`~/.claude/skills/sofka-*`), un fork del Intent Integrity Kit de Tessl. **No están versionadas en
-el repo**: el self-test las exige en una máquina de desarrollo —que es donde el ruteo SDD ocurre— y
-en CI reporta la ausencia como *omitido*, nunca como "pasó". Si algún día se instala el kit de Tessl
-en `.tessl/plugins/`, se cambia `sdd.kit` y `sdd.skillRoots` en `.claude/harness.config.json` y nada
-más: el hook sólo evalúa la config.
+El repo **no versiona ni nombra un kit de skills SDD**. Cada equipo usa el que tenga instalado
+(por ejemplo el Intent Integrity Kit de Tessl en `.tessl/plugins/` o skills propias en
+`~/.claude/skills/`) y lo declara en **`.claude/sdd-kit.local.json`**, que está en `.gitignore`:
+
+```json
+{ "kit": "<nombre>", "phases": ["<skill-fase-00>", "<skill-fase-01>", "…"] }
+```
+
+El self-test verifica que cada fase declarada sea una skill instalada en `sdd.skillRoots`. Si el
+archivo no existe, o en CI, lo reporta como *omitido*, nunca como "pasó". El hook sólo evalúa la
+config, así que cambiar de kit es editar ese archivo local.
 
 La decisión la toma el agente principal al leer el pedido; el hook `sdd-router` (UserPromptSubmit)
 le pone el criterio delante, y si el pedido es ambiguo la instrucción es **preguntar una sola cosa
@@ -21,8 +26,8 @@ antes de tocar archivos**.
 | Feature/módulo/pantalla/vista/notación nueva, epic, MVP, historias de usuario | **SDD completo** |
 | Handler IPC, servicio del main o formato de intercambio nuevo | **SDD completo** |
 | Migración, rearquitectura, reescritura | **SDD completo** |
-| Falla concreta sobre algo que ya existe | `/sofka-bugfix` (o test rojo primero) |
-| Requisito ambiguo antes de arrancar | `/sofka-clarify` |
+| Falla concreta sobre algo que ya existe | test rojo primero (o la fase de bugfix del kit) |
+| Requisito ambiguo antes de arrancar | la fase de clarificación del kit |
 | Copy, i18n, typo, tooltip | sin SDD |
 | Renombrar, formatear, mover, documentar | sin SDD |
 | Pregunta, auditoría, explicación | sin SDD |
@@ -34,20 +39,20 @@ declara nada y editó producción en algo de tamaño feature, eso es un hallazgo
 ## Las fases
 
 ```
-sofka-00-constitution   principios (ya existe: CONSTITUTION.md, v1.0.0)
-sofka-01-specify        user stories Given/When/Then, FR-XXX, criterios de éxito
-sofka-02-plan           diseño técnico, modelo de datos, contratos (tiles de Tessl para librerías)
-sofka-03-checklist      completitud del spec, puntuada y ligada a FR-XXX/SC-XXX
-sofka-04-testify        escenarios Gherkin con hash de integridad de aserciones — antes del código
-sofka-05-tasks          desglose en orden de dependencias
-sofka-06-analyze        consistencia: cada requisito traza a una tarea y a la constitución
-sofka-07-implement      ejecutar tasks.md verificando aserciones + gate
-sofka-08-taskstoissues  exportar tareas a GitHub Issues (lo hace `npm run sdd:tasks`)
+00 · constitución   principios (ya existe: CONSTITUTION.md)
+01 · especificar    user stories Given/When/Then, FR-XXX, criterios de éxito
+02 · planificar     diseño técnico, modelo de datos, contratos (tiles de Tessl para librerías)
+03 · checklist      completitud del spec, puntuada y ligada a FR-XXX/SC-XXX
+04 · testify        escenarios Gherkin con hash de integridad de aserciones — antes del código
+05 · tareas         desglose en orden de dependencias
+06 · analizar       consistencia: cada requisito traza a una tarea y a la constitución
+07 · implementar    ejecutar las tareas verificando aserciones + gate
+08 · a issues       exportar tareas a GitHub Issues (lo hace `npm run sdd:tasks`)
 ```
 
 Los artefactos **no se quedan en el repo**: van a GitHub (siguiente sección). El puntero de la
 feature en curso, `.specify/active-feature`, guarda el **número de la issue madre** (`#25`) o queda
-vacío. `/sofka-core` inicializa, selecciona feature y muestra el estado.
+vacío. `npm run sdd:status` muestra el estado.
 
 ## Dónde viven los artefactos: GitHub, no el repo
 
@@ -68,7 +73,7 @@ avance se ve sin `git pull`. Lo que sigue en el repo es lo que explica **el cód
 El flujo, de punta a punta:
 
 ```bash
-/sofka-01-specify …                          # el skill escribe el markdown en el SCRATCHPAD
+# fase «especificar» del kit                 # la skill escribe el markdown en el SCRATCHPAD
 npm run sdd:new <scratchpad>/spec.md         # issue madre con el spec en el cuerpo
 gh issue comment <issue> --body-file plan.md # plan · checklist · testify · analyze
 npm run sdd:tasks <issue> <tasks.md>         # un issue por tarea, enlazado a la madre
@@ -80,8 +85,8 @@ npm run sdd:status                           # avance por feature
 `.claude/harness.config.json` → `sdd.github`. El comando `check` **no toca la red**: por eso puede
 correr en el gate y en CI.
 
-**La cadena BDD es el aporte propio del kit**: `04-testify` genera los escenarios y les calcula un
-hash de integridad; `07-implement` lo verifica. Ese hash es la versión ejecutable de "jamás se
+**La cadena BDD es el aporte propio del kit**: la fase 04 genera los escenarios y les calcula un
+hash de integridad; la 07 lo verifica. Ese hash es la versión ejecutable de "jamás se
 ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
 
 ## Cómo convive con las otras reglas del repo
@@ -89,7 +94,7 @@ ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
 - **La IA local manda.** Un spec de producto no decide dónde corre la inferencia: el default es
   `local` y no se cambia sin pedirlo el usuario (`CONSTITUTION.md` §P4). Una función nueva de IA es
   una `AiTask` en `src/lib/ai/tasks.ts`, tenga spec o no.
-- **TDD sigue mandando.** `sofka-04-testify` produce los escenarios; el ciclo rojo → verde →
+- **TDD sigue mandando.** La fase 04 produce los escenarios; el ciclo rojo → verde →
   refactor no se salta por tener spec.
 - **El gate no cambia.** Con o sin SDD, nada se entrega sin `npm run gate` verde.
 - **Tiles antes que memoria.** En la fase de plan, las librerías se documentan con tiles de Tessl
@@ -100,7 +105,7 @@ ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
 | Regla | Mecanismo |
 |---|---|
 | El pedido de tamaño feature debe rutearse o declararse | `sdd-router` inyecta el criterio en cada prompt que dispara (informa, no bloquea: la intención no es verificable por máquina) |
-| El kit nombrado existe de verdad | self-test: cada fase debe corresponder a una skill instalada en `sdd.skillRoots` (omitido en CI) |
+| El kit declarado existe de verdad | self-test: cada fase de `.claude/sdd-kit.local.json` debe ser una skill instalada en `sdd.skillRoots` (omitido sin ese archivo o en CI) |
 | El clasificador no se degrada | 8 casos de ruteo en `scripts/harness-selftest.mjs`, paso 4 del gate |
 | El puntero de feature activa resuelve | self-test: puntero colgado = gate rojo |
 | Los artefactos SDD no vuelven al repo | **nada**: `specs/` se borró y con él el freno del gate que lo vigilaba (#156). Es convención escrita, y el próximo spec que nazca como archivo no lo va a frenar ningún comando |
@@ -114,7 +119,7 @@ ajusta una aserción para que pase el test" (`CONSTITUTION.md` §P2).
 - **Las cinco features vividas están migradas a issues** (2026-08-21): `#1` 001, `#25` 002, `#45`
   003, `#62` 004, `#79` 005, con 89 issues de tarea (83 cerradas al migrar, según el checklist de
   cada `tasks.md`). `specs/` se borró entero, índice incluido: el índice es la lista de issues con la etiqueta `sdd:feature` (`npm run sdd:status`).
-  Las skills `sofka-0x` no están versionadas en el repo, así que las fases se ejecutaron siguiendo
+  Las skills del kit no están versionadas en el repo, así que las fases se ejecutaron siguiendo
   su contrato con las herramientas del repo (vitest en lugar de un runner de Gherkin).
 - **El registro ya no depende del criterio** (2026-08-24): `.githooks/commit-msg` frena cualquier
   commit que toque código sin una issue referenciada (`#123`) o sin una línea `sin-issue: <motivo>`,

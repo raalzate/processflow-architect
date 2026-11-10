@@ -23,6 +23,7 @@
  *   PUENTE      el host (Electron o web) se pide sólo por src/lib/host-bridge.ts, nunca `window.electronAPI`.
  *   REGISTRO    consultar un registro con clave de afuera pasa por src/lib/registro.ts (nunca `in`).
  *   DEPS      sin SDKs de nube en package.json (las llamadas van con fetch desde el main).
+ *   LICENCIAS ninguna dependencia de producción GPL/AGPL/SSPL ni sin licencia (salvo `licenses.allow`).
  *   TILES     el registro de tiles (tessl.json) describe las deps reales: ni tiles huérfanos,
  *             ni dep sin tile fuera de la deuda declarada (`tiles.allow`, que sólo baja).
  *   RELEASE   la versión de package.json tiene sus notas en docs/releases/<versión>.md.
@@ -421,6 +422,31 @@ function checkDeps() {
 }
 
 /**
+ * LICENCIAS — ninguna dependencia de PRODUCCIÓN con copyleft fuerte (GPL, AGPL, SSPL):
+ * distribuir la app bajo Apache 2.0 con una de esas adentro obligaría a liberar el
+ * resto bajo sus términos. La LGPL se admite (enlace dinámico, ver THIRD_PARTY_LICENSES.md).
+ * Un paquete sin licencia declarada también falla, salvo que `licenses.allow` lo
+ * revise con su motivo. Lee package-lock.json, que lista CADA paquete instalado.
+ */
+function checkLicencias() {
+  const lock = JSON.parse(read("package-lock.json"));
+  const allow = config.licenses?.allow ?? [];
+  const admitido = (ruta) => allow.some((a) => ruta === `node_modules/${a.package}` || ruta.endsWith(`/node_modules/${a.package}`));
+  for (const [ruta, pkg] of Object.entries(lock.packages ?? {})) {
+    if (!ruta || pkg.dev || pkg.devOptional) continue;
+    const licencia = typeof pkg.license === "string" ? pkg.license : "";
+    // «A OR B» es licencia doble: basta con una alternativa que no sea copyleft fuerte.
+    const fuerte = (l) => /(^|[^L])GPL|AGPL|SSPL/i.test(l);
+    const copyleft = licencia.split(/\s+OR\s+/i).every((alternativa) => fuerte(alternativa.replace(/[()]/g, "")));
+    if (copyleft) {
+      fail("package-lock.json", 1, "LICENCIAS", `\`${ruta.replace(/^.*node_modules\//, "")}\` es ${licencia}: copyleft fuerte incompatible con distribuir bajo Apache 2.0. Buscá una alternativa o pedí una revisión legal.`);
+    } else if (!licencia && !admitido(ruta)) {
+      fail("package-lock.json", 1, "LICENCIAS", `\`${ruta.replace(/^.*node_modules\//, "")}\` no declara licencia: revisá su archivo LICENSE y, si se puede distribuir, agregalo a \`licenses.allow\` con su motivo.`);
+    }
+  }
+}
+
+/**
  * TILES — el registro de tiles describe las dependencias REALES.
  *
  * La auditoría del arnés (2026-08-28) encontró `tessl.json` describiendo un
@@ -514,10 +540,10 @@ function checkRelease(versionDada = null) {
   if (!content.includes(version)) {
     fail(notes, 1, "RELEASE", `las notas no nombran la versión \`${version}\`: se copió el archivo de otra release y quedó desfasado.`);
   }
-  for (const forbidden of config.release.forbiddenText) {
+  for (const forbidden of config.release.forbiddenText ?? []) {
     const idx = content.indexOf(forbidden);
     if (idx !== -1) {
-      fail(notes, lineOf(content, idx), "RELEASE", `\`${forbidden}\` es del crédito anterior: la autoría es del autor (ver src/lib/credits.ts).`);
+      fail(notes, lineOf(content, idx), "RELEASE", `\`${forbidden}\` no puede aparecer en las notas (release.forbiddenText): la autoría es del autor (ver src/lib/credits.ts).`);
     }
   }
 }
@@ -718,6 +744,7 @@ if (releaseVersion) {
 } else {
   for (const relPath of [...sourceFiles("src"), ...sourceFiles("main"), ...sourceFiles("mcp-server")]) checkFile(relPath);
   checkDeps();
+  checkLicencias();
   checkTiles();
   checkRelease();
   checkIncidents();

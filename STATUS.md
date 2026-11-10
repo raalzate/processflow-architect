@@ -130,7 +130,7 @@ Lo anterior a esta feature: el tablero había quedado en cero (0 issues abiertas
 planificadas* al pasar la ruta SDD a GitHub; si se retoman, se abre una feature nueva.
 
 **005** (el agente recupera el contexto por partes y consulta al humano) entró en
-`main` y salió en `v0.3.0`. En `v0.4.0` salieron los créditos de Sofka + marca beta, el pedido
+`main` y salió en `v0.3.0`. En `v0.4.0` salieron los créditos de autoría + marca beta, el pedido
 explícito de artefacto (menú «+»), el riel de artefactos del panel colapsado con iconos por tipo,
 y los arreglos del motor local (una sola conversación viva por engine, JSON con comillas sueltas,
 plan de rescate).

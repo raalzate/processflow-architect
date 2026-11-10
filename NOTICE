@@ -1,0 +1,12 @@
+Processflow Architect
+Copyright 2026 Raúl Andrés Alzate Gómez
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes third-party software, icons and downloadable models under
+their own licenses. See THIRD_PARTY_LICENSES.md, and the file
+THIRD_PARTY_NOTICES.txt shipped with each installer, which collects the license
+texts of the bundled npm dependencies.
+
+The desktop app is built on Electron and Chromium; their licenses are distributed
+with the app (LICENSE and LICENSES.chromium.html in the installation folder).

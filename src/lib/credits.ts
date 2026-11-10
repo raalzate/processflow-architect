@@ -51,4 +51,10 @@ export const CREDIT_LINKS: readonly CreditLink[] = [
     href: CREDIT_REPO_URL,
     title: `Código, issues y releases de ${CREDIT_AUTHOR} en GitHub`,
   },
+  {
+    // Qué datos salen del equipo y a quién (#753): se lee sin clonar el repo.
+    label: "Privacidad",
+    href: `${CREDIT_REPO_URL}/blob/main/PRIVACY.md`,
+    title: `Qué datos salen de tu equipo y a quién — aviso de privacidad de la app de ${CREDIT_AUTHOR}`,
+  },
 ] as const;
