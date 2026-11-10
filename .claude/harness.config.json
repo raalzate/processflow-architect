@@ -353,10 +353,7 @@
       "### Descargas",
       "### Requisitos"
     ],
-    "forbiddenText": [
-      "Sofka",
-      "sofka"
-    ]
+    "forbiddenText": []
   },
   "docs": {
     "$comment": "`.tessl/` la genera `tessl install` y está gitignored: se declara en externalPaths porque ninguna máquina puede verificarla en el clon. El resto de las rutas se miden contra `git ls-files` (no contra el disco), o el gate sale verde local y rojo en CI. buenas-practicas.md es la guía agnóstica: sus rutas son ejemplos, no punteros de este repo.",
@@ -376,7 +373,8 @@
       "docs/harness/buenas-practicas.md"
     ],
     "externalPaths": [
-      ".tessl/"
+      ".tessl/",
+      ".claude/sdd-kit.local.json"
     ]
   },
   "status": {
@@ -451,23 +449,12 @@
     }
   },
   "sdd": {
-    "$comment": "Ruta SDD. Este repo NO tiene el Intent Integrity Kit instalado en .tessl/plugins; usa las skills sofka-0x del entorno. El self-test exige que las skills existan y en CI reporta 'omitido' en vez de fallar. Ver docs/harness/sdd.md.",
-    "kit": "sofka",
-    "skillPrefix": "sofka-",
+    "$comment": "Ruta SDD. El repo no versiona ni nombra un kit de skills: cada equipo declara el suyo en `kitLocal` (gitignored) con {kit, phases}. El self-test verifica esas fases en `skillRoots` si el archivo existe y reporta 'omitido' si no (o en CI). Ver docs/harness/sdd.md.",
+    "kitLocal": ".claude/sdd-kit.local.json",
     "skillRoots": [
       "~/.claude/skills",
       ".claude/skills",
       ".tessl/plugins"
-    ],
-    "phases": [
-      "sofka-00-constitution",
-      "sofka-01-specify",
-      "sofka-02-plan",
-      "sofka-03-checklist",
-      "sofka-04-testify",
-      "sofka-05-tasks",
-      "sofka-06-analyze",
-      "sofka-07-implement"
     ],
     "$github": "Los artefactos SDD viven en GitHub, no en el repo: la issue madre lleva el spec (plan/checklist/testify/analyze como comentarios) y cada tarea es su propio issue, asignable y cerrable. `specs/` se borró y con él el freno del gate que lo vigilaba (#156): esto es convención escrita en docs/harness/sdd.md, no un mecanismo.",
     "github": {
@@ -504,7 +491,7 @@
           "\\bnuevo (endpoint|handler ipc|servicio)\\b",
           "\\bsoportar (una )?nueva notación\\b"
         ],
-        "message": "Pedido de tamaño FEATURE → ruta SDD (docs/harness/sdd.md), y los artefactos van a GitHub, NO al repo: `/sofka-01-specify` escribe el markdown en el scratchpad, `npm run sdd:new <spec.md>` abre la issue madre y `npm run sdd:tasks <issue> <tasks.md>` crea un issue por tarea. No toques producción sin issue madre y tareas. Si decidís saltar la ruta, declaralo en una línea con el porqué."
+        "message": "Pedido de tamaño FEATURE → ruta SDD (docs/harness/sdd.md), y los artefactos van a GitHub, NO al repo: la fase «especificar» del kit SDD escribe el markdown en el scratchpad, `npm run sdd:new <spec.md>` abre la issue madre y `npm run sdd:tasks <issue> <tasks.md>` crea un issue por tarea. No toques producción sin issue madre y tareas. Si decidís saltar la ruta, declaralo en una línea con el porqué."
       },
       {
         "route": "bugfix",
@@ -516,7 +503,7 @@
           "\\berror en\\b",
           "\\bregresi[óo]n\\b"
         ],
-        "message": "Falla sobre algo que ya existe → `/sofka-bugfix` (o test rojo primero). Reproducí con un test antes de tocar producción (TDD es BLOCKING en src/lib). Si merece seguimiento, abrí el issue en GitHub, no un archivo."
+        "message": "Falla sobre algo que ya existe → test rojo primero (o la fase de bugfix del kit SDD). Reproducí con un test antes de tocar producción (TDD es BLOCKING en src/lib). Si merece seguimiento, abrí el issue en GitHub, no un archivo."
       },
       {
         "route": "clarify",
@@ -527,7 +514,7 @@
           "\\bmejorar (todo|esto)\\b",
           "\\bhacelo mejor\\b"
         ],
-        "message": "Pedido ambiguo → preguntá UNA sola cosa antes de tocar archivos (`/sofka-clarify` si hay artefacto)."
+        "message": "Pedido ambiguo → preguntá UNA sola cosa antes de tocar archivos (la fase de clarificación del kit SDD si hay artefacto)."
       },
       {
         "route": "ai",

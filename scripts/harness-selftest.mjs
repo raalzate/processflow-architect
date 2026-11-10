@@ -939,11 +939,20 @@ for (const [dir, expected] of [
 
 // ── 6. Kit de SDD instalado ──────────────────────────────────────────────────
 section("6. kit de SDD");
-const skillRoots = (config.sdd.skillRoots ?? []).map((r) => (r.startsWith("~") ? path.join(os.homedir(), r.slice(1)) : abs(r)));
-const missingSkills = config.sdd.phases.filter((phase) => !skillRoots.some((root) => fs.existsSync(path.join(root, phase))));
-if (!missingSkills.length) ok(`las ${config.sdd.phases.length} fases del kit \`${config.sdd.kit}\` están instaladas`);
-else if (process.env.CI) skip("kit de SDD instalado", `faltan ${missingSkills.length} fases; el kit no se versiona en el repo`);
-else bad("kit de SDD instalado", `faltan: ${missingSkills.join(", ")}. Instalá el kit o corregí \`sdd.skillRoots\` en la config.`);
+// El repo no nombra un kit: cada equipo declara el suyo en `sdd.kitLocal` (gitignored).
+const kitFile = config.sdd.kitLocal ? abs(config.sdd.kitLocal) : undefined;
+const kitLocal = kitFile && fs.existsSync(kitFile) ? JSON.parse(fs.readFileSync(kitFile, "utf8")) : undefined;
+if (!kitLocal) {
+  skip("kit de SDD instalado", `sin \`${config.sdd.kitLocal}\` en este equipo: el kit no se versiona ni se nombra en el repo`);
+} else {
+  const skillRoots = (config.sdd.skillRoots ?? []).map((r) => (r.startsWith("~") ? path.join(os.homedir(), r.slice(1)) : abs(r)));
+  const phases = kitLocal.phases ?? [];
+  const missingSkills = phases.filter((phase) => !skillRoots.some((root) => fs.existsSync(path.join(root, phase))));
+  if (!phases.length) bad("kit de SDD instalado", `\`${config.sdd.kitLocal}\` no declara \`phases\`.`);
+  else if (!missingSkills.length) ok(`las ${phases.length} fases del kit \`${kitLocal.kit ?? "local"}\` están instaladas`);
+  else if (process.env.CI) skip("kit de SDD instalado", `faltan ${missingSkills.length} fases; el kit no se versiona en el repo`);
+  else bad("kit de SDD instalado", `faltan: ${missingSkills.join(", ")}. Instalá el kit o corregí \`${config.sdd.kitLocal}\`.`);
+}
 
 // El puntero de feature activa no puede quedar colgado. Desde que los artefactos
 // viven en GitHub el puntero guarda el NÚMERO DE LA ISSUE MADRE (`#113`), no una

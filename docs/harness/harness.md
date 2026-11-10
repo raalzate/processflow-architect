@@ -30,9 +30,9 @@ es lo que mira el hook `Stop`. En cada corrida, verde o roja, escribe el registr
 | `npm run test:coverage` | comportamiento de `src/lib/` con la misma cobertura que exige CI, **offline**: `vitest.setup.ts` revienta si un test sale a la red | no ve tipos ni empaquetado |
 | `npm run build` | que el artefacto publicable se genera (`next build` + `tsc` de electron + `move-out`) | dev y prod difieren (tree-shaking, resolución de módulos, asar) |
 
-> **El kit de SDD.** Las skills `sofka-0x` viven en el entorno del desarrollador, no en el repo.
-> El self-test las exige en una máquina de desarrollo —que es donde el ruteo SDD ocurre— y en CI
-> (`$CI`) reporta la ausencia como *omitido* en vez de fallar. El "omitido" se imprime siempre:
+> **El kit de SDD.** Las skills del kit viven en el entorno del desarrollador, no en el repo, y cada
+> equipo las declara en `.claude/sdd-kit.local.json` (gitignored). El self-test las exige cuando ese
+> archivo existe; sin él, o en CI (`$CI`), reporta la ausencia como *omitido* en vez de fallar. El "omitido" se imprime siempre:
 > nunca se confunde con "pasó". Ver `docs/harness/sdd.md`.
 
 > **El arnés no escribe en el árbol de fuentes.** Para probar un freno del lint se le pasa el

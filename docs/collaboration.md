@@ -211,9 +211,6 @@ El empaquetado manual permite elegir `macos-latest` (Apple Silicon) o
 `macos-15-intel`. Cada ejecución genera una variante de Mac, evitando colisiones
 de instaladores o de sus metadatos de actualización.
 
-El [kit SDD local](harness/sdd.md) está incluido en el clon y no requiere el kit
-privado Sofka. Sus comprobaciones se ejecutan también en la matriz de CI.
-
 - `src/lib/collaboration`: identidad, proyección del grafo, combinación CRDT,
   políticas de capacidad, rutas, presencia y cola de proyecciones.
 - `main/services/collaboration`: persistencia y transporte nativo, descubrimiento

@@ -65,3 +65,6 @@ dist/
 # Índice de graphify: derivado y por máquina. Lo reconstruye .githooks/post-commit;
 # en CI no existe y la señal `índice del repo` del gate se reporta omitida.
 graphify-out/
+
+# Kit SDD de cada equipo (nombre y fases): no se versiona (ver docs/harness/sdd.md).
+.claude/sdd-kit.local.json

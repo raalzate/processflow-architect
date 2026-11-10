@@ -514,10 +514,10 @@ function checkRelease(versionDada = null) {
   if (!content.includes(version)) {
     fail(notes, 1, "RELEASE", `las notas no nombran la versión \`${version}\`: se copió el archivo de otra release y quedó desfasado.`);
   }
-  for (const forbidden of config.release.forbiddenText) {
+  for (const forbidden of config.release.forbiddenText ?? []) {
     const idx = content.indexOf(forbidden);
     if (idx !== -1) {
-      fail(notes, lineOf(content, idx), "RELEASE", `\`${forbidden}\` es del crédito anterior: la autoría es del autor (ver src/lib/credits.ts).`);
+      fail(notes, lineOf(content, idx), "RELEASE", `\`${forbidden}\` no puede aparecer en las notas (release.forbiddenText): la autoría es del autor (ver src/lib/credits.ts).`);
     }
   }
 }
