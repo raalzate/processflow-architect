@@ -14,6 +14,8 @@
   --accent:#1f6f8b; --accent-soft:#e3f0f4;
   --ok:#1e7a4c; --ok-soft:#e2f3ea; --warn:#a26300; --warn-soft:#fbf0dc; --bad:#b4322c; --bad-soft:#fae5e3; --info:#5b4fa8; --info-soft:#ecebf8;
   --bar-raw:#a9b4c2;
+  /* Series de comparación (validadas con dataviz: CVD ΔE 19.7, ambos modos): antes / después. */
+  --s-antes:#c46a1a; --s-despues:#0a78a8; --grid:#e8ebf0; --band:#eef3f6;
   --f-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
   --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -22,12 +24,12 @@
   --bg:#12161c; --surface:#1a2029; --ink:#e4e8ee; --muted:#9aa6b6; --line:#2c3440;
   --accent:#5fb3cf; --accent-soft:#1b3440;
   --ok:#5cc28c; --ok-soft:#173326; --warn:#e0a548; --warn-soft:#3a2c14; --bad:#ef7a72; --bad-soft:#3d1d1b; --info:#a59cf0; --info-soft:#262344;
-  --bar-raw:#4d5866; color-scheme:dark}}
+  --bar-raw:#4d5866; --s-antes:#c97a22; --s-despues:#2a9fd0; --grid:#252c36; --band:#16202a; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#12161c; --surface:#1a2029; --ink:#e4e8ee; --muted:#9aa6b6; --line:#2c3440;
   --accent:#5fb3cf; --accent-soft:#1b3440;
   --ok:#5cc28c; --ok-soft:#173326; --warn:#e0a548; --warn-soft:#3a2c14; --bad:#ef7a72; --bad-soft:#3d1d1b; --info:#a59cf0; --info-soft:#262344;
-  --bar-raw:#4d5866; color-scheme:dark}
+  --bar-raw:#4d5866; --s-antes:#c97a22; --s-despues:#2a9fd0; --grid:#252c36; --band:#16202a; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--f-body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:40px 80px}
 .wrap{max-width:1100px;margin:0 auto;display:grid;gap:48px}
@@ -69,7 +71,7 @@ td.num{font-variant-numeric:tabular-nums;font-family:var(--f-mono);white-space:n
 .bars{display:grid;gap:4px}
 .bar{position:relative;height:20px;background:linear-gradient(to right,var(--line) 1px,transparent 1px) 0 0/25% 100%;border-left:1px solid var(--line)}
 .bar i{position:absolute;inset:0 auto 0 0;display:block;border-radius:0 3px 3px 0}
-.bar .raw{background:var(--bar-raw)} .bar .cor{background:var(--accent)}
+.bar .raw{background:var(--s-antes)} .bar .cor{background:var(--s-despues)}
 .bar em{position:absolute;top:50%;transform:translateY(-50%);font:500 12px var(--f-mono);font-style:normal;padding-left:6px;color:var(--ink);font-variant-numeric:tabular-nums}
 .axis{display:grid;grid-template-columns:150px 1fr;gap:12px;font:11px var(--f-mono);color:var(--muted)}
 .axis div:last-child{display:flex;justify-content:space-between}
@@ -93,21 +95,108 @@ ul.clean{margin:0;padding-left:20px;display:grid;gap:6px}
 .two>div{min-width:0}
 small.note{font-size:12.5px;color:var(--muted)}
 @media (max-width:560px){.row,.axis{grid-template-columns:1fr}.axis div:first-child{display:none}.finding dl{grid-template-columns:1fr}}
+
+/* ── Estilo v2: cabecera en banda, navegación fija y panel de gráficas ── */
+header.hero{background:var(--band);border:1px solid var(--line);border-radius:10px;padding:28px clamp(18px,4vw,36px);position:relative;overflow:hidden}
+header.hero::after{content:"";position:absolute;inset:0;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:28px 28px;opacity:.55;pointer-events:none;mask-image:linear-gradient(115deg,transparent 45%,#000 100%);-webkit-mask-image:linear-gradient(115deg,transparent 45%,#000 100%)}
+header.hero>*{position:relative;z-index:1}
+nav.toc{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line);margin:0 calc(-1 * max(16px,env(safe-area-inset-left,0px)));padding:10px max(16px,env(safe-area-inset-left,0px));display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+nav.toc a{font:500 12.5px var(--f-mono);color:var(--muted);text-decoration:none;padding:6px 10px;border-radius:99px;white-space:nowrap}
+nav.toc a:hover,nav.toc a:focus-visible{background:var(--accent-soft);color:var(--accent)}
+section[id]{scroll-margin-top:64px}
+h2{display:flex;align-items:baseline;gap:10px}
+h2 .n{font:500 13px var(--f-mono);color:var(--accent);letter-spacing:.04em}
+.verdict>div{position:relative}
+.verdict>div::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 2px 2px 0;background:var(--accent);opacity:.7}
+.chartgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:16px}
+.ccard{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px 20px 16px;display:grid;gap:12px;align-content:start;min-width:0}
+.ccard h3{font-size:16px}
+.ccard .sub{font-size:13px;color:var(--muted);margin-top:-6px}
+.hb{display:grid;gap:9px}
+.hb .r{display:grid;grid-template-columns:minmax(96px,34%) 1fr;gap:10px;align-items:center}
+.hb .l{font-size:13px;line-height:1.25;min-width:0;overflow-wrap:anywhere}
+.hb .t{display:grid;gap:3px}
+.hb .track{position:relative;height:16px;background-image:linear-gradient(to right,var(--grid) 1px,transparent 1px);background-size:25% 100%;border-left:1px solid var(--muted)}
+.hb .seg{position:absolute;top:0;bottom:0;border-radius:0 4px 4px 0;min-width:2px;cursor:default;transition:filter .15s}
+.hb .seg:hover,.hb .seg:focus-visible{filter:brightness(1.12)}
+.hb .val{position:absolute;top:50%;transform:translateY(-50%);font:500 11.5px var(--f-mono);color:var(--ink);padding-left:6px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.hb .stack{display:flex;gap:2px;height:16px}
+.hb .stack i{display:block;height:100%;border-radius:0}
+.hb .stack i:last-child{border-radius:0 4px 4px 0}
+.hb .ax{display:grid;grid-template-columns:minmax(96px,34%) 1fr;gap:10px;font:10.5px var(--f-mono);color:var(--muted)}
+.hb .ax div:last-child{display:flex;justify-content:space-between}
+.donut{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.donut svg{flex:0 0 auto}
+.donut .big{font:700 34px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.tip{position:fixed;z-index:20;pointer-events:none;background:var(--ink);color:var(--bg);font:500 12px/1.4 var(--f-body);padding:6px 9px;border-radius:5px;max-width:260px;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .12s}
+.tip.on{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.tip,.hb .seg{transition:none}}
+@media (max-width:560px){.hb .r,.hb .ax{grid-template-columns:1fr}.hb .ax div:first-child{display:none}}
 </style>
 <style>html{color-scheme:light dark}body{margin:0}</style>
 </head>
 <body>
 <div class="wrap">
 
-<header style="display:grid;gap:14px">
+<header class="hero" style="display:grid;gap:14px">
   <div class="eyebrow">Processflow Architect · feature 027 · evaluación de caja negra</div>
   <h1>Ontología del modelo y agente de IA: evaluación funcional</h1>
-  <div class="meta"><span>Evaluado: main @ 5432cf5 (PR #741)</span><span>Corregido: PR #744 · issue #742</span><span>9 nov 2026</span><span>v0.23.0 (borrador)</span></div>
+  <div class="meta"><span>Evaluado: main @ 5432cf5 (PR #741)</span><span>Corregido: PR #744 · issue #742</span><span>9 nov 2026</span><span>release v0.23.0</span></div>
   <p class="lead">La ontología funciona según su especificación. De 125 casos de caja negra pasaban 122. Los 3 que fallaban eran defectos menores en la puntuación y en la consulta del agente. La mejora que el grafo le da a la IA es real, y es <strong>mayor y más estable</strong> de lo que decía el banco oficial: el instrumento de medición contaba respuestas correctas como alucinaciones. El PR #744 corrigió las brechas; abajo están el estado y las cifras después del cambio.</p>
 </header>
 
-<section>
-  <h2>Estado después de las correcciones</h2>
+<nav class="toc" aria-label="Secciones del informe">
+  <a href="#panorama">Panorama</a>
+  <a href="#estado">Estado</a>
+  <a href="#metodo">Método</a>
+  <a href="#areas">Por área</a>
+  <a href="#ia">IA</a>
+  <a href="#hallazgos">Hallazgos</a>
+  <a href="#matriz">Matriz</a>
+  <a href="#adversarial">Adversarial</a>
+</nav>
+
+<section id="panorama">
+  <h2><span class="n">00</span>Panorama en gráficas</h2>
+  <p class="prose" style="color:var(--muted)">Pasá el cursor (o el foco del teclado) sobre una barra para ver su valor exacto. Naranja es la situación <em>antes</em> del PR #744 o la medición oficial; azul es <em>después</em> o la medición corregida.</p>
+  <div class="chartgrid">
+    <div class="ccard">
+      <h3>Veredicto de la batería</h3>
+      <p class="sub">125 casos de caja negra, evaluación inicial y después de #744</p>
+      <div class="donut" id="g-donut"></div>
+    </div>
+    <div class="ccard">
+      <h3>Hallazgos por estado</h3>
+      <p class="sub">7 hallazgos y observaciones, después de #744</p>
+      <div class="hb" id="g-hallazgos"></div>
+    </div>
+    <div class="ccard">
+      <h3>Casos por área</h3>
+      <p class="sub">Pasan (verde) y fallan (rojo) en la evaluación inicial</p>
+      <div class="hb" id="g-areas"></div>
+    </div>
+    <div class="ccard">
+      <h3>Casos por técnica de diseño</h3>
+      <p class="sub">Cuántos casos aporta cada técnica de caja negra</p>
+      <div class="hb" id="g-tecnicas"></div>
+    </div>
+    <div class="ccard">
+      <h3>«Alucinaciones» reportadas vs. reales</h3>
+      <p class="sub">Respuestas con elementos inexistentes, banco oficial de 30 preguntas</p>
+      <div class="legend"><span style="--c:var(--s-antes)">Según el puntuador oficial</span><span style="--c:var(--s-despues)">Revisadas a mano</span></div>
+      <div class="hb" id="g-aluc"></div>
+    </div>
+    <div class="ccard">
+      <h3>Rendimiento del razonador</h3>
+      <p class="sub">Milisegundos por construcción completa (tope de SC-003: 500 ms)</p>
+      <div class="legend"><span style="--c:var(--s-antes)">Antes de #744</span><span style="--c:var(--s-despues)">Después de #744</span></div>
+      <div class="hb" id="g-perf"></div>
+    </div>
+  </div>
+</section>
+
+<section id="estado">
+  <h2><span class="n">01</span>Estado después de las correcciones</h2>
   <div class="tbl"><table>
     <thead><tr><th>Hallazgo</th><th>Antes</th><th>Después de #744</th><th>Estado</th></tr></thead>
     <tbody>
@@ -151,8 +240,8 @@ small.note{font-size:12.5px;color:var(--muted)}
   </div>
 </section>
 
-<section>
-  <h2>Qué se evaluó y cómo</h2>
+<section id="metodo">
+  <h2><span class="n">02</span>Qué se evaluó y cómo</h2>
   <div class="prose" style="display:grid;gap:12px">
     <p>Las pruebas usan sólo la API pública (<code>src/lib/ontology/index.ts</code>, las herramientas del agente en <code>agent-knowledge.ts</code> y el armado de contexto de <code>litert-agent.ts</code>). Lo esperado de cada caso sale de la especificación —ADR 0007, notas de 0.23.0 y el reglamento de <code>notations.ts</code>—, no de leer la implementación. El escenario base es el proyecto de referencia «Pedidos»: el mismo dominio contado en Event Storming, BPMN y C4.</p>
     <p>La IA se evaluó con dos bancos: el oficial del repo (<code>scripts/eval-ontology-agent.ts</code>, 30 preguntas) y uno adversarial de 10 preguntas armado para esta evaluación. Cada pregunta se contestó sin grafo y con grafo.</p>
@@ -169,8 +258,8 @@ small.note{font-size:12.5px;color:var(--muted)}
   </div>
 </section>
 
-<section>
-  <h2>Resultados por área</h2>
+<section id="areas">
+  <h2><span class="n">03</span>Resultados por área</h2>
   <div class="tbl"><table>
     <thead><tr><th>Área</th><th>Qué cubre</th><th>Casos</th><th>Resultado</th></tr></thead>
     <tbody id="areas"></tbody>
@@ -207,8 +296,8 @@ small.note{font-size:12.5px;color:var(--muted)}
   </div>
 </section>
 
-<section>
-  <h2>Evaluación de la IA</h2>
+<section id="ia">
+  <h2><span class="n">04</span>Evaluación de la IA</h2>
   <div class="prose" style="display:grid;gap:12px">
     <p>Gemma 4 E4B corre sobre WebGPU dentro de la ventana de la app y no se puede invocar desde la terminal. Por eso se usó <strong>Claude Haiku como sustituto de modelo chico</strong> y <strong>Claude Sonnet como techo</strong>. El prompt, el contexto en TOON y el subgrafo del foco son exactamente los que arma el script oficial.</p>
     <p>Cada respuesta se puntuó dos veces: con el criterio oficial (<code>eval-ontology.ts</code>) y con el mismo criterio después de agregar al vocabulario lo que una respuesta correcta puede citar: predicados, sinónimos, etiquetas de rama, tipos y la propia frase «desconocido en el modelo». Las respuestas marcadas como erróneas que seguían en duda se revisaron a mano.</p>
@@ -252,8 +341,8 @@ small.note{font-size:12.5px;color:var(--muted)}
   </div>
 </section>
 
-<section>
-  <h2>Hallazgos</h2>
+<section id="hallazgos">
+  <h2><span class="n">05</span>Hallazgos</h2>
   <div style="display:grid;gap:14px" id="findings">
 
     <article class="finding alta">
@@ -319,8 +408,8 @@ small.note{font-size:12.5px;color:var(--muted)}
   </div>
 </section>
 
-<section>
-  <h2>Matriz de casos</h2>
+<section id="matriz">
+  <h2><span class="n">06</span>Matriz de casos</h2>
   <div class="filters">
     <label for="f-area">Área</label><select id="f-area"><option value="">Todas</option></select>
     <label for="f-est">Estado</label><select id="f-est"><option value="">Todos</option><option value="ok">Pasa</option><option value="fail">Falla</option></select>
@@ -333,8 +422,8 @@ small.note{font-size:12.5px;color:var(--muted)}
   </table></div>
 </section>
 
-<section>
-  <h2>Respuestas del banco adversarial</h2>
+<section id="adversarial">
+  <h2><span class="n">07</span>Respuestas del banco adversarial</h2>
   <div class="tbl" style="max-height:520px"><table>
     <thead><tr><th>Categoría</th><th>Modelo · modo</th><th>Respuesta</th></tr></thead>
     <tbody id="advr"></tbody>
@@ -342,7 +431,7 @@ small.note{font-size:12.5px;color:var(--muted)}
 </section>
 
 <section class="prose">
-  <h2>Cómo reproducir</h2>
+  <h2><span class="n">08</span>Cómo reproducir</h2>
   <pre>npx tsx bb.ts resultados.json                       # batería de caja negra (125 casos)
 npx tsx scripts/eval-ontology-agent.ts --cmd "&lt;modelo&gt;" # banco oficial (30 × 2)
 npx tsx eval-adv.ts "&lt;modelo&gt;" adv.json               # banco adversarial (10 × 2)
@@ -386,8 +475,8 @@ const BARRAS = [
 ];
 document.getElementById("bars").innerHTML = BARRAS.map(([l, r, c]) => `
   <div class="row"><div class="lbl">${l}</div><div class="bars">
-    <div class="bar"><i class="raw" style="width:${r}%"></i><em style="left:${r}%">${r} %</em></div>
-    <div class="bar"><i class="cor" style="width:${c}%"></i><em style="left:${Math.min(c, 88)}%;${c > 88 ? "color:#fff;left:auto;right:6px;padding:0" : ""}">${c} %</em></div>
+    <div class="bar"><i class="raw" style="width:${r}%" tabindex="0" data-tip="${l} · puntuación oficial: ${r} %"></i><em style="left:${r}%">${r} %</em></div>
+    <div class="bar"><i class="cor" style="width:${c}%" tabindex="0" data-tip="${l} · puntuación corregida: ${c} %"></i><em style="left:${Math.min(c, 88)}%;${c > 88 ? "color:#fff;left:auto;right:6px;padding:0" : ""}">${c} %</em></div>
   </div></div>`).join("");
 // adversarial resumen (revisión manual: las respuestas restantes son correctas)
 const cats = [...new Set(ADV.map(x => x.cat))];
@@ -405,6 +494,143 @@ function pinta() {
 }
 ["f-area", "f-est", "f-q"].forEach(id => document.getElementById(id).addEventListener("input", pinta));
 pinta();
+
+// ── Panorama en gráficas (v2) ────────────────────────────────────────────────
+// Barras horizontales en escala lineal desde 0; cada marca lleva su valor exacto
+// en data-tip (tooltip al pasar el cursor o al enfocar con teclado).
+const fmt = (n) => (Number.isInteger(n) ? n.toLocaleString("es") : n.toLocaleString("es", { maximumFractionDigits: 1 }));
+function barras(id, filas, { max, unidad = "", series = ["var(--s-despues)"], nombres = [""] }) {
+  const el = document.getElementById(id);
+  const ticks = [0, max / 4, max / 2, (3 * max) / 4, max].map((t) => fmt(Math.round(t)));
+  el.innerHTML =
+    filas
+      .map(
+        (f) => `<div class="r"><div class="l">${esc(f.l)}</div><div class="t">${f.v
+          .map((v, i) => {
+            const w = Math.max(0, Math.min(100, (v / max) * 100));
+            const tip = `${f.l}${nombres[i] ? " · " + nombres[i] : ""}: ${fmt(v)}${unidad}`;
+            return `<div class="track"><i class="seg" tabindex="0" style="width:${w}%;background:${series[i]}" data-tip="${esc(tip)}"></i><span class="val" style="${w > 80 ? "left:auto;right:6px;padding:0;color:#fff" : `left:${w}%`}">${fmt(v)}${unidad}</span></div>`;
+          })
+          .join("")}</div></div>`
+      )
+      .join("") + `<div class="ax"><div></div><div>${ticks.map((t) => `<span>${t}</span>`).join("")}</div></div>`;
+}
+function apilada(id, filas, partes) {
+  // filas: [{l, v:[n por parte]}]; partes: [{nombre, color}]
+  const el = document.getElementById(id);
+  el.innerHTML =
+    filas
+      .map((f) => {
+        const total = f.v.reduce((a, b) => a + b, 0);
+        return `<div class="r"><div class="l">${esc(f.l)} <span class="mono" style="color:var(--muted)">${f.v[0]}/${total}</span></div><div class="stack">${f.v
+          .map((v, i) => (v ? `<i tabindex="0" style="flex:${v};background:${partes[i].color}" data-tip="${esc(f.l)} · ${partes[i].nombre}: ${v} de ${total}"></i>` : ""))
+          .join("")}</div></div>`;
+      })
+      .join("") +
+    `<div class="legend" style="margin-top:4px">${partes.map((p) => `<span style="--c:${p.color}">${p.nombre}</span>`).join("")}</div>`;
+}
+
+// 1 · Veredicto: anillo de lo que pasa después de #744, con el inicial al lado.
+(() => {
+  const total = 125, antes = 122, despues = 124, r = 46, c = 2 * Math.PI * r;
+  const arco = (frac, color, off) => `<circle cx="60" cy="60" r="${r}" fill="none" stroke="${color}" stroke-width="14" stroke-dasharray="${frac * c} ${c}" stroke-dashoffset="${-off * c}" transform="rotate(-90 60 60)"/>`;
+  document.getElementById("g-donut").innerHTML = `
+    <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="${despues} de ${total} casos pasan después de #744">
+      <circle cx="60" cy="60" r="${r}" fill="none" stroke="var(--grid)" stroke-width="14"/>
+      ${arco(despues / total - 0.004, "var(--ok)", 0)}
+      ${arco((total - despues) / total - 0.004, "var(--bad)", despues / total)}
+      <text x="60" y="66" text-anchor="middle" font-family="var(--f-display)" font-size="20" font-weight="700" fill="var(--ink)">${Math.round((despues / total) * 1000) / 10}%</text>
+    </svg>
+    <div style="display:grid;gap:6px">
+      <div><span class="big">${despues}</span><span style="color:var(--muted)"> / ${total} pasan después de #744</span></div>
+      <div class="mono" style="font-size:12.5px;color:var(--muted)">Evaluación inicial: ${antes} / ${total}</div>
+      <div class="legend"><span style="--c:var(--ok)">Pasa</span><span style="--c:var(--bad)">Falla (K05, límite conocido)</span></div>
+    </div>`;
+})();
+
+// 2 · Hallazgos por estado.
+apilada("g-hallazgos", [{ l: "Hallazgos", v: [5, 2] }], [
+  { nombre: "Corregidos (H1, H2, H4, O1, O2)", color: "var(--ok)" },
+  { nombre: "Pendientes (H3, O3)", color: "var(--warn)" },
+]);
+
+// 3 · Casos por área (de la matriz embebida).
+apilada(
+  "g-areas",
+  Object.entries(porArea).map(([a, cs]) => ({ l: a.replace(/^[A-L] · /, ""), v: [cs.filter((c) => c.ok).length, cs.filter((c) => !c.ok).length] })),
+  [
+    { nombre: "Pasa", color: "var(--ok)" },
+    { nombre: "Falla", color: "var(--bad)" },
+  ]
+);
+
+// 4 · Casos por técnica de caja negra (familias).
+(() => {
+  const familia = (t) =>
+    /^Partici|^Mundo abierto/.test(t) ? "Particiones de equivalencia"
+    : /^Valor l/.test(t) ? "Valores límite"
+    : /^Tabla de decisi/.test(t) ? "Tablas de decisión"
+    : /^Caso de uso/.test(t) ? "Casos de uso"
+    : /^Transici/.test(t) ? "Transición de estados"
+    : /^Adivinanza|^Robustez/.test(t) ? "Adivinanza de errores"
+    : /^Propiedad/.test(t) ? "Propiedades y metamórficas"
+    : "Otras";
+  const n = {};
+  CASOS.forEach((c) => (n[familia(c.tecnica)] = (n[familia(c.tecnica)] || 0) + 1));
+  const filas = Object.entries(n).sort((a, b) => b[1] - a[1]).map(([l, v]) => ({ l, v: [v] }));
+  barras("g-tecnicas", filas, { max: Math.ceil(Math.max(...filas.map((f) => f.v[0])) / 20) * 20, unidad: " casos", nombres: [""] });
+})();
+
+// 5 · Alucinaciones reportadas por el puntuador oficial vs. revisadas a mano.
+barras(
+  "g-aluc",
+  [
+    { l: "Haiku · sin grafo", v: [13, 0] },
+    { l: "Haiku · con grafo", v: [11, 0] },
+    { l: "Sonnet · sin grafo", v: [10, 0] },
+    { l: "Sonnet · con grafo", v: [7, 0] },
+  ],
+  { max: 16, unidad: " resp.", series: ["var(--s-antes)", "var(--s-despues)"], nombres: ["puntuador oficial", "revisadas a mano"] }
+);
+
+// 6 · Rendimiento antes/después de #744.
+barras(
+  "g-perf",
+  [
+    { l: "BPMN lineal de 250 tareas", v: [1583, 104] },
+    { l: "Proyecto 50 vistas × 40", v: [129, 88] },
+    { l: "Una vista de 40 elementos", v: [1.4, 1.2] },
+  ],
+  { max: 1600, unidad: " ms", series: ["var(--s-antes)", "var(--s-despues)"], nombres: ["antes", "después"] }
+);
+
+// Tooltip compartido: cursor y foco de teclado.
+(() => {
+  const tip = document.createElement("div");
+  tip.className = "tip";
+  tip.setAttribute("role", "tooltip");
+  document.body.appendChild(tip);
+  const mostrar = (el, x, y) => {
+    tip.textContent = el.getAttribute("data-tip");
+    tip.classList.add("on");
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.min(window.innerWidth - w - 8, Math.max(8, x - w / 2)) + "px";
+    tip.style.top = Math.max(8, y - h - 12) + "px";
+  };
+  const ocultar = () => tip.classList.remove("on");
+  document.addEventListener("pointermove", (e) => {
+    const el = e.target.closest?.("[data-tip]");
+    el ? mostrar(el, e.clientX, e.clientY) : ocultar();
+  });
+  document.addEventListener("focusin", (e) => {
+    const el = e.target.closest?.("[data-tip]");
+    if (!el) return ocultar();
+    const r = el.getBoundingClientRect();
+    mostrar(el, r.left + r.width / 2, r.top);
+  });
+  document.addEventListener("focusout", ocultar);
+  window.addEventListener("scroll", ocultar, { passive: true });
+})();
 </script>
 </body>
 </html>
