@@ -101,8 +101,11 @@ export function inexistentesEn(
   elementos = vocabulario,
   opciones: { negrita?: boolean } = {}
 ): string[] {
-  const conocidos = new Set(vocabulario.map(plana));
-  return nombresCitados(respuesta, opciones).filter((n) => !conocidos.has(plana(n)) && !esCitaLegitima(n, elementos));
+  // Sin separadores: «pago-realizado» (el id que el modelo lee del TOON) y
+  // «PagoRealizado» son el mismo elemento (visto en la línea base de #765).
+  const junta = (s: string) => plana(s).replace(/ /g, "");
+  const conocidos = new Set(vocabulario.map(junta));
+  return nombresCitados(respuesta, opciones).filter((n) => !conocidos.has(junta(n)) && !esCitaLegitima(n, elementos));
 }
 
 export function puntuar(respuesta: string, esperado: string[], vocabulario: string[], elementos = vocabulario): PuntajeRespuesta {

@@ -17,6 +17,11 @@ describe("inexistentesEn", () => {
     expect(inexistentesEn("**Resumen**: Pagar dispara PagoRealizado.", VOCAB, VOCAB, { negrita: false })).toEqual([]);
   });
 
+  it("el id de un elemento («pago-realizado») es el mismo elemento, no un invento", () => {
+    // Visto en la línea base de #765: el modelo citó el id que lee del TOON.
+    expect(inexistentesEn('La arista de "pago-realizado" sale de "pagar".', VOCAB)).toEqual([]);
+  });
+
   it("con negrita (el banco) se sigue contando como cita, como antes", () => {
     expect(nombresCitados("**Facturita**")).toEqual(["Facturita"]);
   });
