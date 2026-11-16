@@ -114,3 +114,62 @@ export function resumir(puntajes: PuntajeRespuesta[]): Resumen {
     conInexistentes: puntajes.filter((p) => p.inexistentes.length > 0).length,
   };
 }
+
+/**
+ * Prueba de McNemar EXACTA (binomial bilateral) entre dos modos que
+ * contestaron las mismas preguntas (#765). Sólo informan los pares
+ * discordantes: una pregunta que ambos aciertan o ambos fallan no dice nada de
+ * cuál es mejor. Con 30 preguntas, «4 a 0» da p = 0,125: la mejora de la
+ * corrida de #697 no se distinguía del azar, y por eso hacía falta medirla así.
+ */
+export function mcnemarExacto(a: boolean[], b: boolean[]): { soloA: number; soloB: number; p: number } {
+  if (a.length !== b.length) throw new Error(`McNemar necesita pares: ${a.length} ≠ ${b.length}.`);
+  let soloA = 0;
+  let soloB = 0;
+  a.forEach((x, i) => {
+    if (x && !b[i]) soloA++;
+    else if (!x && b[i]) soloB++;
+  });
+  const n = soloA + soloB;
+  if (n === 0) return { soloA, soloB, p: 1 };
+  const k = Math.min(soloA, soloB);
+  // Σ C(n,i)·0,5^n para i ≤ k, acumulando el coeficiente para no desbordar.
+  let coef = 1;
+  let cola = 0;
+  for (let i = 0; i <= k; i++) {
+    if (i > 0) coef = (coef * (n - i + 1)) / i;
+    cola += coef;
+  }
+  return { soloA, soloB, p: Math.min(1, 2 * cola * 0.5 ** n) };
+}
+
+export interface ResumenCorridas {
+  corridas: number;
+  exactitudMedia: number;
+  exactitudMin: number;
+  exactitudMax: number;
+  /** Respuestas con algún elemento inexistente, promedio por corrida. */
+  inexistentesMedia: number;
+}
+
+/** Varias corridas del mismo modo: el rango muestra cuánto varía el modelo consigo mismo. */
+export function resumirCorridas(corridas: PuntajeRespuesta[][]): ResumenCorridas {
+  if (!corridas.length) return { corridas: 0, exactitudMedia: 0, exactitudMin: 0, exactitudMax: 0, inexistentesMedia: 0 };
+  const rs = corridas.map(resumir);
+  const ex = rs.map((r) => r.exactitud);
+  return {
+    corridas: rs.length,
+    exactitudMedia: ex.reduce((s, x) => s + x, 0) / rs.length,
+    exactitudMin: Math.min(...ex),
+    exactitudMax: Math.max(...ex),
+    inexistentesMedia: rs.reduce((s, r) => s + r.conInexistentes, 0) / rs.length,
+  };
+}
+
+/** Media, mediana y p95 (rango más cercano) de tokens o latencias. */
+export function describirNumeros(xs: number[]): { n: number; media: number; p50: number; p95: number } {
+  if (!xs.length) return { n: 0, media: 0, p50: 0, p95: 0 };
+  const o = [...xs].sort((a, b) => a - b);
+  const rango = (q: number) => o[Math.max(0, Math.ceil(q * o.length) - 1)];
+  return { n: o.length, media: o.reduce((s, x) => s + x, 0) / o.length, p50: rango(0.5), p95: rango(0.95) };
+}
