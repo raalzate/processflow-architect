@@ -222,7 +222,7 @@ describe("suggestNextTask", () => {
     expect(suggestNextTask.maxLocalChars).toBe(900);
   });
 
-  it("buildPrompt interpola el elemento y lista los tipos de la notación por defecto", () => {
+  it("buildPrompt interpola el elemento y, en la notación por defecto, lista los tipos que el reglamento admite", () => {
     const { prompt } = suggestNextTask.buildPrompt!({
       tipo: "Comando",
       nombre: "Registrar Pago",
@@ -231,7 +231,11 @@ describe("suggestNextTask", () => {
     expect(prompt).toContain("Registrar Pago");
     expect(prompt).toContain("Comando");
     expect(prompt).toContain("Se registra un pago.");
-    for (const t of notationTypes(DEFAULT_NOTATION_ID)) expect(prompt).toContain(t);
+    // #766: ya no todos los tipos, sólo los que pueden seguir a un Comando.
+    expect(DEFAULT_NOTATION_ID).toBe("ddd");
+    expect(prompt).toContain("Evento");
+    expect(prompt).toContain("Sistema Externo");
+    expect(prompt).not.toContain("Raíz de Agregado");
   });
 
   it("parse cae al tipo por defecto de LA notación, no siempre a 'Evento'", () => {
