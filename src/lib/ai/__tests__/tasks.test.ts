@@ -585,3 +585,43 @@ describe("proposeFactsTask", () => {
     expect(parseHechosPropuestos('{"hechos": roto')).toEqual([]);
   });
 });
+
+// #766: el reglamento de la notación acota lo que la IA puede proponer.
+describe("suggestNextTask con la ontología", () => {
+  it("el prompt ofrece sólo los tipos que el reglamento admite después del elemento", () => {
+    const { prompt } = suggestNextTask.buildPrompt!({ tipo: "Evento", nombre: "Pago Realizado", notation: "ddd" });
+    expect(prompt).toContain("Política");
+    expect(prompt).toContain("activa");
+    expect(prompt).not.toContain("Raíz de Agregado");
+  });
+
+  it("parse descarta un tipo que el reglamento no admite y usa el admitido", () => {
+    const out = suggestNextTask.parse!("Comando | Cobrar | emite", { tipo: "Evento", nombre: "Pago Realizado", notation: "ddd" });
+    expect(out.tipo).toBe("Política");
+    expect(out.nombre).toBe("Cobrar");
+  });
+
+  it("la relación sale del predicado que une los tipos, no de lo que diga el modelo", () => {
+    const out = suggestNextTask.parse!("Evento | Pago Registrado | produce", { tipo: "Comando", nombre: "Pagar", notation: "ddd" });
+    expect(out).toEqual({ tipo: "Evento", nombre: "Pago Registrado", relacion: "dispara" });
+  });
+
+  it("sin predicados específicos (notación general) se ofrece la lista completa, como antes", () => {
+    const { prompt } = suggestNextTask.buildPrompt!({ tipo: "Rectángulo", nombre: "Caja", notation: "general" });
+    for (const t of notationTypes("general")) expect(prompt).toContain(t);
+  });
+});
+
+describe("linkLabelTask con la ontología", () => {
+  it("si el par admite un solo significado, lo resuelve sin modelo", () => {
+    expect(linkLabelTask.resolver!({ sourceName: "Pagar", sourceType: "Comando", targetName: "Pagado", targetType: "Evento", notation: "ddd" })).toBe("dispara");
+  });
+
+  it("si admite varios, no resuelve y el prompt los ofrece", () => {
+    const i = { sourceName: "Ana", sourceType: "Persona", targetName: "PagosDB", targetType: "Base de Datos", notation: "c4" };
+    expect(linkLabelTask.resolver!(i)).toBeNull();
+    const { prompt } = linkLabelTask.buildPrompt!(i);
+    expect(prompt).toContain("lee de");
+    expect(prompt).toContain("escribe en");
+  });
+});
