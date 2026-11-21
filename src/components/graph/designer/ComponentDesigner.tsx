@@ -1,5 +1,7 @@
 "use client";
 import { useCollaboration } from "@/context/CollaborationContext";
+import { exportAllowed } from "@/lib/export-gate";
+import { SEALED_PROJECT_ERROR } from "@/lib/mcp/app-read";
 import { applyRecordDelta } from "@/lib/collaboration/canvas-merge";
 import { PresenceLayer } from "@/components/collaboration/PresenceLayer";
 
@@ -85,7 +87,7 @@ import {
   type FormatoConocimiento,
 } from "@/lib/ontology";
 import type { DesignView } from "@/lib/views-types";
-import { KnowledgeTab } from "./KnowledgeTab";
+import { VinculosSection } from "./VinculosSection";
 import { ColumnsField } from "./ColumnsField";
 import {
   agregarColumna,
@@ -310,6 +312,7 @@ import { neighborhoodOf } from "@/lib/graph-neighbors";
 import { migrarMensajes, necesitaMigracion } from "@/lib/sequence/migrate";
 import { activacionesDe } from "@/lib/sequence/activations";
 import { alturaDeMensaje, ordenarParticipantes } from "@/lib/sequence/layout";
+import { esTeclaDePaneo, iniciaPaneo, ruedaHorizontal, scrollTrasArrastre, type InicioPaneo } from "@/lib/canvas-pan";
 import {
   rangoPorGeometria,
   repartirOperandos,
@@ -1451,7 +1454,7 @@ const EditNodeDialog: React.FC<{
   // Tab visible. Vive FUERA del borrador a propósito: al saltar de un elemento
   // a otro sin cerrar la ficha se sigue viendo el mismo tab (si se reiniciara,
   // revisar la spec de cinco cajas obligaría a volver a entrar cinco veces).
-  const [tab, setTab] = useState<"elemento" | "spec" | "conocimiento" | "agente">("elemento");
+  const [tab, setTab] = useState<"elemento" | "spec" | "agente">("elemento");
   // Borrador de spec propuesto por la IA, en espera de «Aplicar»/«Descartar».
   // Nunca se escribe solo: pisar lo que el usuario redactó a mano sería el peor
   // resultado posible de un botón de sugerencia.
@@ -1817,10 +1820,10 @@ const EditNodeDialog: React.FC<{
               pie —Siguiente paso · Cerrar— queda FUERA: aplica a las dos. */}
           <Tabs
             value={tab}
-            onValueChange={(v) => setTab(v as "elemento" | "spec" | "conocimiento" | "agente")}
+            onValueChange={(v) => setTab(v as "elemento" | "spec" | "agente")}
             className="flex min-h-0 flex-1 flex-col"
           >
-            <TabsList className={cn("mx-4 mt-3 grid w-auto", puedeChatear ? "grid-cols-4" : "grid-cols-3")}>
+            <TabsList className={cn("mx-4 mt-3 grid w-auto", puedeChatear ? "grid-cols-3" : "grid-cols-2")}>
               <TabsTrigger value="elemento">Elemento</TabsTrigger>
               <TabsTrigger value="spec">
                 Spec
@@ -1829,8 +1832,6 @@ const EditNodeDialog: React.FC<{
                   <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
                 )}
               </TabsTrigger>
-              {/* Lo que el razonador deduce de la caja (spec 027 · US3). */}
-              <TabsTrigger value="conocimiento">Conocimiento</TabsTrigger>
               {/* Chat con Claude Code / Codex (feature 020): sólo en la app de
                   escritorio, donde el CLI corre en el proceso main. */}
               {puedeChatear && <TabsTrigger value="agente">Agente</TabsTrigger>}
@@ -2259,19 +2260,19 @@ const EditNodeDialog: React.FC<{
               </Button>
             )}
           </div>
-            </TabsContent>
-            <TabsContent value="conocimiento" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">
-              <KnowledgeTab
-                elementId={draft.id}
-                nodes={nodes}
-                links={links}
-                notation={notation}
-                vistas={vistasDelProyecto}
-                vistaActivaId={vistaActivaId}
-                activo={tab === "conocimiento"}
-                vinculos={vinculos}
-                onVinculos={setVinculos}
-              />
+          {/* La misma caja en otras vistas (spec 027 · US6): alimenta al razonador
+              de la ontología. Era parte de la pestaña «Conocimiento», quitada en #763. */}
+          <VinculosSection
+            elementId={draft.id}
+            nodes={nodes}
+            links={links}
+            notation={notation}
+            vistas={vistasDelProyecto}
+            vistaActivaId={vistaActivaId}
+            activo={tab === "elemento"}
+            vinculos={vinculos}
+            onVinculos={setVinculos}
+          />
             </TabsContent>
             <TabsContent value="spec" className="mt-0 min-h-0 flex-1 overflow-y-auto p-4">
               <SpecTab
@@ -3446,6 +3447,13 @@ export const ComponentDesigner: React.FC<{
   const onWheelNative = useCallback((e: WheelEvent) => {
     const wrapper = canvasWrapperRef.current;
     if (!wrapper) return;
+    // Shift + rueda de mouse → a los lados (#763). La decisión vive en canvas-pan.
+    const dx = ruedaHorizontal(e);
+    if (dx !== null) {
+      e.preventDefault();
+      wrapper.scrollLeft += dx;
+      return;
+    }
     if (!e.ctrlKey && !e.metaKey) return; // rueda normal = scroll/pan
     e.preventDefault();
     setZoom((prev) => {
@@ -3462,6 +3470,83 @@ export const ComponentDesigner: React.FC<{
       });
       return next;
     });
+  }, []);
+
+  // --- Arrastrar el tablero con el mouse (#763) ---
+  // Con touchpad el scroll nativo basta; con mouse no había forma de ir a los
+  // lados. Clic central o Espacio + clic izquierdo arrastran el tablero.
+  const espacioRef = useRef(false);
+  const [espacioPulsado, setEspacioPulsado] = useState(false);
+  const paneoRef = useRef<InicioPaneo | null>(null);
+  const [paneando, setPaneando] = useState(false);
+
+  useEffect(() => {
+    const fijarEspacio = (v: boolean) => {
+      espacioRef.current = v;
+      setEspacioPulsado(v);
+    };
+    const abajo = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const escribiendo = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+      if (!esTeclaDePaneo(e.code, escribiendo)) return;
+      // Sólo se le quita el Espacio al navegador sobre el lienzo (o sin foco):
+      // en un botón de la barra sigue siendo «pulsar».
+      const enLienzo = !t || t === document.body || !!canvasWrapperRef.current?.contains(t);
+      if (enLienzo) e.preventDefault(); // si no, el contenedor scrollea una página
+      if (!e.repeat) fijarEspacio(true);
+    };
+    const arriba = (e: KeyboardEvent) => {
+      if (e.code === "Space") fijarEspacio(false);
+    };
+    // Soltar Espacio con la ventana sin foco no llega: se resetea al perderlo.
+    const perderFoco = () => fijarEspacio(false);
+    window.addEventListener("keydown", abajo);
+    window.addEventListener("keyup", arriba);
+    window.addEventListener("blur", perderFoco);
+    return () => {
+      window.removeEventListener("keydown", abajo);
+      window.removeEventListener("keyup", arriba);
+      window.removeEventListener("blur", perderFoco);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!paneando) return;
+    const mover = (e: MouseEvent) => {
+      const inicio = paneoRef.current;
+      const w = canvasWrapperRef.current;
+      if (!inicio || !w) return;
+      const { left, top } = scrollTrasArrastre(inicio, { x: e.clientX, y: e.clientY });
+      w.scrollLeft = left;
+      w.scrollTop = top;
+    };
+    const soltar = () => {
+      paneoRef.current = null;
+      setPaneando(false);
+    };
+    window.addEventListener("mousemove", mover);
+    window.addEventListener("mouseup", soltar);
+    return () => {
+      window.removeEventListener("mousemove", mover);
+      window.removeEventListener("mouseup", soltar);
+    };
+  }, [paneando]);
+
+  /**
+   * En CAPTURA, antes que nodos y marco: con Espacio o clic central el gesto es
+   * del tablero, no de lo que haya debajo. Corre también en sólo-lectura —mirar
+   * un diagrama ajeno también es moverse por él—; el resto de clics se cortan ahí.
+   */
+  const handleCanvasMouseDownCapture = useCallback((e: React.MouseEvent) => {
+    const w = canvasWrapperRef.current;
+    if (w && iniciaPaneo(e.button, espacioRef.current)) {
+      e.preventDefault(); // sin esto el clic central abre el autoscroll de Windows
+      e.stopPropagation();
+      paneoRef.current = { x: e.clientX, y: e.clientY, left: w.scrollLeft, top: w.scrollTop };
+      setPaneando(true);
+      return;
+    }
+    if (readOnlyRef.current) e.stopPropagation();
   }, []);
 
   /**
@@ -5229,6 +5314,8 @@ export const ComponentDesigner: React.FC<{
     const api = hostBridge();
     if (!api?.onMcpAppCapture) return;
     return api.onMcpAppCapture(async ({ id }) => {
+      // #756: una imagen del lienzo también es sacar el contenido de una copia prestada.
+      if (!exportAllowed()) return api.mcpAppCaptureReply(id, { ok: false, error: SEALED_PROJECT_ERROR });
       try {
         const dataUrl = await capturarRef.current();
         api.mcpAppCaptureReply(id, { ok: true, view: nombreVistaRef.current, dataUrl });
@@ -5668,7 +5755,8 @@ export const ComponentDesigner: React.FC<{
               </DropdownMenuSub>
 
               <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
+                {/* #756: en una copia prestada exportar lo decide el anfitrión (los helpers también frenan). */}
+                <DropdownMenuSubTrigger disabled={collaboration ? !collaboration.canExport : false}>
                   <Download className="mr-2 h-4 w-4" /> Exportar
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-56">
@@ -5850,11 +5938,15 @@ export const ComponentDesigner: React.FC<{
           ref={attachCanvasWrapper}
           // `bg-canvas` (no `bg-background`): el hueco de un cuadro durante el
           // resize se ve del color del lienzo en vez de un tajo de otro tono.
-          className="absolute inset-0 overflow-auto bg-canvas"
+          className={cn(
+            "absolute inset-0 overflow-auto bg-canvas",
+            // Con Espacio o arrastrando, la mano manda sobre el cursor de cada nodo.
+            paneando ? "cursor-grabbing [&_*]:cursor-grabbing!" : espacioPulsado && "cursor-grab [&_*]:cursor-grab!"
+          )}
           onScroll={syncViewport}
           onDragOver={handleDragOver}
           onDrop={event => { if (!readOnlyRef.current) handleDrop(event); else event.preventDefault(); }}
-          onMouseDownCapture={event => { if (readOnlyRef.current) event.stopPropagation(); }}
+          onMouseDownCapture={handleCanvasMouseDownCapture}
           onDoubleClickCapture={event => { if (readOnlyRef.current) event.stopPropagation(); }}
           onMouseDown={handleCanvasMouseDown}
           onContextMenu={(e) => openContextMenu(e, { kind: "canvas" })}

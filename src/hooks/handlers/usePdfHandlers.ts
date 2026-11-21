@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { guardExport } from "@/lib/export-gate";
 import type { GraphData, GraphNode, ArchitectureDriversOutput, ConstraintsRisksOutput, RoadmapOutput, TechnicalElementsOutput } from "@/lib/types";
 import {
     formatDriversToMarkdown,
@@ -41,6 +42,7 @@ export function usePdfHandlers(deps: PdfHandlersDeps) {
             toast({ variant: "destructive", title: "No hay datos para generar el PDF" });
             return;
         }
+        if (!guardExport()) return;
         setIsGeneratingPdf(true);
         toast({ title: "Generando PDF...", description: "Esto puede tardar unos segundos." });
 
