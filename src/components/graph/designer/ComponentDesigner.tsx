@@ -379,9 +379,12 @@ function buildContent(
   links: Map<string, DesignerLink>,
   meta: DesignerMeta,
   /** Notación activa del lienzo: se re-sella en el documento en cada guardado. */
-  notation?: NotationId
+  notation?: NotationId,
+  /** Notaciones sumadas (vista multinotación): se re-sellan igual que la principal. */
+  notacionesExtra?: NotationId[]
 ): GraphData {
   return canvasToGraphData(nodes, links, {
+    notacionesExtra,
     nombre_proyecto: meta.nombre_proyecto,
     version: meta.version,
     defaultRouting: meta.defaultRouting,
@@ -2949,11 +2952,13 @@ export const ComponentDesigner: React.FC<{
   sourceId?: string;
   /** Notación / grupo de componentes de la vista (DDD, BPMN, C4, UML). */
   notation?: NotationId;
-  /** Cambia la notación de la vista (sólo modo vista; muestra el SELECT). */
-  onNotationChange?: (n: NotationId) => void;
+  /** Notaciones sumadas a la principal (vista multinotación). */
+  notacionesExtra?: NotationId[];
+  /** Cambia las notaciones de la vista; con esto se muestra el selector. */
+  onNotacionesChange?: (principal: NotationId, extras: NotationId[] | undefined) => void;
   /** Organización del proyecto: elige el perfil de marca de la skin editorial (spec 023). */
   orgId?: string | null;
-}> = ({ value, onChange, sourceId, notation, onNotationChange, orgId = null }) => {
+}> = ({ value, onChange, sourceId, notation, notacionesExtra, onNotacionesChange, orgId = null }) => {
   const { currentFileId, savedFiles, handleDesignUpdate, graphData } = useGraphContext();
   // Ruta base de las fuentes (#670): por proyecto y de esta máquina (localStorage).
   const [rutaBase, setRutaBase] = useState<string | undefined>(undefined);
@@ -4005,14 +4010,14 @@ export const ComponentDesigner: React.FC<{
       return;
     }
     setSaveState("saving");
-    const content = buildContent(nodesRef.current, linksRef.current, meta, notationId);
+    const content = buildContent(nodesRef.current, linksRef.current, meta, notationId, notacionesExtra);
     lastEmittedRef.current = content; // lo propio: no re-sembrar en el round-trip
     if (onChangeRef.current) onChangeRef.current(content);
     else if (currentFileId) handleDesignUpdate(currentFileId, content);
     const t = setTimeout(() => setSaveState("saved"), 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revision, meta, currentFileId, notationId]);
+  }, [revision, meta, currentFileId, notationId, notacionesExtra]);
 
   // --- Acciones desde el menú nativo de Electron ---
   // El QUÉ hace cada acción vive en el mapa `acciones`, más abajo (junto a los
@@ -4975,7 +4980,7 @@ export const ComponentDesigner: React.FC<{
         strategy: opts.strategy ?? arrangement.strategy,
       };
       if (!meta) return;
-      const content = buildContent(nodesRef.current, linksRef.current, meta, notationId);
+      const content = buildContent(nodesRef.current, linksRef.current, meta, notationId, notacionesExtra);
       // SECUENCIA: el layout general no la entiende —no hay flujo de izquierda a
       // derecha, hay participantes y tiempo—, así que usa su preset (T24). Es la
       // MISMA función que decide la altura de cada mensaje, así que el botón y
@@ -5022,22 +5027,22 @@ export const ComponentDesigner: React.FC<{
       pushSnapshot(nodosNuevos, enlacesNuevos); // un solo paso de Deshacer
       setArrangement(next);
     },
-    [arrangement, meta, notationId, pushSnapshot, updateNodes]
+    [arrangement, meta, notationId, notacionesExtra, pushSnapshot, updateNodes]
   );
 
   // La sugerida se pide al abrir el menú: el asesor lee el diagrama de ESE momento.
   const recommendStrategy = useCallback(() => {
     if (!meta) return undefined;
     return recommendArrangement(
-      buildContent(nodesRef.current, linksRef.current, meta, notationId),
+      buildContent(nodesRef.current, linksRef.current, meta, notationId, notacionesExtra),
       notationId,
       arrangement.density
     );
-  }, [arrangement.density, meta, notationId]);
+  }, [arrangement.density, meta, notationId, notacionesExtra]);
 
   const suggestArrangementWithAi = useCallback(async () => {
     if (!meta) return;
-    const content = buildContent(nodesRef.current, linksRef.current, meta, notationId);
+    const content = buildContent(nodesRef.current, linksRef.current, meta, notationId, notacionesExtra);
     const bandas = laneNames(content);
     if (bandas.length < 2) {
       toast({ title: "Nada que ordenar", description: "El diagrama no tiene grupos que reordenar." });
@@ -5063,7 +5068,7 @@ export const ComponentDesigner: React.FC<{
     } finally {
       setArrangeBusy(false);
     }
-  }, [applyArrangement, meta, notationId, runAi, toast]);
+  }, [applyArrangement, meta, notationId, notacionesExtra, runAi, toast]);
 
   // Exporta el lienzo actual como SVG vectorial recortado al contenido, para
   // llevar el diagrama a una presentación o documento.
@@ -5113,7 +5118,7 @@ export const ComponentDesigner: React.FC<{
         name: "Lienzo",
         kind: "graph",
         notation: notationId,
-        graph: buildContent(nodesRef.current, linksRef.current, meta, notationId),
+        graph: buildContent(nodesRef.current, linksRef.current, meta, notationId, notacionesExtra),
         createdAt: "",
       };
       const k = construirConocimiento(
@@ -5124,7 +5129,7 @@ export const ComponentDesigner: React.FC<{
       downloadText(archivo.contenido, archivo.nombre, archivo.mime);
       toast({ title: "Conocimiento exportado", description: `${archivo.nombre}${deducidos ? " · con lo deducido aparte" : ""}` });
     },
-    [activeViewId, notationId, meta, views, vinculos, toast]
+    [activeViewId, notationId, notacionesExtra, meta, views, vinculos, toast]
   );
 
   // Exporta una página HTML autocontenida (spec 024): título, descripción y el
@@ -5844,7 +5849,11 @@ export const ComponentDesigner: React.FC<{
       )}
 
       <div className="grow flex h-0">
-        <Toolbox notation={notationId} onNotationChange={onNotationChange} />
+        <Toolbox
+          notation={notationId}
+          notacionesExtra={notacionesExtra}
+          onNotacionesChange={onNotacionesChange}
+        />
 
         <div className="grow h-full relative overflow-hidden">
         <div
@@ -6404,7 +6413,7 @@ export const ComponentDesigner: React.FC<{
         onOpenChange={setProponerOpen}
         docs={graphData?.source_docs ?? []}
         notation={notationId}
-        modelo={() => (meta ? fromGraphData(buildContent(nodesRef.current, linksRef.current, meta, notationId), notationId) : null)}
+        modelo={() => (meta ? fromGraphData(buildContent(nodesRef.current, linksRef.current, meta, notationId, notacionesExtra), notationId) : null)}
         onIntegrar={integrarPropuestas}
       />
 
