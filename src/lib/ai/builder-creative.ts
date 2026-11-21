@@ -48,6 +48,8 @@ export interface CreativeInput {
   vista: {
     nombre: string;
     notation: NotationId;
+    /** Notaciones sumadas a la principal (vista multinotación). */
+    notacionesExtra?: NotationId[];
     /** Grafo actual de la vista (vacío/ausente = vista sin contenido). */
     graph?: GraphData | null;
   };
@@ -208,7 +210,9 @@ export async function runCreative(
       continue;
     }
 
-    const parsed = fromMermaid(mermaid, input.vista.notation, { nombre });
+    // Con todas las notaciones de la vista: si no, un tipo de una sumada se
+    // reescribía en silencio al más parecido de la principal.
+    const parsed = fromMermaid(mermaid, [input.vista.notation, ...(input.vista.notacionesExtra ?? [])], { nombre });
     const recortado = recortarSiNoEntra(parsed.model);
     model = recortado.model;
     aviso = recortado.aviso;

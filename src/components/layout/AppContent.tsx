@@ -49,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { useGraphContext } from "@/context/GraphContext";
 import type { GraphData } from "@/lib/types";
 import { DEFAULT_NOTATION_ID, type NotationId } from "@/lib/notations";
+import { notacionesDeVista } from "@/lib/multi-notation";
 import { useViews } from "@/context/ViewsContext";
 import { ComponentDesigner } from "@/components/graph/designer/ComponentDesigner";
 import { ViewsTabBar } from "@/components/views/ViewsTabBar";
@@ -427,7 +428,10 @@ const McpImportBridge = () => {
           const base = destino.id === "design" ? graphData : vista?.graph;
           if (!base) return { ok: false as const, error: `La vista "${destino.name}" no tiene un grafo que editar.` };
           const notacion = (vista?.notation ?? base.notation ?? DEFAULT_NOTATION_ID) as NotationId;
-          return { ok: true as const, destino, base, notacion };
+          // Todas las de la vista: en una multinotación la edición acepta los
+          // tipos de cualquiera de ellas, no sólo los de la principal.
+          const notaciones = notacionesDeVista(notacion, vista?.notacionesExtra ?? base.notacionesExtra);
+          return { ok: true as const, destino, base, notacion, notaciones };
         };
         const guardar = (destinoId: string, graph: GraphData) => {
           // La vista del sistema ES el documento del proyecto; una vista propia
@@ -444,14 +448,14 @@ const McpImportBridge = () => {
           if (!g.ok) return void electron.mcpAppActionReply?.(id, { ok: false, error: g.error });
           const plan = planCrearSubvista(request, views, MAX_CUSTOM_VIEWS);
           if (!plan.ok) return void electron.mcpAppActionReply?.(id, { ok: false, error: plan.error });
-          const prueba = applyViewEdit(g.base, { kind: "update-element", name: request.element, subviewId: "?" }, g.notacion);
+          const prueba = applyViewEdit(g.base, { kind: "update-element", name: request.element, subviewId: "?" }, g.notaciones);
           if (!prueba.ok) return void electron.mcpAppActionReply?.(id, { ok: false, error: prueba.error });
           const notacionNueva = (request.notation ?? g.notacion) as NotationId;
           const nueva = createView({ name: plan.name, notation: notacionNueva, activate: false });
           if (!nueva) {
             return void electron.mcpAppActionReply?.(id, { ok: false, error: "Se alcanzó el límite de vistas del proyecto." });
           }
-          const r = applyViewEdit(g.base, { kind: "update-element", name: request.element, subviewId: nueva }, g.notacion);
+          const r = applyViewEdit(g.base, { kind: "update-element", name: request.element, subviewId: nueva }, g.notaciones);
           if (!r.ok) {
             deleteView(nueva);
             return void electron.mcpAppActionReply?.(id, { ok: false, error: r.error });
@@ -469,7 +473,7 @@ const McpImportBridge = () => {
             electron.mcpAppActionReply?.(id, { ok: false, error: g.error });
             return;
           }
-          const { destino, base, notacion } = g;
+          const { destino, base, notaciones } = g;
           // El agente nombra la subvista; el enlace se guarda por id (#638).
           let edicion = request;
           if (request.kind === "update-element" && request.subview !== undefined) {
@@ -480,7 +484,7 @@ const McpImportBridge = () => {
             }
             edicion = { ...request, subviewId: sub.id };
           }
-          const r = applyViewEdit(base, edicion, notacion);
+          const r = applyViewEdit(base, edicion, notaciones);
           if (!r.ok) {
             electron.mcpAppActionReply?.(id, { ok: false, error: r.error });
             return;

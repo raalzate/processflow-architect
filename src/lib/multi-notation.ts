@@ -12,12 +12,42 @@ import {
   DEFAULT_NOTATION_ID,
   NOTATIONS,
   getNotation,
+  notationTypes,
   type NotationId,
   type NotationPaletteGroup,
 } from "./notations";
 import { enRegistro } from "./registro";
 
 const existe = (id: unknown): id is NotationId => enRegistro(NOTATIONS, id);
+
+/**
+ * Normaliza lo que reciben las funciones que antes aceptaban UNA notación y
+ * ahora aceptan varias: una suelta o una lista → lista válida, la primera
+ * primero. Así cada consumidor migra cambiando el tipo del parámetro, sin
+ * duplicar la limpieza.
+ */
+export function listaDeNotaciones(
+  n: string | readonly string[] | undefined
+): NotationId[] {
+  if (Array.isArray(n)) return notacionesDeVista(n[0], n.slice(1));
+  return notacionesDeVista(n as string | undefined, undefined);
+}
+
+/**
+ * Tipos válidos de una o varias notaciones: la unión, sin repetir, en el orden
+ * de las notaciones (la principal primero, así un `defaultType` o un parecido
+ * se resuelve primero en ella).
+ */
+export function tiposDeNotaciones(
+  n: string | readonly string[] | undefined,
+  opts: { includeContainers?: boolean } = {}
+): string[] {
+  const vistos = new Set<string>();
+  for (const id of listaDeNotaciones(n)) {
+    for (const t of notationTypes(id, opts)) vistos.add(t);
+  }
+  return [...vistos];
+}
 
 /** Notaciones de una vista, la principal primero, sin repetidos ni ids desconocidos. */
 export function notacionesDeVista(

@@ -541,6 +541,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           ? {
               nombre: activeView.name,
               notation: (activeView.notation ?? graphData?.notation ?? DEFAULT_NOTATION_ID) as NotationId,
+              notacionesExtra: activeView.notacionesExtra,
               graph: activeView.kind === "design" ? graphData : activeView.graph,
             }
           : undefined,
@@ -710,8 +711,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         // documento. Antes solo se miraban las pineadas, así que preguntar sobre
         // un lienzo C4 sin pinear nada hacía razonar al agente en DDD.
         const notations = resolveNotations({
-          injected: injectedViews.map((v) => (v.notation ?? "") as string),
+          // Una vista pineada multinotación aporta todas las suyas.
+          injected: injectedViews.flatMap((v) => [v.notation ?? "", ...(v.notacionesExtra ?? [])] as string[]),
           activeNotation: activeView?.notation,
+          activeExtras: activeView?.notacionesExtra,
           graphNotation: graphData?.notation,
         });
 
@@ -960,8 +963,9 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           run: msg.run,
           resume: decision,
           notations: resolveNotations({
-            injected: injectedViews.map((v) => (v.notation ?? "") as string),
+            injected: injectedViews.flatMap((v) => [v.notation ?? "", ...(v.notacionesExtra ?? [])] as string[]),
             activeNotation: activeView?.notation,
+            activeExtras: activeView?.notacionesExtra,
             graphNotation: graphData?.notation,
           }),
           systemPrompt: getGenerationConfig().systemPrompt || undefined,

@@ -182,6 +182,34 @@ describe("validate", () => {
   });
 });
 
+describe("notaciones extra en el ida y vuelta del MCP", () => {
+  // export_to_app REEMPLAZA el proyecto: lo que no vuelva por acá se pierde.
+  it("toGraphData y fromGraphData conservan notacionesExtra", () => {
+    const m = emptyDiagram({ ...base, notacionesExtra: ["general"] });
+    const g = toGraphData(m);
+    expect(g.notacionesExtra).toEqual(["general"]);
+    expect(fromGraphData(g, g.notation).meta.notacionesExtra).toEqual(["general"]);
+  });
+
+  it("validate no avisa por un tipo de una notación sumada; sí por uno ajeno a todas", () => {
+    let m = emptyDiagram({ nombre_proyecto: "P", notation: "c4", notacionesExtra: ["ddd"] });
+    m = addNode(m, { id: "w", nombre: "Web", tipo_elemento: "Contenedor" }).model;
+    m = addNode(m, { id: "p", nombre: "Pagar", tipo_elemento: "Comando" }).model;
+    m = addNode(m, { id: "t", nombre: "Revisar", tipo_elemento: "Tarea" }).model; // BPMN: no está
+    m = addEdge(m, { fuente: "w", destino: "p" });
+    m = addEdge(m, { fuente: "p", destino: "t" });
+    const { warnings } = validate(m);
+    expect(warnings.some((w) => w.includes('"Pagar"'))).toBe(false);
+    expect(warnings.some((w) => w.includes('"Revisar"'))).toBe(true);
+  });
+
+  it("sin extra no se escribe el campo", () => {
+    const g = toGraphData(emptyDiagram(base));
+    expect("notacionesExtra" in g).toBe(false);
+    expect(fromGraphData(g, g.notation).meta.notacionesExtra).toBeUndefined();
+  });
+});
+
 describe("toGraphData", () => {
   it("clasifica aristas en internas / políticas / big picture", () => {
     let m = emptyDiagram(base);

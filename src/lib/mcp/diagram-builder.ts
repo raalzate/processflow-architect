@@ -63,7 +63,7 @@ import {
   type NotationId,
 } from "../notations";
 import { disponerLegible, medirDisposicion, type DisposicionLegible } from "../layout/legible";
-import { validTypesFor } from "./catalog";
+import { notacionesDeVista, tiposDeNotaciones } from "../multi-notation";
 import { mermaidSafeId } from "./mermaid-id";
 import { recomendarEstrategia, type RecomendacionDeLayout } from "./layout-advisor";
 import {
@@ -120,6 +120,8 @@ export type Estado = (typeof ESTADOS)[number];
 export interface DiagramMeta {
   nombre_proyecto: string;
   notation: NotationId;
+  /** Notaciones sumadas a la principal (vista multinotación, `multi-notation.ts`). */
+  notacionesExtra?: NotationId[];
   descripcion?: string;
   version?: string;
   fecha_analisis?: string;
@@ -993,7 +995,10 @@ export function validate(model: DiagramModel): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const validTypes = validTypesFor(model.meta.notation);
+  // Todas las notaciones del modelo: en una vista multinotación un tipo de una
+  // sumada no es un «mezclado accidental» y avisarlo sería ruido.
+  const notaciones = notacionesDeVista(model.meta.notation, model.meta.notacionesExtra);
+  const validTypes = new Set(tiposDeNotaciones(notaciones, { includeContainers: true }));
   const ids = new Set<string>();
   const connected = new Set<string>();
   for (const e of model.edges) {
@@ -1013,7 +1018,7 @@ export function validate(model: DiagramModel): ValidationResult {
         ? ` (ese tipo es de la notación "${owner}"; ¿querías otro tipo, o crear el diagrama en "${owner}"?)`
         : "";
       warnings.push(
-        `"${n.nombre}" usa el tipo "${n.tipo_elemento}", que no pertenece a la notación "${model.meta.notation}"${hint}.`
+        `"${n.nombre}" usa el tipo "${n.tipo_elemento}", que no pertenece a la notación "${notaciones.join(" + ")}"${hint}.`
       );
     }
     // Nodo no-contenedor sin ninguna arista: el procesador del grafo lo descarta.
@@ -2404,6 +2409,8 @@ export function toGraphData(input: DiagramModel): GraphData {
     // La notación viaja con el modelo: así export_to_app (que no la pasaba por
     // canal aparte) entrega un proyecto con la paleta correcta, no forzado a DDD.
     notation: meta.notation,
+    // Y las sumadas: export_to_app reemplaza el proyecto, sin esto se perdían.
+    ...(meta.notacionesExtra?.length ? { notacionesExtra: [...meta.notacionesExtra] } : {}),
     fecha_analisis: meta.fecha_analisis || new Date().toISOString().slice(0, 10),
     big_picture: {
       descripcion: meta.descripcion || "",
@@ -2532,6 +2539,7 @@ export function fromGraphData(data: GraphData, notation: NotationId = "ddd"): Di
     meta: {
       nombre_proyecto: data.nombre_proyecto,
       notation,
+      ...(data.notacionesExtra?.length ? { notacionesExtra: [...data.notacionesExtra] } : {}),
       descripcion: data.big_picture?.descripcion,
       version: data.version,
       fecha_analisis: data.fecha_analisis,

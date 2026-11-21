@@ -57,7 +57,7 @@ import { lineaRutaBase } from "../source-base";
 import type { VistaConocida } from "../mcp/app-actions";
 import type { GraphData } from "../types";
 import type { NotationId } from "../notations";
-import { notationTypes } from "../notations";
+import { tiposDeNotaciones } from "../multi-notation";
 import { classifyIntent, destinoDe, nombreLibre, opcionesDeModo, type Intencion } from "./builder-intent";
 import { planEditorCall } from "./builder-editor";
 import { runCreative, cuantosElementos, type CreativeResult } from "./builder-creative";
@@ -68,6 +68,8 @@ import { hostBridge } from "@/lib/host-bridge";
 export interface VistaActiva {
   nombre: string;
   notation: NotationId;
+  /** Notaciones sumadas a la principal (vista multinotación). */
+  notacionesExtra?: NotationId[];
   graph?: GraphData | null;
 }
 
@@ -376,6 +378,7 @@ async function bucle(
       tools,
       vistas: input.vistas,
       notation: input.notation,
+      notacionesExtra: input.vista?.notacionesExtra,
       // El diagrama en curso manda: su notación es la que valida los tipos, y su
       // nombre el que nombra la vista al publicar (#331).
       diagrama: state.diagrama,
@@ -557,7 +560,9 @@ export function resumenDeVista(input: BuilderAgentInput) {
   const notation = (input.vista?.notation ?? input.notation) as NotationId | undefined;
   return {
     elementos: cuantosElementos(input.vista?.graph),
-    tipos: notationTypes(notation, { includeContainers: true }),
+    // Los de todas las notaciones de la vista: en una multinotación, listar sólo
+    // los de la principal llevaba al modelo a rechazar lo que el humano mezcló.
+    tipos: tiposDeNotaciones([notation ?? "", ...(input.vista?.notacionesExtra ?? [])], { includeContainers: true }),
     nombre: input.vista?.nombre,
   };
 }
@@ -615,7 +620,12 @@ export async function despachar(
     };
   }
 
-  const veredicto = judgeCall(plan.call, { tools, vistas: input.vistas, notation: input.vista.notation });
+  const veredicto = judgeCall(plan.call, {
+    tools,
+    vistas: input.vistas,
+    notation: input.vista.notation,
+    notacionesExtra: input.vista.notacionesExtra,
+  });
   if (veredicto.kind === "rechazar") {
     paso({ type: "observation", content: veredicto.motivo });
     return null;
