@@ -48,6 +48,21 @@ describe("describeAppState", () => {
     expect(s.views.map((v) => v.name)).toEqual(["Modelo", "Proceso de pago"]);
   });
 
+  it("un proyecto activo sellado (#756) no expone nombre, conteos, vistas ni ficha", () => {
+    const s = describeAppState({
+      graph: graph("Ajeno"),
+      views: [...BUILTIN_VIEWS, vista()],
+      viewsLimit: MAX_CUSTOM_VIEWS,
+      now: "x",
+      focus: { viewId: "v1", elementId: "a" } as any,
+      sealed: true,
+    });
+    expect(s.projectName).toBeNull();
+    expect(s.counts).toEqual({ containers: 0, nodes: 0, edges: 0 });
+    expect(s.views).toEqual([]);
+    expect(s.focus).toBeNull();
+  });
+
   it("sin proyecto abierto deja projectName en null y conteos en cero", () => {
     const s = describeAppState({ graph: null, views: [], viewsLimit: 50, now: "x" });
     expect(s.projectName).toBeNull();
