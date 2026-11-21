@@ -522,7 +522,7 @@ const FileManagement: React.FC<
             <Button
               variant="outline"
               size="sm"
-              className="h-10 gap-1 shrink-0"
+              className="h-8 gap-1 shrink-0"
               title={
                 mcpOrgs.pinned
                   ? `Filtro de organización · el MCP ve "${orgChipLabel(mcpOrgs.pinned, orgNames)}"`
@@ -632,7 +632,7 @@ const FileManagement: React.FC<
         </Select>
       ) : (
         // Muestra un esqueleto mientras se monta
-        <div className="w-[180px] md:w-[220px] h-10 bg-muted rounded-md" />
+        <div className="w-[180px] md:w-[220px] h-8 bg-muted rounded-md" />
       )}
 
       {/* Importar un diagrama JSON (p. ej. el que exporta el MCP desde Claude Code). */}
@@ -1031,22 +1031,38 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   } = useViews();
 
   return (
-    <header className="z-10 min-w-0 space-y-3 border-b bg-card px-4 py-3 shadow-xs">
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
+    // Una sola franja: título, proyecto y búsqueda comparten fila. Antes eran dos
+    // filas con separador y el lienzo —lo único que importa— perdía ~70px de alto.
+    <header className="z-10 min-w-0 border-b bg-card px-3 py-1.5 shadow-xs">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="flex shrink-0 items-center gap-2">
           {/* Disparador del Sidebar para móviles */}
           <SidebarTrigger className="md:hidden">
             <PanelLeft />
           </SidebarTrigger>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-foreground font-headline">ProcessFlow Architect</h1>
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-sm font-semibold text-foreground font-headline">ProcessFlow Architect</h1>
             <BetaBadge />
           </div>
           {/* El crédito de autoría vive en el pie del sidebar y en «Acerca de»:
               en la cabecera competía con el título y no aporta a la tarea. */}
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+        {/* Sin wrap interno: si falta ancho se encoge el selector de proyecto
+            (min-w-40), no se parte el grupo en dos líneas. */}
+        <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2" data-project-toolbar="">
+          {/* Proyecto, ramas y colaboración comparten una sola franja compacta. */}
+          {mounted ? (
+            <FileManagement {...fileManagementProps} />
+          ) : (
+            // Esqueleto para el FileManagement
+            <div className="w-[320px] h-8 bg-muted rounded-md" />
+          )}
+          <BranchControl />
+          <CollaborationControl />
+        </div>
+
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {/* Búsqueda global: en la app de escritorio se pinta en la barra de
               título (issue #169); en el navegador, acá mismo. */}
           {mounted ? (
@@ -1066,7 +1082,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
               )}
             </EnLaBarraDeTitulo>
           ) : (
-            <div className="w-48 md:w-64 h-10 bg-muted rounded-md" />
+            <div className="w-48 md:w-64 h-8 bg-muted rounded-md" />
           )}
 
           {/* Menú de Filtros — opciones y etiqueta de la VISTA activa */}
@@ -1074,7 +1090,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant={filtersActive ? "secondary" : "outline"}>
-                  <Filter className="w-4 h-4 mr-2" />
+                  <Filter />
                   Filtros
                   {filtersActive && (
                     <span className="ml-2 rounded-full bg-primary/20 px-1.5 text-2xs font-semibold text-primary">
@@ -1148,17 +1164,6 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             </DropdownMenu>
           )}
         </div>
-      </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-2 border-t pt-3" data-project-toolbar="">
-        {/* Proyecto, ramas y colaboración comparten una sola franja compacta. */}
-        {mounted ? (
-          <FileManagement {...fileManagementProps} />
-        ) : (
-          // Esqueleto para el FileManagement
-          <div className="w-[320px] h-10 bg-muted rounded-md" />
-        )}
-        <BranchControl />
-        <CollaborationControl />
       </div>
       <CollaborationLocationNotice />
     </header>

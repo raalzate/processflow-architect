@@ -247,9 +247,11 @@ export function planoEdgeCategory(
 type Routing = "straight" | "curved" | "orthogonal";
 
 /**
- * Enrutado efectivo según la skin. En plano, una arista sin trazo propio va en
- * ángulo recto; un mensaje de secuencia no (es un instante: horizontal). Las
- * otras skins no cambian nada: manda la notación.
+ * Enrutado efectivo según la skin. Ninguna skin fuerza trazo: la relación va
+ * recta salvo que el humano elija otro o la notación lo declare. Antes plano la
+ * volvía escalonada y el lienzo cambiaba de cara con sólo cambiar de skin; se
+ * conserva la firma porque la skin y la secuencia siguen siendo el punto donde
+ * colgaría una regla futura.
  */
 export function routingParaSkin(
   skin: SkinId,
@@ -257,9 +259,9 @@ export function routingParaSkin(
   deLaNotacion: Routing,
   opts: { secuencia?: boolean } = {}
 ): Routing {
-  if (propio) return propio;
-  if (skin === "plano" && !opts.secuencia) return "orthogonal";
-  return deLaNotacion;
+  void skin;
+  void opts;
+  return propio ?? deLaNotacion;
 }
 
 /** Medidas de la leyenda, en coordenadas del lienzo. */

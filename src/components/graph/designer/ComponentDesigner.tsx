@@ -3677,9 +3677,10 @@ export const ComponentDesigner: React.FC<{
   /**
    * Enrutado con el que NACEN las relaciones de esta vista. Antes era el literal
    * `"orthogonal"` en cada punto de creación; ahora sale de la vista (issue #128)
-   * y `orthogonal` queda sólo como el valor histórico cuando la vista no eligió.
+   * y, si la vista no eligió, nacen rectas: escalonada o curva es una decisión
+   * del humano, no el punto de partida.
    */
-  const newLinkRouting = meta?.defaultRouting ?? "orthogonal";
+  const newLinkRouting = meta?.defaultRouting ?? "straight";
 
   /**
    * Caja bajo el cursor mientras se arrastra una punta (issue #129): `nodeId` se
