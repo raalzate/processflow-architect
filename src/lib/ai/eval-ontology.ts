@@ -43,9 +43,12 @@ function contiene(texto: string, nombre: string): boolean {
  * Es una heurística a propósito estrecha: contar de más una alucinación
  * castiga al modelo por escribir en español.
  */
-export function nombresCitados(respuesta: string): string[] {
+export function nombresCitados(respuesta: string, { negrita = true }: { negrita?: boolean } = {}): string[] {
   const out = new Set<string>();
-  for (const m of respuesta.matchAll(/[«"“*]{1,2}([^»"”*\n]{2,40})[»"”*]{1,2}/g)) out.add(m[1].trim());
+  // En el banco, el modelo marca nombres con **; en el chat (#767) la negrita
+  // es formato («**Resumen**») y contarla llenaría de falsos inventados.
+  const cita = negrita ? /[«"“*]{1,2}([^»"”*\n]{2,40})[»"”*]{1,2}/g : /[«"“]([^»"”\n]{2,40})[»"”]/g;
+  for (const m of respuesta.matchAll(cita)) out.add(m[1].trim());
   for (const m of respuesta.matchAll(/\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)+\b/g)) out.add(m[0]);
   return [...out];
 }
@@ -91,9 +94,22 @@ export function vocabularioEvaluacion(k: Pick<Conocimiento, "elementos" | "arist
  * `vocabularioEvaluacion` es OBLIGATORIO pasarlo: el valor por defecto
  * (todo el vocabulario) dejaría pasar «Pagar emite Facturita» como cita legítima.
  */
+/** Nombres que la respuesta presenta como elementos y no están en el modelo. */
+export function inexistentesEn(
+  respuesta: string,
+  vocabulario: string[],
+  elementos = vocabulario,
+  opciones: { negrita?: boolean } = {}
+): string[] {
+  // Sin separadores: «pago-realizado» (el id que el modelo lee del TOON) y
+  // «PagoRealizado» son el mismo elemento (visto en la línea base de #765).
+  const junta = (s: string) => plana(s).replace(/ /g, "");
+  const conocidos = new Set(vocabulario.map(junta));
+  return nombresCitados(respuesta, opciones).filter((n) => !conocidos.has(junta(n)) && !esCitaLegitima(n, elementos));
+}
+
 export function puntuar(respuesta: string, esperado: string[], vocabulario: string[], elementos = vocabulario): PuntajeRespuesta {
-  const conocidos = new Set(vocabulario.map(plana));
-  const inexistentes = nombresCitados(respuesta).filter((n) => !conocidos.has(plana(n)) && !esCitaLegitima(n, elementos));
+  const inexistentes = inexistentesEn(respuesta, vocabulario, elementos);
   const faltan = esperado.filter((e) => !contiene(respuesta, e));
   const contesta = esperado.length ? faltan.length === 0 : DESCONOCE.test(plana(respuesta));
   return { acierto: contesta && inexistentes.length === 0, faltan, inexistentes };

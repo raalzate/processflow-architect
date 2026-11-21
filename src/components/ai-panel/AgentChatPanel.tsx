@@ -653,6 +653,13 @@ export function AgentChatPanel() {
               {m.role === "assistant" && !m.error ? (
                 <>
                   <Markdown content={m.content} className="wrap-break-word text-sm leading-relaxed" />
+                  {/* #767: lo que la respuesta nombra y el modelo no tiene. Aviso, no
+                      censura: puede ser un nombre de fuera del diagrama a propósito. */}
+                  {!!m.inventados?.length && (
+                    <p className="mt-1.5 border-t pt-1.5 text-xs text-muted-foreground" role="note">
+                      No están en el modelo: {m.inventados.map((n) => `«${n}»`).join(", ")}.
+                    </p>
+                  )}
                   {/* No en el mensaje que todavía se escribe: leería texto a medias y le
                       quitaría CPU al modelo mientras genera. Salvo que ya se esté
                       leyendo: entonces tiene que quedar a mano para detenerlo (#612). */}
