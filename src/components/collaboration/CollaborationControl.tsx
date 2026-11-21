@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FieldConflictsNotice } from "@/components/collaboration/FieldConflictsNotice";
 import { hostBridge } from "@/lib/host-bridge";
 import type { PeerRoute, Role } from "@/lib/collaboration/types";
+import { DEFAULT_LEASE_POLICY, GRACE_LABELS, GRACE_OPTIONS_MS, formatRemaining } from "@/lib/collaboration/lease";
 
 function formatRouteCounts(counts?: Record<PeerRoute, number>): string {
   if (!counts) return "";
@@ -34,6 +35,7 @@ export function CollaborationControl() {
   if (!collaboration?.available) return null;
   const { status, busy, error } = collaboration;
   const routeBreakdown = formatRouteCounts(status?.routeCounts);
+  const policy = status?.lease?.policy ?? DEFAULT_LEASE_POLICY;
   const run = (operation: () => Promise<void>) => {
     setNotice("");
     void operation().catch(() => {
@@ -121,7 +123,9 @@ export function CollaborationControl() {
                     : "Puedes editar este proyecto."}
               </p>
               <p className="tabular-nums">
-                {!status.owner && !status.connected ? "Sin conexión con el anfitrión. Tu copia sigue guardada en este dispositivo." : status.peers > status.capacity.limit
+                {!status.owner && collaboration.locked
+                  ? `Sin conexión con el anfitrión: el proyecto queda bloqueado. ${status.lease?.state === "locked" ? `Si no vuelve en ${formatRemaining(status.lease.remainingMs)}, la copia se eliminará de este equipo.` : ""}`
+                  : status.peers > status.capacity.limit
                   ? `${status.peers} personas conectadas; nuevas entradas en pausa (cupo estimado: ${status.capacity.limit})`
                   : `${status.peers} ${status.peers === 1 ? "persona conectada" : "personas conectadas"}, incluido el anfitrión. Cupo estimado: ${status.capacity.limit}.`}
               </p>
@@ -221,6 +225,33 @@ export function CollaborationControl() {
                   Mantén la aplicación abierta para recibir a los demás. Cada invitación queda asociada al
                   dispositivo de la primera persona que la use.
                 </p>
+                <div className="space-y-2 border-t pt-3">
+                  <Label htmlFor="collaboration-grace">Copia de los invitados sin ti</Label>
+                  <Select
+                    value={String(policy.graceMs)}
+                    onValueChange={value => run(() => collaboration.setPolicy({ ...policy, graceMs: Number(value) }))}
+                  >
+                    <SelectTrigger id="collaboration-grace"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {GRACE_OPTIONS_MS.map(ms => (
+                        <SelectItem key={ms} value={String(ms)}>{GRACE_LABELS[ms]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={policy.allowExport}
+                      disabled={busy}
+                      onChange={event => run(() => collaboration.setPolicy({ ...policy, allowExport: event.target.checked }))}
+                    />
+                    Permitir exportar a los invitados
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Si no respondes, la copia de cada invitado se bloquea y, al vencer el plazo, se elimina de su
+                    equipo. Salir o ser revocado también la elimina.
+                  </p>
+                </div>
               </div>
             ) : null}
             <Button
@@ -238,10 +269,11 @@ export function CollaborationControl() {
               <summary className="cursor-pointer font-medium">Copia de recuperación y vínculo</summary>
               <div className="space-y-3 pt-3">
                 <p className="text-muted-foreground">
-                  La recuperación conserva contenido borrado y el historial compartido. Desvincular conserva
-                  la copia visible.
+                  {status.owner
+                    ? "La recuperación conserva contenido borrado y el historial compartido. Desvincular conserva la copia visible."
+                    : "La copia es un préstamo del anfitrión: al salir se elimina de este equipo."}
                 </p>
-                <Button variant="outline" disabled={busy} onClick={() => run(recover)} className="gap-2">
+                <Button variant="outline" disabled={busy || !collaboration.canExport} onClick={() => run(recover)} className="gap-2">
                   <Download className="h-4 w-4" />
                   Descargar recuperación
                 </Button>
@@ -250,6 +282,15 @@ export function CollaborationControl() {
                   disabled={busy}
                   onClick={() =>
                     run(async () => {
+                      if (
+                        !status.owner &&
+                        !window.confirm(
+                          collaboration.pending
+                            ? `Hay ${collaboration.pending} cambios sin entregar al anfitrión y se perderán. La copia del proyecto se eliminará de este equipo. ¿Salir?`
+                            : "La copia del proyecto se eliminará de este equipo. ¿Salir?",
+                        )
+                      )
+                        return;
                       await collaboration.leave();
                       setGenerated("");
                     })
@@ -330,6 +371,10 @@ export function CollaborationControl() {
               }}
             >
               <Label htmlFor="collaboration-invitation">Invitación de otra persona</Label>
+              <p className="text-xs text-muted-foreground">
+                Lo que recibas es un préstamo: sólo existe mientras el anfitrión lo comparte. Si deja de
+                responder, se bloquea y luego se elimina de este equipo.
+              </p>
               <Textarea
                 id="collaboration-invitation"
                 value={invitation}
