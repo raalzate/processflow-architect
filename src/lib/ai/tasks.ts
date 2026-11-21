@@ -22,6 +22,7 @@ import {
   withReference,
   SYSTEM_PROMPT_DESIGNER,
 } from "@/lib/template-prompt";
+import { rotuloDeterminista, rotulosAdmitidos, siguientesPosibles } from "@/lib/ontology/next-step";
 import { getNotation, notationTypes } from "@/lib/notations";
 import { tboxDe } from "@/lib/ontology/tbox";
 import { specFromLines, type ElementSpec } from "@/lib/element-spec";
@@ -122,24 +123,35 @@ export const suggestNextTask: AiTask<
   id: "suggest-next",
   tier: "light",
   maxLocalChars: 900,
-  buildPrompt: (i) => ({
-    prompt: withReference(
-      promptSuggestNext(i.tipo, i.nombre, i.descripcion || "", typesFor(i.notation), i.notation),
-      i.referencia
-    ),
-    system: SYSTEM_PROMPT_DESIGNER,
-  }),
+  buildPrompt: (i) => {
+    // #766: si el reglamento acota qué puede seguir, el modelo sólo elige entre eso.
+    const posibles = siguientesPosibles(i.tipo, i.notation);
+    const tipos = posibles.length ? posibles.map((p) => p.tipo) : typesFor(i.notation);
+    const regla = posibles.length
+      ? `\n\nSegún el reglamento de la notación, después de un «${i.tipo}» sólo puede venir: ${posibles.map((p) => `${p.tipo} (${p.etiqueta})`).join(", ")}. Elegí uno de esos tipos.`
+      : "";
+    return {
+      prompt: withReference(promptSuggestNext(i.tipo, i.nombre, i.descripcion || "", tipos, i.notation) + regla, i.referencia),
+      system: SYSTEM_PROMPT_DESIGNER,
+    };
+  },
   parse: (raw, i) => {
     const parts = stripQuotes(raw).split("|").map((s) => s.trim());
     const t = (parts[0] || "").toLowerCase();
-    const tipos = typesFor(i?.notation);
-    // Fallback = tipo por defecto de LA notación (antes siempre "Evento", que en
-    // BPMN/C4/UML metía un elemento ajeno al diagrama).
+    const posibles = i ? siguientesPosibles(i.tipo, i.notation) : [];
+    const tipos = posibles.length ? posibles.map((p) => p.tipo) : typesFor(i?.notation);
+    // Fallback = el tipo por defecto de LA notación (antes siempre "Evento", que
+    // en BPMN/C4/UML metía un elemento ajeno al diagrama) si el reglamento lo
+    // admite; si no, el primero admitido. El orden de los predicados no sirve
+    // de preferencia: en BPMN, después de una Tarea, el primero es el Almacén.
+    const porDefecto = getNotation(i?.notation).defaultType;
     const tipo =
       tipos.find((x) => x.toLowerCase() === t) ||
       tipos.find((x) => t.includes(x.toLowerCase())) ||
-      getNotation(i?.notation).defaultType;
-    return { tipo, nombre: parts[1] || "", relacion: (parts[2] || "produce").toLowerCase() };
+      (!posibles.length || tipos.includes(porDefecto) ? porDefecto : posibles[0].tipo);
+    // La relación la fija el predicado que une los tipos; el modelo sólo la da sin reglamento.
+    const relacion = posibles.find((p) => p.tipo === tipo)?.etiqueta ?? (parts[2] || "produce").toLowerCase();
+    return { tipo, nombre: parts[1] || "", relacion };
   },
 };
 
@@ -157,13 +169,16 @@ export const linkLabelTask: AiTask<
   id: "link-label",
   tier: "light",
   maxLocalChars: 600,
-  buildPrompt: (i) => ({
-    prompt: withReference(
-      promptLinkLabel(i.sourceName, i.sourceType, i.targetName, i.targetType, i.notation),
-      i.referencia
-    ),
-    system: SYSTEM_PROMPT_DESIGNER,
-  }),
+  // #766: si el par de tipos admite un solo significado, el rótulo es ése, sin modelo.
+  resolver: (i) => rotuloDeterminista(i.sourceType, i.targetType, i.notation),
+  buildPrompt: (i) => {
+    const admitidos = rotulosAdmitidos(i.sourceType, i.targetType, i.notation);
+    const regla = admitidos.length ? `\n\nRótulos que el reglamento admite entre estos tipos: ${admitidos.join(", ")}. Preferí uno de ellos.` : "";
+    return {
+      prompt: withReference(promptLinkLabel(i.sourceName, i.sourceType, i.targetName, i.targetType, i.notation) + regla, i.referencia),
+      system: SYSTEM_PROMPT_DESIGNER,
+    };
+  },
   parse: (raw) => stripQuotes(raw).replace(/\.$/, "").toLowerCase(),
 };
 

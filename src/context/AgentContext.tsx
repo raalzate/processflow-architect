@@ -31,6 +31,7 @@ import { releaseLitertContext, resetLitertEngine } from "@/lib/ai/litert-engine"
 import { resolveArtifactRequest } from "@/lib/artifacts/request";
 import { editedArtifactPayload } from "@/lib/artifacts/editing";
 import type { Catalog } from "@/lib/ai/agent-retrieval";
+import { inventadosEnRespuesta } from "@/lib/ai/agent-knowledge";
 import { unknownPlanSources, describeStep } from "@/lib/ai/agent-run";
 import {
   DEFAULT_AGENT_ID,
@@ -805,6 +806,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         // Finaliza el placeholder con el resultado completo (fuente de verdad:
         // `data.reply` ya parseado; el texto streameado es solo el avance en vivo).
         const finalContent = data.reply || streamed || "Listo.";
+        // #767: nombres que la respuesta da por elementos y el modelo no tiene.
+        // No en un turno que produjo artefactos: un documento cita mucho más que el modelo.
+        const inventados =
+          !replyIsError && !newArtifacts.length ? inventadosEnRespuesta(catalog, finalContent) : [];
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
@@ -814,6 +819,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
                   steps: data.steps,
                   producedArtifactIds: newArtifacts.map((a) => a.id),
                   error: replyIsError,
+                  inventados: inventados.length ? inventados : undefined,
                   // Con `pause`, este mensaje ES la corrida esperando al humano
                   // (plan por aprobar o pregunta por responder).
                   run: data.run?.pause ? data.run : undefined,

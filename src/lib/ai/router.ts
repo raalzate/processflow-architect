@@ -42,6 +42,13 @@ export interface AiTask<I = any, O = string> {
   structured?: boolean;
   /** Tope de tamaño de entrada para el motor local (caracteres del prompt). */
   maxLocalChars?: number;
+  /**
+   * Motor DETERMINISTA (#766): si la respuesta ya se deduce sin modelo —p. ej.
+   * del reglamento de la ontología—, la devuelve y no se llama a ningún
+   * proveedor; `null` deja seguir la política de siempre. Corre ANTES de elegir
+   * proveedor: contesta aunque no haya IA disponible.
+   */
+  resolver?: (input: I) => O | null;
   // --- Ejecución LOCAL (texto) ---
   buildPrompt?: (input: I) => { prompt: string; system?: string };
   // `input` llega a `parse` porque validar la salida a veces depende de la
@@ -54,7 +61,8 @@ export interface AiTask<I = any, O = string> {
 }
 
 export interface RouteResult<O> {
-  provider: ProviderId;
+  /** `ontologia`: lo contestó el `resolver` de la tarea, sin modelo. */
+  provider: ProviderId | "ontologia";
   fellBack: boolean;
   reason: string;
   output: O;
@@ -121,6 +129,9 @@ export async function route<I, O = string>(
   input: I,
   ctx?: RouteContext
 ): Promise<RouteResult<O>> {
+  const resuelto = task.resolver?.(input);
+  if (resuelto != null) return { provider: "ontologia", fellBack: false, reason: "lo decide el reglamento", output: resuelto };
+
   const inputSize = task.buildPrompt ? task.buildPrompt(input).prompt.length : 0;
   const { provider, fellBack, reason } = chooseProvider(task as AiTask, inputSize, ctx);
   if (!provider) throw new Error(reason);

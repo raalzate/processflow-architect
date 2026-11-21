@@ -7,6 +7,7 @@ import type { DiscardedFieldEdit } from "./field-conflicts";
 import type { Participant } from "./participants";
 import type { PendingConnection } from "./document";
 import type { Choices, DiagramHistory, HistoryAction, HistoryActor, MergePreview } from "./history";
+import type { LeasePolicy, LeaseStateName } from "./lease";
 
 export interface CollaborationWorkspace {
   pendingConnections?: Record<string, PendingConnection[]>;
@@ -59,6 +60,14 @@ export interface CollaborationStatus {
   error?: string;
   members?: { id: string; name?: string; role: Role; connected: boolean; revoked: boolean }[];
   discardedEdits?: DiscardedFieldEdit[];
+  /** Préstamo de la copia (#756). El anfitrión lo ve siempre `active` y con su política. */
+  lease?: { state: LeaseStateName; remainingMs: number; policy: LeasePolicy };
+}
+/** Por qué desapareció una copia prestada: lo que el aviso le explica al invitado. */
+export type PurgeReason = "left" | "revoked" | "expired";
+export interface CollaborationPurge {
+  fileId: string;
+  reason: PurgeReason;
 }
 export interface RoomOptions {
   relayUrls?: string[];
@@ -91,6 +100,10 @@ export type CollaborationCommand =
   | { type: "refresh-link"; fileId: string; invitation: string }
   | { type: "undo" | "redo" | "recover"; fileId: string }
   | { type: "leave"; fileId: string }
+  | { type: "policy"; fileId: string; policy: LeasePolicy }
+  | { type: "take-purges"; fileId: string }
+  | { type: "borrowed"; fileId: string }
+  | { type: "ack-purges"; fileId: string; fileIds: string[] }
   | { type: "revoke"; fileId: string; memberId: string };
 export interface CollaborationResult {
   workspace?: CollaborationWorkspace;
@@ -100,6 +113,10 @@ export interface CollaborationResult {
   invitation?: string;
   recovery?: string;
   error?: string;
+  /** Copias prestadas que el main ya purgó y el renderer todavía debe quitar del catálogo. */
+  purges?: CollaborationPurge[];
+  /** Copias prestadas cuyo contenido no puede salir de la app (el anfitrión no permite exportar). */
+  sealed?: string[];
 }
 export interface CollaborationEvent extends CollaborationResult {
   fileId: string;

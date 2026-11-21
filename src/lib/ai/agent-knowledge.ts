@@ -17,6 +17,7 @@ import { caminoLegible, explicacionLegible, filaLegible, nombreDe } from "../ont
 import { camino, consultarPorNombre, patronDeTexto, resolver, type Camino } from "../ontology/query";
 import type { DesignView } from "../views-types";
 import type { Catalog, ToolResult } from "./agent-retrieval";
+import { inexistentesEn, vocabularioEvaluacion } from "./eval-ontology";
 
 /** Tope de filas y caminos que vuelven al modelo: la observación compite por la ventana. */
 export const MAX_FILAS_AGENTE = 15;
@@ -128,4 +129,18 @@ export function porQue(cat: Catalog, hecho: string): ToolResult {
         return resultado(lineas.join("\n"), `por qué: ${hecho}`, lineas.map((x) => x.trim()), cajas(k, [s, o]));
       }
   return resultado(DESCONOCIDO, `por qué: ${hecho}`, [], []);
+}
+
+/**
+ * Elementos que la respuesta del agente nombra y el modelo no tiene (#767).
+ * Es el mismo criterio del banco de evaluación, sin contar la negrita como
+ * cita. Los nombres de las vistas también valen: citarlas no es inventar.
+ * Sin vistas con grafo no hay contra qué comparar y no se marca nada.
+ */
+export function inventadosEnRespuesta(cat: Catalog, respuesta: string): string[] {
+  const k = conocimientoDelCatalogo(cat);
+  if (!k.elementos.length) return [];
+  const elementos = [...new Set(k.elementos.map((e) => e.nombre))];
+  const vocabulario = [...vocabularioEvaluacion(k), ...cat.views.map((v) => v.name)];
+  return inexistentesEn(respuesta, vocabulario, elementos, { negrita: false });
 }

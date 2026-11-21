@@ -210,6 +210,11 @@ export interface ChatMessage {
   attachments?: { name: string; contentType: string }[]; // documentos adjuntos (mensajes del usuario)
   error?: boolean;
   /**
+   * Nombres que la respuesta presenta como elementos y no están en el modelo
+   * (#767). La UI los avisa debajo del mensaje; no se corrige el texto.
+   */
+  inventados?: string[];
+  /**
    * Causa accionable de un cierre sin artefacto: la UI la traduce en un botón
    * (ampliar la ventana del modelo y reintentar) en vez de dejar al usuario
    * adivinando qué tocar en Ajustes (#358).
