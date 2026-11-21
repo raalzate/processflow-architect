@@ -282,9 +282,9 @@ export interface Notation {
    */
   labelLayout?: "center" | "detail";
   /**
-   * Trazo de sus relaciones cuando la arista no pide uno. C4 usa curvas: en un
-   * paisaje con muchas relaciones cruzadas, dos rectas superpuestas se leen como
-   * una sola y la curva deja ver cuál va a dónde.
+   * Trazo de sus relaciones cuando la arista no pide uno. Hoy ninguna notación
+   * lo declara: todas trazan recto y la curva o el escalonado los elige el
+   * humano. Queda el punto de extensión por si una notación lo necesita.
    */
   defaultRouting?: "straight" | "curved" | "orthogonal";
   /**
@@ -594,7 +594,6 @@ const C4: Notation = {
     "- Contenedor → Base de Datos (relación \"lee y escribe [JDBC]\")\n" +
     "- Contenedor → Sistema Externo (relación \"consume [HTTPS/JSON]\")\n" +
     "- Contenedor → Componente (relación \"contiene\")",
-  defaultRouting: "curved",
   defaultType: "Contenedor",
   namingRule:
     "nombre técnico del elemento y su rol (\"API de Pedidos\", \"App Web de Clientes\"); sin verbos de acción",

@@ -2374,10 +2374,10 @@ export function toGraphData(input: DiagramModel): GraphData {
       relation: e.relation,
       // El significado confirmado (spec 027). Sin él no se escribe el campo.
       ...(e.predicado ? { predicado: e.predicado } : {}),
-      // Una relación que cruza de una banda a otra en línea recta atraviesa el
-      // diagrama en diagonal y pasa por encima de todo. Ortogonal por defecto;
-      // si el modelo ya trae un ruteo explícito, manda el suyo.
-      routing: e.routing ?? (sa !== ta ? ("orthogonal" as const) : undefined),
+      // Recta por defecto, también entre bandas: el escalonado sólo lo pone la
+      // disposición legible cuando la recta pisaría una caja (y ya viene en
+      // `e.routing`) o el modelo cuando lo pide explícitamente.
+      routing: e.routing,
       // Los quiebres que calculó la disposición legible viajan con la arista, o
       // el lienzo recibiría las cajas ordenadas y las líneas sin rutear (FR-009).
       midpoints: e.midpoints,

@@ -41,9 +41,8 @@ describe("simbología por notación", () => {
     expect(compacto.h).toBeLessThan(DEFAULT_NODE_SIZE.h);
   });
 
-  it("C4 conserva su trazo curvo; el resto, recto", () => {
-    expect(defaultRoutingFor("c4")).toBe("curved");
-    for (const id of ["ddd", "bpmn", "uml"] as const) {
+  it("toda notación traza recto por defecto, C4 incluida", () => {
+    for (const id of ["ddd", "bpmn", "uml", "c4"] as const) {
       expect(defaultRoutingFor(id)).toBe("straight");
     }
   });

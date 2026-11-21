@@ -510,11 +510,11 @@ describe("layout · legibilidad", () => {
     expect([...filas.values()].filter((c) => c === 1).length).toBe(0);
   });
 
-  it("las aristas entre contenedores distintos salen con ruteo ortogonal", () => {
+  it("las aristas entre contenedores distintos no fuerzan ruteo: van rectas como las demás", () => {
     const g = toGraphData(dosPools(2, 2));
     const mensaje = g.politicas_inter_agregados!.find((a) => a.fuente === "A-t0")!;
-    expect(mensaje.routing).toBe("orthogonal");
-    // Las internas conservan su ruteo por defecto (no se fuerza).
+    expect(mensaje.routing).toBeUndefined();
+    // Las internas tampoco.
     const interna = g.agregados.find((a) => a.nombre_agregado === "A")!.aristas[0];
     expect(interna.routing).toBeUndefined();
   });

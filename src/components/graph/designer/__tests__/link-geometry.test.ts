@@ -291,7 +291,7 @@ describe("linkGeometry · etiqueta", () => {
 describe("routingOf — enrutado efectivo", () => {
   it("sin enrutado propio manda el de la notación, no el literal recta", () => {
     expect(routingOf({ routing: undefined }, "c4")).toBe(defaultRoutingFor("c4"));
-    expect(routingOf({ routing: undefined }, "c4")).toBe("curved");
+    expect(routingOf({ routing: undefined }, "c4")).toBe("straight");
     expect(routingOf({ routing: undefined }, "ddd")).toBe(defaultRoutingFor("ddd"));
   });
 
@@ -302,10 +302,10 @@ describe("routingOf — enrutado efectivo", () => {
 
   it("lo que resalta la ficha es lo que dibuja el lienzo", () => {
     // La ficha resalta `routingOf(draft, notation)`; la geometría enruta con lo
-    // mismo. Con un enlace sin `routing` en C4, ambos dicen «curva».
+    // mismo. Con un enlace curvo en C4, ambos dicen «curva».
     const a = nodo("a", ACTOR, 0, 0);
     const b = nodo("b", SISTEMA, 600, 0);
-    const link = arista({});
+    const link = arista({ routing: "curved" });
     const geo = linkGeometry(link, mapa(a, b), "c4")!;
     const marcado = routingOf(link, "c4");
     expect(marcado).toBe("curved");
@@ -514,11 +514,16 @@ describe("linkGeometry · skin plano (spec 026)", () => {
     return pts.slice(1).every(([x, y], i) => x === pts[i][0] || y === pts[i][1]);
   };
 
-  it("en plano, sin trazo propio, la arista es ortogonal: sólo tramos horizontales y verticales", () => {
+  it("en plano, sin trazo propio, la arista va recta como en las demás skins", () => {
     const geo = linkGeometry(arista(), ns, "c4", "plano")!;
     expect(geo.path).not.toContain("Q");
+    expect(geo.path).toBe(linkGeometry(arista(), ns, "c4")!.path);
+    expect(routingOf(arista(), "c4", "plano")).toBe("straight");
+  });
+
+  it("en plano, escalonada a mano, sólo tiene tramos horizontales y verticales", () => {
+    const geo = linkGeometry(arista({ routing: "orthogonal" }), ns, "c4", "plano")!;
     expect(tramosAxiales(geo.path)).toBe(true);
-    expect(routingOf(arista(), "c4", "plano")).toBe("orthogonal");
   });
 
   it("canónica y editorial conservan el trazado de la notación (FR-012)", () => {

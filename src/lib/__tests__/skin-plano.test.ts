@@ -119,8 +119,8 @@ describe("tratamiento de nodo y arista en plano (FR-009, FR-015)", () => {
 });
 
 describe("ruteo por skin (FR-011, FR-012)", () => {
-  it("en plano, sin trazo propio, es ortogonal; con trazo propio manda el del enlace", () => {
-    expect(routingParaSkin("plano", undefined, "straight")).toBe("orthogonal");
+  it("en plano, sin trazo propio, va recto como la notación; con trazo propio manda el del enlace", () => {
+    expect(routingParaSkin("plano", undefined, "straight")).toBe("straight");
     expect(routingParaSkin("plano", "curved", "straight")).toBe("curved");
   });
 
