@@ -533,12 +533,17 @@ export function sanitizeMermaid(code: string): string {
 export function resolveNotations(opts: {
   injected?: string[];
   activeNotation?: string;
+  /** Notaciones sumadas de la vista activa (vista multinotación). */
+  activeExtras?: string[];
   graphNotation?: string;
 }): string[] {
   const injected = Array.from(new Set((opts.injected ?? []).filter(Boolean)));
   if (injected.length) return injected;
   const fallback = opts.activeNotation || opts.graphNotation;
-  return fallback ? [fallback] : [];
+  if (!fallback) return [];
+  // La vista activa mixta aporta su guía completa: si sólo llegara la
+  // principal, el agente trataría como ajenos los elementos que el humano mezcló.
+  return Array.from(new Set([fallback, ...(opts.activeExtras ?? [])].filter(Boolean)));
 }
 
 /** Notación dominante del turno (la primera de `resolveNotations`). */

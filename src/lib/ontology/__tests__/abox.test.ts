@@ -1,11 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { addNode, fromGraphData, type DiagramModel } from "@/lib/mcp/diagram-builder";
+import { addNode, fromGraphData, toGraphData, type DiagramModel } from "@/lib/mcp/diagram-builder";
 import { hechosDeGraphData, hechosDeModelo, hechosDeVistas } from "../abox";
 import { ELEMENTO, RDF_TYPE, iriElemento, literal } from "../iri";
 import { PROYECTO_PEDIDOS, modeloES, vistasPedidos } from "./fixtures/pedidos";
 
 const ctx = { proyecto: PROYECTO_PEDIDOS, vista: "v-es" };
 const el = (id: string) => iriElemento(PROYECTO_PEDIDOS, "v-es", id);
+
+describe("hechosDeModelo · vista multinotación", () => {
+  it("un tipo de una notación sumada toma su clase, no la de Elemento genérico", () => {
+    let m: DiagramModel = { meta: { nombre_proyecto: "P", notation: "c4", notacionesExtra: ["ddd"] }, nodes: [], edges: [] };
+    m = addNode(m, { id: "w", nombre: "Web", tipo_elemento: "Contenedor" }).model;
+    m = addNode(m, { id: "p", nombre: "Pagar", tipo_elemento: "Comando" }).model;
+    const { hechos, hallazgos } = hechosDeModelo(m, ctx);
+    expect(hechos).toContainEqual(expect.objectContaining({ s: el("p"), p: RDF_TYPE, o: "pf:ddd/comando" }));
+    expect(hechos).toContainEqual(expect.objectContaining({ s: el("w"), p: RDF_TYPE, o: "pf:c4/contenedor" }));
+    expect(hallazgos.filter((h) => h.forma === "TIPO-DESCONOCIDO")).toEqual([]);
+  });
+
+  it("en una vista propia las sumadas vienen de la vista, no del grafo", () => {
+    let m: DiagramModel = { meta: { nombre_proyecto: "P", notation: "c4" }, nodes: [], edges: [] };
+    m = addNode(m, { id: "p", nombre: "Pagar", tipo_elemento: "Comando" }).model;
+    const graph = toGraphData(m);
+    const vista = { id: "v-mix", name: "Mix", kind: "graph" as const, notation: "c4" as const, notacionesExtra: ["ddd" as const], graph, createdAt: "" };
+    const { hechos, hallazgos } = hechosDeVistas([vista], PROYECTO_PEDIDOS);
+    expect(hechos).toContainEqual(expect.objectContaining({ p: RDF_TYPE, o: "pf:ddd/comando" }));
+    expect(hallazgos.filter((h) => h.forma === "TIPO-DESCONOCIDO")).toEqual([]);
+  });
+});
 
 // T11 · FR-008: el diagrama expresado como hechos.
 describe("hechosDeModelo", () => {

@@ -6,8 +6,39 @@ import {
   paletaDeNotaciones,
   rotuloDeNotaciones,
   nombreCorto,
+  tiposDeNotaciones,
+  listaDeNotaciones,
 } from "@/lib/multi-notation";
-import { getNotation, DEFAULT_NOTATION_ID, NOTATION_LIST } from "@/lib/notations";
+import { getNotation, DEFAULT_NOTATION_ID, NOTATION_LIST, notationTypes } from "@/lib/notations";
+
+describe("tiposDeNotaciones", () => {
+  const [X, Y] = NOTATION_LIST.map((n) => n.id);
+
+  it("con una notación son exactamente sus tipos", () => {
+    expect(tiposDeNotaciones([X])).toEqual(notationTypes(X));
+    expect(tiposDeNotaciones([X], { includeContainers: true })).toEqual(
+      notationTypes(X, { includeContainers: true })
+    );
+  });
+
+  it("con varias es la unión, sin repetir, en el orden de las notaciones", () => {
+    const union = tiposDeNotaciones([X, Y]);
+    for (const t of [...notationTypes(X), ...notationTypes(Y)]) expect(union).toContain(t);
+    expect(new Set(union).size).toBe(union.length);
+    expect(union.slice(0, notationTypes(X).length)).toEqual(notationTypes(X));
+  });
+});
+
+describe("listaDeNotaciones", () => {
+  const [X, Y] = NOTATION_LIST.map((n) => n.id);
+
+  it("acepta una notación suelta o una lista y siempre devuelve lista válida", () => {
+    expect(listaDeNotaciones(X)).toEqual([X]);
+    expect(listaDeNotaciones([X, Y, X])).toEqual([X, Y]);
+    expect(listaDeNotaciones(undefined)).toEqual([DEFAULT_NOTATION_ID]);
+    expect(listaDeNotaciones([])).toEqual([DEFAULT_NOTATION_ID]);
+  });
+});
 
 // Ids tomados del registro, no cableados: la prueba sigue valiendo si cambian.
 const [A, B, C] = NOTATION_LIST.map((n) => n.id);

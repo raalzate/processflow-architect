@@ -56,6 +56,22 @@ describe("applyViewEdit — elementos", () => {
     expect(r.error).toContain("Persona");
   });
 
+  it("en una vista multinotación acepta los tipos de todas sus notaciones", () => {
+    // "Comando" es de DDD: en una vista sólo C4 se rechaza, en C4+DDD entra.
+    expect(applyViewEdit(vista(), { kind: "add-element", name: "Pagar", type: "Comando" }, "c4").ok).toBe(false);
+    const r = applyViewEdit(vista(), { kind: "add-element", name: "Pagar", type: "Comando" }, ["c4", "ddd"]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(nodos(r.graph).find((n) => n.nombre === "Pagar")?.tipo_elemento).toBe("Comando");
+  });
+
+  it("set-graph de una vista multinotación acepta cajas de cualquiera de sus notaciones", () => {
+    const entrante = vista();
+    entrante.big_picture.nodos.push(nodo("cmd", "Pagar", "Comando"));
+    expect(applyViewEdit(vista(), { kind: "set-graph", graph: entrante }, "c4").ok).toBe(false);
+    expect(applyViewEdit(vista(), { kind: "set-graph", graph: entrante }, ["c4", "ddd"]).ok).toBe(true);
+  });
+
   it("agrega un contenedor cuando el tipo es contenedor", () => {
     const r = applyViewEdit(vista(), { kind: "add-element", name: "Tienda", type: "Límite de Sistema" }, "c4");
     expect(r.ok).toBe(true);

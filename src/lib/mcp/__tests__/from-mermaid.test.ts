@@ -3,6 +3,25 @@ import { fromMermaid } from "../from-mermaid";
 import { toMermaid } from "../to-mermaid";
 import { emptyDiagram, addContainer, addNode, addEdge } from "../diagram-builder";
 
+describe("fromMermaid — vista multinotación", () => {
+  const texto = ["flowchart LR", '  web["Web<br><i>Contenedor</i>"]', '  pagar["Pagar<br><i>Comando</i>"]', "  web --> pagar"].join("\n");
+
+  it("con una sola notación, el tipo ajeno se reemplaza y lo avisa", () => {
+    const { model, hallazgos } = fromMermaid(texto, "c4");
+    expect(model.nodes.find((n) => n.id === "pagar")?.tipo_elemento).not.toBe("Comando");
+    expect(hallazgos.some((h) => h.includes("Comando"))).toBe(true);
+  });
+
+  it("con varias, respeta los tipos de cualquiera y guarda las extra en el meta", () => {
+    const { model, hallazgos } = fromMermaid(texto, ["c4", "ddd"]);
+    expect(model.nodes.find((n) => n.id === "pagar")?.tipo_elemento).toBe("Comando");
+    expect(model.nodes.find((n) => n.id === "web")?.tipo_elemento).toBe("Contenedor");
+    expect(hallazgos.some((h) => h.includes("Comando"))).toBe(false);
+    expect(model.meta.notation).toBe("c4");
+    expect(model.meta.notacionesExtra).toEqual(["ddd"]);
+  });
+});
+
 describe("fromMermaid — tipos del registro", () => {
   it("lee el tipo de la etiqueta y arma contenedor, nodos y aristas", () => {
     const texto = [

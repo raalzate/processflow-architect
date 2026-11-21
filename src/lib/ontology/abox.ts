@@ -10,6 +10,7 @@
 
 import { fromGraphData, type DiagramModel } from "../mcp/diagram-builder";
 import { DEFAULT_NOTATION_ID, isNotationContainer, type NotationId } from "../notations";
+import { notacionesDeVista } from "../multi-notation";
 import type { SourceDoc } from "../source-docs";
 import type { GraphData } from "../types";
 import type { DesignView } from "../views-types";
@@ -72,7 +73,16 @@ export interface ResultadoAbox {
 
 export function hechosDeModelo(m: DiagramModel, ctx: ContextoAbox): ResultadoAbox {
   const notation: NotationId = m.meta.notation ?? DEFAULT_NOTATION_ID;
-  const t = tboxDe(notation);
+  // Vista multinotación: el tipo se busca en la T-Box de cada una (principal
+  // primero). Con una sola, un tipo de una sumada caía a «Elemento genérico».
+  const tboxes = notacionesDeVista(notation, m.meta.notacionesExtra).map(tboxDe);
+  const claseEnVista = (tipo: string) => {
+    for (const tb of tboxes) {
+      const c = claseDeTipo(tb, tipo);
+      if (c !== ELEMENTO) return c;
+    }
+    return ELEMENTO;
+  };
   const hechos: Hecho[] = [];
   const hallazgos: Hallazgo[] = [];
   const elementos: ElementoAbox[] = [];
@@ -98,7 +108,7 @@ export function hechosDeModelo(m: DiagramModel, ctx: ContextoAbox): ResultadoAbo
       contenedor: isNotationContainer(n.tipo_elemento),
       ...(n.source !== undefined ? { fuente: n.source } : {}),
     });
-    const clase = claseDeTipo(t, n.tipo_elemento);
+    const clase = claseEnVista(n.tipo_elemento);
     if (clase === ELEMENTO)
       hallazgos.push({
         forma: "TIPO-DESCONOCIDO",
@@ -158,7 +168,14 @@ export function hechosDeVistas(vistas: DesignView[], proyecto: string): Resultad
   return unirAbox(
     vistas
       .filter((v) => v.graph)
-      .map((v) => hechosDeGraphData(v.graph!, { proyecto, vista: v.id }, v.notation ?? v.graph!.notation ?? DEFAULT_NOTATION_ID))
+      .map((v) =>
+        hechosDeGraphData(
+          // Las sumadas de una vista propia viven en la vista, no en su grafo.
+          v.notacionesExtra?.length ? { ...v.graph!, notacionesExtra: v.notacionesExtra } : v.graph!,
+          { proyecto, vista: v.id },
+          v.notation ?? v.graph!.notation ?? DEFAULT_NOTATION_ID
+        )
+      )
   );
 }
 

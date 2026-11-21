@@ -24,6 +24,7 @@ import {
   NOTATION_IDS,
   type NotationId,
 } from "../notations";
+import { listaDeNotaciones, tiposDeNotaciones } from "../multi-notation";
 import type { FragmentOp } from "../sequence/fragments";
 import type { SequenceMessageKind } from "../sequence/messages";
 import { normalizarTipo } from "./tipo-notacion";
@@ -118,15 +119,18 @@ interface Crudo {
  */
 function resolverTipo(
   crudo: string | undefined,
-  notation: NotationId,
+  notaciones: readonly NotationId[],
   contenedor: boolean,
   nombre: string,
   hallazgos: string[]
 ): string {
-  const validos = notationTypes(notation, { includeContainers: true }).filter(
+  // En una vista multinotación vale el tipo de cualquiera de sus notaciones; la
+  // principal va primero, así el tipo por defecto y los parecidos salen de ella.
+  const validos = tiposDeNotaciones(notaciones, { includeContainers: true }).filter(
     (t) => isNotationContainer(t) === contenedor
   );
-  const porDefecto = validos[0] ?? notationTypes(notation)[0];
+  const porDefecto = validos[0] ?? tiposDeNotaciones(notaciones)[0];
+  const notation = notaciones.join(" + ");
 
   if (!crudo) {
     hallazgos.push(
@@ -152,9 +156,9 @@ function resolverTipo(
 }
 
 /** El tipo que nombra una clase `:::slug` (el slug es el del tipo del registro). */
-function tipoDeClase(clase: string | undefined, notation: NotationId): string | undefined {
+function tipoDeClase(clase: string | undefined, notaciones: readonly NotationId[]): string | undefined {
   if (!clase) return undefined;
-  return notationTypes(notation, { includeContainers: true }).find((t) => slugify(t) === clase);
+  return tiposDeNotaciones(notaciones, { includeContainers: true }).find((t) => slugify(t) === clase);
 }
 
 /**
@@ -165,11 +169,14 @@ function tipoDeClase(clase: string | undefined, notation: NotationId): string | 
  */
 export function fromMermaid(
   texto: string,
-  notation: NotationId,
+  /** La notación de la vista, o todas las de una vista multinotación (principal primero). */
+  notation: NotationId | readonly NotationId[],
   opts: { nombre?: string } = {}
 ): MermaidParse {
-  if (/^sequenceDiagram$/i.test(cabeceraDe(texto))) return fromMermaidSequence(texto, notation, opts);
-  return fromMermaidFlowchart(texto, notation, opts);
+  const notaciones = listaDeNotaciones(notation);
+  // Una secuencia vive en la notación que tenga línea de vida: es de una sola.
+  if (/^sequenceDiagram$/i.test(cabeceraDe(texto))) return fromMermaidSequence(texto, notaciones[0], opts);
+  return fromMermaidFlowchart(texto, notaciones, opts);
 }
 
 /** Líneas de un flowchart que son CONTENIDO que el lienzo no dibuja (van al ledger). */
@@ -177,9 +184,10 @@ const CONTENIDO_SIN_DIBUJO = /^(click\s|style\s|classDef|class\s|linkStyle)/i;
 
 function fromMermaidFlowchart(
   texto: string,
-  notation: NotationId,
+  notaciones: readonly NotationId[],
   opts: { nombre?: string } = {}
 ): MermaidParse {
+  const [notation, ...extras] = notaciones;
   const hallazgos: string[] = [];
   const ledger = ledgerVacio();
   const crudos = new Map<string, Crudo>();
@@ -278,11 +286,11 @@ function fromMermaidFlowchart(
     const c = crudos.get(id)!;
     const esContenedor = contenedores.has(id);
     const { nombre, tipo } = partirEtiqueta(c.etiqueta ?? id);
-    const declarado = tipo ?? tipoDeClase(c.clase, notation) ?? c.clase;
+    const declarado = tipo ?? tipoDeClase(c.clase, notaciones) ?? c.clase;
     return {
       id,
       nombre: nombre || id,
-      tipo_elemento: resolverTipo(declarado, notation, esContenedor, nombre || id, hallazgos),
+      tipo_elemento: resolverTipo(declarado, notaciones, esContenedor, nombre || id, hallazgos),
       container: esContenedor ? "" : c.container,
     };
   });
@@ -291,6 +299,7 @@ function fromMermaidFlowchart(
     meta: {
       nombre_proyecto: opts.nombre?.trim() || getNotation(notation).label,
       notation,
+      ...(extras.length ? { notacionesExtra: extras } : {}),
     },
     nodes,
     edges,

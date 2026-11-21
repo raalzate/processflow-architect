@@ -158,6 +158,16 @@ describe("veredicto de una llamada", () => {
     expect(v.kind === "rechazar" && v.motivo).toMatch(/Tarea/);
   });
 
+  it("en una vista multinotación pasa un tipo de cualquiera de sus notaciones", () => {
+    const llamada = { tool: "add_node", args: { name: "Pagar", type: "Agregado" } };
+    expect(judgeCall({ ...llamada, args: { ...llamada.args } }, { ...ctx, notation: "bpmn" }).kind).toBe("rechazar");
+    const v = judgeCall(
+      { ...llamada, args: { ...llamada.args } },
+      { ...ctx, notation: "bpmn", notacionesExtra: ["ddd"] }
+    );
+    expect(v.kind).toBe("ejecutar");
+  });
+
   it("un tipo válido de la notación pasa", () => {
     const v = judgeCall(
       { tool: "add_node", args: { name: "Orden", type: "Comando" } },

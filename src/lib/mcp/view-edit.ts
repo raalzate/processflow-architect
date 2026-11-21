@@ -17,7 +17,8 @@
 
 import type { GraphData, GraphLink, GraphNode } from "../types";
 import type { ElementMetadata } from "../element-metadata";
-import { isNotationContainer, notationTypes, type NotationId } from "../notations";
+import { isNotationContainer, type NotationId } from "../notations";
+import { listaDeNotaciones, tiposDeNotaciones } from "../multi-notation";
 import {
   addContainer,
   addEdge,
@@ -245,14 +246,21 @@ function porNombre(model: Pick<DiagramModel, "nodes">, nombre: string): { node: 
   return { error: `No hay ningún elemento llamado "${nombre}" en la vista. Los que hay: ${opciones}.` };
 }
 
-/** El tipo, resuelto contra la notación de la vista (§P6). */
-function tipoValido(tipo: string, notation: NotationId): { tipo: string } | { error: string } {
-  const validos = notationTypes(notation, { includeContainers: true });
+/** Notaciones de la vista en texto, para los mensajes de error. */
+const nombreDeNotaciones = (lista: readonly NotationId[]) => lista.join(" + ");
+
+/**
+ * El tipo, resuelto contra las notaciones de la vista (§P6). En una vista
+ * multinotación vale cualquiera de sus notaciones: rechazar un tipo de una
+ * notación sumada rompería justo lo que el humano pidió mezclar.
+ */
+function tipoValido(tipo: string, notaciones: readonly NotationId[]): { tipo: string } | { error: string } {
+  const validos = tiposDeNotaciones(notaciones, { includeContainers: true });
   const r = normalizarTipo(tipo, validos);
   if ("tipo" in r) return r;
   const sugerencia = r.sugerido ? ` ¿Quisiste decir "${r.sugerido}"?` : "";
   return {
-    error: `"${tipo}" no es un tipo de ${notation}.${sugerencia} Los válidos: ${validos.join(", ")}.`,
+    error: `"${tipo}" no es un tipo de ${nombreDeNotaciones(notaciones)}.${sugerencia} Los válidos: ${validos.join(", ")}.`,
   };
 }
 
@@ -272,8 +280,9 @@ function tipoValido(tipo: string, notation: NotationId): { tipo: string } | { er
  */
 export function revisarGrafoEntrante(
   graph: GraphData,
-  notation: NotationId
+  notation: NotationId | readonly NotationId[]
 ): { ok: true } | { ok: false; error: string } {
+  const notaciones = listaDeNotaciones(notation);
   if (!graph || typeof graph !== "object") return { ok: false, error: "El grafo entrante no es un objeto." };
   const listas: [string, unknown][] = [
     ["big_picture.nodos", graph.big_picture?.nodos],
@@ -286,7 +295,7 @@ export function revisarGrafoEntrante(
     }
   }
 
-  const validos = notationTypes(notation, { includeContainers: true });
+  const validos = tiposDeNotaciones(notaciones, { includeContainers: true });
   const cajas: { nombre: unknown; tipo: unknown }[] = [
     ...nodosDe(graph).map((n) => ({ nombre: n?.nombre, tipo: n?.tipo_elemento })),
     ...(graph.agregados ?? []).map((a) => ({ nombre: a?.nombre_agregado, tipo: a?.tipo_contenedor })),
@@ -303,7 +312,7 @@ export function revisarGrafoEntrante(
       const sugerencia = r.sugerido ? ` ¿Quisiste decir "${r.sugerido}"?` : "";
       return {
         ok: false,
-        error: `"${caja.nombre}" usa el tipo "${caja.tipo}", que no existe en ${notation}.${sugerencia} Los válidos: ${validos.join(", ")}.`,
+        error: `"${caja.nombre}" usa el tipo "${caja.tipo}", que no existe en ${nombreDeNotaciones(notaciones)}.${sugerencia} Los válidos: ${validos.join(", ")}.`,
       };
     }
   }
@@ -368,12 +377,14 @@ export function explicarPerdida(p: PerdidaDeVista): string | null {
 export function applyViewEdit(
   actual: GraphData,
   edit: ViewEdit,
-  notation: NotationId
+  /** La notación de la vista, o todas las de una vista multinotación (principal primero). */
+  notation: NotationId | readonly NotationId[]
 ): ViewEditResult {
+  const notaciones = listaDeNotaciones(notation);
   if (edit.kind === "set-graph") {
     // La forma primero: contar los elementos de algo que no tiene la forma de un
     // grafo es donde reventaba, y el mensaje útil es el de la forma.
-    const revision = revisarGrafoEntrante(edit.graph, notation);
+    const revision = revisarGrafoEntrante(edit.graph, notaciones);
     if (!revision.ok) return revision;
     const nodos = nodosDe(edit.graph).length + (edit.graph.agregados?.length ?? 0);
     // §P8: ningún camino deja el lienzo en blanco.
@@ -419,14 +430,14 @@ export function applyViewEdit(
     return { ok: true, graph, message };
   }
 
-  const model = fromGraphData(actual, notation);
+  const model = fromGraphData(actual, notaciones[0]);
   let nuevo: DiagramModel;
   let message: string;
 
   try {
     switch (edit.kind) {
       case "add-element": {
-        const t = tipoValido(edit.type, notation);
+        const t = tipoValido(edit.type, notaciones);
         if ("error" in t) return { ok: false, error: t.error };
         const base = {
           nombre: edit.name?.trim(),
@@ -448,7 +459,7 @@ export function applyViewEdit(
         if ("error" in r) return { ok: false, error: r.error };
         let tipo: string | undefined;
         if (edit.type) {
-          const t = tipoValido(edit.type, notation);
+          const t = tipoValido(edit.type, notaciones);
           if ("error" in t) return { ok: false, error: t.error };
           tipo = t.tipo;
         }

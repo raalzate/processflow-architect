@@ -52,6 +52,12 @@ describe("historyBlock", () => {
 import { budgetFromWindow } from "../agent-run";
 
 describe("resolveNotations", () => {
+  it("la vista activa multinotación aporta todas sus notaciones, la principal primero", () => {
+    expect(
+      resolveNotations({ activeNotation: "c4", activeExtras: ["general", "c4"], graphNotation: "ddd" })
+    ).toEqual(["c4", "general"]);
+  });
+
   it("vistas pineadas mandan", () => {
     expect(
       resolveNotations({ injected: ["bpmn"], activeNotation: "c4", graphNotation: "ddd" })

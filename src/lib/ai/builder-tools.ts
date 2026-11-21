@@ -12,7 +12,8 @@
  * segunda lista de herramientas que pueda quedar desfasada.
  */
 
-import { notationTypes, getNotation } from "@/lib/notations";
+import { getNotation } from "@/lib/notations";
+import { listaDeNotaciones, tiposDeNotaciones } from "@/lib/multi-notation";
 import { planAppAction, type VistaConocida } from "@/lib/mcp/app-actions";
 import { escapeStrayQuotes, repairProtocolJson } from "./litert-agent";
 
@@ -282,6 +283,8 @@ export interface JudgeContext {
   vistas: VistaConocida[];
   /** Notación de la vista ABIERTA en la app. Sólo manda si no hay diagrama en curso. */
   notation?: string;
+  /** Notaciones sumadas a la de la vista abierta (vista multinotación). */
+  notacionesExtra?: string[];
   /**
    * Diagrama en curso en el workspace del MCP. Su notación MANDA sobre la de la
    * vista abierta: el diagrama puede ser C4 mientras el humano mira una vista
@@ -359,7 +362,10 @@ export function judgeCall(entrada: BuilderCall, ctx: JudgeContext): CallVerdict 
   // vista abierta—, nunca una lista cableada (§P6, #331).
   const notacion = ctx.diagrama?.notacion ?? ctx.notation;
   if (esTexto(call.args.type) && notacion) {
-    const validos = notationTypes(notacion, { includeContainers: true });
+    // Con la vista abierta como referencia valen todas sus notaciones (vista
+    // multinotación); un diagrama en curso del MCP es de una sola.
+    const notaciones = ctx.diagrama?.notacion ? [notacion] : [notacion, ...(ctx.notacionesExtra ?? [])];
+    const validos = tiposDeNotaciones(notaciones, { includeContainers: true });
     const r = normalizarTipo(String(call.args.type), validos);
     if ("error" in r) {
       // La sugerencia va PRIMERO: es la única parte del mensaje que el modelo
@@ -370,7 +376,7 @@ export function judgeCall(entrada: BuilderCall, ctx: JudgeContext): CallVerdict 
       return {
         kind: "rechazar",
         motivo:
-          `"${String(call.args.type)}" no es un tipo de ${getNotation(notacion).label}.${sugerencia}` +
+          `"${String(call.args.type)}" no es un tipo de ${listaDeNotaciones(notaciones).map((n) => getNotation(n).label).join(" + ")}.${sugerencia}` +
           ` Los tipos son: ${validos.join(", ")}.`,
       };
     }
