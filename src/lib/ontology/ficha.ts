@@ -1,11 +1,12 @@
 /**
  * @fileOverview Lo deducido de un elemento, en palabras (spec 027 · T18) — PURO.
  *
- * La pestaña «Conocimiento» de la ficha muestra lo que el razonador dedujo de
- * una caja y, a pedido, por qué. Nada de esto se dibuja en el lienzo ni se
+ * Lo que el razonador dedujo de una caja y, a pedido, por qué; lo consumen el
+ * MCP (`explain_fact`) y el contexto del agente (la pestaña «Conocimiento» de la
+ * ficha se quitó en #763). Nada de esto se dibuja en el lienzo ni se
  * guarda (FR-017): se recalcula del conocimiento cada vez. Acá vive la lectura
  * legible —nombres en lugar de IRIs, etiquetas de predicado y de clase— para
- * que el componente sólo pinte.
+ * que quien la consuma no traduzca IRIs.
  */
 
 import type { Conocimiento } from "./conocimiento";
