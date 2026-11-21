@@ -148,7 +148,11 @@ export interface ViewsContextType {
   createView: (opts?: { name?: string; description?: string; graph?: GraphData; notation?: NotationId; kind?: ViewKind; mermaidCode?: string; activate?: boolean }) => string | null;
   cloneView: (id: string) => string | null;
   renameView: (id: string, name: string) => void;
-  setViewNotation: (id: string, notation: NotationId) => void;
+  /**
+   * Notación principal de la vista y, opcionalmente, las sumadas. `extras`
+   * omitido deja las sumadas como están; `[]` las quita.
+   */
+  setViewNotation: (id: string, notation: NotationId, extras?: NotationId[]) => void;
   deleteView: (id: string) => void;
   updateViewGraph: (id: string, graph: GraphData) => void;
   updateViewMermaid: (id: string, code: string) => void;
@@ -256,11 +260,14 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
   // BPMN en su vista principal, sin necesidad de una vista anexa.
   const views = useMemo(() => {
     const docNotation = (graphData?.notation as NotationId | undefined);
+    const docExtras = graphData?.notacionesExtra;
     const builtins = BUILTIN_VIEWS.map((v) =>
-      v.id === "design" ? { ...v, notation: docNotation ?? v.notation } : v
+      v.id === "design"
+        ? { ...v, notation: docNotation ?? v.notation, notacionesExtra: docExtras }
+        : v
     );
     return [...builtins, ...customViews];
-  }, [customViews, graphData?.notation]);
+  }, [customViews, graphData?.notation, graphData?.notacionesExtra]);
   const embedViews = useMemo<EmbedView[]>(
     () =>
       views.map((v) => ({
@@ -436,6 +443,8 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
         name,
         kind: "graph",
         notation: (src as any)?.notation ?? DEFAULT_NOTATION_ID,
+        // El clon conserva la mezcla de notaciones: si no, pierde media paleta.
+        ...((src as any)?.notacionesExtra?.length ? { notacionesExtra: (src as any).notacionesExtra } : {}),
         graph,
         description: (src as any)?.description,
         createdAt: nowIso(),
@@ -454,9 +463,16 @@ export function ViewsProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  const setViewNotation = useCallback((id: string, notation: NotationId) => {
+  const setViewNotation = useCallback((id: string, notation: NotationId, extras?: NotationId[]) => {
     setCustomViews((prev) =>
-      prev.map((v) => (v.id === id ? { ...v, notation } : v))
+      prev.map((v) => {
+        if (v.id !== id) return v;
+        if (extras === undefined) return { ...v, notation };
+        // Sin sumadas no se guarda el campo: la vista vuelve a ser de una notación.
+        const { notacionesExtra: _previas, ...resto } = v;
+        void _previas;
+        return extras.length ? { ...resto, notation, notacionesExtra: extras } : { ...resto, notation };
+      })
     );
   }, []);
 

@@ -25,6 +25,8 @@ export interface DesignView {
    * Determina la paleta, iconos y la guía que recibe la IA. Por defecto "ddd".
    */
   notation?: NotationId;
+  /** Notaciones sumadas a la principal (vista multinotación). Ver `GraphData.notacionesExtra`. */
+  notacionesExtra?: NotationId[];
   /** true para las vistas del sistema (no se borran ni cuentan en el límite de 50). */
   builtin?: boolean;
   /** Grafo diseñable para vistas custom (kind === 'graph'). */

@@ -294,6 +294,12 @@ export interface GraphData {
    */
   notation?: NotationId;
   /**
+   * Notaciones que se suman a la principal (`notation`) en una vista
+   * multinotación: su paleta se mezcla con la de la principal. Sin el campo, la
+   * vista es de una sola notación, como siempre (ver `src/lib/multi-notation.ts`).
+   */
+  notacionesExtra?: NotationId[];
+  /**
    * Enrutado con el que NACEN las relaciones de esta vista (issue #128). Sin
    * esto el trazo de las aristas nuevas era un literal en el lienzo y no había
    * forma de cambiarlo; el enrutado de una arista concreta sigue mandando sobre

@@ -18,8 +18,9 @@ export function CustomViewRenderer({ view }: { view: DesignView }) {
     (g: GraphData) => updateViewGraph(view.id, g),
     [updateViewGraph, view.id]
   );
-  const handleNotation = useCallback(
-    (n: NotationId) => setViewNotation(view.id, n),
+  const handleNotaciones = useCallback(
+    (principal: NotationId, extras: NotationId[] | undefined) =>
+      setViewNotation(view.id, principal, extras ?? []),
     [setViewNotation, view.id]
   );
 
@@ -30,7 +31,8 @@ export function CustomViewRenderer({ view }: { view: DesignView }) {
         onChange={handleChange}
         sourceId={view.id}
         notation={view.notation}
-        onNotationChange={handleNotation}
+        notacionesExtra={view.notacionesExtra}
+        onNotacionesChange={handleNotaciones}
       />
     </div>
   );

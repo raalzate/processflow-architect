@@ -297,6 +297,9 @@ export function canvasToGraphData(
     // La notación viaja CON el documento: si no se propaga aquí, el autoguardado
     // del lienzo la borra y la vista vuelve a la notación por defecto.
     notation: base.notation,
+    // Las notaciones sumadas (vista multinotación) corren la misma suerte; sólo se
+    // escriben si hay, para que un documento de una notación no cambie de forma.
+    ...(base.notacionesExtra?.length ? { notacionesExtra: base.notacionesExtra } : {}),
     // Igual que la notación: si no se propaga acá, el autoguardado del lienzo
     // borra el enrutado por defecto de la vista en el primer cambio.
     defaultRouting: base.defaultRouting,

@@ -827,12 +827,22 @@ const GraphArea = React.memo(() => {
                   un proyecto BPMN se dibuja con paleta/simbología BPMN aquí mismo. */}
               <ComponentDesigner
                 notation={activeView?.notation}
+                notacionesExtra={activeView?.notacionesExtra}
                 // La organización del proyecto decide qué perfil de marca viste
                 // la skin editorial (spec 023).
                 orgId={orgOf(savedFiles.find((f) => f.id === currentFileId) ?? {})}
-                onNotationChange={
+                onNotacionesChange={
                   currentFileId && graphData
-                    ? (n) => handleDesignUpdate(currentFileId, { ...graphData, notation: n })
+                    ? (principal, extras) => {
+                        // Sin sumadas, el documento no lleva el campo (como antes).
+                        const { notacionesExtra: _previas, ...resto } = graphData;
+                        void _previas;
+                        handleDesignUpdate(currentFileId, {
+                          ...resto,
+                          notation: principal,
+                          ...(extras?.length ? { notacionesExtra: extras } : {}),
+                        });
+                      }
                     : undefined
                 }
               />

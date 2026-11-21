@@ -139,12 +139,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  alternarNotacion,
+  notacionesDeVista,
+  paletaDeNotaciones,
+  rotuloDeNotaciones,
+  separarNotaciones,
+} from "@/lib/multi-notation";
 import {
   ALL_ELEMENTS,
   getNotation,
@@ -789,12 +797,14 @@ const PaletteItem: React.FC<{
   );
 };
 
-/** Paleta de la notación activa (DDD, BPMN, C4, UML). */
+/** Paleta de las notaciones de la vista: la principal más las sumadas. */
 export const Toolbox: React.FC<{
   notation?: NotationId;
-  /** Si se pasa, muestra el selector de grupo de componentes encima de la paleta. */
-  onNotationChange?: (n: NotationId) => void;
-}> = ({ notation, onNotationChange }) => {
+  /** Notaciones sumadas a la principal (vista multinotación). */
+  notacionesExtra?: NotationId[];
+  /** Si se pasa, muestra el selector (multiselección) encima de la paleta. */
+  onNotacionesChange?: (principal: NotationId, extras: NotationId[] | undefined) => void;
+}> = ({ notation, notacionesExtra, onNotacionesChange }) => {
   // Todas las secciones abiertas por defecto; se guarda el set de colapsadas.
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
   // Elemento cuya ayuda (modal) está abierta.
@@ -805,18 +815,33 @@ export const Toolbox: React.FC<{
   const notationId = notation ?? DEFAULT_NOTATION_ID;
   const active: Notation = getNotation(notationId);
   const help = helpType ? NOTATION_HELP[helpType] : null;
+  // Lista efectiva (principal primero). La combinación la decide
+  // `src/lib/multi-notation.ts`; acá sólo se dibuja.
+  const notaciones = React.useMemo(
+    () => notacionesDeVista(notationId, notacionesExtra),
+    [notationId, notacionesExtra]
+  );
+  const claveNotaciones = notaciones.join("+");
+  const varias = notaciones.length > 1;
+  const gruposBase = React.useMemo(() => paletaDeNotaciones(notaciones), [notaciones]);
 
   // El filtro lo decide `src/lib/palette-search.ts`; acá sólo se dibuja.
   const { grupos, total, filtrando } = React.useMemo(
-    () => filtrarPaleta(active.paletteGroups, query),
-    [active.paletteGroups, query]
+    () => filtrarPaleta(gruposBase, query),
+    [gruposBase, query]
   );
 
   // Cambiar de notación limpia la búsqueda: un texto que filtraba UML deja la
   // paleta de BPMN vacía y parece que la notación no tiene elementos.
   React.useEffect(() => {
     setQuery("");
-  }, [notationId]);
+  }, [claveNotaciones]);
+
+  const alternar = (id: NotationId) => {
+    if (!onNotacionesChange) return;
+    const { principal, extras } = separarNotaciones(alternarNotacion(notaciones, id));
+    onNotacionesChange(principal, extras);
+  };
 
   // Ancho flexible pero con topes (src/lib/panel-size.ts): la paleta se adapta a
   // nombres largos sin comerse el lienzo. Se recuerda entre sesiones.
@@ -971,28 +996,58 @@ export const Toolbox: React.FC<{
           </Button>
         </div>
 
-        {/* Selector de grupo de componentes / notación (DDD, BPMN, C4, UML) */}
-        {onNotationChange && (
+        {/* Selector de notaciones (multiselección): la primera marcada es la
+            principal —la que leen la IA y la validación—; las demás suman su
+            paleta. El menú queda abierto al marcar para poder elegir varias. */}
+        {onNotacionesChange && (
           <div className="mb-3 flex items-center gap-1.5 px-1">
             <Layers className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <Select value={notationId} onValueChange={(v) => onNotationChange(v as NotationId)}>
-              <SelectTrigger className="h-8 flex-1 text-xs" title="Grupo de componentes de esta vista">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {NOTATION_LIST.map((n) => (
-                  <SelectItem key={n.id} value={n.id} className="text-xs">
-                    {n.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-8 flex-1 justify-between px-2.5 font-normal"
+                  title={`Notaciones de esta vista: ${notaciones.map((n) => getNotation(n).label).join(", ")}`}
+                >
+                  <span className="truncate">{rotuloDeNotaciones(notaciones)}</span>
+                  <ChevronDown className="opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[--radix-dropdown-menu-trigger-width] min-w-56">
+                <DropdownMenuLabel className="text-2xs font-normal text-muted-foreground">
+                  Marcá una o varias · la primera es la principal
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {NOTATION_LIST.map((n) => {
+                  const marcada = notaciones.includes(n.id);
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={n.id}
+                      checked={marcada}
+                      // La última marcada no se puede quitar: sin notación no hay paleta.
+                      disabled={marcada && notaciones.length === 1}
+                      onSelect={(e) => e.preventDefault()}
+                      onCheckedChange={() => alternar(n.id)}
+                      className="text-xs"
+                    >
+                      <span className="flex-1">{n.label}</span>
+                      {varias && n.id === notaciones[0] && (
+                        <span className="ml-2 text-2xs text-muted-foreground">principal</span>
+                      )}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
 
         <p className="text-xs text-muted-foreground mb-3 px-1">
-          {active.description} Arrastra al lienzo; los contenedores (borde
-          discontinuo) agrupan los nodos que coloques dentro.
+          {varias
+            ? `Elementos de ${notaciones.map((n) => getNotation(n).label).join(" + ")}.`
+            : active.description}{" "}
+          Arrastra al lienzo; los contenedores (borde discontinuo) agrupan los
+          nodos que coloques dentro.
         </p>
 
         {/* Buscador: filtra por nombre del tipo, etiqueta del grupo y texto de
@@ -1009,7 +1064,7 @@ export const Toolbox: React.FC<{
                 setQuery("");
               }
             }}
-            placeholder={`Buscar elemento (${active.label})`}
+            placeholder={`Buscar elemento (${rotuloDeNotaciones(notaciones)})`}
             aria-label="Buscar elemento en la paleta"
             className="h-8 pl-8 pr-7 text-xs"
           />
@@ -1085,7 +1140,7 @@ export const Toolbox: React.FC<{
           })}
           {filtrando && total === 0 && (
             <p className="px-1 py-4 text-xs text-muted-foreground">
-              Nada en <span className="font-semibold">{active.label}</span> coincide con «
+              Nada en <span className="font-semibold">{rotuloDeNotaciones(notaciones)}</span> coincide con «
               {query.trim()}». Probá con otro término o cambiá el grupo de
               componentes.
             </p>

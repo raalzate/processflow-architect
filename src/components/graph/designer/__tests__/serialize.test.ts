@@ -1109,6 +1109,23 @@ describe("notación en el round-trip", () => {
     expect(out.notation).toBe("bpmn");
   });
 
+  it("canvasToGraphData conserva las notaciones extra de una vista multinotación", () => {
+    const out = canvasToGraphData(new Map(), new Map(), {
+      nombre_proyecto: "P",
+      fecha_analisis: "2026-08-05",
+      notation: "c4",
+      notacionesExtra: ["general"],
+    });
+    expect(out.notacionesExtra).toEqual(["general"]);
+    // Sin extra no se escribe el campo: el documento de una notación no cambia.
+    const simple = canvasToGraphData(new Map(), new Map(), {
+      nombre_proyecto: "P",
+      fecha_analisis: "2026-08-05",
+      notation: "c4",
+    });
+    expect("notacionesExtra" in simple).toBe(false);
+  });
+
   it("emptyGraphData sella la notación con la que nace el proyecto", () => {
     expect(emptyGraphData("P", "2026-08-05", "c4").notation).toBe("c4");
     expect(emptyGraphData("P", "2026-08-05").notation).toBeUndefined();

@@ -54,6 +54,35 @@
             }
           ]
         },
+        "notacionesExtra": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "literal": "ddd"
+                  },
+                  {
+                    "literal": "bpmn"
+                  },
+                  {
+                    "literal": "c4"
+                  },
+                  {
+                    "literal": "uml"
+                  },
+                  {
+                    "literal": "mer"
+                  },
+                  {
+                    "literal": "general"
+                  }
+                ]
+              }
+            }
+          ]
+        },
         "defaultRouting": {
           "anyOf": [
             {
@@ -2078,6 +2107,35 @@
             },
             {
               "literal": "general"
+            }
+          ]
+        },
+        "notacionesExtra": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "literal": "ddd"
+                  },
+                  {
+                    "literal": "bpmn"
+                  },
+                  {
+                    "literal": "c4"
+                  },
+                  {
+                    "literal": "uml"
+                  },
+                  {
+                    "literal": "mer"
+                  },
+                  {
+                    "literal": "general"
+                  }
+                ]
+              }
             }
           ]
         },
