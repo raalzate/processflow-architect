@@ -5,6 +5,24 @@ import { tmpdir } from "node:os";
 import { Journal } from "../journal";
 
 describe("durable collaboration journal", () => {
+  it("cerrar dos veces no toca otro descriptor (#756: purga y salida pueden coincidir)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pf-journal-"));
+    try {
+      const a = new Journal(join(dir, "a"));
+      a.close();
+      // Sin idempotencia, el número de fd liberado lo reusa `b` y el segundo close lo cerraría.
+      const b = new Journal(join(dir, "b"));
+      expect(() => a.close()).not.toThrow();
+      expect(() => a.append(Uint8Array.of(1))).toThrow();
+      b.append(Uint8Array.of(7));
+      b.close();
+      const reread = new Journal(join(dir, "b"));
+      expect(reread.updates.map(u => [...u])).toEqual([[7]]);
+      reread.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   it("replays updates after process restart and repairs an interrupted final append", () => {
     const dir = mkdtempSync(join(tmpdir(), "pf-journal-"));
     const file = join(dir, "updates");
