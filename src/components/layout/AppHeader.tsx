@@ -1048,7 +1048,9 @@ const AppHeader: React.FC<AppHeaderProps> = ({
               en la cabecera competía con el título y no aporta a la tarea. */}
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-center gap-2" data-project-toolbar="">
+        {/* Sin wrap interno: si falta ancho se encoge el selector de proyecto
+            (min-w-40), no se parte el grupo en dos líneas. */}
+        <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2" data-project-toolbar="">
           {/* Proyecto, ramas y colaboración comparten una sola franja compacta. */}
           {mounted ? (
             <FileManagement {...fileManagementProps} />
@@ -1060,7 +1062,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
           <CollaborationControl />
         </div>
 
-        <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {/* Búsqueda global: en la app de escritorio se pinta en la barra de
               título (issue #169); en el navegador, acá mismo. */}
           {mounted ? (
