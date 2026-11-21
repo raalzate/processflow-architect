@@ -30,12 +30,30 @@ import { canEditBranch, type HistoryAction, type Choices } from "@/lib/collabora
 import { writeStoredViews } from "./ViewsContext";
 import { writeStoredReferences } from "./ReferenceContext";
 import { writeStoredSharedArtifacts } from "./AgentContext";
+import { useToast } from "@/hooks/use-toast";
+import { canExportShared, type LeasePolicy } from "@/lib/collaboration/lease";
+import { purgeBorrowedStorage } from "@/lib/collaboration/borrowed-storage";
+import { EXPORT_DENIED_MESSAGE, setExportDeniedNotifier, setExportRule } from "@/lib/export-gate";
+import type { CollaborationPurge, PurgeReason } from "@/lib/collaboration/types";
+
+const PURGE_MESSAGES: Record<PurgeReason, string> = {
+  left: "Saliste del proyecto compartido: su copia se eliminó de este equipo.",
+  revoked: "El anfitrión revocó tu acceso: la copia del proyecto se eliminó de este equipo.",
+  expired: "El anfitrión no respondió dentro del plazo del préstamo: la copia se eliminó de este equipo.",
+};
 
 interface CollaborationContextValue {
   workspace?: CollaborationWorkspace;
   branchId: string;
   previewCommitId?: string;
   readOnly: boolean;
+  /** La copia es prestada y el anfitrión no responde: el contenido se oculta (#756). */
+  locked: boolean;
+  /** Exportar o sacar contenido del proyecto activo: siempre en uno propio, con permiso en uno prestado. */
+  canExport: boolean;
+  /** Proyectos del catálogo que son copias prestadas sin permiso de exportar: nada los lee hacia fuera. */
+  sealedFileIds: readonly string[];
+  setPolicy: (policy: LeasePolicy) => Promise<void>;
   selectBranch: (id: string) => Promise<void>;
   previewVersion: (id?: string) => Promise<void>;
   historyAction: (action: HistoryAction, expectedVector?: string) => Promise<void>;
@@ -87,6 +105,14 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
     [peers, setPeers] = useState<Presence[]>([]);
   const [displayName, setDisplayNameState] = useState("Participante");
   const [sessionId] = useState(() => crypto.randomUUID());
+  const { toast } = useToast();
+  const [sealedFileIds, setSealedFileIds] = useState<string[]>([]);
+  const refreshSealed = useCallback(() => {
+    void hostBridge()
+      ?.collaborationCommand?.({ type: "borrowed", fileId: "" })
+      .then(r => setSealedFileIds(r.sealed ?? []))
+      .catch(() => {});
+  }, []);
   const latestPresence = useRef<Omit<PresenceInput, "name"> | undefined>(undefined);
   const lastPublishedPresence = useRef<{ fileId: string; value: PresenceInput } | undefined>(undefined);
   const queues = useRef(new Map<string, Projection<SharedProject>>());
@@ -152,9 +178,11 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
     setStatus(undefined);
     graph.setSharedStorageScope?.();
   }, [graph.currentFileId, graph.setSharedStorageScope]);
+  const locked = !!status && !status.owner && status.lease?.state !== "active";
   const readOnly =
     !!status &&
-    (status.role === "viewer" ||
+    (locked ||
+      status.role === "viewer" ||
       !status.initialized ||
       !status.saved ||
       !!previewCommitId ||
@@ -341,6 +369,58 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
     return () => window.removeEventListener("beforeunload", guard);
   }, [pending, status?.saved]);
 
+  // Quitar la copia prestada del catálogo y todo su rastro local. El main ya borró el historial.
+  const removeBorrowed = useCallback(
+    (fileId: string, reason: PurgeReason) => {
+      const g = current.current.graph;
+      if (g.savedFiles.some(f => f.id === fileId)) g.handleFileDelete(fileId);
+      try {
+        purgeBorrowedStorage(localStorage, fileId);
+      } catch {
+        /* sin almacenamiento local no queda rastro que quitar */
+      }
+      toast({ title: "Copia compartida eliminada", description: PURGE_MESSAGES[reason] });
+      refreshSealed();
+    },
+    [toast, refreshSealed],
+  );
+  // Toda descarga del renderer consulta esta regla (src/lib/export-gate.ts).
+  const exportOk = canExportShared(status) && !sealedFileIds.includes(graph.currentFileId ?? "");
+  const exportOkRef = useRef(exportOk);
+  exportOkRef.current = exportOk;
+  useEffect(() => {
+    const quitarRegla = setExportRule(() => exportOkRef.current);
+    const quitarAviso = setExportDeniedNotifier(() =>
+      toast({ variant: "destructive", title: "Exportación no permitida", description: EXPORT_DENIED_MESSAGE }),
+    );
+    return () => {
+      quitarRegla();
+      quitarAviso();
+    };
+  }, [toast]);
+  // La política puede cambiar en cualquier sincronización; el vínculo, al unirse o salir.
+  useEffect(refreshSealed, [refreshSealed, status?.fileId, status?.lease?.policy.allowExport]);
+  useEffect(() => {
+    const host = hostBridge();
+    if (!host?.collaborationCommand) return;
+    // El main olvida una purga sólo cuando la copia ya salió del catálogo: si la app se
+    // cierra en medio, al arrancar se vuelve a aplicar en vez de dejar un proyecto huérfano.
+    const apply = (purges: CollaborationPurge[] = []) => {
+      if (!purges.length) return;
+      for (const p of purges) removeBorrowed(p.fileId, p.reason);
+      void host.collaborationCommand!({ type: "ack-purges", fileId: "", fileIds: purges.map(p => p.fileId) }).catch(
+        () => {},
+      );
+    };
+    void host
+      .collaborationCommand({ type: "take-purges", fileId: "" })
+      .then(r => apply(r.purges))
+      .catch(() => {});
+    return host.onCollaborationEvent?.(event => {
+      if (event.sealed) setSealedFileIds(event.sealed);
+      apply(event.purges);
+    });
+  }, [removeBorrowed]);
   const run = useCallback(
     async (command: CollaborationCommand) => {
       const host = hostBridge();
@@ -409,6 +489,12 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
     branchId,
     previewCommitId,
     readOnly,
+    locked,
+    canExport: exportOk,
+    sealedFileIds,
+    setPolicy: async policy => {
+      await run({ type: "policy", fileId: current.current.graph.currentFileId!, policy });
+    },
     selectBranch: async id => {
       await queues.current.get(current.current.graph.currentFileId!)?.settled();
       setPreviewCommitId(undefined);
@@ -492,8 +578,16 @@ export function CollaborationProvider({ children }: { children: React.ReactNode 
       await run({ type: "retry", fileId: current.current.graph.currentFileId! });
     },
     leave: async () => {
-      const id = current.current.graph.currentFileId!;
+      const id = current.current.graph.currentFileId!,
+        borrowed = !!current.current.status && !current.current.status.owner;
       await run({ type: "leave", fileId: id });
+      if (borrowed) {
+        // Salir es devolver el préstamo: la copia no se libera, se elimina.
+        setStatus(undefined);
+        setWorkspace(undefined);
+        removeBorrowed(id, "left");
+        return;
+      }
       current.current.graph.setSharedReadOnly(id, false);
       current.current.graph.setSharedStorageScope?.();
       setStatus(undefined);
