@@ -1,27 +1,49 @@
 /**
- * Banco de EVALUACIÓN del agente con y sin grafo (spec 027 · T28, SC-002) — FUERA del gate.
+ * Banco de EVALUACIÓN del agente con y sin grafo (spec 027 · T28, SC-002; #765) — FUERA del gate.
  *
- *   npx tsx scripts/eval-ontology-agent.ts --cmd "ollama run gemma3:4b"
- *   npx tsx scripts/eval-ontology-agent.ts --listar        # sólo el banco y lo esperado
+ *   npx tsx scripts/eval-ontology-agent.ts --endpoint http://localhost:1234/v1 --model gemma-4-e4b-it \
+ *       --runs 5 --temperature 0.7 --out eval.json
+ *   npx tsx scripts/eval-ontology-agent.ts --cmd "ollama run gemma3:4b"   # cualquier CLI stdin→stdout
+ *   npx tsx scripts/eval-ontology-agent.ts --listar                        # sólo el banco y lo esperado
  *
- * 30 preguntas sobre el proyecto de referencia «Pedidos». Cada una se contesta
- * dos veces: SIN grafo (el contexto de hoy: las vistas en TOON) y CON grafo (el
- * mismo contexto más el subgrafo del foco con lo deducido, que es lo que arma
- * `buildContext` desde la spec 027). Reporta exactitud y respuestas con
- * elementos inexistentes en cada modo (criterio en `src/lib/ai/eval-ontology.ts`).
+ * 30 preguntas sobre el proyecto de referencia «Pedidos», en tres modos:
+ * - `sin`: el contexto de antes de la 027, las vistas en TOON;
+ * - `con`: lo mismo más el subgrafo del foco con lo deducido (lo que arma `buildContext`);
+ * - `solo`: SÓLO el subgrafo del foco, con las vistas en TOON de respaldo si la
+ *   pregunta no nombra nada del modelo. Mide si un contexto chico alcanza (menos
+ *   tokens ⇒ más tareas caben en local).
+ *
+ * Reporta exactitud (media y rango entre corridas), respuestas con elementos
+ * inexistentes, tokens y latencia, y McNemar exacto por pares entre modos sobre
+ * el voto de mayoría de las corridas (criterio en `src/lib/ai/eval-ontology.ts`).
+ * `--out` guarda prompts, respuestas y puntajes: una corrida que no se guarda no
+ * se puede auditar (el falso positivo de la 17 en #697 quedó sin verificar).
  *
  * Lo ESPERADO no está escrito a mano: sale de la API pura del grafo, así el
  * banco no se desincroniza del fixture. Las preguntas sin respuesta en el
  * modelo esperan «desconocido».
  *
- * `--cmd` es cualquier comando que lea el prompt por stdin y escriba la
- * respuesta en stdout: un modelo LOCAL, para medir lo que importa (FR-035). No
- * va al gate porque necesita un modelo y su resultado varía por corrida; el
- * número se documenta en un comentario de #697.
+ * `--endpoint` es cualquier API compatible con OpenAI (LM Studio, Ollama): da
+ * tokens reales. `--cmd` sigue sirviendo para un CLI; ahí los tokens se estiman
+ * (caracteres / 4). Se mide con un modelo LOCAL, que es lo que importa (FR-035).
+ * No va al gate porque necesita un modelo y su resultado varía por corrida.
+ *
+ * `--reasoning` (por defecto `none`): Gemma 4 en LM Studio piensa antes de
+ * contestar y, con el tope de tokens, el pensamiento se comía la respuesta
+ * entera (salía vacía). La app (LiteRT-LM) no le pide razonar, así que se mide
+ * sin razonamiento salvo que se pida otra cosa.
  */
 import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { graphToToon } from "../src/lib/ai/graph-toon";
-import { puntuar, resumir, vocabularioEvaluacion, type PuntajeRespuesta } from "../src/lib/ai/eval-ontology";
+import {
+  describirNumeros,
+  mcnemarExacto,
+  puntuar,
+  resumirCorridas,
+  vocabularioEvaluacion,
+  type PuntajeRespuesta,
+} from "../src/lib/ai/eval-ontology";
 import { PREGUNTAS_COMPETENCIA } from "../src/lib/ontology/competency";
 import { construirConocimiento } from "../src/lib/ontology/conocimiento";
 import { LEYENDA_CONOCIMIENTO, contextoParaIA, focoDeTexto } from "../src/lib/ontology/context";
@@ -91,24 +113,70 @@ const ELEMENTOS = [...new Set(k.elementos.map((e) => e.nombre))];
 
 const contextoBase = vistas.map((v) => `### Vista ${v.name} (${v.notation}, TOON)\n${graphToToon(v.graph)}`).join("\n\n");
 
-function prompt(pregunta: string, conGrafo: boolean): string {
-  const foco = conGrafo ? focoDeTexto(k, pregunta) : [];
-  const grafo = foco.length ? `\n\n### Conocimiento alrededor de lo que se pregunta (grafo · TOON)\n${LEYENDA_CONOCIMIENTO}\n${contextoParaIA(k, foco)}` : "";
-  return [
-    "Contestá la pregunta SÓLO con lo que dice el modelo de abajo, en una o dos frases, nombrando los elementos tal como se llaman.",
-    "Si el modelo no lo dice, contestá «desconocido en el modelo».",
-    contextoBase + grafo,
-    `Pregunta: ${pregunta}`,
-  ].join("\n\n");
+type Modo = "sin" | "con" | "solo";
+const MODOS: Modo[] = ["sin", "con", "solo"];
+
+const INSTRUCCION = [
+  "Contestá la pregunta SÓLO con lo que dice el modelo de abajo, en una o dos frases, nombrando los elementos tal como se llaman.",
+  "Si el modelo no lo dice, contestá «desconocido en el modelo».",
+].join("\n\n");
+
+/** El prompt de cada modo y si `solo` tuvo que caer a las vistas por falta de foco. */
+function prompt(pregunta: string, modo: Modo): { texto: string; respaldo: boolean } {
+  const foco = modo === "sin" ? [] : focoDeTexto(k, pregunta);
+  const grafo = foco.length ? `### Conocimiento alrededor de lo que se pregunta (grafo · TOON)\n${LEYENDA_CONOCIMIENTO}\n${contextoParaIA(k, foco)}` : "";
+  const respaldo = modo === "solo" && !grafo;
+  const contexto = modo === "solo" ? grafo || contextoBase : [contextoBase, grafo].filter(Boolean).join("\n\n");
+  return { texto: [INSTRUCCION, contexto, `Pregunta: ${pregunta}`].join("\n\n"), respaldo };
 }
 
-function preguntar(cmd: string, texto: string): string {
+interface Llamada {
+  respuesta: string;
+  tokensEntrada: number;
+  tokensSalida: number;
+  /** Tokens que el modelo gastó pensando (0 si no razona o no lo informa). */
+  tokensRazonamiento: number;
+  /** Los tokens del CLI se estiman: el JSON lo dice para no mezclarlos con los reales. */
+  tokensEstimados: boolean;
+  ms: number;
+}
+
+const estimar = (t: string) => Math.ceil(t.length / 4);
+
+function porCli(cmd: string, texto: string): Llamada {
+  const t0 = performance.now();
   const r = spawnSync(cmd, { input: texto, shell: true, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
   if (r.status !== 0) throw new Error(`«${cmd}» terminó con ${r.status}: ${r.stderr}`);
-  return r.stdout.trim();
+  const respuesta = r.stdout.trim();
+  return { respuesta, tokensEntrada: estimar(texto), tokensSalida: estimar(respuesta), tokensRazonamiento: 0, tokensEstimados: true, ms: performance.now() - t0 };
+}
+
+async function porApi(endpoint: string, model: string, temperature: number, reasoning: string, texto: string): Promise<Llamada> {
+  const t0 = performance.now();
+  const res = await fetch(`${endpoint.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, temperature, reasoning_effort: reasoning, max_tokens: 400, messages: [{ role: "user", content: texto }] }),
+  });
+  if (!res.ok) throw new Error(`${endpoint} respondió ${res.status}: ${await res.text()}`);
+  const j = (await res.json()) as { choices: { message: { content: string } }[]; usage?: { prompt_tokens: number; completion_tokens: number; completion_tokens_details?: { reasoning_tokens?: number } } };
+  const respuesta = (j.choices[0]?.message.content ?? "").trim();
+  const u = j.usage;
+  return {
+    respuesta,
+    tokensEntrada: u?.prompt_tokens ?? estimar(texto),
+    tokensSalida: u?.completion_tokens ?? estimar(respuesta),
+    tokensRazonamiento: u?.completion_tokens_details?.reasoning_tokens ?? 0,
+    tokensEstimados: !u,
+    ms: performance.now() - t0,
+  };
 }
 
 const args = process.argv.slice(2);
+const arg = (nombre: string) => {
+  const i = args.indexOf(nombre);
+  return i >= 0 ? args[i + 1] : undefined;
+};
 if (BANCO.length !== 30) throw new Error(`El banco debe tener 30 preguntas (tiene ${BANCO.length}).`);
 
 if (args.includes("--listar")) {
@@ -119,29 +187,100 @@ if (args.includes("--listar")) {
   process.exit(0);
 }
 
-const i = args.indexOf("--cmd");
-const cmd = i >= 0 ? args[i + 1] : undefined;
-if (!cmd) {
-  console.error('Falta --cmd "<comando que lee el prompt por stdin>" (un modelo local, p. ej. `ollama run gemma3:4b`). Usá --listar para ver el banco.');
+const cmd = arg("--cmd");
+const endpoint = arg("--endpoint");
+const model = arg("--model") ?? "";
+const runs = Number(arg("--runs") ?? 1);
+const temperature = Number(arg("--temperature") ?? 0);
+const reasoning = arg("--reasoning") ?? "none";
+const limite = Number(arg("--limite") ?? BANCO.length);
+const out = arg("--out");
+const modos = (arg("--modos")?.split(",") as Modo[] | undefined) ?? MODOS;
+if (!cmd && !endpoint) {
+  console.error("Falta --endpoint <url OpenAI-compatible> --model <id> o --cmd \"<CLI stdin→stdout>\". Usá --listar para ver el banco.");
   process.exit(2);
 }
+if (endpoint && !model) {
+  console.error("Con --endpoint hace falta --model (p. ej. gemma-4-e4b-it).");
+  process.exit(2);
+}
+if (modos.some((m) => !MODOS.includes(m))) {
+  console.error(`--modos admite ${MODOS.join(",")}.`);
+  process.exit(2);
+}
+const llamar = (texto: string) => (endpoint ? porApi(endpoint, model, temperature, reasoning, texto) : Promise.resolve(porCli(cmd!, texto)));
 
-const puntajes: Record<"sin" | "con", PuntajeRespuesta[]> = { sin: [], con: [] };
-BANCO.forEach((q, n) => {
-  const esperado = q.esperado();
-  for (const modo of ["sin", "con"] as const) {
-    const respuesta = preguntar(cmd, prompt(q.pregunta, modo === "con"));
-    const p = puntuar(respuesta, esperado, VOCABULARIO, ELEMENTOS);
-    puntajes[modo].push(p);
+interface Registro extends Llamada {
+  corrida: number;
+  pregunta: number;
+  modo: Modo;
+  esperado: string[];
+  respaldo: boolean;
+  puntaje: PuntajeRespuesta;
+  prompt: string;
+}
+
+async function main() {
+  const registros: Registro[] = [];
+  const banco = BANCO.slice(0, limite);
+  for (let corrida = 1; corrida <= runs; corrida++) {
+    for (const [n, q] of banco.entries()) {
+      const esperado = q.esperado();
+      for (const modo of modos) {
+        const { texto, respaldo } = prompt(q.pregunta, modo);
+        const ll = await llamar(texto);
+        const puntaje = puntuar(ll.respuesta, esperado, VOCABULARIO, ELEMENTOS);
+        registros.push({ ...ll, corrida, pregunta: n + 1, modo, esperado, respaldo, puntaje, prompt: texto });
+        console.log(
+          `r${corrida} ${String(n + 1).padStart(2)} ${modo.padEnd(4)} · ${puntaje.acierto ? "OK " : "MAL"} · ${ll.tokensEntrada}→${ll.tokensSalida} tok · ${(ll.ms / 1000).toFixed(1)} s` +
+            (respaldo ? " · respaldo TOON" : "") +
+            (!ll.respuesta ? " · RESPUESTA VACÍA" : "") +
+            (puntaje.faltan.length ? ` · faltan: ${puntaje.faltan.join(", ")}` : "") +
+            (puntaje.inexistentes.length ? ` · inexistentes: ${puntaje.inexistentes.join(", ")}` : "")
+        );
+      }
+    }
+  }
+
+  const de = (m: Modo) => registros.filter((r) => r.modo === m);
+  const resumen: Record<string, unknown> = {};
+  console.log(`\n=== ${runs} corrida(s) · ${banco.length} preguntas · temperatura ${temperature} · razonamiento ${reasoning} · ${endpoint ? model : cmd} ===`);
+  const vacias = registros.filter((r) => !r.respuesta).length;
+  if (vacias) console.log(`⚠ ${vacias} respuesta(s) vacía(s): revisá --reasoning o el tope de tokens antes de leer los números.`);
+  for (const m of modos) {
+    const rs = de(m);
+    const porCorrida = Array.from({ length: runs }, (_, i) => rs.filter((r) => r.corrida === i + 1).map((r) => r.puntaje));
+    const c = resumirCorridas(porCorrida);
+    const ent = describirNumeros(rs.map((r) => r.tokensEntrada));
+    const lat = describirNumeros(rs.map((r) => r.ms));
+    resumen[m] = { ...c, tokensEntrada: ent, latenciaMs: lat, respaldos: rs.filter((r) => r.respaldo).length, vacias: rs.filter((r) => !r.respuesta).length };
     console.log(
-      `${String(n + 1).padStart(2)} ${modo} grafo · ${p.acierto ? "OK " : "MAL"}` +
-        (p.faltan.length ? ` · faltan: ${p.faltan.join(", ")}` : "") +
-        (p.inexistentes.length ? ` · inexistentes: ${p.inexistentes.join(", ")}` : "")
+      `${m.toUpperCase().padEnd(4)} exactitud ${(c.exactitudMedia * 100).toFixed(1)}% [${(c.exactitudMin * 100).toFixed(0)}–${(c.exactitudMax * 100).toFixed(0)}] · ` +
+        `inexistentes ${c.inexistentesMedia.toFixed(1)}/${banco.length} · tokens entrada media ${ent.media.toFixed(0)} · latencia p50 ${(lat.p50 / 1000).toFixed(1)} s p95 ${(lat.p95 / 1000).toFixed(1)} s`
     );
   }
-});
 
-for (const modo of ["sin", "con"] as const) {
-  const r = resumir(puntajes[modo]);
-  console.log(`\n${modo.toUpperCase()} grafo: exactitud ${(r.exactitud * 100).toFixed(0)}% · ${r.conInexistentes}/${r.preguntas} respuestas con elementos inexistentes`);
+  // Voto de mayoría por pregunta: con varias corridas, el par de McNemar es la pregunta, no la llamada.
+  const mayoria = (m: Modo) =>
+    banco.map((_, n) => {
+      const v = de(m).filter((r) => r.pregunta === n + 1);
+      return v.filter((r) => r.puntaje.acierto).length * 2 > v.length;
+    });
+  const pares: [Modo, Modo][] = [["sin", "con"], ["sin", "solo"], ["con", "solo"]];
+  const mcnemar: Record<string, unknown> = {};
+  for (const [a, b] of pares.filter(([a, b]) => modos.includes(a) && modos.includes(b))) {
+    const t = mcnemarExacto(mayoria(a), mayoria(b));
+    mcnemar[`${a}-vs-${b}`] = t;
+    console.log(`McNemar ${a} vs ${b}: sólo ${a} acierta ${t.soloA} · sólo ${b} acierta ${t.soloB} · p = ${t.p.toFixed(3)}`);
+  }
+
+  if (out) {
+    writeFileSync(out, JSON.stringify({ fecha: new Date().toISOString(), modelo: endpoint ? model : cmd, temperature, reasoning, runs, preguntas: banco.length, resumen, mcnemar, registros }, null, 2));
+    console.log(`\nRespuestas y puntajes en ${out}`);
+  }
 }
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

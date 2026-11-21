@@ -41,7 +41,7 @@ El diagrama era dibujo: las flechas tenían una etiqueta libre y nadie podía pr
    - Dominio y rango sólo clasifican cuando declaran una clase.
    - Las formas cuentan sobre lo explícito más lo deducido.
    - Una consulta sin filas responde «desconocido en el modelo», no «falso».
-4. **Lo deducido no se dibuja ni se guarda** (FR-017). Se recalcula y se muestra en la ficha (pestaña «Conocimiento»).
+4. **Lo deducido no se dibuja ni se guarda** (FR-017). Se recalcula a pedido y se consulta por MCP (`explain_fact`, `query_knowledge`). La pestaña «Conocimiento» de la ficha se quitó en #763; sus vínculos entre vistas pasaron a la tab «Elemento».
 5. **Un Agente y una Frontera no son el mismo elemento** (decisión Q8). Las clases generales son disjuntas. El Sistema *Pagos* **realiza** el Contexto *Pagos*: no «es el mismo que». Contexto ≡ Pool sí, porque ambos son Frontera. La consulta de impacto (PC-07) sigue «realiza».
 6. **Los vínculos entre vistas y las propuestas de la IA pasan por el humano** (FR-036). Se sugieren en memoria; sólo lo aceptado se persiste, con su procedencia.
 7. **Turtle sin grafos nombrados.** Lo deducido va en un segundo bloque declarado; en JSON-LD, en un grafo nombrado.

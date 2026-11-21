@@ -534,3 +534,36 @@ describe("un equipo sin WebGPU con la nube configurada", () => {
     expect(reason).toMatch(/no hay motor local/i);
   });
 });
+
+// #766: lo que el reglamento ya decide no gasta una llamada al modelo.
+describe("resolver determinista (la ontología contesta primero)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const conResolver: AiTask<{ fijo: boolean }, string> = {
+    id: "con-resolver",
+    tier: "light",
+    resolver: (i) => (i.fijo ? "dispara" : null),
+    buildPrompt: () => ({ prompt: "rótulo?" }),
+    parse: (raw) => raw.trim(),
+  };
+
+  it("si resuelve, no se llama a ningún proveedor y se informa «ontologia»", async () => {
+    setAvailability(true, true);
+    const r = await route(conResolver, { fijo: true });
+    expect(r).toMatchObject({ provider: "ontologia", fellBack: false, output: "dispara" });
+    expect(mRunLocal).not.toHaveBeenCalled();
+    expect(mRemoteGenerateText).not.toHaveBeenCalled();
+  });
+
+  it("funciona aunque no haya ninguna IA disponible", async () => {
+    setAvailability(false, false);
+    await expect(route(conResolver, { fijo: true })).resolves.toMatchObject({ output: "dispara" });
+  });
+
+  it("si devuelve null, la tarea sigue por la política de siempre", async () => {
+    setAvailability(true, false);
+    mRunLocal.mockResolvedValue(" envía ");
+    const r = await route(conResolver, { fijo: false });
+    expect(r).toMatchObject({ provider: "local", output: "envía" });
+  });
+});
